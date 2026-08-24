@@ -1,0 +1,89 @@
+:root {
+  --blue-violet: #6366F1;
+  --lime: #A3E635;
+  --green: #22C55E;
+  --yellow: #FACC15;
+  --orange: #FB923C;
+  --red: #EF4444;
+  --orangered: #F4511E;
+  --blue: #3B82F6;
+  --sky-blue: #38BDF8;
+  --black: #05070B;
+  --primary: var(--blue-violet);
+  --secondary: var(--blue);
+  --dark-bg: var(--black);
+  --dark-card: #172033;
+  --dark-card-hover: #24314A;
+  --light: #F8FAFC;
+  --text: #E2E8F0;
+  --text-secondary: #A8B4C7;
+  --success: var(--green);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--dark-bg);
+  color: var(--text);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.container {
+  flex: 1;
+  max-width: 1560px;
+  margin: 0 auto;
+  width: 100%;
+  padding: clamp(52px, 5vw, 78px) clamp(20px, 3vw, 48px);
+}
+
+.home-layout {
+  display: grid;
+  gap: clamp(56px, 7vw, 96px);
+  align-content: start;
+}
+
+.home-layout > * {
+  min-width: 0;
+}
+
+.home-model-section {
+  display: grid;
+  gap: 34px;
+  min-width: 0;
+}
+
+@media (min-width: 1440px) {
+  .container { padding-inline: 48px; }
+}
+
+@media (min-width: 1800px) {
+  .container { max-width: 1680px; }
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 42px 16px;
+  }
+
+  .home-layout { gap: 58px; }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 32px 12px;
+  }
+
+  .home-layout { gap: 46px; }
+}

@@ -1,0 +1,44 @@
+.header {
+  position: relative;
+  background: linear-gradient(120deg, var(--blue-violet) 0%, var(--blue) 46%, var(--sky-blue) 100%);
+  color: white;
+  padding: clamp(92px, 8vw, 126px) 24px clamp(58px, 5vw, 78px);
+  text-align: center;
+}
+
+.header-content h1 {
+  font-size: clamp(2.5rem, 4vw, 4.25rem);
+  font-weight: 800;
+  margin-bottom: 12px;
+  letter-spacing: 0;
+}
+
+.tagline {
+  font-size: clamp(.95rem, 1.2vw, 1.2rem);
+  opacity: 0.95;
+  font-weight: 300;
+}
+
+@media (max-width: 768px) {
+  .header {
+    padding: 100px 20px 58px;
+  }
+
+  .header-content h1 {
+    font-size: 2rem;
+  }
+
+  .tagline {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .header {
+    padding: 92px 16px 46px;
+  }
+
+  .header-content h1 {
+    font-size: 1.5rem;
+  }
+}

@@ -1,0 +1,32 @@
+.dashboard-model-card{display:block;color:inherit;text-decoration:none;border-radius:15px}.dashboard-model-card article{height:100%;transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}.dashboard-model-card:hover article{transform:translateY(-5px);border-color:#6366f1;box-shadow:0 16px 38px rgba(0,0,0,.24)}.model-open{display:flex;justify-content:space-between;width:100%;padding:11px 12px;border:1px solid #334155;border-radius:8px;background:#0f172a;color:#cbd5e1;font-size:.78rem}.dashboard-model-card:hover .model-open{border-color:#6366f1;color:white}.dashboard-code-section{display:grid;grid-template-columns:.85fr 1.15fr;gap:50px;align-items:center;max-width:1250px;margin:90px auto 20px;padding:48px;border:1px solid rgba(148,163,184,.13);border-radius:18px;background:#111a2b}.dashboard-code-section>div>span{color:#818cf8;font-size:.7rem;font-weight:800;letter-spacing:1.3px;text-transform:uppercase}.dashboard-code-section h2{margin:10px 0;color:white;font-size:2rem}.dashboard-code-section p{margin-bottom:22px;color:#94a3b8}.dashboard-code-section a{color:#c7d2fe;font-weight:700;text-decoration:none}.dashboard-code-section pre{overflow:auto;margin:0;padding:26px;border:1px solid #26344c;border-radius:13px;background:#080e1b;color:#b7c6e2;text-align:left}.dashboard-code-section code{font-family:Consolas,monospace;font-size:.86rem;line-height:1.75}@media(max-width:900px){.dashboard-code-section{grid-template-columns:1fr;padding:35px}}@media(max-width:560px){.dashboard-code-section{margin-top:60px;padding:24px 18px}.dashboard-code-section h2{font-size:1.55rem}.dashboard-code-section pre{padding:18px;font-size:.75rem}}
+.dashboard-usage{display:grid;grid-template-columns:1fr minmax(180px,360px) auto;align-items:center;gap:22px;max-width:1250px;margin:0 auto 58px;padding:18px 22px;border:1px solid rgba(148,163,184,.14);border-radius:13px;background:#151f32}.dashboard-usage span{display:block;color:#818cf8;font-size:.65rem;font-weight:800;letter-spacing:1px;text-transform:uppercase}.dashboard-usage strong{display:block;margin-top:5px;color:#dbeafe;font-size:.8rem;text-transform:capitalize}.usage-track{height:8px;overflow:hidden;border-radius:8px;background:#29364d}.usage-track i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#6366f1,#38bdf8)}.dashboard-usage>a{padding:9px 12px;border-radius:8px;background:#6366f1;color:#fff;font-size:.75rem;font-weight:800;text-decoration:none}@media(max-width:650px){.dashboard-usage{grid-template-columns:1fr;margin-bottom:40px}.dashboard-usage>a{text-align:center}}
+.model-meta{display:flex;align-items:center;gap:7px;margin:0 0 18px;color:#94a3b8;font-size:.62rem}.model-meta span{padding:4px 6px;border:1px solid #334155;border-radius:5px}.model-meta i{margin-left:auto;color:#6ee7b7;font-style:normal}.model-meta i::before{content:'';display:inline-block;width:5px;height:5px;margin:0 5px 1px 0;border-radius:50%;background:currentColor}.model-meta i.offline{color:#fb7185}
+@media (max-width: 1100px) {
+	.dashboard-page { padding-inline: clamp(24px, 4vw, 48px); }
+	.dashboard-hero h1 { font-size: clamp(3rem, 8vw, 5.5rem); }
+	.dashboard-feature-cards { margin-bottom: 46px; }
+	.dashboard-code-section { gap: 30px; margin-top: 70px; }
+}
+
+@media (max-width: 760px) {
+	.dashboard-page { padding-bottom: 100px; }
+	.dashboard-nav { gap: 14px; }
+	.dashboard-brand { font-size: 1rem; }
+	.dashboard-nav-links { max-width: calc(100vw - 24px); overflow-x: auto; white-space: nowrap; }
+	.dashboard-nav-links a { min-height: 40px; display: inline-flex; align-items: center; }
+	.dashboard-feature-card { padding: 20px; }
+	.dashboard-grid article { padding: 20px; }
+	.dashboard-code-section pre { max-width: 100%; }
+}
+
+@media (max-width: 420px) {
+	.dashboard-page { padding-inline: 14px; }
+	.dashboard-brand > span { width: 31px; height: 31px; }
+	.dashboard-user button { margin-left: 0; padding: 8px 9px; }
+	.dashboard-hero h1 { font-size: 2.8rem; line-height: .98; }
+	.dashboard-hero > div:first-child > p:last-of-type { font-size: .95rem; }
+	.dashboard-section-title h2 { font-size: 1.65rem; }
+	.dashboard-feature-card h2 { font-size: 1.2rem; }
+	.dashboard-code-section { padding: 20px 15px; }
+	.dashboard-code-section h2 { font-size: 1.4rem; }
+}

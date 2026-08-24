@@ -1,0 +1,29 @@
+.checkout-page {
+  min-height: 100vh;
+  padding: 28px clamp(20px, 6vw, 96px) 80px;
+  background: linear-gradient(135deg, var(--black), #101827 58%, #172554);
+  color: #e8edf7;
+}
+
+.checkout-nav { display: flex; justify-content: space-between; align-items: center; max-width: 1120px; margin: 0 auto; }
+.checkout-nav a { color: #aab9d5; text-decoration: none; }
+.checkout-brand { color: #f4f7ff !important; font-size: 1.1rem; font-weight: 700; }
+.checkout-brand span { display: inline-grid; place-items: center; width: 30px; height: 30px; margin-right: 8px; border-radius: 9px; background: #6366f1; font-size: .75rem; }
+.checkout-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 480px); gap: clamp(36px, 8vw, 110px); align-items: start; max-width: 1120px; margin: 100px auto 0; }
+.checkout-intro { padding-top: 32px; }
+.checkout-eyebrow { color: var(--lime); text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; font-weight: 700; }
+.checkout-intro h1 { max-width: 560px; margin: 18px 0; font-size: clamp(2.4rem, 5vw, 4.5rem); line-height: 1.03; }
+.checkout-intro > p:not(.checkout-eyebrow) { max-width: 500px; color: #aab9d5; font-size: 1.05rem; line-height: 1.7; }
+.checkout-plan { display: flex; justify-content: space-between; max-width: 420px; margin-top: 48px; padding: 20px 0; border-top: 1px solid #33415d; border-bottom: 1px solid #33415d; }
+.checkout-plan span { color: #aab9d5; }
+.checkout-form { padding: 32px; border: 1px solid #2d3b57; border-radius: 12px; background: #1c2940; box-shadow: 0 24px 60px rgba(0, 0, 0, .2); }
+.checkout-form h2 { margin: 0 0 24px; }
+.demo-payment-note { margin: -10px 0 17px; color: #86efac; font-size: .76rem; line-height: 1.5; }.checkout-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.checkout-form label { display: grid; gap: 8px; margin-top: 16px; color: #c8d2e4; font-size: .9rem; }
+.checkout-form input { width: 100%; box-sizing: border-box; padding: 13px 14px; border: 1px solid #3b4b69; border-radius: 7px; background: #111b2e; color: #f4f7ff; font: inherit; }
+.checkout-form input:focus { outline: 2px solid #7173ff; outline-offset: 2px; }
+.checkout-form button { width: 100%; margin-top: 26px; padding: 14px; border: 0; border-radius: 7px; background: linear-gradient(100deg, var(--blue-violet), var(--blue)); color: white; font: inherit; font-weight: 700; cursor: pointer; }
+.checkout-success { margin: 18px 0 0; color: var(--green); text-align: center; font-weight: 700; }
+.checkout-error { margin: 18px 0 0; color: var(--red); text-align: center; font-weight: 700; }
+.purchase-success-page{max-width:1050px;margin:75px auto 0;text-align:center}.success-mark{display:grid;place-items:center;width:70px;height:70px;margin:25px auto 20px;border-radius:50%;color:var(--black);background:var(--lime);font-size:2rem;font-weight:900;box-shadow:0 0 35px rgba(163,230,53,.3)}.purchase-success-page h1{margin:0;font-size:clamp(2.5rem,6vw,5rem)}.purchase-success-page>p:not(.checkout-eyebrow){margin:15px auto 45px;color:#aab9d5;font-size:1.05rem}.skill-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;text-align:left}.skill-card{display:grid;gap:10px;padding:24px;border:1px solid #2d3b57;border-radius:12px;background:#1c2940;color:#e8edf7;text-decoration:none;transition:transform .2s,border-color .2s}.skill-card:hover{transform:translateY(-5px);border-color:var(--sky-blue)}.skill-card>span{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;color:var(--black);background:var(--sky-blue);font-weight:900}.skill-card:nth-child(2)>span{background:var(--lime)}.skill-card:nth-child(3)>span{background:var(--yellow)}.skill-card strong{font-size:1.05rem}.skill-card small{min-height:42px;color:#aab9d5;line-height:1.5}.skill-card b{margin-top:8px;color:var(--sky-blue);font-size:.78rem}@media (max-width:720px){.skill-grid{grid-template-columns:1fr}.purchase-success-page{margin-top:55px}}
+@media (max-width: 720px) { .checkout-layout { grid-template-columns: 1fr; margin-top: 60px; } .checkout-intro { padding-top: 0; } .checkout-form { padding: 24px; } }
