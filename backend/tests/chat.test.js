@@ -91,15 +91,15 @@ describe('AllModelAI chat API', () => {
         }
 
         assert.deepEqual(requestedModels, [
-            'openai/gpt-4o-mini', 'gemini-2.5-flash', 'claude-sonnet-4-20250514',
-            'x-ai/grok-4.3', 'openai/gpt-4o-mini', 'perplexity/sonar',
-            'moonshotai/kimi-k2', 'deepseek/deepseek-chat', 'meta-llama/llama-3.3-70b-instruct',
+            'openai/gpt-4o-mini', 'google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5',
+            '~x-ai/grok-latest', 'openai/gpt-4o-mini', 'perplexity/sonar',
+            '~moonshotai/kimi-latest', 'deepseek/deepseek-chat', 'meta-llama/llama-3.3-70b-instruct',
             'mistralai/mistral-small-3.1-24b-instruct', 'qwen/qwen-2.5-72b-instruct',
-            'cohere/command-r-plus',
+            'cohere/command-a',
         ]);
-        assert.match(requestedUrls[1], /generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-2\.5-flash:streamGenerateContent/);
+        assert.equal(requestedUrls[1], 'https://openrouter.ai/api/v1/chat/completions');
         assert.equal(requestedUrls[3], 'https://openrouter.ai/api/v1/chat/completions');
-        assert.equal(requestedUrls[2], 'https://api.anthropic.com/v1/messages');
+        assert.equal(requestedUrls[2], 'https://openrouter.ai/api/v1/chat/completions');
         assert.equal(requestedUrls[0], 'https://openrouter.ai/api/v1/chat/completions');
 
         const history = await request(app).get('/api/chat/history?email=tester@example.com');

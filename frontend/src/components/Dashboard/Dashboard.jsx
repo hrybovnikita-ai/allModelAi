@@ -19,6 +19,8 @@ export default function Dashboard() {
   const [deleteError, setDeleteError] = useState('');
   const [modelStatus, setModelStatus] = useState({});
   const [creditStatus, setCreditStatus] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
+  const [recentProjects, setRecentProjects] = useState([]);
 
   useEffect(() => {
     if (user) return undefined;
@@ -29,6 +31,7 @@ export default function Dashboard() {
   }, [user]);
   useEffect(() => { fetch('/api/status/models').then((response) => response.ok ? response.json() : null).then((data) => data && setModelStatus(data.models)).catch(() => {}); }, []);
   useEffect(() => { if (user?.email) fetch(`/api/credits?email=${encodeURIComponent(user.email)}`).then((response) => response.ok ? response.json() : null).then((data) => data && setCreditStatus(data)).catch(() => {}); }, [user?.email]);
+  useEffect(() => { if (!user?.email) return; Promise.all([fetch(`/api/analytics?email=${encodeURIComponent(user.email)}`).then(r => r.ok ? r.json() : null), fetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`).then(r => r.ok ? r.json() : [])]).then(([stats, projects]) => { setAnalytics(stats); setRecentProjects(projects.slice(0, 3)); }).catch(() => {}); }, [user?.email]);
 
   if (checkingSession) return <main className="dashboard-page"><p>Restoring your workspace...</p></main>;
   if (!user) return <Navigate to="/" replace />;
@@ -53,19 +56,22 @@ export default function Dashboard() {
     <main className="dashboard-page">
       <nav className="dashboard-nav">
         <Link to="/" className="dashboard-brand"><span>AI</span>AllModelAI</Link>
-        <div className="dashboard-nav-links"><Link to="/chat">Chat</Link><Link to="/studio">Workspace Studio</Link><a href="#dashboard-models">Models</a><Link to="/models/gpt#model-code">API Docs</Link></div>
+        <div className="dashboard-nav-links"><Link to="/chat">Chat</Link><Link to="/arena">Arena</Link><Link to="/explore">Models</Link><Link to="/studio">Studio</Link><Link to="/ai-tools">Power Lab</Link><Link to="/creator-tools">Creator Lab</Link><Link to="/features">Features</Link><Link to="/control-center">Control</Link></div>
         <div className="dashboard-user"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><Link to="/settings"><small>{user.name || user.email}</small></Link><button onClick={() => setDeleteModalOpen(true)}>Sign out</button></div>
       </nav>
+      {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user.email}</div>}
+      {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}
       <section className="dashboard-hero">
         <div>
           <p className="dashboard-eyebrow">Workspace ready</p>
           <h1>Welcome, {user.name?.split(' ')[0] || 'creator'}.</h1>
           <p>Your account is connected to the backend. Choose a model and start building something remarkable.</p>
-          <div className="dashboard-actions"><a href="#dashboard-models">Explore models</a><Link to="/#pricing">View pricing</Link></div>
+          <div className="dashboard-actions"><a href="#dashboard-models">Explore models</a><Link to="/checkout?plan=pro">View pricing</Link></div>
         </div>
         <div className="dashboard-orbit" aria-hidden="true"><span>AI</span></div>
       </section>
-      {creditStatus && <section className="dashboard-usage"><div><span>Usage this month</span><strong>{creditStatus.plan} plan · {creditStatus.remaining} requests left</strong></div><div className="usage-track"><i style={{ width: `${Math.min((creditStatus.used / creditStatus.limit) * 100, 100)}%` }} /></div><Link to="/#pricing">Upgrade plan</Link></section>}
+      {creditStatus && <section className="dashboard-usage"><div><span>Usage this month</span><strong>{creditStatus.plan} plan · {creditStatus.remaining} requests left</strong></div><div className="usage-track"><i style={{ width: `${Math.min((creditStatus.used / creditStatus.limit) * 100, 100)}%` }} /></div><Link to="/checkout?plan=pro">Upgrade plan</Link></section>}
+      <section className="personal-overview"><div className="overview-heading"><div><p className="dashboard-eyebrow">Your week</p><h2>Workspace overview</h2></div><Link to="/studio">Open analytics →</Link></div><div className="overview-grid"><article><small>CONVERSATIONS</small><strong>{analytics?.conversations ?? '—'}</strong><span>Saved in your workspace</span></article><article><small>MESSAGES</small><strong>{analytics?.messages ?? '—'}</strong><span>Across every AI model</span></article><article><small>ESTIMATED TOKENS</small><strong>{analytics ? analytics.estimatedTokens.toLocaleString() : '—'}</strong><span>Processed in conversations</span></article><article className="continue-card"><small>QUICK START</small><strong>Continue creating</strong><div><Link to="/chat?model=smart">Smart chat</Link><Link to="/arena">AI Arena</Link></div></article></div><div className="recent-projects"><div><h3>Recent projects</h3><Link to="/studio">View all</Link></div>{recentProjects.length ? recentProjects.map(project => <Link to="/studio" key={project.id}><span>▦</span><div><strong>{project.name}</strong><small>{project.content?.slice(0, 70) || 'Ready for your next task'}</small></div><b>→</b></Link>) : <div className="projects-empty"><span>✦</span><p>No projects yet. Turn your next idea into a focused workspace.</p><Link to="/studio">Create project</Link></div>}</div></section>
       <section className="dashboard-feature-cards" aria-label="Workspace highlights">
         <article className="dashboard-feature-card dashboard-feature-card-skills">
           <span className="feature-card-icon">✦</span>
@@ -93,7 +99,7 @@ export default function Dashboard() {
       <section className="dashboard-models" id="dashboard-models">
         <div className="dashboard-section-title"><div><span>Model library</span><h2>Choose your intelligence</h2></div><p>Switch providers whenever your task changes.</p></div>
         <div className="dashboard-grid">
-          {models.map((model) => { const statusKey = model.slug === 'gemini' ? 'gemini' : model.slug === 'claude' ? 'claude' : model.slug === 'gpt' ? 'gpt' : 'others'; const online = modelStatus[statusKey] !== false; return <Link className="dashboard-model-card" to={`/models/${model.slug}`} key={model.name}><article><img src={model.image} alt={`${model.name} logo`} /><small>{model.provider}</small><h3>{model.name}</h3><p>{model.note}</p><div className="model-meta"><span>{modelMeta[model.name]?.[0] || 'Available'}</span><span>{modelMeta[model.name]?.[1] || 'Unified API'}</span><i className={online ? '' : 'offline'}>{online ? 'Online' : 'Offline'}</i></div><span className="model-open">Open {model.name} <b>→</b></span></article></Link>; })}
+          {models.map((model) => { const statusKey = ['gemini','claude','gpt','cloudflare'].includes(model.slug) ? model.slug : 'others'; const online = modelStatus[statusKey] !== false; return <Link className="dashboard-model-card" to={`/models/${model.slug}`} key={model.name}><article><img src={model.image} alt={`${model.name} logo`} /><small>{model.provider} · {model.priceLabel||'Premium'}</small><h3>{model.name}</h3><p>{model.note}</p><div className="model-meta"><span>{modelMeta[model.name]?.[0] || 'Available'}</span><span>{modelMeta[model.name]?.[1] || 'Unified API'}</span><i className={online ? '' : 'offline'}>{online ? 'Online' : 'Offline'}</i></div><span className="model-open">Open {model.name} <b>→</b></span></article></Link>; })}
         </div>
       </section>
       <section className="dashboard-code-section">

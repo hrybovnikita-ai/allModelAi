@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const request = require('supertest');
 
-process.env.DB_FILE = path.join(os.tmpdir(), 'allmodelai-users-test.json');
+process.env.DB_FILE = path.join(os.tmpdir(), 'allmodelai-users-test.sqlite');
 fs.rmSync(process.env.DB_FILE, { force: true });
 
 const app = require('../app');
@@ -36,6 +36,75 @@ describe('AllModelAI users API', () => {
         assert.equal(response.status, 200);
         assert.equal(response.body.user.name, 'Alice Johnson');
         assert.equal(response.body.user.provider, 'Google');
+    });
+
+    test('registration stores a password securely and login verifies it', async () => {
+        const registration = await request(app).post('/api/auth/register').send({
+            name: 'Nikita Hrybov', email: 'nikita.auth@example.com', password: 'StrongPass123',
+        });
+        assert.equal(registration.status, 201);
+        assert.equal(registration.body.user.email, 'nikita.auth@example.com');
+        assert.equal(registration.body.user.passwordHash, undefined);
+        assert.deepEqual(registration.body.welcomeEmail, { sent: false, reason: 'not_configured' });
+        const stored = users.find((user) => user.email === 'nikita.auth@example.com');
+        assert.notEqual(stored.passwordHash, 'StrongPass123');
+
+        const wrongPassword = await request(app).post('/api/auth/login').send({ email: 'nikita.auth@example.com', password: 'WrongPass123' });
+        assert.equal(wrongPassword.status, 401);
+        const login = await request(app).post('/api/auth/login').send({ email: 'nikita.auth@example.com', password: 'StrongPass123' });
+        assert.equal(login.status, 200);
+        assert.equal(login.body.user.passwordHash, undefined);
+    });
+
+    test('registration accepts a short non-empty password', async () => {
+        const registration = await request(app).post('/api/auth/register').send({
+            name: 'Short Password', email: 'short-password@example.com', password: '1',
+        });
+        assert.equal(registration.status, 201);
+        const login = await request(app).post('/api/auth/login').send({ email: 'short-password@example.com', password: '1' });
+        assert.equal(login.status, 200);
+    });
+
+    test('registration adds a password to an existing passwordless account', async () => {
+        const passwordless = users.find((user) => !user.passwordHash);
+        assert.ok(passwordless);
+        const registration = await request(app).post('/api/auth/register').send({
+            name: passwordless.name, email: passwordless.email, password: 'new',
+        });
+        assert.equal(registration.status, 200);
+        const login = await request(app).post('/api/auth/login').send({ email: passwordless.email, password: 'new' });
+        assert.equal(login.status, 200);
+    });
+
+    test('first sign in creates a password for a passwordless account', async () => {
+        const passwordless = users.find((user) => !user.passwordHash);
+        assert.ok(passwordless);
+        const firstLogin = await request(app).post('/api/auth/login').send({ email: passwordless.email, password: 'first-password' });
+        assert.equal(firstLogin.status, 200);
+        assert.equal(firstLogin.body.passwordCreated, true);
+        const nextLogin = await request(app).post('/api/auth/login').send({ email: passwordless.email, password: 'first-password' });
+        assert.equal(nextLogin.status, 200);
+        const wrongLogin = await request(app).post('/api/auth/login').send({ email: passwordless.email, password: 'wrong' });
+        assert.equal(wrongLogin.status, 401);
+    });
+
+    test('sign in never creates an account for an unknown email', async () => {
+        const response = await request(app).post('/api/auth/login').send({ email: 'unknown@example.com', password: 'AnyPassword123' });
+        assert.equal(response.status, 401);
+        assert.equal(users.some((user) => user.email === 'unknown@example.com'), false);
+    });
+
+    test('developer activates a plan without being charged', async () => {
+        const response = await request(app).post('/api/purchases').send({ name:'Developer', email:'hrybovnikita@gmail.com', city:'Kyiv', dateOfBirth:'2000-01-01', plan:'pro' });
+        assert.equal(response.status, 201);
+        assert.equal(response.body.developerAccess, true);
+        assert.equal(response.body.charged, false);
+        const data=app.locals.db.read(); data.purchases=data.purchases.filter((item)=>item.email!=='hrybovnikita@gmail.com'); delete data.subscriptions['hrybovnikita@gmail.com']; delete data.usage['hrybovnikita@gmail.com']; app.locals.db.write(data);
+    });
+
+    test('regular purchase is rejected until a payment provider verifies it', async () => {
+        const response = await request(app).post('/api/purchases').send({ name:'Customer', email:'customer@example.com', city:'Kyiv', dateOfBirth:'2000-01-01', plan:'pro' });
+        assert.equal(response.status, 503);
     });
 
     test('GET /api/users returns every user', async () => {

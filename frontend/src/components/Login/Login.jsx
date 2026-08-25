@@ -8,6 +8,8 @@ export default function Login({ mode, onClose, onModeChange }) {
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
 
   const handleSocialSignIn = (provider) => {
     onClose();
@@ -23,6 +25,12 @@ export default function Login({ mode, onClose, onModeChange }) {
     const formData = new FormData(event.currentTarget);
     const payload = Object.fromEntries(formData.entries());
 
+    if (signingUp && payload.password !== payload.confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    delete payload.confirmPassword;
+
     try {
       setSubmitting(true);
       setError('');
@@ -31,9 +39,14 @@ export default function Login({ mode, onClose, onModeChange }) {
       const response = await axios.post(endpoint, payload, { withCredentials: true });
       sessionStorage.setItem('allmodelai_user', JSON.stringify(response.data.user));
       onClose();
-      navigate('/dashboard', { state: { user: response.data.user } });
+      navigate('/dashboard', { state: { user: response.data.user, welcomeEmail: response.data.welcomeEmail } });
     } catch (requestError) {
-      setError(requestError.response?.data?.message || 'Could not connect to the backend. Please try again.');
+      if (requestError.response?.data?.code === 'PASSWORD_SETUP_REQUIRED') {
+        onModeChange('signup');
+        setError('This existing account has no password yet. Enter your name, repeat the password, and press Create account.');
+      } else {
+        setError(requestError.response?.data?.message || 'Could not connect to the backend. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -56,7 +69,8 @@ export default function Login({ mode, onClose, onModeChange }) {
         <form className="login-form" onSubmit={handleSubmit}>
           {signingUp && <label><span>Name</span><input name="name" type="text" placeholder="Your name" autoComplete="name" required /></label>}
           <label><span>Email</span><input name="email" type="email" placeholder="you@example.com" autoComplete="email" required /></label>
-          <label><span>Password</span><input name="password" type="password" placeholder={signingUp ? 'At least 8 characters' : 'Enter any password'} autoComplete={signingUp ? 'new-password' : 'current-password'} minLength={signingUp ? 8 : 1} required /></label>
+          <label><span>Password</span><span className="password-field"><input name="password" type={passwordVisible ? 'text' : 'password'} placeholder={signingUp ? 'Choose any password' : 'Your password'} autoComplete={signingUp ? 'new-password' : 'current-password'} required /><button type="button" className="password-toggle" onClick={() => setPasswordVisible((visible) => !visible)} aria-label={passwordVisible ? 'Hide password' : 'Show password'} aria-pressed={passwordVisible} title={passwordVisible ? 'Hide password' : 'Show password'}>{passwordVisible ? '◉' : '◎'}</button></span></label>
+          {signingUp && <label><span>Confirm password</span><span className="password-field"><input name="confirmPassword" type={confirmPasswordVisible ? 'text' : 'password'} placeholder="Repeat your password" autoComplete="new-password" required /><button type="button" className="password-toggle" onClick={() => setConfirmPasswordVisible((visible) => !visible)} aria-label={confirmPasswordVisible ? 'Hide password' : 'Show password'} aria-pressed={confirmPasswordVisible} title={confirmPasswordVisible ? 'Hide password' : 'Show password'}>{confirmPasswordVisible ? '◉' : '◎'}</button></span></label>}
           {!signingUp && <a className="login-forgot" href="/forgot-password">Forgot password?</a>}
           {error && <p className="login-error" role="alert">{error}</p>}
           <button className="login-submit" type="submit" disabled={submitting}>

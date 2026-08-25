@@ -25,6 +25,14 @@ import Admin from "./components/Admin/Admin";
 import ForgotPassword from "./components/ForgotPassword/ForgotPassword";
 import { ApiDocs, InfoPage } from "./components/InfoPage/InfoPage";
 import Studio from "./components/Studio/Studio";
+import CommandPalette from "./components/CommandPalette/CommandPalette";
+import ModelExplorer from "./components/ModelExplorer/ModelExplorer";
+import Arena from "./components/Arena/Arena";
+import ControlCenter from "./components/ControlCenter/ControlCenter";
+import InnovationHub from "./components/InnovationHub/InnovationHub";
+import ProductSuite from "./components/ProductSuite/ProductSuite";
+import AIToolsLab from "./components/AIToolsLab/AIToolsLab";
+import CreatorLab from "./components/CreatorLab/CreatorLab";
 
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");
@@ -102,7 +110,7 @@ function HomePage() {
 
 export default function App() {
   return (
-    <Routes>
+    <><CommandPalette /><Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/auth/:provider" element={<SocialAuth />} />
       <Route path="/dashboard" element={<Dashboard />} />
@@ -118,6 +126,13 @@ export default function App() {
       <Route path="/checkout" element={<Checkout />} />
       <Route path="/chat" element={<Chat />} />
       <Route path="/studio" element={<Studio />} />
-    </Routes>
+      <Route path="/explore" element={<ModelExplorer />} />
+      <Route path="/arena" element={<Arena />} />
+      <Route path="/control-center" element={<ControlCenter />} />
+      <Route path="/innovation-hub" element={<InnovationHub />} />
+      <Route path="/features" element={<ProductSuite />} />
+      <Route path="/ai-tools" element={<AIToolsLab />} />
+      <Route path="/creator-tools" element={<CreatorLab />} />
+    </Routes></>
   );
 }

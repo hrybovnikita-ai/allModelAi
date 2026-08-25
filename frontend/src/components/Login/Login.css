@@ -10,6 +10,11 @@
 .login-form label span { color: #cbd5e1; font-size: .78rem; font-weight: 700; }
 .login-form input { width: 100%; padding: 13px 14px; border: 1px solid #334155; border-radius: 9px; outline: none; background: #0f172a; color: white; font: inherit; }
 .login-form input:focus { border-color: #818cf8; box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
+.password-field { position: relative; display: block; }
+.password-field input { padding-right: 48px; }
+.password-toggle { position: absolute; top: 50%; right: 7px; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; transform: translateY(-50%); border: 0; border-radius: 8px; background: transparent; color: #a5b4fc; font-size: 1.25rem; line-height: 1; cursor: pointer; }
+.password-toggle:hover { background: rgba(129,140,248,.12); color: #fff; }
+.password-toggle:focus-visible { outline: 2px solid #818cf8; outline-offset: 1px; }
 .login-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 5px; }
 .login-actions button { padding: 12px; border: 1px solid #475569; border-radius: 9px; background: #263349; color: white; font: inherit; font-weight: 700; cursor: pointer; }
 .login-actions button.active { border-color: var(--primary); background: var(--primary); }

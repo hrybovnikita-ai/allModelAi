@@ -1,9 +1,55 @@
 const crypto = require('node:crypto');
+const { promisify } = require('node:util');
 const users = require('../data/data');
 
 const sessionCookie = 'allmodelai_session';
 const sessionDuration = 1000 * 60 * 60 * 24 * 30;
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+const scrypt = promisify(crypto.scrypt);
+const publicUser = ({ passwordHash, ...user }) => user;
+const hashPassword = async (password) => {
+    const salt = crypto.randomBytes(16).toString('hex');
+    const derivedKey = await scrypt(password, salt, 64);
+    return `${salt}:${Buffer.from(derivedKey).toString('hex')}`;
+};
+const verifyPassword = async (password, passwordHash) => {
+    if (!passwordHash || !passwordHash.includes(':')) return false;
+    const [salt, storedKey] = passwordHash.split(':');
+    const derivedKey = Buffer.from(await scrypt(password, salt, 64));
+    const storedBuffer = Buffer.from(storedKey, 'hex');
+    return storedBuffer.length === derivedKey.length && crypto.timingSafeEqual(storedBuffer, derivedKey);
+};
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
+})[character]);
+const sendWelcomeEmail = async (user) => {
+    const apiKey = process.env.RESEND_API_KEY?.trim();
+    const from = process.env.EMAIL_FROM?.trim();
+    if (!apiKey || !from) return { sent: false, reason: 'not_configured' };
+
+    const safeName = escapeHtml(user.name);
+    const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'Idempotency-Key': `welcome-${user.id}-${crypto.createHash('sha256').update(user.email).digest('hex').slice(0, 24)}`,
+        },
+        body: JSON.stringify({
+            from,
+            to: [user.email],
+            subject: 'Welcome to AllModelAI',
+            text: `Hello, ${user.name}! Your AllModelAI account has been created successfully. You can now sign in and use your AI workspace.`,
+            html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:32px;background:#111827;color:#e5e7eb;border-radius:16px"><div style="display:inline-block;padding:8px 12px;background:#6d5dfc;border-radius:10px;font-weight:700">AI</div><h1 style="color:#fff">Welcome to AllModelAI, ${safeName}!</h1><p>Your account has been created successfully.</p><p>You can now sign in, choose an AI model and start working in your workspace.</p><p style="color:#94a3b8;font-size:13px">If you did not create this account, you can ignore this email.</p></div>`,
+        }),
+    });
+    if (!response.ok) {
+        const details = await response.json().catch(() => ({}));
+        throw new Error(details.message || details.error?.message || `Email provider returned ${response.status}`);
+    }
+    const result = await response.json();
+    return { sent: true, id: result.id };
+};
 const setSession = (req, res, user, remember = false) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + (remember ? sessionDuration : 1000 * 60 * 60 * 8);
@@ -50,40 +96,61 @@ const saveUsers = (database) => {
     database.write(data);
 };
 
-const registerUser = (req, res) => {
+const registerUser = async (req, res) => {
     const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
         return res.status(400).json({ message: 'Name, email and password are required' });
     }
 
-    if (password.length < 8) {
-        return res.status(400).json({ message: 'Password must contain at least 8 characters' });
-    }
+    if (typeof password !== 'string') return res.status(400).json({ message: 'Password must be text' });
 
     const normalizedEmail = email.trim().toLowerCase();
-    if (users.some((user) => user.email.toLowerCase() === normalizedEmail)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        return res.status(400).json({ message: 'Enter a valid email address' });
+    }
+    const existingUser = users.find((user) => user.email.toLowerCase() === normalizedEmail);
+    if (existingUser?.passwordHash) {
         return res.status(409).json({ message: 'An account with this email already exists' });
+    }
+
+    if (existingUser) {
+        existingUser.name = name.trim() || existingUser.name;
+        existingUser.passwordHash = await hashPassword(password);
+        saveUsers(req.app.locals.db);
+        setSession(req, res, existingUser, req.body.rememberMe === true || req.body.rememberMe === 'true');
+        return res.status(200).json({
+            message: 'Password added to your existing account',
+            user: publicUser(existingUser),
+            welcomeEmail: { sent: false, reason: 'existing_account' },
+        });
     }
 
     const newUser = {
         id: users.length ? Math.max(...users.map((user) => user.id)) + 1 : 1,
         name: name.trim(),
         email: normalizedEmail,
+        passwordHash: await hashPassword(password),
     };
 
     users.push(newUser);
     saveUsers(req.app.locals.db);
-    console.log('[AUTH REGISTER]', newUser);
-
     setSession(req, res, newUser, req.body.rememberMe === true || req.body.rememberMe === 'true');
+    let welcomeEmail = { sent: false, reason: 'not_configured' };
+    try {
+        welcomeEmail = await sendWelcomeEmail(newUser);
+    } catch (error) {
+        console.error('[WELCOME EMAIL]', error.message);
+        welcomeEmail = { sent: false, reason: 'delivery_failed' };
+    }
     return res.status(201).json({
         message: 'Account created successfully',
-        user: newUser,
+        user: publicUser(newUser),
+        welcomeEmail,
     });
 };
 
-const loginUser = (req, res) => {
+const loginUser = async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -91,32 +158,29 @@ const loginUser = (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    let user = users.find(
+    const user = users.find(
         (item) => item.email.toLowerCase() === email.trim().toLowerCase()
     );
 
-    if (!user) {
-        const emailName = normalizedEmail
-            .split('@')[0]
-            .replace(/[._-]+/g, ' ')
-            .replace(/\b\w/g, (letter) => letter.toUpperCase());
-
-        user = {
-            id: users.length ? Math.max(...users.map((item) => item.id)) + 1 : 1,
-            name: emailName || 'New User',
-            email: normalizedEmail,
-        };
-
-        users.push(user);
+    if (user && !user.passwordHash) {
+        user.passwordHash = await hashPassword(password);
         saveUsers(req.app.locals.db);
+        setSession(req, res, user, req.body.rememberMe === true || req.body.rememberMe === 'true');
+        return res.status(200).json({
+            message: 'Password created and signed in successfully',
+            passwordCreated: true,
+            user: publicUser(user),
+        });
+    }
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+        return res.status(401).json({ message: 'Incorrect email or password' });
     }
 
-    console.log('[AUTH SIGN IN]', user);
     setSession(req, res, user, req.body.rememberMe === true || req.body.rememberMe === 'true');
 
     return res.status(200).json({
         message: 'Signed in successfully',
-        user,
+        user: publicUser(user),
     });
 };
 
@@ -140,7 +204,7 @@ const socialLogin = (req, res) => {
     if (!providerNames[provider] || !accountId.startsWith(`${provider}-`)) return res.status(400).json({ message: 'A valid provider account is required' });
     const sourceUser = users.find((user) => user.id === Number(accountId.slice(provider.length + 1)));
     if (!sourceUser) return res.status(404).json({ message: 'Provider account was not found' });
-    const user = { ...sourceUser, provider: providerNames[provider] };
+    const user = { ...publicUser(sourceUser), provider: providerNames[provider] };
     setSession(req, res, user, true);
     return res.status(200).json({ message: `Signed in with ${providerNames[provider]}`, user });
 };
@@ -200,7 +264,7 @@ const logout = (req, res) => {
 };
 
 const getUsers = (req, res) => {
-    res.status(200).json(users);
+    res.status(200).json(users.map(publicUser));
 };
 
 const getUserById = (req, res) => {
@@ -211,7 +275,7 @@ const getUserById = (req, res) => {
         return res.status(404).json({ message: 'User not found' });
     }
 
-    return res.status(200).json(user);
+    return res.status(200).json(publicUser(user));
 };
 
 const createUser = (req, res) => {
@@ -325,10 +389,20 @@ const getCreditStatus = (database, email) => {
     return { data, email: normalizedEmail, plan, limit, used, remaining: Math.max(limit - used, 0) };
 };
 
-const getModelStatus = (_req, res) => res.status(200).json({
-    updatedAt: new Date().toISOString(),
-    models: { gpt: Boolean(process.env.OPENROUTER_API_KEY || process.env.API_KEY), gemini: Boolean(process.env.GEMINI_API_KEY), claude: Boolean(process.env.CLAUDE_API_KEY), cloudflare: Boolean((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID), others: Boolean(process.env.OPENROUTER_API_KEY || process.env.API_KEY) },
-});
+const getModelStatus = (_req, res) => {
+    const gateway = Boolean(process.env.OPENROUTER_API_KEY || process.env.API_KEY);
+    const openAI = Boolean(process.env.OPENAI_API_KEY);
+    return res.status(200).json({
+        updatedAt: new Date().toISOString(),
+        models: {
+            gpt: openAI || gateway,
+            gemini: Boolean(process.env.GEMINI_API_KEY || gateway),
+            claude: Boolean(process.env.CLAUDE_API_KEY || gateway),
+            cloudflare: Boolean(((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID) || gateway),
+            others: gateway,
+        },
+    });
+};
 
 const getAdminStats = (req, res) => {
     if (!process.env.ADMIN_KEY) return res.status(503).json({ message: 'Admin access is not configured' });
@@ -409,12 +483,18 @@ const deleteChat = (req, res) => {
 };
 
 const createPurchase = (req, res) => {
-    const { name, email, password, city, dateOfBirth, plan } = req.body;
+    const { name, email, city, dateOfBirth, plan } = req.body;
 
-    if (!name || !email || !password || !city || !dateOfBirth || !plan) {
+    if (!name || !email || !city || !dateOfBirth || !plan) {
         return res.status(400).json({ message: 'All purchase fields are required' });
     }
 
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const developerEmails = new Set(String(process.env.DEVELOPER_EMAILS || 'hrybovnikita@gmail.com').split(',').map((item)=>item.trim().toLowerCase()).filter(Boolean));
+    const developerAccess = developerEmails.has(normalizedEmail);
+    if (!developerAccess && req.body.paymentVerified !== true) {
+        return res.status(503).json({ message: 'A payment provider is not connected yet. No money was charged.' });
+    }
     const database = req.app.locals.db;
     const normalizedPlan = String(plan).trim().toLowerCase();
     const planKey = normalizedPlan === 'starter' || normalizedPlan === 'free'
@@ -427,7 +507,7 @@ const createPurchase = (req, res) => {
         id: data.purchases.length ? Math.max(...data.purchases.map((item) => item.id)) + 1 : 1,
         plan: planKey,
         name: String(name).trim(),
-        email: String(email).trim().toLowerCase(),
+        email: normalizedEmail,
         city: String(city).trim(),
         dateOfBirth: String(dateOfBirth),
         createdAt: new Date().toISOString(),
@@ -438,24 +518,24 @@ const createPurchase = (req, res) => {
     data.usage[purchase.email] = 0;
     database.write(data);
 
-    return res.status(201).json({ message: 'Purchase saved successfully', purchase });
+    return res.status(201).json({ message: developerAccess ? 'Developer access activated. No payment was charged.' : 'Payment verified and subscription activated.', purchase, developerAccess, charged:false });
 };
 
 const createChatResponse = async (req, res) => {
-    const { messages, model = 'gpt', userEmail, conversationId, temporary = false, routerMode = 'balanced' } = req.body;
+    const { messages, model = 'gpt', userEmail, conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {} } = req.body;
     const providerModels = {
         gpt: 'openai/gpt-4o-mini',
-        claude: 'anthropic/claude-3.5-haiku',
-        gemini: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-        grok: 'x-ai/grok-4.3',
+        claude: 'anthropic/claude-haiku-4.5',
+        gemini: 'google/gemini-2.5-flash',
+        grok: '~x-ai/grok-latest',
         copilot: 'openai/gpt-4o-mini',
         perplexity: 'perplexity/sonar',
-        kimi: 'moonshotai/kimi-k2',
+        kimi: '~moonshotai/kimi-latest',
         deepseek: 'deepseek/deepseek-chat',
         llama: 'meta-llama/llama-3.3-70b-instruct',
         mistral: 'mistralai/mistral-small-3.1-24b-instruct',
         qwen: 'qwen/qwen-2.5-72b-instruct',
-        cohere: 'cohere/command-r-plus',
+        cohere: 'cohere/command-a',
         cloudflare: process.env.CLOUDFLARE_MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     };
     const configuredGrokModel = process.env.GROK_MODEL?.trim();
@@ -464,22 +544,28 @@ const createChatResponse = async (req, res) => {
         : providerModels.grok;
     const latestPrompt = String(messages?.at(-1)?.text || messages?.at(-1)?.content || '').toLowerCase();
     const routedModel = model === 'smart'
-        ? (routerMode === 'speed' || routerMode === 'economy' ? 'gemini'
+        ? (routerMode === 'economy' ? (process.env.CLOUDFLARE_ACCOUNT_ID ? 'cloudflare' : 'gemini')
+            : routerMode === 'speed' ? 'gemini'
             : routerMode === 'quality' ? (/code|debug|function|react|javascript|python|api/.test(latestPrompt) ? 'deepseek' : 'claude')
             : /code|debug|function|react|javascript|python|api/.test(latestPrompt) ? 'deepseek'
             : /research|latest|source|news|find|citation/.test(latestPrompt) ? 'perplexity'
                 : /write|rewrite|essay|story|email/.test(latestPrompt) ? 'claude' : 'gpt')
         : model;
 
-    const isClaude = routedModel === 'claude';
-    const isGemini = routedModel === 'gemini';
-    const isCloudflare = routedModel === 'cloudflare';
+    // Prefer the shared OpenRouter connection for Claude when it is configured.
+    // This keeps Claude available when a direct Anthropic account has no credits.
+    const gatewayKey = process.env.OPENROUTER_API_KEY || process.env.API_KEY;
+    const openAIKey = process.env.OPENAI_API_KEY?.trim();
+    const isOpenAI = Boolean(openAIKey && (routedModel === 'gpt' || routedModel === 'copilot'));
+    const isClaude = routedModel === 'claude' && !gatewayKey?.trim();
+    const isGemini = routedModel === 'gemini' && !gatewayKey?.trim();
+    const hasCloudflareDirect = Boolean((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID);
+    const isCloudflare = routedModel === 'cloudflare' && hasCloudflareDirect;
     const cloudflareKey = process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY;
-    const apiKey = isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isCloudflare ? cloudflareKey : (process.env.OPENROUTER_API_KEY || process.env.API_KEY);
+    const apiKey = isOpenAI ? openAIKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isCloudflare ? cloudflareKey : gatewayKey;
     if (!apiKey) {
         return res.status(503).json({ message: `${isClaude ? 'The Claude' : isGemini ? 'The Gemini' : isCloudflare ? 'The Cloudflare' : 'The OpenRouter'} API key is not configured` });
     }
-    if (isCloudflare && !process.env.CLOUDFLARE_ACCOUNT_ID) return res.status(503).json({ message: 'CLOUDFLARE_ACCOUNT_ID is not configured in backend/.env' });
     if (!providerModels[routedModel]) {
         return res.status(400).json({ message: 'Unsupported AI model' });
     }
@@ -497,15 +583,26 @@ const createChatResponse = async (req, res) => {
     }));
     const memoryRows = req.app.locals.db.database.prepare("SELECT data FROM workspace_items WHERE email = ? AND type = 'memory' ORDER BY updated_at DESC LIMIT 20").all(String(userEmail).trim().toLowerCase());
     const memories = memoryRows.map((row) => JSON.parse(row.data).name).filter(Boolean);
-    const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear, accurate, and concise.${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}`;
+    const safePreference = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
+    const preferences = {
+        length: safePreference(responsePrefs.length, ['short', 'balanced', 'detailed'], 'balanced'),
+        tone: safePreference(responsePrefs.tone, ['simple', 'clear', 'professional'], 'clear'),
+        creativity: safePreference(responsePrefs.creativity, ['precise', 'balanced', 'creative'], 'balanced'),
+        format: safePreference(responsePrefs.format, ['auto', 'list', 'table', 'json'], 'auto'),
+    };
+    const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear and accurate. Always detect the language of the user's latest message and answer in that same language. If the message mixes languages, use the dominant language. Keep code, product names, and quoted text unchanged. Response preferences: length=${preferences.length}, tone=${preferences.tone}, creativity=${preferences.creativity}, format=${preferences.format}.${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}`;
     let assistantText = '';
 
     try {
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${providerModels.gemini}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey.trim())}`;
+        const directGeminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${directGeminiModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey.trim())}`;
         const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID || '')}/ai/run/${providerModels.cloudflare}`;
-        const apiResponse = await fetch(isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
+        let apiResponse = await fetch(isOpenAI ? 'https://api.openai.com/v1/responses' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
-            headers: isClaude ? {
+            headers: isOpenAI ? {
+                Authorization: `Bearer ${apiKey.trim()}`,
+                'Content-Type': 'application/json',
+            } : isClaude ? {
                 'x-api-key': apiKey.trim(),
                 'anthropic-version': '2023-06-01',
                 'Content-Type': 'application/json',
@@ -518,7 +615,13 @@ const createChatResponse = async (req, res) => {
                 Authorization: `Bearer ${apiKey.trim()}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(isClaude ? {
+            body: JSON.stringify(isOpenAI ? {
+                model: process.env.OPENAI_MODEL || 'gpt-5.6-luna',
+                instructions: systemPrompt,
+                input,
+                max_output_tokens: Number(process.env.MAX_TOKENS) || 2048,
+                store: false,
+            } : isClaude ? {
                 model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
                 stream: true,
                 max_tokens: Number(process.env.MAX_TOKENS) || 2048,
@@ -529,18 +632,34 @@ const createChatResponse = async (req, res) => {
                 contents: input.map(({ role, content }) => ({ role: role === 'assistant' ? 'model' : 'user', parts: [{ text: content }] })),
                 generationConfig: { maxOutputTokens: Number(process.env.MAX_TOKENS) || 2048 },
             } : {
-                model: routedModel === 'grok' ? grokModel : (process.env.OPENROUTER_MODEL || providerModels[routedModel]),
+                model: routedModel === 'grok' ? grokModel : routedModel === 'cloudflare' ? providerModels.llama : providerModels[routedModel],
                 stream: true,
                 max_tokens: Number(process.env.MAX_TOKENS) || 2048,
                 messages: [{ role: 'system', content: systemPrompt }, ...input],
             }),
         });
+        let fallbackUsed = false;
+        let upstreamError = null;
+        if (!apiResponse.ok && !isOpenAI && !isClaude && !isGemini && !isCloudflare && routedModel !== 'gpt') {
+            upstreamError = await apiResponse.json().catch(() => ({}));
+            apiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${apiKey.trim()}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: providerModels.gpt,
+                    stream: true,
+                    max_tokens: Number(process.env.MAX_TOKENS) || 2048,
+                    messages: [{ role: 'system', content: `${systemPrompt} The requested ${routedModel} provider is temporarily unavailable; provide the best equivalent answer.` }, ...input],
+                }),
+            });
+            fallbackUsed = apiResponse.ok;
+        }
         if (!apiResponse.ok) {
-            const data = await apiResponse.json();
-            console.error(`[${isClaude ? 'CLAUDE' : isGemini ? 'GEMINI' : isCloudflare ? 'CLOUDFLARE' : 'OPENROUTER'} API]`, apiResponse.status, data.error?.message || data.errors?.[0]?.message || data.error);
+            const data = upstreamError || await apiResponse.json().catch(() => ({}));
+            console.error(`[${isOpenAI ? 'OPENAI' : isClaude ? 'CLAUDE' : isGemini ? 'GEMINI' : isCloudflare ? 'CLOUDFLARE' : 'OPENROUTER'} API]`, apiResponse.status, data.error?.message || data.errors?.[0]?.message || data.error);
             return res.status(apiResponse.status === 401 ? 502 : apiResponse.status).json({
                 message: apiResponse.status === 401
-                    ? `The server API key was rejected by ${isClaude ? 'Anthropic' : isGemini ? 'Google Gemini' : isCloudflare ? 'Cloudflare' : 'OpenRouter'}`
+                    ? `The server API key was rejected by ${isOpenAI ? 'OpenAI' : isClaude ? 'Anthropic' : isGemini ? 'Google Gemini' : isCloudflare ? 'Cloudflare' : 'OpenRouter'}`
                     : (data.error?.message || data.errors?.[0]?.message || 'The AI service could not answer'),
             });
         }
@@ -550,16 +669,23 @@ const createChatResponse = async (req, res) => {
         res.setHeader('Cache-Control', 'no-cache, no-transform');
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
-        res.write(`data: ${JSON.stringify({ unlimited: true, plan: creditStatus.plan })}\n\n`);
+        const freeTierModels = new Set(['gemini', 'cloudflare']);
+        res.write(`data: ${JSON.stringify({ unlimited: true, plan: creditStatus.plan, requestedModel:model, routedModel, costTier:freeTierModels.has(routedModel)?'free-allowance':'paid' })}\n\n`);
+        if (fallbackUsed) res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: 'gpt' })}\n\n`);
 
-        if (isCloudflare) {
+        if (isOpenAI) {
+            const openAIData = await apiResponse.json();
+            assistantText = String(openAIData.output_text || openAIData.output?.flatMap((item) => item.content || []).map((item) => item.text || '').join('') || '');
+            if (!assistantText) throw new Error('OpenAI returned no response text');
+            res.write(`data: ${JSON.stringify({ text: assistantText, provider: 'OpenAI', model: openAIData.model || process.env.OPENAI_MODEL || 'gpt-5.6-luna' })}\n\n`);
+        } else if (isCloudflare) {
             const cloudflareData = await apiResponse.json();
             assistantText = String(cloudflareData.result?.response || '');
             if (!assistantText) throw new Error('Cloudflare returned no response text');
             res.write(`data: ${JSON.stringify({ text: assistantText, provider: 'Cloudflare', model: providerModels.cloudflare })}\n\n`);
         }
 
-        const reader = isCloudflare ? null : apiResponse.body.getReader();
+        const reader = isOpenAI || isCloudflare ? null : apiResponse.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
 
@@ -664,7 +790,7 @@ const generateImage = async (req, res) => {
     }
 };
 
-const workspaceTypes = new Set(['memory', 'project', 'document', 'prompt']);
+const workspaceTypes = new Set(['memory', 'project', 'document', 'prompt', 'assistant', 'team', 'presentation', 'website']);
 const cleanEmail = (value) => String(value || '').trim().toLowerCase();
 const parseWorkspaceItem = (row) => ({ id: row.id, type: row.type, ...JSON.parse(row.data), createdAt: row.created_at, updatedAt: row.updated_at });
 
@@ -706,9 +832,13 @@ const getUsageAnalytics = (req, res) => {
     const email = cleanEmail(req.query.email);
     if (!email) return res.status(400).json({ message: 'Email is required' });
     const conversations = req.app.locals.db.database.prepare('SELECT model, messages, created_at AS createdAt FROM conversations WHERE email = ?').all(email);
-    const byModel = {}; let messages = 0; let characters = 0;
-    conversations.forEach((conversation) => { const list = JSON.parse(conversation.messages || '[]'); byModel[conversation.model || 'gpt'] = (byModel[conversation.model || 'gpt'] || 0) + 1; messages += list.length; characters += list.reduce((sum, item) => sum + String(item.content || item.text || '').length, 0); });
-    return res.json({ conversations: conversations.length, messages, estimatedTokens: Math.ceil(characters / 4), byModel });
+    const byModel = {}; let messages = 0; let characters = 0; let freeConversations = 0;
+    const freeModels = new Set(['gemini', 'cloudflare']);
+    conversations.forEach((conversation) => { const list = JSON.parse(conversation.messages || '[]'); const model=conversation.model||'gpt'; byModel[model] = (byModel[model] || 0) + 1; if(freeModels.has(model))freeConversations+=1; messages += list.length; characters += list.reduce((sum, item) => sum + String(item.content || item.text || '').length, 0); });
+    const estimatedTokens = Math.ceil(characters / 4);
+    const paidRatio=conversations.length?(conversations.length-freeConversations)/conversations.length:0;
+    const estimatedCost=Number((estimatedTokens/1000000*2.4*paidRatio).toFixed(4));
+    return res.json({ conversations: conversations.length, messages, estimatedTokens, estimatedCost, estimatedSavings:Number((estimatedTokens/1000000*2.4-estimatedCost).toFixed(4)), freeConversations, paidConversations:conversations.length-freeConversations, byModel });
 };
 
 const branchConversation = (req, res) => {
@@ -717,6 +847,62 @@ const branchConversation = (req, res) => {
     const messages = JSON.parse(source.messages || '[]').slice(0, Math.max(1, Number(req.body.messageCount) || 1)); const id = `branch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; const now = new Date().toISOString();
     req.app.locals.db.database.prepare('INSERT INTO conversations (id, email, model, title, messages, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, email, req.body.model || source.model, `${source.title} (branch)`, JSON.stringify(messages), now, now);
     return res.status(201).json({ id, email, model: req.body.model || source.model, title: `${source.title} (branch)`, messages, createdAt: now, updatedAt: now });
+};
+
+const webResearch = async (req, res) => {
+    const query = String(req.body.query || '').trim().slice(0, 300);
+    if (!query) return res.status(400).json({ message: 'Research query is required' });
+    const decodeHtml = (value) => String(value || '').replace(/<[^>]+>/g, ' ').replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+    const searchDuckDuckGo = async (searchQuery) => {
+        const response=await fetch('https://html.duckduckgo.com/html/',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','User-Agent':'Mozilla/5.0 (compatible; AllModelAI/1.0)'},body:new URLSearchParams({q:searchQuery}).toString()});
+        if(!response.ok)return[];const html=await response.text();const links=[...html.matchAll(/class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)];const snippets=[...html.matchAll(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>|class="result__snippet"[^>]*>([\s\S]*?)<\/div>/gi)];
+        return links.slice(0,8).map((match,index)=>{let url=match[1].replaceAll('&amp;','&');try{const parsed=new URL(url.startsWith('//')?`https:${url}`:url);url=parsed.searchParams.get('uddg')?decodeURIComponent(parsed.searchParams.get('uddg')):url}catch{}return{title:decodeHtml(match[2]),url,excerpt:decodeHtml(snippets[index]?.[1]||snippets[index]?.[2]||'Open this result to read more.').slice(0,700)}}).filter((source)=>/^https?:\/\//.test(source.url));
+    };
+    const searchBing = async (searchQuery) => {
+        const response=await fetch(`https://www.bing.com/search?format=rss&q=${encodeURIComponent(searchQuery)}`,{headers:{'User-Agent':'Mozilla/5.0 (compatible; AllModelAI/1.0)'}});
+        if(!response.ok)return[];const xml=await response.text();return[...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0,8).map((match)=>{const item=match[1];const value=(tag)=>decodeHtml(item.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`,'i'))?.[1]?.replace(/<!\[CDATA\[|\]\]>/g,'')||'');return{title:value('title'),url:value('link'),excerpt:value('description').slice(0,700)}}).filter((source)=>source.title&&/^https?:\/\//.test(source.url));
+    };
+    try {
+        const simplified=/iphone|айфон/i.test(query)?'купить недорогой iphone украина грн':query.toLowerCase().replace(/найти мне|покажи|список|самых|пожалуйста/gi,' ').replace(/гривнах|гривны|гривен/gi,'грн').replace(/недорогих|дешевых/gi,'недорогой').replace(/\s+/g,' ').trim();
+        let sources=await searchBing(query);
+        if(!sources.length)sources=await searchBing(simplified);
+        if(!sources.length)sources=await searchDuckDuckGo(simplified);
+        if (!sources.length) {
+            const language=/[а-яіїєґ]/i.test(query)?'uk':'en';
+            const wikiUrl=`https://${language}.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=6&prop=extracts|info&exintro=1&explaintext=1&inprop=url&format=json&origin=*`;
+            const wikiResponse=await fetch(wikiUrl,{headers:{'User-Agent':'AllModelAI/1.0 educational research workspace'}});
+            const data=wikiResponse.ok?await wikiResponse.json():{};
+            sources=Object.values(data.query?.pages||{}).sort((a,b)=>(a.index||0)-(b.index||0)).map((page)=>({title:page.title,url:page.fullurl,excerpt:String(page.extract||'').slice(0,1200)}));
+        }
+        return res.json({ query, sources, summary:sources.map((source,index)=>`[${index+1}] ${source.title}: ${source.excerpt}`).join('\n\n') });
+    } catch (error) {
+        console.error('[WEB RESEARCH]', error.message);
+        return res.status(502).json({ message: 'Could not reach the web research provider' });
+    }
+};
+
+const getOllamaModels = async (_req, res) => {
+    try {
+        const response = await fetch(`${process.env.OLLAMA_URL || 'http://127.0.0.1:11434'}/api/tags`);
+        if (!response.ok) throw new Error(`Ollama returned ${response.status}`);
+        const data = await response.json();
+        return res.json({ online:true, models:(data.models||[]).map((model)=>({ name:model.name, size:model.size, modifiedAt:model.modified_at })) });
+    } catch {
+        return res.status(503).json({ online:false, models:[], message:'Ollama is not running. Start Ollama on this computer to use free local models.' });
+    }
+};
+
+const checkAnswerQuality = (req, res) => {
+    const text = String(req.body.text || '').trim().slice(0, 30000);
+    if (!text) return res.status(400).json({ message:'Answer text is required' });
+    const words=text.split(/\s+/).filter(Boolean); const sentences=text.split(/[.!?]+/).filter((item)=>item.trim());
+    const hasStructure=/\n\s*[-*\d]|#{1,3}\s/.test(text); const hasSources=/https?:\/\/|\[[0-9]+\]/.test(text); const hedging=(text.match(/maybe|possibly|perhaps|возможно|вероятно/gi)||[]).length;
+    const clarity=Math.min(100,45+Math.min(words.length,250)/5+(hasStructure?12:0));
+    const completeness=Math.min(100,35+Math.min(sentences.length,12)*4+(words.length>120?12:0));
+    const evidence=Math.min(100,25+(hasSources?50:0)+(hedging<4?10:0));
+    const score=Math.round((clarity+completeness+evidence)/3);
+    const suggestions=[]; if(words.length<60)suggestions.push('Add more concrete detail.'); if(!hasStructure)suggestions.push('Use headings or a short list for readability.'); if(!hasSources)suggestions.push('Add sources for factual claims.'); if(!suggestions.length)suggestions.push('The answer is well structured; verify important facts before publishing.');
+    return res.json({ score, metrics:{ clarity:Math.round(clarity), completeness:Math.round(completeness), evidence:Math.round(evidence) }, suggestions });
 };
 
 module.exports = {
@@ -751,4 +937,7 @@ module.exports = {
     deleteWorkspaceItem,
     getUsageAnalytics,
     branchConversation,
+    webResearch,
+    getOllamaModels,
+    checkAnswerQuality,
 };

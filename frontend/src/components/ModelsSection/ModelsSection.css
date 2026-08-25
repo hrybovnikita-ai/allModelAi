@@ -1,17 +1,17 @@
-.models-grid { margin-bottom: clamp(42px, 5vw, 68px); }
+.models-grid { margin-bottom: clamp(42px, 5vw, 68px); text-align: center; }
 
 .grid-header {
   margin-bottom: clamp(28px, 3vw, 42px);
 }
 
 .grid-header h2 {
-  font-size: 2rem;
+  font-size: 1.75rem;
   color: var(--text);
   margin-bottom: 8px;
 }
 
 .grid-header p {
-  font-size: 1.1rem;
+  font-size: .95rem;
   color: var(--text-secondary);
 }
 
@@ -24,9 +24,9 @@
 
 .model-card {
   background: var(--dark-card);
-  border: none;
-  border-radius: 12px;
-  min-height: 184px;
+  border: 1px solid rgba(255,255,255,.04);
+  border-radius: 10px;
+  min-height: 176px;
   padding: clamp(22px, 2.2vw, 34px) 20px;
   text-align: center;
   cursor: pointer;
@@ -49,12 +49,12 @@
 
 .model-card.active {
   box-shadow: 0 20px 40px rgba(99, 102, 241, 0.4);
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(79, 70, 229, 0.2) 100%);
+  background: linear-gradient(135deg, rgba(78, 70, 210, 0.24) 0%, rgba(35, 31, 95, 0.32) 100%);
 }
 
 .model-icon {
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
   border-radius: 12px;
   margin: 0 auto 16px;
   opacity: 0.9;

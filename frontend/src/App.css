@@ -8,12 +8,12 @@
   --orangered: #F4511E;
   --blue: #3B82F6;
   --sky-blue: #38BDF8;
-  --black: #05070B;
+  --black: #05070a;
   --primary: var(--blue-violet);
   --secondary: var(--blue);
   --dark-bg: var(--black);
-  --dark-card: #172033;
-  --dark-card-hover: #24314A;
+  --dark-card: #141b2a;
+  --dark-card-hover: #1b2538;
   --light: #F8FAFC;
   --text: #E2E8F0;
   --text-secondary: #A8B4C7;
@@ -27,7 +27,7 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background-color: var(--dark-bg);
   color: var(--text);
   line-height: 1.6;
@@ -42,10 +42,10 @@ body {
 
 .container {
   flex: 1;
-  max-width: 1560px;
+  max-width: 1260px;
   margin: 0 auto;
   width: 100%;
-  padding: clamp(52px, 5vw, 78px) clamp(20px, 3vw, 48px);
+  padding: clamp(62px, 6vw, 92px) clamp(20px, 3vw, 40px);
 }
 
 .home-layout {

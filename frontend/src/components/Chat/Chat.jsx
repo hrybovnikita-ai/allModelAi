@@ -17,11 +17,13 @@ export default function Chat() {
   const [searchParams] = useSearchParams();
   const messagesEnd = useRef(null);
   const fileInput = useRef(null);
+  const activeRequest = useRef(null);
   const savedUser = sessionStorage.getItem('allmodelai_user');
   const user = savedUser ? JSON.parse(savedUser) : null;
   const [selectedSlug, setSelectedSlug] = useState(searchParams.get('model') || 'gpt');
   const [prompt, setPrompt] = useState(location.state?.starterPrompt || '');
   const [isSending, setIsSending] = useState(false);
+  const [isStreamingResponse, setIsStreamingResponse] = useState(false);
   const [chatError, setChatError] = useState('');
   const [creditStatus, setCreditStatus] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -44,7 +46,23 @@ export default function Chat() {
   const [arenaOpen, setArenaOpen] = useState(false);
   const [arenaTask, setArenaTask] = useState('');
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [editingMessageIndex, setEditingMessageIndex] = useState(null);
+  const [editDraft, setEditDraft] = useState('');
   const selectedModel = dashboardModels.find((model) => model.slug === selectedSlug);
+
+  const toggleVoiceInput = () => {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) { setChatError('Voice input is not supported in this browser.'); return; }
+    const recognition = new Recognition();
+    recognition.lang = navigator.language || 'en-US';
+    recognition.interimResults = true;
+    recognition.onstart = () => { setIsListening(true); setChatError(''); };
+    recognition.onresult = (event) => setPrompt(Array.from(event.results).map((result) => result[0].transcript).join(''));
+    recognition.onerror = () => setChatError('Could not recognize speech. Check microphone permission.');
+    recognition.onend = () => setIsListening(false);
+    recognition.start();
+  };
 
   const refreshHistory = () => fetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
     .then((response) => response.ok ? response.json() : [])
@@ -65,16 +83,17 @@ export default function Chat() {
   };
   const editMessage = (index) => {
     const message = messages[index];
-    setPrompt(message.content ?? message.text ?? '');
-    setMessages(messages.slice(0, index));
+    setEditingMessageIndex(index);
+    setEditDraft(message.content ?? message.text ?? '');
     setChatError('');
   };
   const readFile = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     if (file.size > 1024 * 1024) { setChatError('Files must be smaller than 1 MB.'); return; }
-    const text = await file.text();
-    setPrompt((current) => `${current}${current ? '\n\n' : ''}[${file.name}]\n${text.slice(0, 12000)}`);
+    const textLike = /^(text\/|application\/(json|xml|javascript|csv))/.test(file.type) || /\.(txt|md|csv|json|js|jsx|ts|tsx|py|html|css)$/i.test(file.name);
+    const content = textLike ? (await file.text()).slice(0, 12000) : `[Attached ${file.type || 'file'}: ${file.name}, ${(file.size / 1024).toFixed(1)} KB. Analyze it using available multimodal/file capabilities.]`;
+    setPrompt((current) => `${current}${current ? '\n\n' : ''}[${file.name}]\n${content}`);
     event.target.value = '';
   };
   const exportConversation = () => {
@@ -109,24 +128,37 @@ export default function Chat() {
 
   if (!user) return <Navigate to="/" replace />;
 
-  const sendMessage = async (event) => {
+  const sendMessage = async (event, overrideText, overrideMessages) => {
     event?.preventDefault();
-    const text = prompt.trim();
+    const text = String(overrideText ?? prompt).trim();
     if (!text || isSending) return;
-    const nextMessages = [...messages, { role: 'user', text }];
+    const nextMessages = [...(overrideMessages ?? messages), { role: 'user', text }];
     setMessages(nextMessages);
     setPrompt('');
     setChatError('');
     setIsSending(true);
+    const controller = new AbortController();
+    activeRequest.current = controller;
     const assistantIndex = nextMessages.length;
-    setMessages([...nextMessages, { role: 'assistant', text: '', modelSlug: selectedSlug }]);
+    setMessages([...nextMessages, { role: 'assistant', text: selectedSkill === 'web' ? 'Searching the web…' : '', modelSlug: selectedSlug, webSearching:selectedSkill === 'web' }]);
 
     try {
+      if (selectedSkill === 'web') {
+        const researchResponse = await fetch('/api/research', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:text}), signal:controller.signal });
+        const researchData = await researchResponse.json().catch(() => ({}));
+        if (!researchResponse.ok) throw new Error(researchData.message || 'Could not search the web.');
+        const sourceList=(researchData.sources||[]).map((source,index)=>`[${index+1}] ${source.title}\n${source.excerpt}\n${source.url}`).join('\n\n');
+        const answer=`Web search completed for: “${text}”\n\n${sourceList||'No relevant sources were found.'}`;
+        setMessages((current)=>current.map((message,index)=>index===assistantIndex?{...message,text:answer,webSearching:false,webSources:researchData.sources||[]}:message));
+        setSelectedSkill(null);
+        return;
+      }
       if (selectedSkill === 'image') {
         const imageResponse = await fetch('/api/images', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: text }),
+          signal: controller.signal,
         });
         const imageData = await imageResponse.json().catch(() => ({}));
         if (!imageResponse.ok) throw new Error(imageData.message || 'Could not create the image.');
@@ -154,7 +186,8 @@ export default function Chat() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedSlug, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || localStorage.getItem('allmodelai_router_mode') || 'balanced' }),
+        body: JSON.stringify({ model: selectedSlug, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || localStorage.getItem('allmodelai_router_mode') || 'balanced', responsePrefs: JSON.parse(localStorage.getItem('allmodelai_response_prefs') || '{}') }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -176,6 +209,28 @@ export default function Chat() {
       const decoder = new TextDecoder();
       let buffer = '';
       let assistantText = '';
+      let revealQueue = '';
+      let revealFrame = null;
+      let networkFinished = false;
+      let finishReveal;
+      const revealFinished = new Promise((resolve) => { finishReveal = resolve; });
+      const revealText = () => {
+        if (revealQueue.length) {
+          const amount = Math.max(1, Math.ceil(revealQueue.length / 90));
+          const visible = revealQueue.slice(0, amount);
+          revealQueue = revealQueue.slice(amount);
+          setMessages((current) => current.map((message, index) => (
+            index === assistantIndex ? { ...message, text: (message.text || '') + visible } : message
+          )));
+        }
+        if (revealQueue.length) revealFrame = requestAnimationFrame(revealText);
+        else { revealFrame = null; if (networkFinished) finishReveal(); }
+      };
+      const enqueueReveal = (text) => {
+        revealQueue += text;
+        setIsStreamingResponse(true);
+        if (!revealFrame) revealFrame = requestAnimationFrame(revealText);
+      };
 
       while (true) {
         const { done, value } = await reader.read();
@@ -194,16 +249,15 @@ export default function Chat() {
           const partialText = event.text;
           if (partialText) {
             assistantText += partialText;
-            setMessages((current) => current.map((message, index) => (
-              index === assistantIndex
-                ? { ...message, text: message.text + partialText }
-                : message
-            )));
+            enqueueReveal(partialText);
           }
         }
 
         if (done) break;
       }
+      networkFinished = true;
+      if (!revealFrame) finishReveal();
+      await revealFinished;
       if (conversationId) {
         await fetch(`/api/chat/history/${conversationId}`, {
           method: 'PATCH',
@@ -212,11 +266,41 @@ export default function Chat() {
         });
       }
       await refreshHistory();
+      if (document.hidden && Notification.permission === 'granted') new Notification(`${selectedModel.name} finished`, { body: assistantText.slice(0, 120) || 'Your answer is ready.' });
     } catch (requestError) {
-      setChatError(requestError.message || 'Could not connect to the AI server.');
+      if (requestError.name === 'AbortError') {
+        setMessages((current) => current.filter((message, index) => index !== assistantIndex || String(message.text || message.content || '').trim()));
+      } else {
+        setChatError(requestError.message || 'Could not connect to the AI server.');
+      }
     } finally {
+      if (activeRequest.current === controller) activeRequest.current = null;
+      setIsStreamingResponse(false);
       setIsSending(false);
     }
+  };
+
+  const stopGenerating = () => {
+    activeRequest.current?.abort();
+    setIsSending(false);
+    setIsStreamingResponse(false);
+    setTimeout(() => document.querySelector('.chat-composer textarea')?.focus(), 0);
+  };
+
+  const saveEditedMessage = async () => {
+    const text = editDraft.trim();
+    const index = editingMessageIndex;
+    if (!text || index === null || isSending) return;
+    if (activeConversationId) {
+      await fetch(`/api/chat/history/${activeConversationId}/branch`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, messageCount: messages.length, model: selectedSlug }),
+      }).catch(() => {});
+    }
+    const previousMessages = messages.slice(0, index);
+    setEditingMessageIndex(null);
+    setEditDraft('');
+    await sendMessage(null, text, previousMessages);
   };
 
   const chooseSuggestion = (text) => {
@@ -352,7 +436,7 @@ export default function Chat() {
             {chatMenuId === conversation.id && <div className="chat-history-menu"><button onClick={() => renameConversation(conversation)}>✎ Rename</button><button className="danger" onClick={() => deleteConversation(conversation)}>♲ Delete</button></div>}
           </div>)}
         </div>
-        <nav className="sidebar-links" aria-label="Chat navigation"><Link to="/dashboard">⌂ <span>Dashboard</span></Link><Link to="/studio">✦ <span>Workspace Studio</span></Link><Link to="/models/gpt">▦ <span>Model library</span></Link></nav>
+        <nav className="sidebar-links" aria-label="Chat navigation"><Link to="/dashboard">⌂ <span>Dashboard</span></Link><Link to="/studio">✦ <span>Workspace Studio</span></Link><Link to="/control-center">⌘ <span>Control Center</span></Link><Link to="/innovation-hub">◈ <span>Innovation Hub</span></Link><Link to="/models/gpt">▦ <span>Model library</span></Link></nav>
         <div className="chat-profile"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><div><strong>{user.name || 'User'}</strong><small>{user.email}</small></div><button onClick={() => setDeleteModalOpen(true)} aria-label="Sign out" title="Sign out">↗</button></div>
       </aside>
 
@@ -370,10 +454,13 @@ export default function Chat() {
           {messages.map((message, index) => {
             const messageModel = dashboardModels.find((model) => model.slug === message.modelSlug) || selectedModel;
             const text = message.content ?? message.text ?? '';
-            return <article className={`chat-message ${message.role}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{text && <p>{text}</p>}{message.imageUrl && <img className="generated-image" src={message.imageUrl} alt={text || 'Generated image'} />}{text && <div className="message-actions">{message.role === 'assistant' ? <><button type="button" data-tooltip="Copy" onClick={() => copyMessage(text)} aria-label="Copy response">▣</button><button type="button" data-tooltip="Good response" className={messageRatings[index] === 'up' ? 'selected' : ''} onClick={() => rateMessage(index, 'up')} aria-label="Good response">♧</button><button type="button" data-tooltip="Bad response" className={messageRatings[index] === 'down' ? 'selected' : ''} onClick={() => rateMessage(index, 'down')} aria-label="Bad response">♧</button><button type="button" data-tooltip="Share" onClick={() => shareMessage(text)} aria-label="Share response">↗</button><button type="button" data-tooltip="Try again" onClick={() => retryMessage(index)} aria-label="Try again">↻</button><button type="button" data-tooltip="More actions" aria-label="More actions">•••</button><button type="button" className="message-sources-button" onClick={() => setSourcesOpen(sourcesOpen === index ? null : index)} aria-expanded={sourcesOpen === index}>◉ <span>Sources</span></button></> : <><button type="button" data-tooltip="Copy" onClick={() => copyMessage(text)} aria-label="Copy message">▣</button><button type="button" data-tooltip="Edit" onClick={() => editMessage(index)} aria-label="Edit message">✎</button></>}{sourcesOpen === index && message.role === 'assistant' && <small className="message-source-note">Provider: {messageModel.provider} · Model: {messageModel.name}</small>}</div>}</div></article>;
+            if (!text && message.role === 'assistant' && isSending && index === messages.length - 1) return null;
+            const activelyStreaming = isStreamingResponse && isSending && index === messages.length - 1 && message.role === 'assistant';
+            const editing = message.role === 'user' && editingMessageIndex === index;
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>Cancel</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : text && <p>{text}{activelyStreaming && <i className="stream-cursor" aria-hidden="true" />}</p>}{message.imageUrl && <img className="generated-image" src={message.imageUrl} alt={text || 'Generated image'} />}{text && !activelyStreaming && !editing && <div className="message-actions">{message.role === 'assistant' ? <><button type="button" data-tooltip="Copy" onClick={() => copyMessage(text)} aria-label="Copy response">▣</button><button type="button" data-tooltip="Good response" className={messageRatings[index] === 'up' ? 'selected' : ''} onClick={() => rateMessage(index, 'up')} aria-label="Good response">♧</button><button type="button" data-tooltip="Bad response" className={messageRatings[index] === 'down' ? 'selected' : ''} onClick={() => rateMessage(index, 'down')} aria-label="Bad response">♧</button><button type="button" data-tooltip="Share" onClick={() => shareMessage(text)} aria-label="Share response">↗</button><button type="button" data-tooltip="Try again" onClick={() => retryMessage(index)} aria-label="Try again">↻</button><button type="button" data-tooltip="More actions" aria-label="More actions">•••</button><button type="button" className="message-sources-button" onClick={() => setSourcesOpen(sourcesOpen === index ? null : index)} aria-expanded={sourcesOpen === index}>◉ <span>Sources</span></button></> : <><button type="button" data-tooltip="Copy" onClick={() => copyMessage(text)} aria-label="Copy message">▣</button><button type="button" data-tooltip="Edit" onClick={() => editMessage(index)} aria-label="Edit message">✎</button></>}{sourcesOpen === index && message.role === 'assistant' && <small className="message-source-note">Provider: {messageModel.provider} · Model: {messageModel.name}</small>}</div>}</div></article>;
           })}
-          {isSending && <article className="chat-message assistant thinking-message"><span className="thinking-avatar" aria-hidden="true"><i /></span><div><small>{selectedModel.name}</small><p className="typing-indicator"><b>Thinking<span className="thinking-dots"><i /><i /><i /></span></b></p></div></article>}
-          {chatError && <div className="chat-api-error" role="alert">{chatError}</div>}
+          {isSending && !isStreamingResponse && <article className="chat-message assistant thinking-message"><span className="thinking-avatar" aria-hidden="true"><i /></span><div><small>{selectedModel.name}</small><p className="typing-indicator"><b>Thinking<span className="thinking-dots"><i /><i /><i /></span></b></p></div></article>}
+          {chatError && <div className="chat-api-error" role="alert"><span>{chatError}</span><div><button type="button" onClick={() => { setSelectedSlug('gemini'); setChatError(''); setPrompt(messages.slice().reverse().find(message => message.role === 'user')?.text || ''); }}>Try with Gemini</button><Link to="/checkout?plan=pro">View demo plans</Link></div></div>}
           <div ref={messagesEnd} />
         </div>
 
@@ -385,16 +472,17 @@ export default function Chat() {
               <button type="button" onClick={() => chooseSkill('image')}><span>✦</span> Create image</button>
               <button type="button" onClick={() => chooseSkill('video')}><span>▶</span> Make a video</button>
               <button type="button" onClick={() => setComposerMenuOpen(false)}><span>▣</span> Canvas</button>
+              <button type="button" onClick={() => chooseSkill('web')}><span>◎</span> Search the web</button>
             </div>}
             <div className="composer-box">
               {selectedSkill && <div className="selected-skill">
-                <span className={`selected-skill-icon ${selectedSkill}`} aria-hidden="true">{selectedSkill === 'image' ? '✦' : '▶'}</span>
-                <span><strong>{selectedSkill === 'image' ? 'Create image' : 'Make a video'}</strong><small>{selectedSkill === 'image' ? 'Describe the image you want to create' : 'Describe the video you want to create'}</small></span>
+                <span className={`selected-skill-icon ${selectedSkill}`} aria-hidden="true">{selectedSkill === 'image' ? '✦' : selectedSkill === 'web' ? '◎' : '▶'}</span>
+                <span><strong>{selectedSkill === 'image' ? 'Create image' : selectedSkill === 'web' ? 'Search the web' : 'Make a video'}</strong><small>{selectedSkill === 'image' ? 'Describe the image you want to create' : selectedSkill === 'web' ? 'Current information with sources' : 'Describe the video you want to create'}</small></span>
                 <button type="button" className="selected-skill-remove" onClick={() => setSelectedSkill(null)} aria-label="Remove selected skill" title="Remove skill">×</button>
               </div>}
-              <input ref={fileInput} className="chat-file-input" type="file" accept=".txt,.md,.json,.csv,.js,.jsx,.ts,.tsx,.py,.html,.css" onChange={readFile} />
-              <textarea value={prompt} disabled={isSending} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); } }} placeholder={selectedSkill === 'image' ? 'Example: a gold dragon flying over a fantasy city at night...' : selectedSkill === 'video' ? 'Describe the video you want to create...' : `Message ${selectedModel.name}...`} rows="1" aria-label="Chat message" />
-              <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label="Open tools" aria-expanded={composerMenuOpen}>＋</button></div><span>{selectedModel.name} · {isSending ? 'Thinking...' : 'Ready'}</span><div className="composer-actions"><button type="button" aria-label="Use microphone" title="Use microphone">◉</button><button className="send-message" type="submit" disabled={!prompt.trim() || isSending} aria-label="Send message">↑</button></div></div>
+              <input ref={fileInput} className="chat-file-input" type="file" accept=".pdf,.doc,.docx,.txt,.md,.json,.csv,.png,.jpg,.jpeg,.webp,.js,.jsx,.ts,.tsx,.py,.html,.css" onChange={readFile} />
+              <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={isSending ? selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : selectedSkill === 'image' ? 'Example: a gold dragon flying over a fantasy city at night...' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : `Message ${selectedModel.name}...`} rows="1" aria-label="Chat message" />
+              <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label="Open tools" aria-expanded={composerMenuOpen}>＋</button></div><span>{selectedModel.name} · {isListening ? 'Listening…' : isSending ? 'Generating — you can keep typing' : 'Ready · replies in your language'}</span><div className="composer-actions"><button type="button" className={isListening ? 'voice-active' : ''} onClick={toggleVoiceInput} aria-label="Use microphone" title="Use microphone">●</button>{isSending ? <button className="stop-generation" type="button" onClick={stopGenerating} aria-label="Stop generating" title="Stop generating"><i /></button> : <button className="send-message" type="submit" disabled={!prompt.trim()} aria-label="Send message">↑</button>}</div></div>
             </div>
           </div>
           <p>{selectedModel.name} can make mistakes. Check important information.</p>

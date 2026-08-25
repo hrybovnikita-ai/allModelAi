@@ -1,19 +1,16 @@
 import { useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { dashboardModels } from '../../data/dashboardModels';
+import { modelGuides } from '../../data/modelGuides';
 import './ModelDetails.css';
 import './ModelCode.css';
+import './ModelGuideUnique.css';
 
 const versionNames = {
   'claude-opus-4.1': 'Claude Opus',
   'claude-sonnet-4.6': 'Claude Sonnet',
   'claude-haiku-4.5': 'Claude Haiku',
 };
-
-const guideTopics = [
-  'Reasoning', 'Writing', 'Coding', 'Research', 'Planning',
-  'Analysis', 'Summaries', 'Creative work', 'Team workflows', 'Reliable output',
-];
 
 export default function ModelDetails() {
   const { slug } = useParams();
@@ -27,10 +24,7 @@ export default function ModelDetails() {
 
   const selectedVersion = versionNames[searchParams.get('version')];
   const versionLabel = selectedVersion || model.name;
-  const guideParagraphs = Array.from({ length: 100 }, (_, index) => {
-    const topic = guideTopics[index % guideTopics.length];
-    return `${versionLabel} supports ${topic.toLowerCase()} through a focused workflow. Start with the goal, provide the useful context, and ask for an answer in the format your project needs. This page is a practical guide for using ${model.name} in AllModelAI.`;
-  });
+  const guideContent = modelGuides[model.slug] || modelGuides.smart;
 
   const copyCode = async (language, code) => {
     await navigator.clipboard.writeText(code);
@@ -64,7 +58,13 @@ export default function ModelDetails() {
         <div className="model-guide-header"><div><p className="model-page-label">Model guide</p><h2>Build better work with {versionLabel}.</h2></div><p>Explore practical patterns for prompts, research, code, writing, and everyday collaboration.</p></div>
         <div className="model-guide-layout">
           <aside className="model-guide-aside"><div className="guide-preview"><img src={model.image} alt="" /><strong>{versionLabel}</strong><span>{model.provider}</span></div><a href="#model-code">API examples</a><a href="#model-strengths">Capabilities</a><a href={`/chat?model=${model.slug}`}>Try in chat</a></aside>
-          <article className="model-guide-copy">{guideParagraphs.map((paragraph, index) => <p key={`${model.slug}-guide-${index}`}>{paragraph}</p>)}</article>
+          <article className="model-guide-copy">
+            <h3>How {versionLabel} approaches work</h3><p>{guideContent.overview}</p>
+            <h3>A productive workflow</h3><p>{guideContent.workflow}</p>
+            <h3>Where it fits best</h3><p>{guideContent.bestFor}</p>
+            <div className="guide-prompt-example"><span>TRY THIS PROMPT</span><p>{guideContent.prompt}</p></div>
+            <h3>What to verify</h3><p>{guideContent.caution}</p>
+          </article>
         </div>
       </section>
     </main>

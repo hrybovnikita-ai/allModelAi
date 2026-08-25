@@ -25,7 +25,7 @@ const {
     createPurchase,
     createChatResponse,
     generateImage,
-    getWorkspaceItems, createWorkspaceItem, updateWorkspaceItem, deleteWorkspaceItem, getUsageAnalytics, branchConversation,
+    getWorkspaceItems, createWorkspaceItem, updateWorkspaceItem, deleteWorkspaceItem, getUsageAnalytics, branchConversation, webResearch, getOllamaModels, checkAnswerQuality,
 } = require('../controllers/controllers');
 
 const router = express.Router();
@@ -55,6 +55,9 @@ router.post('/workspace', createWorkspaceItem);
 router.patch('/workspace/:id', updateWorkspaceItem);
 router.delete('/workspace/:id', deleteWorkspaceItem);
 router.get('/analytics', getUsageAnalytics);
+router.post('/research', webResearch);
+router.get('/ollama/models', getOllamaModels);
+router.post('/quality/check', checkAnswerQuality);
 router.get('/users', getUsers);
 router.get('/users/:id', getUserById);
 router.post('/users', createUser);
