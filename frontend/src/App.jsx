@@ -33,6 +33,7 @@ import InnovationHub from "./components/InnovationHub/InnovationHub";
 import ProductSuite from "./components/ProductSuite/ProductSuite";
 import AIToolsLab from "./components/AIToolsLab/AIToolsLab";
 import CreatorLab from "./components/CreatorLab/CreatorLab";
+import SharedConversation from "./components/SharedConversation";
 
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");
@@ -133,6 +134,7 @@ export default function App() {
       <Route path="/features" element={<ProductSuite />} />
       <Route path="/ai-tools" element={<AIToolsLab />} />
       <Route path="/creator-tools" element={<CreatorLab />} />
+      <Route path="/shared/:token" element={<SharedConversation />} />
     </Routes></>
   );
 }

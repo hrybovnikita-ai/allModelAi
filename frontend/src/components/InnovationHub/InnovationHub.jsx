@@ -1,3 +1,4 @@
+/* eslint-disable no-useless-escape */
 import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import './InnovationHub.css';

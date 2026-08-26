@@ -187,6 +187,7 @@ const loginUser = async (req, res) => {
 const providerNames = { google: 'Google', apple: 'Apple', facebook: 'Facebook' };
 
 const getSocialAccounts = (req, res) => {
+    if (process.env.ENABLE_DEMO_SOCIAL_AUTH !== 'true') return res.status(404).json({ message: 'Demo social accounts are disabled. Use Google OAuth.' });
     const provider = String(req.params.provider || '').toLowerCase();
     if (!providerNames[provider]) return res.status(400).json({ message: 'Unsupported sign-in provider' });
     const accounts = users.slice(0, provider === 'google' ? 3 : 1).map((user) => ({
@@ -199,6 +200,7 @@ const getSocialAccounts = (req, res) => {
 };
 
 const socialLogin = (req, res) => {
+    if (process.env.ENABLE_DEMO_SOCIAL_AUTH !== 'true') return res.status(404).json({ message: 'Demo social sign-in is disabled. Use Google OAuth.' });
     const provider = String(req.body.provider || '').toLowerCase();
     const accountId = String(req.body.accountId || '');
     if (!providerNames[provider] || !accountId.startsWith(`${provider}-`)) return res.status(400).json({ message: 'A valid provider account is required' });
@@ -355,8 +357,7 @@ const deleteUser = (req, res) => {
 };
 
 const deleteAccount = (req, res) => {
-    const email = String(req.body.email || '').trim().toLowerCase();
-    if (!email) return res.status(400).json({ message: 'Email is required' });
+    const email = req.user.email;
 
     const index = users.findIndex((user) => user.email.toLowerCase() === email);
     if (index === -1) return res.status(404).json({ message: 'Account not found' });
@@ -412,14 +413,12 @@ const getAdminStats = (req, res) => {
 };
 
 const getCredits = (req, res) => {
-    if (!req.query.email) return res.status(400).json({ message: 'Email is required' });
-    const status = getCreditStatus(req.app.locals.db, req.query.email);
+    const status = getCreditStatus(req.app.locals.db, req.user.email);
     return res.status(200).json({ plan: status.plan, limit: status.limit, used: status.used, remaining: status.remaining, unlimited: false });
 };
 
 const getChatHistory = (req, res) => {
-    const email = String(req.query.email || '').trim().toLowerCase();
-    if (!email) return res.status(400).json({ message: 'Email is required' });
+    const email = req.user.email;
 
     const data = req.app.locals.db.read();
     const conversations = (data.conversations || [])
@@ -430,10 +429,9 @@ const getChatHistory = (req, res) => {
 };
 
 const createChatHistory = (req, res) => {
-    const email = String(req.body.email || '').trim().toLowerCase();
+    const email = req.user.email;
     const model = String(req.body.model || 'gpt');
     const messages = normalizeMessages(req.body.messages);
-    if (!email) return res.status(400).json({ message: 'Email is required' });
 
     const now = new Date().toISOString();
     const conversation = {
@@ -453,10 +451,10 @@ const createChatHistory = (req, res) => {
 };
 
 const renameChat = (req, res) => {
-    const email = String(req.body.email || '').trim().toLowerCase();
+    const email = req.user.email;
     const title = req.body.title === undefined ? undefined : String(req.body.title).trim().slice(0, 60);
     const messages = Array.isArray(req.body.messages) ? normalizeMessages(req.body.messages) : undefined;
-    if (!email || (!title && !messages)) return res.status(400).json({ message: 'Email and title or messages are required' });
+    if (!title && !messages) return res.status(400).json({ message: 'Title or messages are required' });
 
     const data = req.app.locals.db.read();
     const conversation = (data.conversations || []).find((item) => item.id === req.params.id && item.email === email);
@@ -470,8 +468,7 @@ const renameChat = (req, res) => {
 };
 
 const deleteChat = (req, res) => {
-    const email = String(req.body.email || '').trim().toLowerCase();
-    if (!email) return res.status(400).json({ message: 'Email is required' });
+    const email = req.user.email;
 
     const data = req.app.locals.db.read();
     const index = (data.conversations || []).findIndex((item) => item.id === req.params.id && item.email === email);
@@ -483,16 +480,17 @@ const deleteChat = (req, res) => {
 };
 
 const createPurchase = (req, res) => {
-    const { name, email, city, dateOfBirth, plan } = req.body;
+    const { name, city, dateOfBirth, plan } = req.body;
+    const email = req.user.email;
 
-    if (!name || !email || !city || !dateOfBirth || !plan) {
+    if (!name || !city || !dateOfBirth || !plan) {
         return res.status(400).json({ message: 'All purchase fields are required' });
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
     const developerEmails = new Set(String(process.env.DEVELOPER_EMAILS || 'hrybovnikita@gmail.com').split(',').map((item)=>item.trim().toLowerCase()).filter(Boolean));
     const developerAccess = developerEmails.has(normalizedEmail);
-    if (!developerAccess && req.body.paymentVerified !== true) {
+    if (!developerAccess) {
         return res.status(503).json({ message: 'A payment provider is not connected yet. No money was charged.' });
     }
     const database = req.app.locals.db;
@@ -521,8 +519,34 @@ const createPurchase = (req, res) => {
     return res.status(201).json({ message: developerAccess ? 'Developer access activated. No payment was charged.' : 'Payment verified and subscription activated.', purchase, developerAccess, charged:false });
 };
 
+const chooseSmartRoute = (prompt, mode = 'balanced') => {
+    const text = String(prompt || '').toLowerCase();
+    const signals = {
+        coding: /code|debug|function|react|javascript|typescript|python|api|sql|ошибк|код|функц/.test(text),
+        research: /research|latest|source|news|find|citation|исслед|источник|новост|найди/.test(text),
+        writing: /write|rewrite|essay|story|email|текст|перепиш|стать|письм/.test(text),
+        multilingual: /translate|translation|перевод|переведи|україн|украин/.test(text),
+        longContext: text.length > 3500 || /document|report|pdf|документ|отч[её]т/.test(text),
+    };
+    if (mode === 'economy') return { model: process.env.CLOUDFLARE_ACCOUNT_ID ? 'cloudflare' : 'gemini', reason: 'Economy mode selected the lowest-cost available model.', category: 'economy' };
+    if (mode === 'speed') return { model: 'gemini', reason: 'Speed mode selected Gemini for low-latency generation.', category: 'speed' };
+    if (signals.research) return { model: 'perplexity', reason: 'Research intent and source-related terms were detected.', category: 'research' };
+    if (signals.coding) return { model: mode === 'quality' ? 'deepseek' : 'deepseek', reason: 'Code or debugging signals were detected.', category: 'coding' };
+    if (signals.longContext || signals.writing) return { model: 'claude', reason: signals.longContext ? 'A long document or large context was detected.' : 'Long-form writing intent was detected.', category: signals.longContext ? 'documents' : 'writing' };
+    if (signals.multilingual) return { model: 'gemini', reason: 'A multilingual or translation task was detected.', category: 'multilingual' };
+    if (mode === 'quality') return { model: 'claude', reason: 'Quality mode selected a strong reasoning model.', category: 'reasoning' };
+    return { model: 'gpt', reason: 'Balanced routing selected a versatile general model.', category: 'general' };
+};
+
+const previewRouter = (req, res) => {
+    const prompt = String(req.body.prompt || '').trim();
+    if (!prompt) return res.status(400).json({ message: 'Prompt is required' });
+    return res.json(chooseSmartRoute(prompt, req.body.routerMode));
+};
+
 const createChatResponse = async (req, res) => {
-    const { messages, model = 'gpt', userEmail, conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {} } = req.body;
+    const { messages, model = 'gpt', conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {}, useKnowledge = true } = req.body;
+    const userEmail = req.user.email;
     const providerModels = {
         gpt: 'openai/gpt-4o-mini',
         claude: 'anthropic/claude-haiku-4.5',
@@ -542,15 +566,9 @@ const createChatResponse = async (req, res) => {
     const grokModel = configuredGrokModel && !/grok-3-mini/i.test(configuredGrokModel)
         ? configuredGrokModel
         : providerModels.grok;
-    const latestPrompt = String(messages?.at(-1)?.text || messages?.at(-1)?.content || '').toLowerCase();
-    const routedModel = model === 'smart'
-        ? (routerMode === 'economy' ? (process.env.CLOUDFLARE_ACCOUNT_ID ? 'cloudflare' : 'gemini')
-            : routerMode === 'speed' ? 'gemini'
-            : routerMode === 'quality' ? (/code|debug|function|react|javascript|python|api/.test(latestPrompt) ? 'deepseek' : 'claude')
-            : /code|debug|function|react|javascript|python|api/.test(latestPrompt) ? 'deepseek'
-            : /research|latest|source|news|find|citation/.test(latestPrompt) ? 'perplexity'
-                : /write|rewrite|essay|story|email/.test(latestPrompt) ? 'claude' : 'gpt')
-        : model;
+    const latestPrompt = String(messages?.at(-1)?.text || messages?.at(-1)?.content || '');
+    const routeDecision = chooseSmartRoute(latestPrompt, routerMode);
+    const routedModel = model === 'smart' ? routeDecision.model : model;
 
     // Prefer the shared OpenRouter connection for Claude when it is configured.
     // This keeps Claude available when a direct Anthropic account has no credits.
@@ -573,7 +591,6 @@ const createChatResponse = async (req, res) => {
         return res.status(400).json({ message: 'At least one message is required' });
     }
 
-    if (!userEmail) return res.status(400).json({ message: 'User email is required' });
     const creditStatus = getCreditStatus(req.app.locals.db, userEmail);
     if (creditStatus.used >= creditStatus.limit) return res.status(429).json({ message: `Your ${creditStatus.plan} plan has reached its request limit. Choose a larger plan to continue.` });
 
@@ -583,6 +600,7 @@ const createChatResponse = async (req, res) => {
     }));
     const memoryRows = req.app.locals.db.database.prepare("SELECT data FROM workspace_items WHERE email = ? AND type = 'memory' ORDER BY updated_at DESC LIMIT 20").all(String(userEmail).trim().toLowerCase());
     const memories = memoryRows.map((row) => JSON.parse(row.data).name).filter(Boolean);
+    const knowledge = useKnowledge ? findKnowledge(req.app.locals.db.database, userEmail, latestPrompt, 4) : [];
     const safePreference = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
     const preferences = {
         length: safePreference(responsePrefs.length, ['short', 'balanced', 'detailed'], 'balanced'),
@@ -590,7 +608,8 @@ const createChatResponse = async (req, res) => {
         creativity: safePreference(responsePrefs.creativity, ['precise', 'balanced', 'creative'], 'balanced'),
         format: safePreference(responsePrefs.format, ['auto', 'list', 'table', 'json'], 'auto'),
     };
-    const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear and accurate. Always detect the language of the user's latest message and answer in that same language. If the message mixes languages, use the dominant language. Keep code, product names, and quoted text unchanged. Response preferences: length=${preferences.length}, tone=${preferences.tone}, creativity=${preferences.creativity}, format=${preferences.format}.${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}`;
+    const knowledgeContext = knowledge.length ? `\nKnowledge base excerpts (cite them as [KB1], [KB2]):\n${knowledge.map((item, index) => `[KB${index + 1}] ${item.name}: ${item.excerpt}`).join('\n')}` : '';
+    const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear and accurate. Always detect the language of the user's latest message and answer in that same language. If the message mixes languages, use the dominant language. Keep code, product names, and quoted text unchanged. Response preferences: length=${preferences.length}, tone=${preferences.tone}, creativity=${preferences.creativity}, format=${preferences.format}.${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}${knowledgeContext}`;
     let assistantText = '';
 
     try {
@@ -670,7 +689,7 @@ const createChatResponse = async (req, res) => {
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
         const freeTierModels = new Set(['gemini', 'cloudflare']);
-        res.write(`data: ${JSON.stringify({ unlimited: true, plan: creditStatus.plan, requestedModel:model, routedModel, costTier:freeTierModels.has(routedModel)?'free-allowance':'paid' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ unlimited: true, plan: creditStatus.plan, requestedModel:model, routedModel, routeReason:model === 'smart' ? routeDecision.reason : 'Model selected manually.', routeCategory:routeDecision.category, knowledgeSources:knowledge.map(({id,name})=>({id,name})), costTier:freeTierModels.has(routedModel)?'free-allowance':'paid' })}\n\n`);
         if (fallbackUsed) res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: 'gpt' })}\n\n`);
 
         if (isOpenAI) {
@@ -795,17 +814,17 @@ const cleanEmail = (value) => String(value || '').trim().toLowerCase();
 const parseWorkspaceItem = (row) => ({ id: row.id, type: row.type, ...JSON.parse(row.data), createdAt: row.created_at, updatedAt: row.updated_at });
 
 const getWorkspaceItems = (req, res) => {
-    const email = cleanEmail(req.query.email);
+    const email = req.user.email;
     const type = String(req.query.type || '');
-    if (!email || !workspaceTypes.has(type)) return res.status(400).json({ message: 'Valid email and type are required' });
+    if (!workspaceTypes.has(type)) return res.status(400).json({ message: 'Valid type is required' });
     const rows = req.app.locals.db.database.prepare('SELECT * FROM workspace_items WHERE email = ? AND type = ? ORDER BY updated_at DESC').all(email, type);
     return res.json(rows.map(parseWorkspaceItem));
 };
 
 const createWorkspaceItem = (req, res) => {
-    const email = cleanEmail(req.body.email);
+    const email = req.user.email;
     const type = String(req.body.type || '');
-    if (!email || !workspaceTypes.has(type)) return res.status(400).json({ message: 'Valid email and type are required' });
+    if (!workspaceTypes.has(type)) return res.status(400).json({ message: 'Valid type is required' });
     const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = new Date().toISOString();
     const data = { ...req.body }; delete data.email; delete data.type; delete data.id;
@@ -814,7 +833,7 @@ const createWorkspaceItem = (req, res) => {
 };
 
 const updateWorkspaceItem = (req, res) => {
-    const email = cleanEmail(req.body.email);
+    const email = req.user.email;
     const row = req.app.locals.db.database.prepare('SELECT * FROM workspace_items WHERE id = ? AND email = ?').get(req.params.id, email);
     if (!row) return res.status(404).json({ message: 'Workspace item not found' });
     const current = JSON.parse(row.data); const patch = { ...req.body }; delete patch.email; delete patch.id; delete patch.type;
@@ -824,13 +843,12 @@ const updateWorkspaceItem = (req, res) => {
 };
 
 const deleteWorkspaceItem = (req, res) => {
-    const result = req.app.locals.db.database.prepare('DELETE FROM workspace_items WHERE id = ? AND email = ?').run(req.params.id, cleanEmail(req.body.email));
+    const result = req.app.locals.db.database.prepare('DELETE FROM workspace_items WHERE id = ? AND email = ?').run(req.params.id, req.user.email);
     return result.changes ? res.json({ message: 'Deleted' }) : res.status(404).json({ message: 'Workspace item not found' });
 };
 
 const getUsageAnalytics = (req, res) => {
-    const email = cleanEmail(req.query.email);
-    if (!email) return res.status(400).json({ message: 'Email is required' });
+    const email = req.user.email;
     const conversations = req.app.locals.db.database.prepare('SELECT model, messages, created_at AS createdAt FROM conversations WHERE email = ?').all(email);
     const byModel = {}; let messages = 0; let characters = 0; let freeConversations = 0;
     const freeModels = new Set(['gemini', 'cloudflare']);
@@ -842,7 +860,7 @@ const getUsageAnalytics = (req, res) => {
 };
 
 const branchConversation = (req, res) => {
-    const email = cleanEmail(req.body.email); const source = req.app.locals.db.database.prepare('SELECT * FROM conversations WHERE id = ? AND email = ?').get(req.params.id, email);
+    const email = req.user.email; const source = req.app.locals.db.database.prepare('SELECT * FROM conversations WHERE id = ? AND email = ?').get(req.params.id, email);
     if (!source) return res.status(404).json({ message: 'Conversation not found' });
     const messages = JSON.parse(source.messages || '[]').slice(0, Math.max(1, Number(req.body.messageCount) || 1)); const id = `branch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; const now = new Date().toISOString();
     req.app.locals.db.database.prepare('INSERT INTO conversations (id, email, model, title, messages, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, email, req.body.model || source.model, `${source.title} (branch)`, JSON.stringify(messages), now, now);
@@ -905,6 +923,35 @@ const checkAnswerQuality = (req, res) => {
     return res.json({ score, metrics:{ clarity:Math.round(clarity), completeness:Math.round(completeness), evidence:Math.round(evidence) }, suggestions });
 };
 
+const tokenize = (value) => [...new Set(String(value || '').toLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) || [])].slice(0, 40);
+const findKnowledge = (database, email, query, limit = 5) => {
+    const terms = tokenize(query);
+    if (!terms.length) return [];
+    return database.prepare("SELECT * FROM workspace_items WHERE email = ? AND type = 'document' ORDER BY updated_at DESC").all(email)
+        .map((row) => {
+            const data = JSON.parse(row.data); const content = `${data.name || ''}\n${data.content || ''}`; const lower = content.toLowerCase();
+            const score = terms.reduce((total, term) => total + (lower.includes(term) ? 1 : 0), 0);
+            const firstMatch = terms.map((term) => lower.indexOf(term)).filter((index) => index >= 0).sort((a, b) => a - b)[0] || 0;
+            return { id: row.id, name: data.name || 'Untitled document', score, excerpt: content.slice(Math.max(0, firstMatch - 180), firstMatch + 1000).trim() };
+        }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, Math.min(Number(limit) || 5, 10));
+};
+
+const searchKnowledge = (req, res) => {
+    const query = String(req.body.query || '').trim();
+    if (!query) return res.status(400).json({ message: 'Search query is required' });
+    return res.json({ query, results: findKnowledge(req.app.locals.db.database, req.user.email, query, req.body.limit) });
+};
+
+const teamAccess = (database, teamId, email) => database.prepare(`SELECT teams.*, team_members.role FROM teams JOIN team_members ON team_members.team_id = teams.id WHERE teams.id = ? AND team_members.email = ?`).get(teamId, email);
+const teamPayload = (database, team) => ({ ...team, members: database.prepare('SELECT email, role, created_at AS createdAt FROM team_members WHERE team_id = ? ORDER BY created_at').all(team.id) });
+const getTeams = (req, res) => { const database=req.app.locals.db.database; const rows=database.prepare('SELECT teams.*, team_members.role FROM teams JOIN team_members ON team_members.team_id = teams.id WHERE team_members.email = ? ORDER BY teams.created_at DESC').all(req.user.email); return res.json(rows.map((row)=>teamPayload(database,row))); };
+const createTeam = (req, res) => { const name=String(req.body.name||'').trim().slice(0,80);if(!name)return res.status(400).json({message:'Team name is required'});const id=`team-${crypto.randomUUID()}`;const now=new Date().toISOString();const database=req.app.locals.db.database;database.transaction(()=>{database.prepare('INSERT INTO teams (id,name,owner_email,created_at) VALUES (?,?,?,?)').run(id,name,req.user.email,now);database.prepare('INSERT INTO team_members (team_id,email,role,created_at) VALUES (?,?,?,?)').run(id,req.user.email,'owner',now)})();return res.status(201).json(teamPayload(database,{id,name,owner_email:req.user.email,created_at:now,role:'owner'})); };
+const inviteTeamMember = (req,res) => {const database=req.app.locals.db.database;const access=teamAccess(database,req.params.id,req.user.email);if(!access||!['owner','editor'].includes(access.role))return res.status(403).json({message:'Only owners and editors can invite members'});const email=cleanEmail(req.body.email);const role=['editor','viewer'].includes(req.body.role)?req.body.role:'viewer';if(!email)return res.status(400).json({message:'Member email is required'});database.prepare('INSERT INTO team_members (team_id,email,role,created_at) VALUES (?,?,?,?) ON CONFLICT(team_id,email) DO UPDATE SET role=excluded.role').run(req.params.id,email,role,new Date().toISOString());return res.status(201).json(teamPayload(database,access));};
+const updateTeamMember = (req,res) => {const database=req.app.locals.db.database;const access=teamAccess(database,req.params.id,req.user.email);if(!access||access.role!=='owner')return res.status(403).json({message:'Only the owner can change roles'});const email=cleanEmail(req.params.email);if(email===access.owner_email)return res.status(400).json({message:'The owner role cannot be changed'});const role=['editor','viewer'].includes(req.body.role)?req.body.role:null;if(!role)return res.status(400).json({message:'Role must be editor or viewer'});const result=database.prepare('UPDATE team_members SET role=? WHERE team_id=? AND email=?').run(role,req.params.id,email);return result.changes?res.json(teamPayload(database,access)):res.status(404).json({message:'Member not found'});};
+const removeTeamMember = (req,res) => {const database=req.app.locals.db.database;const access=teamAccess(database,req.params.id,req.user.email);if(!access||access.role!=='owner')return res.status(403).json({message:'Only the owner can remove members'});const email=cleanEmail(req.params.email);if(email===access.owner_email)return res.status(400).json({message:'The owner cannot be removed'});const result=database.prepare('DELETE FROM team_members WHERE team_id=? AND email=?').run(req.params.id,email);return result.changes?res.json({message:'Member removed'}):res.status(404).json({message:'Member not found'});};
+const shareConversation = (req,res) => {const database=req.app.locals.db.database;const conversation=database.prepare('SELECT id FROM conversations WHERE id=? AND email=?').get(req.params.id,req.user.email);if(!conversation)return res.status(404).json({message:'Conversation not found'});let share=database.prepare('SELECT token FROM shared_conversations WHERE conversation_id=? AND owner_email=?').get(conversation.id,req.user.email);if(!share){share={token:crypto.randomBytes(24).toString('base64url')};database.prepare('INSERT INTO shared_conversations (token,conversation_id,owner_email,created_at) VALUES (?,?,?,?)').run(share.token,conversation.id,req.user.email,new Date().toISOString());}return res.json({token:share.token,url:`${frontendOrigin()}/shared/${share.token}`});};
+const getSharedConversation = (req,res) => {const row=req.app.locals.db.database.prepare('SELECT conversations.title,conversations.model,conversations.messages,shared_conversations.created_at AS sharedAt FROM shared_conversations JOIN conversations ON conversations.id=shared_conversations.conversation_id WHERE shared_conversations.token=?').get(req.params.token);if(!row)return res.status(404).json({message:'Shared conversation not found'});return res.json({...row,messages:normalizeMessages(JSON.parse(row.messages))});};
+
 module.exports = {
     registerUser,
     loginUser,
@@ -940,4 +987,13 @@ module.exports = {
     webResearch,
     getOllamaModels,
     checkAnswerQuality,
+    previewRouter,
+    searchKnowledge,
+    getTeams,
+    createTeam,
+    inviteTeamMember,
+    updateTeamMember,
+    removeTeamMember,
+    shareConversation,
+    getSharedConversation,
 };

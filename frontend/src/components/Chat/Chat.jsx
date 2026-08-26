@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { dashboardModels } from '../../data/dashboardModels';
+import { apiFetch } from '../../lib/api';
 import './Chat.css';
 import './ChatApi.css';
 import AccountDeleteModal from '../AccountDeleteModal';
@@ -16,6 +17,7 @@ export default function Chat() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const messagesEnd = useRef(null);
+  const messagesContainer = useRef(null);
   const fileInput = useRef(null);
   const activeRequest = useRef(null);
   const savedUser = sessionStorage.getItem('allmodelai_user');
@@ -49,7 +51,30 @@ export default function Chat() {
   const [isListening, setIsListening] = useState(false);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [editDraft, setEditDraft] = useState('');
+  const [routeInfo, setRouteInfo] = useState(null);
+  const [themePreference, setThemePreference] = useState(() => JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}').theme || 'dark');
+  const [themeSettingsVisible, setThemeSettingsVisible] = useState(() => localStorage.getItem('allmodelai_sidebar_theme_visible') !== 'false');
   const selectedModel = dashboardModels.find((model) => model.slug === selectedSlug);
+
+  const changeTheme = (theme) => {
+    const appearance = JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}');
+    localStorage.setItem('allmodelai_appearance', JSON.stringify({ ...appearance, theme }));
+    setThemePreference(theme);
+  };
+
+  const toggleThemeSettings = () => {
+    setThemeSettingsVisible((visible) => {
+      localStorage.setItem('allmodelai_sidebar_theme_visible', String(!visible));
+      return !visible;
+    });
+  };
+
+  useEffect(() => {
+    document.documentElement.dataset.themePreference = themePreference;
+    document.documentElement.dataset.theme = themePreference === 'auto'
+      ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+      : themePreference;
+  }, [themePreference]);
 
   const toggleVoiceInput = () => {
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -64,7 +89,7 @@ export default function Chat() {
     recognition.start();
   };
 
-  const refreshHistory = () => fetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
+  const refreshHistory = () => apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
     .then((response) => response.ok ? response.json() : [])
     .then((history) => setChatHistory(history))
     .catch(() => {});
@@ -75,7 +100,7 @@ export default function Chat() {
   };
   const visibleHistory = chatHistory.filter((conversation) => `${conversation.title} ${conversationPreview(conversation)}`.toLowerCase().includes(historyQuery.toLowerCase()));
   const copyMessage = async (text) => { await navigator.clipboard.writeText(text); };
-  const shareMessage = async (text) => { await copyMessage(text); };
+  const shareMessage = async (text) => { if(!activeConversationId){await copyMessage(text);return;} const response=await apiFetch(`/api/chat/history/${activeConversationId}/share`,{method:'POST'});const data=await response.json();if(!response.ok){setChatError(data.message||'Could not create sharing link');return;}await navigator.clipboard.writeText(`${location.origin}${new URL(data.url).pathname}`);setChatError('Read-only link copied to clipboard.'); };
   const rateMessage = (index, rating) => setMessageRatings((ratings) => ({ ...ratings, [index]: rating }));
   const retryMessage = (index) => {
     const previousUserMessage = messages.slice(0, index).reverse().find((message) => message.role === 'user');
@@ -101,11 +126,15 @@ export default function Chat() {
     const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' })); link.download = `${conversationPreview({ messages }) || 'allmodelai-chat'}.txt`; link.click(); URL.revokeObjectURL(link.href);
   };
 
-  useEffect(() => { messagesEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => {
+    const container = messagesContainer.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: isSending ? 'smooth' : 'auto' });
+  }, [messages, isSending]);
 
   useEffect(() => {
     if (!user?.email) return;
-    fetch(`/api/credits?email=${encodeURIComponent(user.email)}`)
+    apiFetch(`/api/credits?email=${encodeURIComponent(user.email)}`)
       .then((response) => response.ok ? response.json() : null)
       .then((status) => status && setCreditStatus(status))
       .catch(() => setCreditStatus(null));
@@ -113,7 +142,7 @@ export default function Chat() {
 
   useEffect(() => {
     if (!user?.email) return;
-    fetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
+    apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
       .then((response) => response.ok ? response.json() : [])
       .then((history) => {
         setChatHistory(history);
@@ -144,7 +173,7 @@ export default function Chat() {
 
     try {
       if (selectedSkill === 'web') {
-        const researchResponse = await fetch('/api/research', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:text}), signal:controller.signal });
+        const researchResponse = await apiFetch('/api/research', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:text}), signal:controller.signal });
         const researchData = await researchResponse.json().catch(() => ({}));
         if (!researchResponse.ok) throw new Error(researchData.message || 'Could not search the web.');
         const sourceList=(researchData.sources||[]).map((source,index)=>`[${index+1}] ${source.title}\n${source.excerpt}\n${source.url}`).join('\n\n');
@@ -154,7 +183,7 @@ export default function Chat() {
         return;
       }
       if (selectedSkill === 'image') {
-        const imageResponse = await fetch('/api/images', {
+        const imageResponse = await apiFetch('/api/images', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: text }),
@@ -170,7 +199,7 @@ export default function Chat() {
       }
       let conversationId = activeConversationId;
       if (!conversationId && !temporaryChat) {
-        const historyResponse = await fetch('/api/chat/history', {
+        const historyResponse = await apiFetch('/api/chat/history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: user.email, model: selectedSlug, messages: nextMessages }),
@@ -183,7 +212,7 @@ export default function Chat() {
         }
       }
 
-      const response = await fetch('/api/chat', {
+      const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: selectedSlug, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || localStorage.getItem('allmodelai_router_mode') || 'balanced', responsePrefs: JSON.parse(localStorage.getItem('allmodelai_response_prefs') || '{}') }),
@@ -192,6 +221,9 @@ export default function Chat() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          throw new Error('Your session expired. Please sign out and sign in again.');
+        }
         throw new Error(errorData.message || 'Could not connect to the AI server.');
       }
 
@@ -246,6 +278,7 @@ export default function Chat() {
             setCreditStatus((current) => ({ ...current, ...event, remaining: event.creditsRemaining }));
           }
           if (event.unlimited) setCreditStatus((current) => ({ ...current, ...event, unlimited: true }));
+          if (event.routedModel) setRouteInfo({model:event.routedModel,reason:event.routeReason,sources:event.knowledgeSources||[]});
           const partialText = event.text;
           if (partialText) {
             assistantText += partialText;
@@ -259,7 +292,7 @@ export default function Chat() {
       if (!revealFrame) finishReveal();
       await revealFinished;
       if (conversationId) {
-        await fetch(`/api/chat/history/${conversationId}`, {
+        await apiFetch(`/api/chat/history/${conversationId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: user.email, messages: [...nextMessages, { role: 'assistant', text: assistantText, modelSlug: selectedSlug }] }),
@@ -271,7 +304,11 @@ export default function Chat() {
       if (requestError.name === 'AbortError') {
         setMessages((current) => current.filter((message, index) => index !== assistantIndex || String(message.text || message.content || '').trim()));
       } else {
-        setChatError(requestError.message || 'Could not connect to the AI server.');
+        const fallbackMessage = requestError.message === 'Failed to fetch'
+          ? 'Could not connect to the backend. Start it with: cd backend && npm start'
+          : (requestError.message || 'Could not connect to the AI server.');
+        setChatError(fallbackMessage);
+        setMessages((current) => current.filter((_, index) => index !== assistantIndex));
       }
     } finally {
       if (activeRequest.current === controller) activeRequest.current = null;
@@ -292,7 +329,7 @@ export default function Chat() {
     const index = editingMessageIndex;
     if (!text || index === null || isSending) return;
     if (activeConversationId) {
-      await fetch(`/api/chat/history/${activeConversationId}/branch`, {
+      await apiFetch(`/api/chat/history/${activeConversationId}/branch`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: user.email, messageCount: messages.length, model: selectedSlug }),
       }).catch(() => {});
@@ -330,7 +367,7 @@ export default function Chat() {
   const renameConversation = async (conversation) => {
     const title = window.prompt('Rename conversation', conversation.title)?.trim();
     if (!title) return;
-    const response = await fetch(`/api/chat/history/${conversation.id}`, {
+    const response = await apiFetch(`/api/chat/history/${conversation.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: user.email, title }),
@@ -344,7 +381,7 @@ export default function Chat() {
       setChatMenuId(null);
       return;
     }
-    const response = await fetch(`/api/chat/history/${conversation.id}`, {
+    const response = await apiFetch(`/api/chat/history/${conversation.id}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: user.email }),
@@ -397,7 +434,7 @@ export default function Chat() {
     setIsDeleting(true);
     setDeleteError('');
     try {
-      const response = await fetch('/api/auth/account', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email }) });
+      const response = await apiFetch('/api/auth/account', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || 'Could not delete your account.');
       sessionStorage.removeItem('allmodelai_user');
@@ -437,6 +474,7 @@ export default function Chat() {
           </div>)}
         </div>
         <nav className="sidebar-links" aria-label="Chat navigation"><Link to="/dashboard">⌂ <span>Dashboard</span></Link><Link to="/studio">✦ <span>Workspace Studio</span></Link><Link to="/control-center">⌘ <span>Control Center</span></Link><Link to="/innovation-hub">◈ <span>Innovation Hub</span></Link><Link to="/models/gpt">▦ <span>Model library</span></Link></nav>
+        <section className={`sidebar-theme-settings ${themeSettingsVisible?'expanded':'collapsed'}`} aria-label="Theme settings"><div><span>⚙</span><strong>Settings</strong><div className="sidebar-settings-actions"><button type="button" onClick={toggleThemeSettings} aria-expanded={themeSettingsVisible}>{themeSettingsVisible?'Hide':'Show'}</button><Link to="/control-center">More</Link></div></div>{themeSettingsVisible&&<><p>Appearance</p><div className="sidebar-theme-options">{[['light','☀','Light'],['dark','●','Dark'],['auto','◐','Auto']].map(([value,icon,label])=><button type="button" className={themePreference===value?'active':''} onClick={()=>changeTheme(value)} title={`${label} theme`} aria-pressed={themePreference===value} key={value}><i>{icon}</i><span>{label}</span></button>)}</div></>}</section>
         <div className="chat-profile"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><div><strong>{user.name || 'User'}</strong><small>{user.email}</small></div><button onClick={() => setDeleteModalOpen(true)} aria-label="Sign out" title="Sign out">↗</button></div>
       </aside>
 
@@ -448,8 +486,9 @@ export default function Chat() {
           <Link className="dashboard-link" to="/dashboard">Dashboard</Link>
         </header>
         {creditStatus && <div className="credit-status" role="status">{creditStatus.unlimited ? 'API access active' : `${creditStatus.remaining} credits remaining`}</div>}
+        {selectedSlug==='smart'&&routeInfo&&<div className="credit-status" role="status">Smart Router → {routeInfo.model}: {routeInfo.reason}{routeInfo.sources.length?` · ${routeInfo.sources.length} knowledge source(s)`:''}</div>}
 
-        <div className="chat-messages">
+        <div className="chat-messages" ref={messagesContainer}>
           {messages.length === 0 && <div className="chat-empty"><div className="model-orb"><img src={selectedModel.image} alt={`${selectedModel.name} logo`} /></div><p className="chat-eyebrow">{selectedModel.provider} · {selectedModel.name}</p><h1>What can I help you create?</h1><p className="chat-subtitle">Start with your own question or choose one of these ideas.</p><div className="prompt-suggestions">{suggestions.map((item) => <button key={item.title} onClick={() => chooseSuggestion(item.prompt)}><span>{item.icon}</span><strong>{item.title}</strong><small>{item.prompt}</small></button>)}</div></div>}
           {messages.map((message, index) => {
             const messageModel = dashboardModels.find((model) => model.slug === message.modelSlug) || selectedModel;

@@ -27,6 +27,10 @@ const connectDatabase = () => {
 		CREATE TABLE IF NOT EXISTS auth_sessions (token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
 		CREATE TABLE IF NOT EXISTS workspace_items (id TEXT PRIMARY KEY, email TEXT NOT NULL, type TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 		CREATE INDEX IF NOT EXISTS workspace_items_owner_type ON workspace_items(email, type, updated_at DESC);
+		CREATE TABLE IF NOT EXISTS teams (id TEXT PRIMARY KEY, name TEXT NOT NULL, owner_email TEXT NOT NULL, created_at TEXT NOT NULL);
+		CREATE TABLE IF NOT EXISTS team_members (team_id TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(team_id, email), FOREIGN KEY(team_id) REFERENCES teams(id) ON DELETE CASCADE);
+		CREATE TABLE IF NOT EXISTS shared_conversations (token TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, owner_email TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE);
+		CREATE INDEX IF NOT EXISTS team_members_email ON team_members(email);
 	`);
 	const userColumns = database.prepare('PRAGMA table_info(users)').all();
 	if (!userColumns.some((column) => column.name === 'password_hash')) {
@@ -61,12 +65,18 @@ const connectDatabase = () => {
 		},
 		write(data) {
 			database.transaction(() => {
-				database.exec('DELETE FROM users; DELETE FROM purchases; DELETE FROM subscriptions; DELETE FROM usage; DELETE FROM conversations;');
-				const insertUser = database.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)');
+				const userIds = (data.users || []).map((user) => Number(user.id)).filter(Number.isFinite);
+				if (userIds.length) database.prepare(`DELETE FROM users WHERE id NOT IN (${userIds.map(() => '?').join(',')})`).run(...userIds);
+				else database.exec('DELETE FROM users');
+				const conversationIds = (data.conversations || []).map((item) => item.id).filter(Boolean);
+				if (conversationIds.length) database.prepare(`DELETE FROM conversations WHERE id NOT IN (${conversationIds.map(() => '?').join(',')})`).run(...conversationIds);
+				else database.exec('DELETE FROM conversations');
+				database.exec('DELETE FROM purchases; DELETE FROM subscriptions; DELETE FROM usage;');
+				const insertUser = database.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, email=excluded.email, password_hash=excluded.password_hash');
 				const insertPurchase = database.prepare('INSERT INTO purchases (id, name, email, city, date_of_birth, plan, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
 				const insertSubscription = database.prepare('INSERT INTO subscriptions (email, plan) VALUES (?, ?)');
 				const insertUsage = database.prepare('INSERT INTO usage (email, used) VALUES (?, ?)');
-				const insertConversation = database.prepare('INSERT INTO conversations (id, email, model, title, messages, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+				const insertConversation = database.prepare('INSERT INTO conversations (id, email, model, title, messages, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET email=excluded.email, model=excluded.model, title=excluded.title, messages=excluded.messages, updated_at=excluded.updated_at');
 				(data.users || []).forEach((user) => insertUser.run(user.id, user.name, user.email, user.passwordHash || null));
 				(data.purchases || []).forEach((purchase) => insertPurchase.run(purchase.id, purchase.name, purchase.email, purchase.city, purchase.dateOfBirth, purchase.plan, purchase.createdAt));
 				Object.entries(data.subscriptions || {}).forEach(([email, plan]) => insertSubscription.run(email, plan));
