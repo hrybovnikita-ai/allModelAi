@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import './Studio.css';
 import './StudioFeatures.css';
 
@@ -11,6 +11,12 @@ const features = [
   ['assistant','AI Assistants','Build a personal expert'], ['voice','Voice Mode','Speak and listen naturally'],
   ['news','Model Updates','Discover new model releases'], ['memory','Memory','Personal context you control'],
   ['sources','Research','Answers designed for citations'],
+  ['code','Live Code Preview','Write HTML, CSS, and JavaScript'],
+  ['translate','Document Translator','Translate and preserve document structure'],
+  ['gallery','Image Gallery','Download, reuse, and organize generations'],
+  ['learn','Learning Mode','Lessons, quizzes, and progress'],
+  ['tasks','Task Calendar','Dates, reminders, and completion'],
+  ['backup','Backup & Restore','Protect chats, projects, and settings'],
   ['team','Team Workspace','Roles, members, and collaboration'],
 ];
 const modelRows = [
@@ -38,9 +44,11 @@ async function askTeamModel(model, prompt, email) {
 
 export default function Studio() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const saved = sessionStorage.getItem('allmodelai_user');
   const user = saved ? JSON.parse(saved) : null;
-  const [active, setActive] = useState('router');
+  const requestedTool = searchParams.get('tool');
+  const [active, setActive] = useState(features.some(([key]) => key === requestedTool) ? requestedTool : 'router');
   const [items, setItems] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [form, setForm] = useState({ name:'', content:'', instructions:'' });
@@ -55,6 +63,12 @@ export default function Studio() {
   const [teams,setTeams]=useState([]);
   const [teamName,setTeamName]=useState('');
   const [memberEmail,setMemberEmail]=useState('');
+  const [previewCode,setPreviewCode]=useState('<!doctype html>\n<html>\n<head>\n  <style>body{font-family:system-ui;padding:32px;background:#111827;color:white}button{padding:10px 16px}</style>\n</head>\n<body>\n  <h1>Hello from AllModelAI</h1>\n  <button onclick="this.textContent=\'It works!\'">Click me</button>\n</body>\n</html>');
+  const [translation,setTranslation]=useState({name:'',text:'',language:'English'});
+  const [gallery,setGallery]=useState([]);
+  const [tasks,setTasks]=useState(()=>JSON.parse(localStorage.getItem('allmodelai_tasks')||'[]'));
+  const [taskForm,setTaskForm]=useState({title:'',date:''});
+  const [learning,setLearning]=useState(()=>JSON.parse(localStorage.getItem('allmodelai_learning')||'{"topic":"","completed":0}'));
   const dataType = ['memory','project','document','prompt','assistant'].includes(active) ? active : null;
   const title = useMemo(() => features.find(([key]) => key === active)?.[1], [active]);
 
@@ -63,6 +77,7 @@ export default function Studio() {
     if (dataType) fetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=${dataType}`).then(r => r.json()).then(setItems).catch(() => setItems([]));
     if (active === 'analytics') fetch(`/api/analytics?email=${encodeURIComponent(user.email)}`).then(r => r.json()).then(setAnalytics).catch(() => setAnalytics(null));
     if (active === 'team') fetch('/api/teams').then(r => r.ok?r.json():[]).then(setTeams).catch(()=>setTeams([]));
+    if (active === 'gallery') setGallery(JSON.parse(localStorage.getItem('allmodelai_image_gallery') || '[]'));
   }, [active, dataType, user?.email]);
   if (!user) return <Navigate to="/" replace />;
 
@@ -75,6 +90,14 @@ export default function Studio() {
   const searchKnowledge=async()=>{if(!knowledgeQuery.trim())return;const response=await fetch('/api/knowledge/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:knowledgeQuery})});const data=await response.json();setKnowledgeResults(data.results||[])};
   const createTeam=async(event)=>{event.preventDefault();if(!teamName.trim())return;const response=await fetch('/api/teams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:teamName})});if(response.ok){const team=await response.json();setTeams(current=>[team,...current]);setTeamName('')}};
   const invite=async(team)=>{if(!memberEmail.trim())return;const response=await fetch(`/api/teams/${team.id}/members`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:memberEmail,role:'editor'})});if(response.ok){const updated=await response.json();setTeams(current=>current.map(item=>item.id===team.id?updated:item));setMemberEmail('')}};
+  const loadTranslationFile=async(event)=>{const file=event.target.files?.[0];if(!file)return;if(file.size>1024*1024){window.alert('File must be smaller than 1 MB.');return;}const supported=/\.(txt|md|csv|json|html|css|js|jsx|ts|tsx)$/i.test(file.name);if(!supported){window.alert('Use a text, Markdown, CSV, JSON, HTML, CSS, or code file.');return;}const text=(await file.text()).slice(0,50000);setTranslation(current=>({...current,name:file.name,text}));};
+  const translateDocument=()=>{if(!translation.text.trim())return;openChat(`Translate the following document into ${translation.language}. Preserve headings, lists, code blocks, tables, and the original structure. Return only the translated document.\n\nFILE: ${translation.name || 'document'}\n\n${translation.text}`,'smart');};
+  const downloadCode=()=>{const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([previewCode],{type:'text/html'}));link.download='allmodelai-project.html';link.click();URL.revokeObjectURL(link.href);};
+  const addTask=event=>{event.preventDefault();if(!taskForm.title.trim())return;const next=[...tasks,{id:Date.now().toString(),...taskForm,done:false}];setTasks(next);localStorage.setItem('allmodelai_tasks',JSON.stringify(next));setTaskForm({title:'',date:''});};
+  const changeTasks=next=>{setTasks(next);localStorage.setItem('allmodelai_tasks',JSON.stringify(next));};
+  const enableTaskNotifications=async()=>{if(!('Notification' in window)){window.alert('Notifications are not supported in this browser.');return;}const permission=await Notification.requestPermission();if(permission==='granted')new Notification('AllModelAI reminders enabled',{body:'You will receive browser notifications for tasks while the app is open.'});};
+  const startLesson=()=>{if(!learning.topic.trim())return;const next={...learning,completed:Number(learning.completed||0)+1};setLearning(next);localStorage.setItem('allmodelai_learning',JSON.stringify(next));openChat(`Act as a patient tutor. Teach me ${learning.topic} step by step, give a practical example, then test me with five questions. Do not reveal quiz answers until I respond.`,'smart');};
+  const restoreBackup=async event=>{const file=event.target.files?.[0];if(!file)return;try{const backup=JSON.parse(await file.text());Object.entries(backup.local||{}).forEach(([key,value])=>{if(key.startsWith('allmodelai_'))localStorage.setItem(key,value)});window.alert('Backup restored. Reloading AllModelAI.');window.location.reload();}catch{window.alert('This is not a valid AllModelAI backup file.')}};
 
   return <main className="studio-page"><header className="studio-header"><Link to="/dashboard" className="studio-brand"><span>AI</span>AllModelAI</Link><div><Link to="/chat">Open chat</Link><Link to="/dashboard">Dashboard</Link></div></header>
     <section className="studio-hero"><p>ALLMODEL WORKSPACE</p><h1>Everything AI. One workspace.</h1><span>Route, compare, automate, speak, and build with the world's leading models.</span></section>
@@ -88,6 +111,12 @@ export default function Studio() {
         {active==='models'&&<div className="comparison-table"><div className="comparison-row heading"><span>Model</span><span>Context</span><span>Best for</span><span>Cost</span><span>Speed</span></div>{modelRows.map(row=><div className="comparison-row" key={row[0]}>{row.map(cell=><span key={cell}>{cell}</span>)}</div>)}<button className="primary-action" onClick={()=>navigate('/explore')}>Explore all models</button></div>}
         {active==='analytics'&&<div className="analytics-grid">{analytics?<><article><small>CONVERSATIONS</small><strong>{analytics.conversations}</strong></article><article><small>MESSAGES</small><strong>{analytics.messages}</strong></article><article><small>EST. TOKENS</small><strong>{analytics.estimatedTokens.toLocaleString()}</strong></article><article><small>EST. COST</small><strong>${analytics.estimatedCost?.toFixed(4)||'0.0000'}</strong></article><article><small>FREE-TIER CHATS</small><strong>{analytics.freeConversations||0}</strong></article><article><small>EST. SAVED</small><strong>${analytics.estimatedSavings?.toFixed(4)||'0.0000'}</strong></article><article className="model-breakdown"><small>BY MODEL</small>{Object.entries(analytics.byModel).map(([model,count])=><p key={model}><span>{model}</span><b>{count}</b></p>)}</article></>:<p>Loading analytics…</p>}</div>}
         {active==='voice'&&<div className="feature-showcase voice-showcase"><span>●</span><h3>Talk instead of typing.</h3><p>The chat recognizes your browser language. Tap the microphone, speak naturally, and the AI will answer in the same language.</p><button className="primary-action" onClick={()=>navigate('/chat')}>Open Voice Chat</button></div>}
+        {active==='code'&&<><div className="live-code-actions"><button className="primary-action" onClick={()=>openChat(`Create or improve a complete single-file HTML application for this requirement:\n\n`)}>Build with AI</button><button className="primary-action" onClick={downloadCode}>Download project</button></div><div className="live-code-lab"><div><label>HTML, CSS &amp; JavaScript</label><textarea value={previewCode} onChange={event=>setPreviewCode(event.target.value)} spellCheck="false" /></div><div><label>Sandboxed live preview</label><iframe title="Live code preview" sandbox="allow-scripts" srcDoc={previewCode} /></div></div></>}
+        {active==='translate'&&<div className="document-translator"><label className="document-import">Choose a text document<input type="file" accept=".txt,.md,.csv,.json,.html,.css,.js,.jsx,.ts,.tsx" onChange={loadTranslationFile}/></label><div><input value={translation.name} onChange={event=>setTranslation({...translation,name:event.target.value})} placeholder="Document name"/><select value={translation.language} onChange={event=>setTranslation({...translation,language:event.target.value})}><option>English</option><option>Ukrainian</option><option>Russian</option><option>German</option><option>Polish</option><option>Spanish</option><option>French</option></select></div><textarea value={translation.text} onChange={event=>setTranslation({...translation,text:event.target.value})} placeholder="Upload a document or paste text here…"/><button className="primary-action" disabled={!translation.text.trim()} onClick={translateDocument}>Translate with Smart Router</button></div>}
+        {active==='gallery'&&<div className="image-gallery">{gallery.length===0?<div className="empty-state">Generate an image in Chat and it will appear here.</div>:gallery.map(image=><article key={image.id}><img src={image.imageUrl} alt={image.prompt}/><div><strong>{image.prompt}</strong><span><a href={image.imageUrl} download={`allmodelai-${image.id}.png`}>Download</a><button onClick={()=>openChat(`Create a new visual variation of this image prompt. Change composition and lighting while preserving the subject:\n\n${image.prompt}`)}>Create variation</button><button className="danger" onClick={()=>{const next=gallery.filter(item=>item.id!==image.id);setGallery(next);localStorage.setItem('allmodelai_image_gallery',JSON.stringify(next))}}>Delete</button></span></div></article>)}</div>}
+        {active==='learn'&&<div className="learning-mode"><p>Completed learning sessions: <strong>{learning.completed||0}</strong></p><input value={learning.topic} onChange={event=>setLearning({...learning,topic:event.target.value})} placeholder="What do you want to learn?"/><button className="primary-action" disabled={!learning.topic.trim()} onClick={startLesson}>Start lesson and quiz</button></div>}
+        {active==='tasks'&&<div className="task-calendar"><button className="primary-action task-notifications" onClick={enableTaskNotifications}>Enable reminders</button><form onSubmit={addTask}><input value={taskForm.title} onChange={event=>setTaskForm({...taskForm,title:event.target.value})} placeholder="Task title"/><input type="date" value={taskForm.date} onChange={event=>setTaskForm({...taskForm,date:event.target.value})}/><button>Add task</button></form>{tasks.map(task=><article className={task.done?'done':''} key={task.id}><button onClick={()=>changeTasks(tasks.map(item=>item.id===task.id?{...item,done:!item.done}:item))}>{task.done?'✓':'○'}</button><div><strong>{task.title}</strong><small>{task.date||'No due date'}</small></div><button onClick={()=>changeTasks(tasks.filter(item=>item.id!==task.id))}>Delete</button></article>)}</div>}
+        {active==='backup'&&<div className="backup-panel"><p>Chat contains the export command for creating a complete JSON backup. Restore that file here.</p><label className="document-import">Restore AllModelAI backup<input type="file" accept="application/json,.json" onChange={restoreBackup}/></label><button className="primary-action" onClick={()=>navigate('/chat')}>Open Chat backup tools</button></div>}
         {active==='news'&&<div className="updates-grid">{updates.map(([name,text,badge])=><article key={name}><small>{badge}</small><h3>{name}</h3><p>{text}</p><button onClick={()=>navigate('/explore')}>Explore models →</button></article>)}</div>}
         {active==='sources'&&<div className="feature-showcase"><span>◎</span><h3>Research with sources</h3><p>Smart Router selects a research-focused model and requests citations, publication dates, and a source list.</p><button className="primary-action" onClick={()=>openChat('Research this topic using reliable current sources. Include inline citations, dates, and a source list:\n\n')}>Start research</button></div>}
       </section></div>

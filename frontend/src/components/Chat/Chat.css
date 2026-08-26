@@ -94,5 +94,28 @@ html[data-theme="light"] .sidebar-theme-settings{border-color:#d6dae2}html[data-
 
 /* Keep the composer visibly above desktop docks and system taskbars. */
 @media (min-width:601px){
-  .chat-composer{margin-bottom:clamp(20px,3vh,38px)}
+  .chat-composer{
+    position:fixed;
+    z-index:60;
+    right:0;
+    bottom:72px;
+    left:260px;
+    width:min(calc(100% - 316px),860px);
+    margin:0 auto;
+    padding:8px 0 0;
+    transform:none;
+  }
+  .chat-messages{padding-bottom:190px}
+}
+
+@media (min-width:601px) and (max-width:900px){
+  .chat-composer{left:0;width:min(calc(100% - 40px),860px)}
+}
+
+@media (min-width:901px) and (max-width:1280px){
+  .chat-composer{left:240px;width:min(calc(100% - 280px),760px)}
+}
+
+@media (min-width:1600px){
+  .chat-composer{left:290px;width:min(calc(100% - 370px),1050px)}
 }

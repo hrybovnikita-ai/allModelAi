@@ -377,6 +377,7 @@ const deleteAccount = (req, res) => {
 };
 
 const creditLimits = { free: 10, common: 100, plus: 1000 };
+const creditLimitsEnabled = () => process.env.ENFORCE_CREDIT_LIMITS === 'true';
 
 const getCreditStatus = (database, email) => {
     const normalizedEmail = String(email || '').trim().toLowerCase();
@@ -414,7 +415,8 @@ const getAdminStats = (req, res) => {
 
 const getCredits = (req, res) => {
     const status = getCreditStatus(req.app.locals.db, req.user.email);
-    return res.status(200).json({ plan: status.plan, limit: status.limit, used: status.used, remaining: status.remaining, unlimited: false });
+    const unlimited = !creditLimitsEnabled();
+    return res.status(200).json({ plan: status.plan, limit: status.limit, used: status.used, remaining: status.remaining, unlimited });
 };
 
 const getChatHistory = (req, res) => {
@@ -545,7 +547,7 @@ const previewRouter = (req, res) => {
 };
 
 const createChatResponse = async (req, res) => {
-    const { messages, model = 'gpt', conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {}, useKnowledge = true } = req.body;
+    const { messages, model = 'gpt', conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {}, useKnowledge = true, systemInstructions = '' } = req.body;
     const userEmail = req.user.email;
     const providerModels = {
         gpt: 'openai/gpt-4o-mini',
@@ -592,7 +594,9 @@ const createChatResponse = async (req, res) => {
     }
 
     const creditStatus = getCreditStatus(req.app.locals.db, userEmail);
-    if (creditStatus.used >= creditStatus.limit) return res.status(429).json({ message: `Your ${creditStatus.plan} plan has reached its request limit. Choose a larger plan to continue.` });
+    if (creditLimitsEnabled() && creditStatus.used >= creditStatus.limit) {
+        return res.status(429).json({ message: `Your ${creditStatus.plan} plan has reached its request limit. Choose a larger plan to continue.` });
+    }
 
     const input = normalizeMessages(messages).map(({ role, content }) => ({
         role: role === 'assistant' ? 'assistant' : 'user',
@@ -609,7 +613,8 @@ const createChatResponse = async (req, res) => {
         format: safePreference(responsePrefs.format, ['auto', 'list', 'table', 'json'], 'auto'),
     };
     const knowledgeContext = knowledge.length ? `\nKnowledge base excerpts (cite them as [KB1], [KB2]):\n${knowledge.map((item, index) => `[KB${index + 1}] ${item.name}: ${item.excerpt}`).join('\n')}` : '';
-    const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear and accurate. Always detect the language of the user's latest message and answer in that same language. If the message mixes languages, use the dominant language. Keep code, product names, and quoted text unchanged. Response preferences: length=${preferences.length}, tone=${preferences.tone}, creativity=${preferences.creativity}, format=${preferences.format}.${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}${knowledgeContext}`;
+    const customInstructions = String(systemInstructions || '').trim().slice(0, 2000);
+    const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear and accurate. Always detect the language of the user's latest message and answer in that same language. If the message mixes languages, use the dominant language. Keep code, product names, and quoted text unchanged. Response preferences: length=${preferences.length}, tone=${preferences.tone}, creativity=${preferences.creativity}, format=${preferences.format}.${customInstructions ? ` User instructions: ${customInstructions}` : ''}${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}${knowledgeContext}`;
     let assistantText = '';
 
     try {
@@ -776,20 +781,31 @@ const createChatResponse = async (req, res) => {
 
 const generateImage = async (req, res) => {
     const prompt = String(req.body.prompt || '').trim().slice(0, 4000);
-    const imageApiKey = process.env.IMAGE_API_KEY || process.env.OPENAI_API_KEY;
-    if (!imageApiKey) {
-        return res.status(503).json({ message: 'Image generation is not configured. Add IMAGE_API_KEY to the backend .env file.' });
+    const imageApiUrl = process.env.IMAGE_API_URL || 'https://api.openai.com/v1/images/generations';
+    const configuredImageKeys = [process.env.IMAGE_API_KEY, process.env.OPENAI_API_KEY, process.env.OPEN_AI_API_KEY, process.env.API_IMAGE_KEY]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+    const imageApiKey = process.env.IMAGE_API_URL
+        ? configuredImageKeys[0]
+        : configuredImageKeys.find((value) => /^sk-(?:proj-|svcacct-)?/i.test(value));
+    const cloudflareAccountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+    const cloudflareImageKey = String(process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY || process.env.API_IMAGE_KEY || '').trim();
+    const useCloudflare = process.env.IMAGE_PROVIDER === 'cloudflare' || (!imageApiKey && cloudflareAccountId && cloudflareImageKey);
+    if (!imageApiKey && !useCloudflare) {
+        return res.status(503).json({ message: 'Configure OpenAI Images, or set IMAGE_PROVIDER=cloudflare with CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_KEY.' });
     }
     if (!prompt) return res.status(400).json({ message: 'An image prompt is required' });
 
     try {
-        const response = await fetch(process.env.IMAGE_API_URL || 'https://api.openai.com/v1/images/generations', {
+        const response = await fetch(useCloudflare
+            ? `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cloudflareAccountId)}/ai/run/${process.env.CLOUDFLARE_IMAGE_MODEL || '@cf/black-forest-labs/flux-1-schnell'}`
+            : imageApiUrl, {
             method: 'POST',
             headers: {
-                Authorization: `Bearer ${imageApiKey.trim()}`,
+                Authorization: `Bearer ${useCloudflare ? cloudflareImageKey : imageApiKey.trim()}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
+            body: JSON.stringify(useCloudflare ? { prompt: prompt.slice(0, 2048), steps: 4 } : {
                 model: process.env.IMAGE_MODEL || 'gpt-image-1',
                 prompt,
                 size: process.env.IMAGE_SIZE || '1024x1024',
@@ -797,10 +813,17 @@ const generateImage = async (req, res) => {
             }),
         });
         const data = await response.json();
-        if (!response.ok) return res.status(response.status === 401 ? 502 : response.status).json({ message: data.error?.message || 'The image service could not create an image' });
+        if (!response.ok) {
+            const safeMessage = response.status === 401
+                ? 'The image API key was rejected. Check that the OpenAI key is active and has API billing enabled.'
+                : String(data.error?.message || 'The image service could not create an image')
+                    .replace(/(?:sk|cf)[A-Za-z0-9_*-]{8,}/gi, '[API key hidden]');
+            return res.status(response.status === 401 ? 502 : response.status).json({ message: safeMessage });
+        }
 
         const image = data.data?.[0];
-        const imageUrl = image?.url || (image?.b64_json ? `data:image/png;base64,${image.b64_json}` : null);
+        const cloudflareBase64 = data.result?.image;
+        const imageUrl = cloudflareBase64 ? `data:image/jpeg;base64,${cloudflareBase64}` : image?.url || (image?.b64_json ? `data:image/png;base64,${image.b64_json}` : null);
         if (!imageUrl) return res.status(502).json({ message: 'The image service returned no image' });
         return res.status(200).json({ imageUrl, prompt });
     } catch (error) {

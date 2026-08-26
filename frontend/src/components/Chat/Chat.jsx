@@ -31,8 +31,10 @@ export default function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
+  const [chatMeta, setChatMeta] = useState(() => JSON.parse(localStorage.getItem('allmodelai_chat_meta') || '{}'));
   const [historyQuery, setHistoryQuery] = useState('');
   const [messageRatings, setMessageRatings] = useState({});
+  const [favorites, setFavorites] = useState(() => JSON.parse(localStorage.getItem('allmodelai_favorites') || '[]'));
   const [sourcesOpen, setSourcesOpen] = useState(null);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [chatMenuId, setChatMenuId] = useState(null);
@@ -98,10 +100,53 @@ export default function Chat() {
     const firstUserMessage = conversation.messages?.find((message) => message.role === 'user');
     return String(firstUserMessage?.content ?? firstUserMessage?.text ?? 'Saved conversation').replace(/\s+/g, ' ').trim().slice(0, 54);
   };
-  const visibleHistory = chatHistory.filter((conversation) => `${conversation.title} ${conversationPreview(conversation)}`.toLowerCase().includes(historyQuery.toLowerCase()));
+  const visibleHistory = chatHistory
+    .filter((conversation) => `${conversation.title} ${conversationPreview(conversation)} ${(conversation.messages || []).map((message) => message.text || message.content || '').join(' ')} ${(chatMeta[conversation.id]?.tags || []).join(' ')}`.toLowerCase().includes(historyQuery.toLowerCase()))
+    .sort((first, second) => Number(Boolean(chatMeta[second.id]?.pinned)) - Number(Boolean(chatMeta[first.id]?.pinned)));
   const copyMessage = async (text) => { await navigator.clipboard.writeText(text); };
   const shareMessage = async (text) => { if(!activeConversationId){await copyMessage(text);return;} const response=await apiFetch(`/api/chat/history/${activeConversationId}/share`,{method:'POST'});const data=await response.json();if(!response.ok){setChatError(data.message||'Could not create sharing link');return;}await navigator.clipboard.writeText(`${location.origin}${new URL(data.url).pathname}`);setChatError('Read-only link copied to clipboard.'); };
   const rateMessage = (index, rating) => setMessageRatings((ratings) => ({ ...ratings, [index]: rating }));
+  const toggleFavorite = (text, modelSlug = selectedSlug) => {
+    setFavorites((current) => {
+      const existing = current.some((item) => item.text === text);
+      const next = existing
+        ? current.filter((item) => item.text !== text)
+        : [{ id: Date.now().toString(), text, modelSlug, createdAt: new Date().toISOString() }, ...current].slice(0, 30);
+      localStorage.setItem('allmodelai_favorites', JSON.stringify(next));
+      return next;
+    });
+  };
+  const updateChatMeta = (conversationId, patch) => {
+    const next = { ...chatMeta, [conversationId]: { ...(chatMeta[conversationId] || {}), ...patch } };
+    setChatMeta(next);
+    localStorage.setItem('allmodelai_chat_meta', JSON.stringify(next));
+  };
+  const togglePinnedChat = (conversation) => { updateChatMeta(conversation.id, { pinned: !chatMeta[conversation.id]?.pinned }); setChatMenuId(null); };
+  const editChatTags = (conversation) => {
+    const value = window.prompt('Tags separated by commas', (chatMeta[conversation.id]?.tags || []).join(', '));
+    if (value === null) return;
+    updateChatMeta(conversation.id, { tags: value.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8) });
+    setChatMenuId(null);
+  };
+  const editSystemInstructions = () => {
+    const current = localStorage.getItem('allmodelai_system_instructions') || '';
+    const value = window.prompt('How should AI behave in every chat?', current);
+    if (value === null) return;
+    localStorage.setItem('allmodelai_system_instructions', value.trim().slice(0, 2000));
+  };
+  const branchCurrentConversation = async () => {
+    if (!activeConversationId || !messages.length) return;
+    const response = await apiFetch(`/api/chat/history/${activeConversationId}/branch`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageCount: messages.length, model: selectedSlug }) });
+    const branch = await response.json().catch(() => null);
+    if (!response.ok || !branch) { setChatError(branch?.message || 'Could not create a conversation branch.'); return; }
+    setChatHistory((current) => [branch, ...current]);
+    openConversation(branch);
+  };
+  const backupWorkspace = () => {
+    const local = {}; for (let index = 0; index < localStorage.length; index += 1) { const key = localStorage.key(index); if (key?.startsWith('allmodelai_')) local[key] = localStorage.getItem(key); }
+    const content = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), conversations: chatHistory, local }, null, 2);
+    const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([content], { type: 'application/json' })); link.download = 'allmodelai-backup.json'; link.click(); URL.revokeObjectURL(link.href);
+  };
   const retryMessage = (index) => {
     const previousUserMessage = messages.slice(0, index).reverse().find((message) => message.role === 'user');
     if (previousUserMessage) { setPrompt(previousUserMessage.content ?? previousUserMessage.text ?? ''); document.querySelector('.chat-composer textarea')?.focus(); }
@@ -194,6 +239,8 @@ export default function Chat() {
         setMessages((current) => current.map((message, index) => (
           index === assistantIndex ? { ...message, text: 'Here is your generated image.', imageUrl: imageData.imageUrl } : message
         )));
+        const gallery = JSON.parse(localStorage.getItem('allmodelai_image_gallery') || '[]');
+        localStorage.setItem('allmodelai_image_gallery', JSON.stringify([{ id: `${text.slice(0, 24)}-${imageData.imageUrl.slice(-16)}`, prompt: text, imageUrl: imageData.imageUrl }, ...gallery].slice(0, 40)));
         setSelectedSkill(null);
         return;
       }
@@ -215,7 +262,7 @@ export default function Chat() {
       const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedSlug, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || localStorage.getItem('allmodelai_router_mode') || 'balanced', responsePrefs: JSON.parse(localStorage.getItem('allmodelai_response_prefs') || '{}') }),
+        body: JSON.stringify({ model: selectedSlug, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || localStorage.getItem('allmodelai_router_mode') || 'balanced', responsePrefs: JSON.parse(localStorage.getItem('allmodelai_response_prefs') || '{}'), systemInstructions: localStorage.getItem('allmodelai_system_instructions') || '' }),
         signal: controller.signal,
       });
 
@@ -458,19 +505,25 @@ export default function Chat() {
         <div className="workspace-tools">
           <button className={temporaryChat ? 'active' : ''} onClick={startTemporaryChat}><span>◌</span><span><strong>Temporary chat</strong><small>Not saved to history</small></span></button>
           <button onClick={createProject}><span>▣</span><span><strong>New project</strong><small>Organize chats by goal</small></span></button>
-          <button onClick={() => setArenaOpen(true)}><span>⚔</span><span><strong>AI Arena</strong><small>Compare model approaches</small></span></button>
+          <button onClick={() => navigate('/arena')}><span>⚔</span><span><strong>AI Arena</strong><small>Compare answers side by side</small></span></button>
           <button className={selectedSlug === 'smart' ? 'active' : ''} onClick={() => { setSelectedSlug('smart'); setTemporaryChat(false); setActiveProject(null); newChat(); }}><span>✦</span><span><strong>Smart Router</strong><small>Choose the best AI automatically</small></span></button>
+          <button onClick={() => chooseSkill('image')}><span>◈</span><span><strong>Generate image</strong><small>Create an image from text</small></span></button>
+          <button onClick={() => navigate('/studio?tool=prompt')}><span>▤</span><span><strong>Prompt library</strong><small>Ready-to-use templates</small></span></button>
+          <button disabled={!messages.length} onClick={exportConversation}><span>↓</span><span><strong>Export chat</strong><small>Download this conversation</small></span></button>
+          <button onClick={editSystemInstructions}><span>⚙</span><span><strong>AI instructions</strong><small>Set language, style, and behavior</small></span></button>
+          <button onClick={backupWorkspace}><span>⬡</span><span><strong>Backup workspace</strong><small>Download chats and settings</small></span></button>
         </div>
         {projects.length > 0 && <div className="project-list"><p>Projects</p>{projects.map((project) => <div className={`project-item ${activeProject?.id === project.id ? 'active' : ''}`} key={project.id}><button className="project-open" onClick={() => { setActiveProject(project); setTemporaryChat(false); setProjectMenuId(null); newChat(); }}><span>▰</span><strong>{project.name}</strong></button><button className="project-more" onClick={() => setProjectMenuId((id) => id === project.id ? null : project.id)} aria-label={`Options for ${project.name}`}>•••</button>{projectMenuId === project.id && <div className="project-menu"><button onClick={() => renameProject(project)}>✎ Rename</button><button className="danger" onClick={() => deleteProject(project)}>Delete</button></div>}</div>)}</div>}
+        {favorites.length > 0 && <div className="favorite-list"><p>Favorites <span>{favorites.length}</span></p>{favorites.slice(0, 4).map((favorite) => <button key={favorite.id} onClick={() => chooseSuggestion(favorite.text)} title={favorite.text}><span>★</span><span><strong>{dashboardModels.find((model) => model.slug === favorite.modelSlug)?.name || 'AI response'}</strong><small>{favorite.text}</small></span></button>)}</div>}
         <div className="chat-history">
           <p>Saved conversations <span className="chat-history-count">{chatHistory.length}</span><button className="chat-history-export" type="button" onClick={exportConversation} disabled={!messages.length} title="Export current conversation">↓</button></p>
           <input className="chat-history-search" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Search saved chats" aria-label="Search saved chats" />
           {chatHistory.length === 0 && <small className="chat-history-empty">Your saved chats will appear here.</small>}
           {chatHistory.length > 0 && visibleHistory.length === 0 && <small className="chat-history-empty">No matching conversations.</small>}
           {visibleHistory.map((conversation) => <div className={`chat-history-item ${activeConversationId === conversation.id ? 'active' : ''}`} key={conversation.id}>
-            <button className="chat-history-open" onClick={() => openConversation(conversation)}><span>◇</span><span><strong>{conversation.title || conversationPreview(conversation)}</strong><small>{conversationPreview(conversation)}</small><em>Saved · {conversation.model}</em></span></button>
+            <button className="chat-history-open" onClick={() => openConversation(conversation)}><span>{chatMeta[conversation.id]?.pinned ? '★' : '◇'}</span><span><strong>{conversation.title || conversationPreview(conversation)}</strong><small>{conversationPreview(conversation)}</small>{chatMeta[conversation.id]?.tags?.length > 0 && <small className="chat-tags">{chatMeta[conversation.id].tags.map((tag) => `#${tag}`).join(' ')}</small>}<em>Saved · {conversation.model}</em></span></button>
             <button className="chat-history-more" onClick={() => setChatMenuId((id) => id === conversation.id ? null : conversation.id)} aria-label={`Options for ${conversation.title}`}>•••</button>
-            {chatMenuId === conversation.id && <div className="chat-history-menu"><button onClick={() => renameConversation(conversation)}>✎ Rename</button><button className="danger" onClick={() => deleteConversation(conversation)}>♲ Delete</button></div>}
+            {chatMenuId === conversation.id && <div className="chat-history-menu"><button onClick={() => togglePinnedChat(conversation)}>{chatMeta[conversation.id]?.pinned ? '☆ Unpin' : '★ Pin'}</button><button onClick={() => editChatTags(conversation)}># Edit tags</button><button onClick={() => renameConversation(conversation)}>✎ Rename</button><button className="danger" onClick={() => deleteConversation(conversation)}>♲ Delete</button></div>}
           </div>)}
         </div>
         <nav className="sidebar-links" aria-label="Chat navigation"><Link to="/dashboard">⌂ <span>Dashboard</span></Link><Link to="/studio">✦ <span>Workspace Studio</span></Link><Link to="/control-center">⌘ <span>Control Center</span></Link><Link to="/innovation-hub">◈ <span>Innovation Hub</span></Link><Link to="/models/gpt">▦ <span>Model library</span></Link></nav>
@@ -485,8 +538,10 @@ export default function Chat() {
           <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setModelMenuOpen(false); }}><span>Model</span><button type="button" className="model-select-trigger" onClick={() => setModelMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={modelMenuOpen}><span>{selectedModel.name} — {selectedModel.provider}</span><i>⌄</i></button>{modelMenuOpen && <div className="model-options" role="listbox" aria-label="Choose AI model">{dashboardModels.map((model) => <button type="button" role="option" aria-selected={selectedSlug === model.slug} className={selectedSlug === model.slug ? 'selected' : ''} key={model.slug} onClick={() => { setSelectedSlug(model.slug); setModelMenuOpen(false); }}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider}</small></span>{selectedSlug === model.slug && <b>✓</b>}</button>)}</div>}</div>
           <Link className="dashboard-link" to="/dashboard">Dashboard</Link>
         </header>
-        {creditStatus && <div className="credit-status" role="status">{creditStatus.unlimited ? 'API access active' : `${creditStatus.remaining} credits remaining`}</div>}
-        {selectedSlug==='smart'&&routeInfo&&<div className="credit-status" role="status">Smart Router → {routeInfo.model}: {routeInfo.reason}{routeInfo.sources.length?` · ${routeInfo.sources.length} knowledge source(s)`:''}</div>}
+        {(creditStatus || (selectedSlug === 'smart' && routeInfo)) && <div className="chat-statuses">
+          {creditStatus && <div className="credit-status" role="status">{creditStatus.unlimited ? 'API access active' : `${creditStatus.remaining} credits remaining`}</div>}
+          {selectedSlug === 'smart' && routeInfo && <div className="credit-status" role="status">Smart Router → {routeInfo.model}: {routeInfo.reason}{routeInfo.sources.length ? ` · ${routeInfo.sources.length} knowledge source(s)` : ''}</div>}
+        </div>}
 
         <div className="chat-messages" ref={messagesContainer}>
           {messages.length === 0 && <div className="chat-empty"><div className="model-orb"><img src={selectedModel.image} alt={`${selectedModel.name} logo`} /></div><p className="chat-eyebrow">{selectedModel.provider} · {selectedModel.name}</p><h1>What can I help you create?</h1><p className="chat-subtitle">Start with your own question or choose one of these ideas.</p><div className="prompt-suggestions">{suggestions.map((item) => <button key={item.title} onClick={() => chooseSuggestion(item.prompt)}><span>{item.icon}</span><strong>{item.title}</strong><small>{item.prompt}</small></button>)}</div></div>}
@@ -512,6 +567,9 @@ export default function Chat() {
               <button type="button" onClick={() => chooseSkill('video')}><span>▶</span> Make a video</button>
               <button type="button" onClick={() => setComposerMenuOpen(false)}><span>▣</span> Canvas</button>
               <button type="button" onClick={() => chooseSkill('web')}><span>◎</span> Search the web</button>
+              <button type="button" disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))} onClick={() => { setComposerMenuOpen(false); sendMessage(null, 'Continue the previous answer from exactly where it stopped. Do not repeat completed content.'); }}><span>→</span> Continue last answer</button>
+              <button type="button" disabled={!activeConversationId || !messages.length} onClick={() => { setComposerMenuOpen(false); branchCurrentConversation(); }}><span>⑂</span> Branch conversation</button>
+              <button type="button" disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))} onClick={() => { const last = [...messages].reverse().find((message) => message.role === 'assistant' && (message.text || message.content)); if (last) toggleFavorite(last.text || last.content, last.modelSlug); setComposerMenuOpen(false); }}><span>★</span> Save last answer</button>
             </div>}
             <div className="composer-box">
               {selectedSkill && <div className="selected-skill">
