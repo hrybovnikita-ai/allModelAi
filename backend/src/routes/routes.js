@@ -27,6 +27,7 @@ const {
     generateImage,
     getWorkspaceItems, createWorkspaceItem, updateWorkspaceItem, deleteWorkspaceItem, getUsageAnalytics, branchConversation, webResearch, getOllamaModels, checkAnswerQuality,
     previewRouter, searchKnowledge, getTeams, createTeam, inviteTeamMember, updateTeamMember, removeTeamMember, shareConversation, getSharedConversation,
+    getSharedPromptTemplates, rateSharedPromptTemplate, chatSuggestions,
 } = require('../controllers/controllers');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
@@ -70,6 +71,9 @@ router.post('/teams', requireAuth, createTeam);
 router.post('/teams/:id/members', requireAuth, inviteTeamMember);
 router.patch('/teams/:id/members/:email', requireAuth, updateTeamMember);
 router.delete('/teams/:id/members/:email', requireAuth, removeTeamMember);
+router.get('/prompts', requireAuth, getSharedPromptTemplates);
+router.post('/prompts/:id/rate', requireAuth, rateSharedPromptTemplate);
+router.post('/chat/suggestions', requireAuth, chatSuggestions);
 router.get('/users', requireAdmin, getUsers);
 router.get('/users/:id', requireAdmin, getUserById);
 router.post('/users', requireAdmin, createUser);

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { dashboardModels } from '../../data/dashboardModels';
 import { apiFetch } from '../../lib/api';
@@ -34,6 +34,11 @@ export default function Chat() {
   const [chatMeta, setChatMeta] = useState(() => JSON.parse(localStorage.getItem('allmodelai_chat_meta') || '{}'));
   const [historyQuery, setHistoryQuery] = useState('');
   const [messageRatings, setMessageRatings] = useState({});
+  const [messageLikes, setMessageLikes] = useState(() => JSON.parse(localStorage.getItem('allmodelai_message_likes') || '{}'));
+  const [messageFeedback, setMessageFeedback] = useState(() => JSON.parse(localStorage.getItem('allmodelai_message_feedback') || '{}'));
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackMessageIndex, setFeedbackMessageIndex] = useState(null);
+  const [feedbackText, setFeedbackText] = useState('');
   const [favorites, setFavorites] = useState(() => JSON.parse(localStorage.getItem('allmodelai_favorites') || '[]'));
   const [sourcesOpen, setSourcesOpen] = useState(null);
   const [activeConversationId, setActiveConversationId] = useState(null);
@@ -56,6 +61,7 @@ export default function Chat() {
   const [routeInfo, setRouteInfo] = useState(null);
   const [themePreference, setThemePreference] = useState(() => JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}').theme || 'dark');
   const [themeSettingsVisible, setThemeSettingsVisible] = useState(() => localStorage.getItem('allmodelai_sidebar_theme_visible') !== 'false');
+  const [contextSuggestions, setContextSuggestions] = useState([]);
   const selectedModel = dashboardModels.find((model) => model.slug === selectedSlug);
 
   const changeTheme = (theme) => {
@@ -96,6 +102,19 @@ export default function Chat() {
     .then((history) => setChatHistory(history))
     .catch(() => {});
 
+  const loadContextSuggestions = async (text) => {
+    const value = String(text || '').trim();
+    if (!value || isSending) { setContextSuggestions([]); return; }
+    try {
+      const response = await apiFetch('/api/chat/suggestions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lastMessage: value }) });
+      if (!response.ok) return;
+      const data = await response.json();
+      setContextSuggestions(Array.isArray(data.suggestions) ? data.suggestions.slice(0, 3) : []);
+    } catch {
+      setContextSuggestions([]);
+    }
+  };
+
   const conversationPreview = (conversation) => {
     const firstUserMessage = conversation.messages?.find((message) => message.role === 'user');
     return String(firstUserMessage?.content ?? firstUserMessage?.text ?? 'Saved conversation').replace(/\s+/g, ' ').trim().slice(0, 54);
@@ -106,6 +125,26 @@ export default function Chat() {
   const copyMessage = async (text) => { await navigator.clipboard.writeText(text); };
   const shareMessage = async (text) => { if(!activeConversationId){await copyMessage(text);return;} const response=await apiFetch(`/api/chat/history/${activeConversationId}/share`,{method:'POST'});const data=await response.json();if(!response.ok){setChatError(data.message||'Could not create sharing link');return;}await navigator.clipboard.writeText(`${location.origin}${new URL(data.url).pathname}`);setChatError('Read-only link copied to clipboard.'); };
   const rateMessage = (index, rating) => setMessageRatings((ratings) => ({ ...ratings, [index]: rating }));
+  const likeMessage = (index) => {
+    setMessageLikes((likes) => {
+      const next = { ...likes, [index]: !likes[index] };
+      localStorage.setItem('allmodelai_message_likes', JSON.stringify(next));
+      return next;
+    });
+  };
+  const openFeedback = (index) => { setFeedbackMessageIndex(index); setFeedbackText(''); setFeedbackModalOpen(true); };
+  const submitFeedback = () => {
+    if (feedbackMessageIndex === null) return;
+    const text = feedbackText.trim();
+    if (!text) { setFeedbackModalOpen(false); return; }
+    setMessageFeedback((feedback) => {
+      const next = { ...feedback, [feedbackMessageIndex]: text };
+      localStorage.setItem('allmodelai_message_feedback', JSON.stringify(next));
+      return next;
+    });
+    setFeedbackModalOpen(false);
+    setFeedbackText('');
+  };
   const toggleFavorite = (text, modelSlug = selectedSlug) => {
     setFavorites((current) => {
       const existing = current.some((item) => item.text === text);
@@ -199,6 +238,11 @@ export default function Chat() {
       })
       .catch(() => {});
   }, [user?.email]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => loadContextSuggestions(prompt), 220);
+    return () => clearTimeout(handler);
+  }, [prompt, isSending, loadContextSuggestions]);
 
   if (!user) return <Navigate to="/" replace />;
 
@@ -551,8 +595,30 @@ export default function Chat() {
             if (!text && message.role === 'assistant' && isSending && index === messages.length - 1) return null;
             const activelyStreaming = isStreamingResponse && isSending && index === messages.length - 1 && message.role === 'assistant';
             const editing = message.role === 'user' && editingMessageIndex === index;
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>Cancel</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : text && <p>{text}{activelyStreaming && <i className="stream-cursor" aria-hidden="true" />}</p>}{message.imageUrl && <img className="generated-image" src={message.imageUrl} alt={text || 'Generated image'} />}{text && !activelyStreaming && !editing && <div className="message-actions">{message.role === 'assistant' ? <><button type="button" data-tooltip="Copy" onClick={() => copyMessage(text)} aria-label="Copy response">▣</button><button type="button" data-tooltip="Good response" className={messageRatings[index] === 'up' ? 'selected' : ''} onClick={() => rateMessage(index, 'up')} aria-label="Good response">♧</button><button type="button" data-tooltip="Bad response" className={messageRatings[index] === 'down' ? 'selected' : ''} onClick={() => rateMessage(index, 'down')} aria-label="Bad response">♧</button><button type="button" data-tooltip="Share" onClick={() => shareMessage(text)} aria-label="Share response">↗</button><button type="button" data-tooltip="Try again" onClick={() => retryMessage(index)} aria-label="Try again">↻</button><button type="button" data-tooltip="More actions" aria-label="More actions">•••</button><button type="button" className="message-sources-button" onClick={() => setSourcesOpen(sourcesOpen === index ? null : index)} aria-expanded={sourcesOpen === index}>◉ <span>Sources</span></button></> : <><button type="button" data-tooltip="Copy" onClick={() => copyMessage(text)} aria-label="Copy message">▣</button><button type="button" data-tooltip="Edit" onClick={() => editMessage(index)} aria-label="Edit message">✎</button></>}{sourcesOpen === index && message.role === 'assistant' && <small className="message-source-note">Provider: {messageModel.provider} · Model: {messageModel.name}</small>}</div>}</div></article>;
-          })}
+            const liked = messageLikes[index];
+            const feedback = messageFeedback[index];
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>Cancel</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : text && <p>{text}{activelyStreaming && <i className="stream-cursor" aria-hidden="true" />}</p>}{message.imageUrl && <img className="generated-image" src={message.imageUrl} alt={text || 'Generated image'} />}{text && !activelyStreaming && !editing && <div className="message-actions">
+              {message.role === 'assistant' ? (
+                <>
+                  <button type="button" data-tooltip="Copy" onClick={() => copyMessage(text)} aria-label="Copy response">⎘</button>
+                  <button type="button" data-tooltip={liked ? 'Liked' : 'Like'} className={liked ? 'selected-like' : ''} onClick={() => likeMessage(index)} aria-label="Like response">👍</button>
+                  <button type="button" data-tooltip="Feedback" onClick={() => openFeedback(index)} aria-label="Leave feedback">💬</button>
+                  <button type="button" data-tooltip="Good response" className={messageRatings[index] === 'up' ? 'selected' : ''} onClick={() => rateMessage(index, 'up')} aria-label="Good response">♧</button>
+                  <button type="button" data-tooltip="Bad response" className={messageRatings[index] === 'down' ? 'selected' : ''} onClick={() => rateMessage(index, 'down')} aria-label="Bad response">♧</button>
+                  <button type="button" data-tooltip="Share" onClick={() => shareMessage(text)} aria-label="Share response">↗</button>
+                  <button type="button" data-tooltip="Retry" onClick={() => retryMessage(index)} aria-label="Retry response">⟳</button>
+                  {feedback && <span className="feedback-badge" title={feedback}>Feedback sent</span>}
+                </>
+              ) : (
+                <>
+                  <button type="button" data-tooltip="Copy" onClick={() => copyMessage(text)} aria-label="Copy message">⎘</button>
+                  <button type="button" data-tooltip="Edit" onClick={() => editMessage(index)} aria-label="Edit message">✎</button>
+                </>
+              )}
+             </div>}
+            </div>
+           </article>
+            })}
           {isSending && !isStreamingResponse && <article className="chat-message assistant thinking-message"><span className="thinking-avatar" aria-hidden="true"><i /></span><div><small>{selectedModel.name}</small><p className="typing-indicator"><b>Thinking<span className="thinking-dots"><i /><i /><i /></span></b></p></div></article>}
           {chatError && <div className="chat-api-error" role="alert"><span>{chatError}</span><div><button type="button" onClick={() => { setSelectedSlug('gemini'); setChatError(''); setPrompt(messages.slice().reverse().find(message => message.role === 'user')?.text || ''); }}>Try with Gemini</button><Link to="/checkout?plan=pro">View demo plans</Link></div></div>}
           <div ref={messagesEnd} />
@@ -578,7 +644,8 @@ export default function Chat() {
                 <button type="button" className="selected-skill-remove" onClick={() => setSelectedSkill(null)} aria-label="Remove selected skill" title="Remove skill">×</button>
               </div>}
               <input ref={fileInput} className="chat-file-input" type="file" accept=".pdf,.doc,.docx,.txt,.md,.json,.csv,.png,.jpg,.jpeg,.webp,.js,.jsx,.ts,.tsx,.py,.html,.css" onChange={readFile} />
-              <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={isSending ? selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : selectedSkill === 'image' ? 'Example: a gold dragon flying over a fantasy city at night...' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : `Message ${selectedModel.name}...`} rows="1" aria-label="Chat message" />
+              <textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); loadContextSuggestions(event.target.value); }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={isSending ? selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : selectedSkill === 'image' ? 'Example: a gold dragon flying over a fantasy city at night...' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : `Message ${selectedModel.name}...`} rows="1" aria-label="Chat message" />
+              {contextSuggestions.length > 0 && !isSending && <div className="context-suggestions">{contextSuggestions.map((item) => <button key={item} type="button" onClick={() => { setPrompt(item); setContextSuggestions([]); document.querySelector('.chat-composer textarea')?.focus(); }}>{item}</button>)}</div>}
               <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label="Open tools" aria-expanded={composerMenuOpen}>＋</button></div><span>{selectedModel.name} · {isListening ? 'Listening…' : isSending ? 'Generating — you can keep typing' : 'Ready · replies in your language'}</span><div className="composer-actions"><button type="button" className={isListening ? 'voice-active' : ''} onClick={toggleVoiceInput} aria-label="Use microphone" title="Use microphone">●</button>{isSending ? <button className="stop-generation" type="button" onClick={stopGenerating} aria-label="Stop generating" title="Stop generating"><i /></button> : <button className="send-message" type="submit" disabled={!prompt.trim()} aria-label="Send message">↑</button>}</div></div>
             </div>
           </div>
@@ -587,6 +654,7 @@ export default function Chat() {
       </section>
       {deleteModalOpen && <AccountDeleteModal onCancel={() => { setDeleteModalOpen(false); setDeleteError(''); }} onConfirm={deleteAccount} isDeleting={isDeleting} error={deleteError} />}
       {arenaOpen && <div className="feature-modal-backdrop" onClick={() => setArenaOpen(false)}><section className="feature-modal" onClick={(event) => event.stopPropagation()}><span className="feature-modal-icon">⚔</span><small>AI ARENA</small><h2>Compare the best models</h2><p>Describe the exact task you want the models to compare.</p><textarea autoFocus value={arenaTask} onChange={(event) => setArenaTask(event.target.value)} placeholder="Example: Build a launch plan for my new fitness app" rows="3" /><div className="arena-models"><span>GPT</span><span>Claude</span><span>Gemini</span><span>Grok</span></div><button disabled={!arenaTask.trim()} onClick={launchArena}>Create comparison prompt</button><button className="modal-cancel" onClick={() => setArenaOpen(false)}>Cancel</button></section></div>}
+      {feedbackModalOpen && <div className="feature-modal-backdrop" onClick={() => setFeedbackModalOpen(false)}><section className="feature-modal" onClick={(event) => event.stopPropagation()}><span className="feature-modal-icon">💬</span><small>FEEDBACK</small><h2>Tell us what this response did well</h2><p>Your feedback helps improve the model.</p><textarea autoFocus value={feedbackText} onChange={(event) => setFeedbackText(event.target.value)} placeholder="Example: very clear explanation, great code example" rows="4" /><div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:12}}><button className="modal-cancel" onClick={() => setFeedbackModalOpen(false)}>Cancel</button><button disabled={!feedbackText.trim()} onClick={submitFeedback}>Send feedback</button></div></section></div>}
     </main>
   );
 }

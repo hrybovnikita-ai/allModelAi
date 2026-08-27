@@ -959,6 +959,40 @@ const findKnowledge = (database, email, query, limit = 5) => {
         }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, Math.min(Number(limit) || 5, 10));
 };
 
+const getSharedPromptTemplates = (req, res) => {
+    const rows = req.app.locals.db.database.prepare("SELECT * FROM workspace_items WHERE type = 'prompt' AND json_extract(data, '$.shared') = 'true' ORDER BY updated_at DESC").all();
+    const items = rows.map(parseWorkspaceItem).map((item) => ({ ...item, rating: Number(item.rating || 0) }));
+    return res.json(items);
+};
+
+const rateSharedPromptTemplate = (req, res) => {
+    const id = String(req.params.id || '');
+    if (!id) return res.status(400).json({ message: 'Template id is required' });
+    const row = req.app.locals.db.database.prepare('SELECT * FROM workspace_items WHERE id = ?').get(id);
+    if (!row || row.type !== 'prompt') return res.status(404).json({ message: 'Template not found' });
+    const data = JSON.parse(row.data);
+    if (!data.shared) return res.status(403).json({ message: 'Only shared templates can be rated' });
+    const delta = req.body.direction === 'down' ? -1 : req.body.direction === 'clear' ? -Number(data.rating || 0) : 1;
+    const rating = Math.max(0, Number(data.rating || 0) + delta);
+    const updated = { ...data, rating };
+    req.app.locals.db.database.prepare('UPDATE workspace_items SET data = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(updated), new Date().toISOString(), row.id);
+    return res.json({ id, rating });
+};
+
+const chatSuggestions = (req, res) => {
+    const last = String(req.body.lastMessage || '').trim();
+    if (!last) return res.json({ suggestions: ['Summarize this', 'Give examples', 'Turn this into a checklist'] });
+    const lower = last.toLowerCase();
+    const suggestions = [];
+    if (/\b(function|method|component|class|api|bug|error|code|js|react|python)\b/i.test(lower)) suggestions.push('Explain this like I’m a junior developer');
+    if (/[^\s]/.test(last) && !/^[.!?]+$/.test(last)) suggestions.push('Give a shorter summary');
+    if (/[.!?]/.test(last)) suggestions.push('Rewrite this more clearly');
+    if (/[а-яіїєґ]/i.test(last)) suggestions.push('Сформулюй 3 висновки');
+    if (/[а-яіїєґ]/i.test(last)) suggestions.push('Зроби короткий план дій');
+    while (suggestions.length < 3) suggestions.push('Ask a follow-up question', 'Give a step-by-step answer', 'Show practical examples')[suggestions.length] || 'Continue with more detail';
+    return res.json({ suggestions: suggestions.slice(0, 3) });
+};
+
 const searchKnowledge = (req, res) => {
     const query = String(req.body.query || '').trim();
     if (!query) return res.status(400).json({ message: 'Search query is required' });
@@ -1019,4 +1053,7 @@ module.exports = {
     removeTeamMember,
     shareConversation,
     getSharedConversation,
+    getSharedPromptTemplates,
+    rateSharedPromptTemplate,
+    chatSuggestions,
 };
