@@ -27,7 +27,7 @@ const {
     generateImage,
     getWorkspaceItems, createWorkspaceItem, updateWorkspaceItem, deleteWorkspaceItem, getUsageAnalytics, branchConversation, webResearch, getOllamaModels, checkAnswerQuality,
     previewRouter, searchKnowledge, getTeams, createTeam, inviteTeamMember, updateTeamMember, removeTeamMember, shareConversation, getSharedConversation,
-    getSharedPromptTemplates, rateSharedPromptTemplate, chatSuggestions,
+    getSharedPromptTemplates, rateSharedPromptTemplate, chatSuggestions, recordArenaVote, getArenaLeaderboard,
 } = require('../controllers/controllers');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
@@ -74,6 +74,8 @@ router.delete('/teams/:id/members/:email', requireAuth, removeTeamMember);
 router.get('/prompts', requireAuth, getSharedPromptTemplates);
 router.post('/prompts/:id/rate', requireAuth, rateSharedPromptTemplate);
 router.post('/chat/suggestions', requireAuth, chatSuggestions);
+router.post('/arena/vote', requireAuth, recordArenaVote);
+router.get('/arena/leaderboard', requireAuth, getArenaLeaderboard);
 router.get('/users', requireAdmin, getUsers);
 router.get('/users/:id', requireAdmin, getUserById);
 router.post('/users', requireAdmin, createUser);

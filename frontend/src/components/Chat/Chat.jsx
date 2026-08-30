@@ -22,6 +22,7 @@ export default function Chat() {
   const activeRequest = useRef(null);
   const savedUser = sessionStorage.getItem('allmodelai_user');
   const user = savedUser ? JSON.parse(savedUser) : null;
+  const isGuest = user?.guest === true;
   const [selectedSlug, setSelectedSlug] = useState(searchParams.get('model') || 'gpt');
   const [prompt, setPrompt] = useState(location.state?.starterPrompt || '');
   const [isSending, setIsSending] = useState(false);
@@ -104,7 +105,7 @@ export default function Chat() {
 
   const loadContextSuggestions = async (text) => {
     const value = String(text || '').trim();
-    if (!value || isSending) { setContextSuggestions([]); return; }
+    if (!value || isSending || isGuest) { setContextSuggestions([]); return; }
     try {
       const response = await apiFetch('/api/chat/suggestions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lastMessage: value }) });
       if (!response.ok) return;
@@ -217,15 +218,15 @@ export default function Chat() {
   }, [messages, isSending]);
 
   useEffect(() => {
-    if (!user?.email) return;
+    if (!user?.email || isGuest) return;
     apiFetch(`/api/credits?email=${encodeURIComponent(user.email)}`)
       .then((response) => response.ok ? response.json() : null)
       .then((status) => status && setCreditStatus(status))
       .catch(() => setCreditStatus(null));
-  }, [user?.email]);
+  }, [user?.email, isGuest]);
 
   useEffect(() => {
-    if (!user?.email) return;
+    if (!user?.email || isGuest) return;
     apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
       .then((response) => response.ok ? response.json() : [])
       .then((history) => {
@@ -237,7 +238,7 @@ export default function Chat() {
         }
       })
       .catch(() => {});
-  }, [user?.email]);
+  }, [user?.email, isGuest]);
 
   useEffect(() => {
     const handler = setTimeout(() => loadContextSuggestions(prompt), 220);
@@ -261,6 +262,13 @@ export default function Chat() {
     setMessages([...nextMessages, { role: 'assistant', text: selectedSkill === 'web' ? 'Searching the web…' : '', modelSlug: selectedSlug, webSearching:selectedSkill === 'web' }]);
 
     try {
+      if (isGuest) {
+        const guestReply = `Guest preview: I received “${text.slice(0, 240)}”. Sign up or sign in to connect live AI models, save history, upload documents, generate images, and use the Arena.`;
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        setMessages((current) => current.map((message, index) => index === assistantIndex ? { ...message, text: guestReply, webSearching: false } : message));
+        setSelectedSkill(null);
+        return;
+      }
       if (selectedSkill === 'web') {
         const researchResponse = await apiFetch('/api/research', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:text}), signal:controller.signal });
         const researchData = await researchResponse.json().catch(() => ({}));

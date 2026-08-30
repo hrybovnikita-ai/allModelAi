@@ -31,6 +31,14 @@ const connectDatabase = () => {
 		CREATE TABLE IF NOT EXISTS team_members (team_id TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(team_id, email), FOREIGN KEY(team_id) REFERENCES teams(id) ON DELETE CASCADE);
 		CREATE TABLE IF NOT EXISTS shared_conversations (token TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, owner_email TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE);
 		CREATE INDEX IF NOT EXISTS team_members_email ON team_members(email);
+		CREATE TABLE IF NOT EXISTS arena_votes (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_email TEXT NOT NULL,
+			model_a TEXT NOT NULL,
+			model_b TEXT NOT NULL,
+			winner TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		);
 	`);
 	const userColumns = database.prepare('PRAGMA table_info(users)').all();
 	if (!userColumns.some((column) => column.name === 'password_hash')) {

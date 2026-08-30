@@ -57,6 +57,13 @@ export default function Login({ mode, onClose, onModeChange }) {
     onModeChange(nextMode);
   };
 
+  const continueAsGuest = () => {
+    const guest = { id: 'guest', name: 'Guest', email: 'guest@local', guest: true };
+    sessionStorage.setItem('allmodelai_user', JSON.stringify(guest));
+    onClose();
+    navigate('/chat');
+  };
+
   return (
     <div className="login-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="login-modal" role="dialog" aria-modal="true" aria-labelledby="login-title">
@@ -76,6 +83,7 @@ export default function Login({ mode, onClose, onModeChange }) {
           <button className="login-submit" type="submit" disabled={submitting}>
             {submitting ? 'Please wait...' : signingUp ? 'Create account' : 'Sign in'}
           </button>
+          {!signingUp && <button className="login-guest" type="button" onClick={continueAsGuest}>Try as guest</button>}
           <div className="login-switch">
             <span>{signingUp ? 'Already have an account?' : 'New to AllModelAI?'}</span>
             <button type="button" onClick={() => changeMode(signingUp ? 'signin' : 'signup')}>{signingUp ? 'Sign in' : 'Sign up'}</button>

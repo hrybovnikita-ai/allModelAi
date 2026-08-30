@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import './ProductSuite.css';
 
 const features = [
+  ['guest', 'Guest mode', 'Workspace', 'Try the chat instantly without creating an account or saving private history.', '/chat', '00', 'Live'],
   ['verify', 'Email verification', 'Security', 'Confirm new accounts through a protected email link.', '/settings', '01', 'Protected'],
   ['recovery', 'Password recovery', 'Security', 'Recover access through a time-limited reset flow.', '/forgot-password', '02', 'Ready'],
   ['two-factor', 'Two-factor security', 'Security', 'Add a second verification step to sensitive account actions.', '/settings', '03', 'Protected'],
@@ -38,7 +39,7 @@ export default function ProductSuite() {
 
   return <main className="suite-page">
     <header className="suite-header"><Link to="/dashboard" className="suite-brand"><span>AI</span>AllModelAI</Link><nav><Link to="/chat">Chat</Link><Link to="/studio">Studio</Link><Link to="/dashboard">Dashboard</Link></nav></header>
-    <section className="suite-hero"><div><p>COMPLETE AI WORKSPACE</p><h1>One application.<br/><span>20 powerful tools.</span></h1><small>Everything you need to create, compare, collaborate, and manage AI work from one secure place.</small></div><div className="suite-score"><strong>20</strong><span>connected modules</span><i><b/></i><small>Product workspace ready</small></div></section>
+    <section className="suite-hero"><div><p>COMPLETE AI WORKSPACE</p><h1>One application.<br/><span>21 powerful tools.</span></h1><small>Guest access, files, voice, model comparison, images, analytics, profiles, exports, and administration in one workspace.</small></div><div className="suite-score"><strong>21</strong><span>connected modules</span><i><b/></i><small>Product workspace ready</small></div></section>
     <section className="suite-toolbar"><div>{categories.map((item) => <button key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{item}</button>)}</div><label><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a feature..." /></label></section>
     <section className="suite-grid">{visible.map(([key, title, group, description, route, number, status]) => <article key={key}><div><i>{number}</i><span>{status}</span></div><small>{group}</small><h2>{title}</h2><p>{description}</p><button onClick={() => navigate(route)}>Open module <b>→</b></button></article>)}</section>
     {!visible.length && <div className="suite-empty"><strong>No modules found</strong><span>Try a different feature name or category.</span></div>}

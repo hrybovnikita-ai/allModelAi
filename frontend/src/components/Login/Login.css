@@ -20,6 +20,8 @@
 .login-actions button.active { border-color: var(--primary); background: var(--primary); }
 .login-submit { width: 100%; padding: 13px; border: 0; border-radius: 9px; background: var(--primary); color: white; font: inherit; font-weight: 800; cursor: pointer; }
 .login-submit:disabled { cursor: wait; opacity: .65; }
+.login-guest { width: 100%; padding: 12px; border: 1px solid #475569; border-radius: 9px; background: transparent; color: #cbd5e1; font: inherit; font-weight: 750; cursor: pointer; }
+.login-guest:hover { border-color: #818cf8; color: #fff; background: rgba(99,102,241,.1); }
 .login-forgot { justify-self: end; color: #a5b4fc; font-size: .75rem; text-decoration: none; }
 .login-switch { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--text-secondary); font-size: .8rem; }
 .login-switch button { padding: 0; border: 0; background: transparent; color: #a5b4fc; font: inherit; font-weight: 800; cursor: pointer; }
