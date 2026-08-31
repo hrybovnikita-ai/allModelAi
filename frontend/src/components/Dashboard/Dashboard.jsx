@@ -56,7 +56,7 @@ export default function Dashboard() {
     <main className="dashboard-page">
       <nav className="dashboard-nav">
         <Link to="/" className="dashboard-brand"><span>AI</span>AllModelAI</Link>
-        <div className="dashboard-nav-links"><Link to="/chat">Chat</Link><Link to="/arena">Arena</Link><Link to="/explore">Models</Link><Link to="/studio">Studio</Link><Link to="/ai-tools">Power Lab</Link><Link to="/creator-tools">Creator Lab</Link><Link to="/features">Features</Link><Link to="/control-center">Control</Link></div>
+        <div className="dashboard-nav-links"><Link to="/chat">Chat</Link><Link to="/ai-platform">AI Platform</Link><Link to="/website-builder">Website Builder</Link><Link to="/arena">Arena</Link><Link to="/explore">Models</Link><Link to="/studio">Studio</Link><Link to="/ai-tools">Power Lab</Link><Link to="/creator-tools">Creator Lab</Link><Link to="/features">Features</Link><Link to="/control-center">Control</Link></div>
         <div className="dashboard-user"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><Link to="/settings"><small>{user.name || user.email}</small></Link><button onClick={() => setDeleteModalOpen(true)}>Sign out</button></div>
       </nav>
       {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user.email}</div>}

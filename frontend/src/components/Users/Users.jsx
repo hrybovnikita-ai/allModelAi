@@ -26,14 +26,15 @@ export default function Users() {
         setLoading(true);
         setError('');
 
-        const response = await axios.get('/api/users', {
+        const response = await axios.get('/api/community/users', {
           signal: controller.signal,
         });
 
-        setUsers(response.data);
+        setUsers(Array.isArray(response.data) ? response.data : []);
       } catch (requestError) {
         if (requestError.code !== 'ERR_CANCELED') {
-          setError('Could not load users. Make sure the AllModelAI backend is running.');
+          const apiMessage = requestError.response?.data?.message;
+          setError(apiMessage || 'Could not reach the AllModelAI API. Please try again shortly.');
         }
       } finally {
         setLoading(false);

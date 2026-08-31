@@ -3,9 +3,9 @@ import { useState } from 'react';
 import './InfoPage.css';
 
 const pages = {
-  privacy: ['Privacy Policy', 'We keep account and workspace data only to provide AllModelAI features. Payment card fields from demo checkout are never sent to the backend.'],
+  privacy: ['Privacy Policy', 'We keep account and workspace data only to provide AllModelAI features. Payment card details are collected and processed by Stripe and are never sent to the AllModelAI backend.'],
   terms: ['Terms of Service', 'Use AllModelAI responsibly. AI responses can be inaccurate, so review important information before relying on it.'],
-  refund: ['Refund Policy', 'AllModelAI currently uses a demo checkout and does not process real payments. No refund or charge is created by this demo flow.'],
+  refund: ['Refund Policy', 'Paid subscriptions are processed by Stripe. Refund eligibility and cancellation terms must be reviewed before production launch and displayed for the customer jurisdiction.'],
   cookies: ['Cookie Policy', 'AllModelAI uses an HttpOnly session cookie to keep you signed in. It does not contain your password or payment information.'],
 };
 

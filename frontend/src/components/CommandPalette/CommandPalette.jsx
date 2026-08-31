@@ -7,6 +7,8 @@ const commands = [
   ['AI Arena','Compare multiple models side by side','/arena','⚔'],
   ['Model Explorer','Search and filter every model','/explore','◈'],
   ['Workspace Studio','Open projects, prompts, and memory','/studio','▦'],
+  ['Website Builder','Generate HTML, CSS, and JavaScript with live preview','/website-builder','</>'],
+  ['AI Platform','Open all 34 connected AI workspaces','/ai-platform','34'],
   ['Dashboard','View your personal workspace','/dashboard','⌂'],
   ['Settings','Manage your account','/settings','⚙'],
 ];

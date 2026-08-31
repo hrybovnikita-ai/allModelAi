@@ -1,129 +1,85 @@
-import { useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import './Checkout.css';
 import './CheckoutDemo.css';
 import './CheckoutProduction.css';
 
 const plans = {
-  starter: { name: 'Starter', price: 0, perks: ['Smart chat routing', 'Gemini & Cloudflare free tier models', 'Conversation history'] },
-  pro: { name: 'Pro', price: 19, perks: ['Every AI model in one place', 'Priority routing & streaming', 'AI Arena and Studio analytics'] },
-  enterprise: { name: 'Enterprise', price: 49, perks: ['Team workspaces & roles', 'Admin console access', 'Knowledge base uploads'] }
+  developer: { key: 'developer', name: 'Developer', price: 0, interval: 'month', limit: '5,000', badge: 'FREE FOR DEVELOPERS', models: 'All models', perks: ['All AI providers', '5,000 requests each month', 'Code Studio and Live Preview'] },
+  week: { key: 'week', name: 'Weekly', price: 5.99, interval: 'week', limit: '500', badge: 'FLEXIBLE', models: '6 core models', perks: ['Gemini, GPT, Llama and DeepSeek', '500 requests each week', 'Cancel from Stripe anytime'] },
+  common: { key: 'common', name: 'Pro Monthly', price: 19, interval: 'month', limit: '3,000', badge: 'MOST POPULAR', models: 'All hosted models', perks: ['Perplexity, Kimi, Claude and more', '3,000 requests each month', 'Priority model routing'] },
+  plus: { key: 'plus', name: 'Power Monthly', price: 49, interval: 'month', limit: '12,000', badge: 'POWER', models: 'All models', perks: ['Every connected provider', '12,000 requests each month', 'Arena, workflows and analytics'] },
 };
 
+const aliases = { starter: 'developer', free: 'developer', pro: 'common', monthly: 'common', enterprise: 'plus', power: 'plus' };
 const skills = [
-  ['01', 'Multi-model chat', 'Talk to GPT, Claude, Gemini, DeepSeek and more from a single conversation.', '/chat', 'Open Chat'],
-  ['02', 'AI Arena', 'Compare two models side by side and vote for the better answer.', '/arena', 'Enter the Arena'],
-  ['03', 'Studio workspace', 'Save projects, track tokens and monitor usage across every model.', '/studio', 'Launch Studio']
+  ['01', 'Multi-model chat', 'Use every model included with your active plan.', '/chat'],
+  ['02', 'Prompt Versioning', 'Save, rate, share, and compare reusable prompts.', '/prompts'],
+  ['03', 'AI Workflows', 'Chain research, writing, coding, and review steps.', '/studio?tool=chains'],
+  ['04', 'Usage Analytics', 'Track requests, limits, and model activity.', '/studio?tool=analytics'],
+  ['05', 'Website Builder', 'Generate source files and preview websites live.', '/website-builder'],
+  ['06', 'Answer Verifier', 'Check answers for quality and unsupported claims.', '/ai-tools?tool=quality'],
 ];
 
 export default function Checkout() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const planKey = searchParams.get('plan') || 'starter';
-  const selectedPlan = plans[planKey] ? planKey : 'starter';
-  const [paymentMethod, setPaymentMethod] = useState('Card');
+  const initial = aliases[searchParams.get('plan')] || searchParams.get('plan') || 'common';
+  const [selectedPlan, setSelectedPlan] = useState(plans[initial] ? initial : 'common');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [purchase, setPurchase] = useState(null);
   const summary = useMemo(() => plans[selectedPlan], [selectedPlan]);
 
-  if (purchase) {
-    return (
-      <main className="checkout-page purchase-success-page">
-        <nav className="checkout-nav">
-          <Link className="checkout-brand" to="/"><span>AI</span>AllModelAI</Link>
-          <Link to="/dashboard">Dashboard</Link>
-        </nav>
-        <p className="checkout-eyebrow">Order complete</p>
-        <div className="success-mark" aria-hidden="true">&#10003;</div>
-        <h1>Welcome to {summary.name}, {purchase.name}!</h1>
-        <p>Your demo subscription is active. No money was charged and no card details were stored.</p>
-        <div className="skill-grid">
-          {skills.map(([index, title, description, to, cta]) => (
-            <Link className="skill-card" key={index} to={to}>
-              <span>{index}</span>
-              <strong>{title}</strong>
-              <small>{description}</small>
-              <b>{cta} &rarr;</b>
-            </Link>
-          ))}
-        </div>
-      </main>
-    );
-  }
+  useEffect(() => {
+    const sessionId = searchParams.get('session_id');
+    if (searchParams.get('success') === 'developer') { setPurchase({ plan: 'developer' }); return; }
+    if (!sessionId || searchParams.get('success') !== '1') return;
+    setSubmitting(true);
+    axios.get(`/api/payments/session/${encodeURIComponent(sessionId)}`, { withCredentials: true })
+      .then((response) => setPurchase(response.data.purchase))
+      .catch((requestError) => setError(requestError.response?.data?.message || 'Stripe payment could not be verified.'))
+      .finally(() => setSubmitting(false));
+  }, [searchParams]);
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
+  const beginCheckout = async () => {
     try {
-      setSubmitting(true);
-      setError('');
-      const response = await axios.post('/api/purchases', { ...payload, plan: selectedPlan }, { withCredentials: true });
-      setPurchase(response.data.purchase || { name: payload.name });
+      setSubmitting(true); setError('');
+      const response = await axios.post('/api/payments/checkout', { plan: selectedPlan }, { withCredentials: true });
+      if (response.data.developerAccess) { setPurchase(response.data.purchase); return; }
+      if (!response.data.checkoutUrl) throw new Error('Stripe did not return a checkout page.');
+      window.location.assign(response.data.checkoutUrl);
     } catch (requestError) {
-      setError(requestError.response?.data?.message || 'Could not reach the server. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
+      setError(requestError.response?.data?.message || requestError.message || 'Could not start secure checkout.');
+    } finally { setSubmitting(false); }
   };
 
-  return (
-    <div className="checkout-page">
-      <nav className="checkout-nav">
-        <Link className="checkout-brand" to="/"><span>AI</span>AllModelAI</Link>
-        <Link to="/">Back to home</Link>
-      </nav>
+  if (purchase) return <main className="checkout-page purchase-success-page">
+    <nav className="checkout-nav"><Link className="checkout-brand" to="/"><span>AI</span>AllModelAI</Link><Link to="/dashboard">Dashboard</Link></nav>
+    <p className="checkout-eyebrow">Access activated</p><div className="success-mark" aria-hidden="true">&#10003;</div>
+    <h1>Your AllModelAI plan is ready.</h1><p>Your request limit and model access are now active on this account.</p>
+    <div className="skill-grid">{skills.map(([index,title,description,to])=><Link className="skill-card" key={index} to={to}><span>{index}</span><strong>{title}</strong><small>{description}</small><b>Open skill &rarr;</b></Link>)}</div>
+  </main>;
 
-      <section className="checkout-layout">
-        <div className="checkout-intro">
-          <p className="checkout-eyebrow">Secure demo checkout</p>
-          <h1>Unlock the full AllModelAI toolkit.</h1>
-          <p>You are subscribing to the {summary.name} plan. This is a visual demo — no real payment happens and nothing sensitive is stored.</p>
-          <div className="checkout-plan">
-            <span>{summary.name} plan</span>
-            <strong>${summary.price}<small>/month</small></strong>
-          </div>
-          <button type="button" onClick={() => navigate('/pricing')}>Compare all plans</button>
-        </div>
-
-        <form className="checkout-form" onSubmit={handleSubmit}>
-          <h2>Billing details</h2>
-          <div className="payments-disabled">
-            <strong>PAYMENTS DISABLED IN DEMO</strong>
-            <span>Use any sample data. Your card will never be charged.</span>
-          </div>
-          <div className="payment-methods" role="group" aria-label="Payment method">
-            {['Card', 'PayPal', 'Bank'].map((method) => (
-              <button key={method} type="button" className={paymentMethod === method ? 'active' : ''} onClick={() => setPaymentMethod(method)}>{method}</button>
-            ))}
-          </div>
-          <label><span>Full name</span><input name="name" placeholder="Alex Morgan" autoComplete="name" required /></label>
-          <label><span>Email</span><input name="email" type="email" placeholder="alex@example.com" autoComplete="email" required /></label>
-          <div className="checkout-form-row">
-            <label><span>City</span><input name="city" placeholder="Kyiv" autoComplete="address-level2" required /></label>
-            <label><span>Date of birth</span><input name="dateOfBirth" type="date" required /></label>
-          </div>
-          <select name="country" defaultValue="Ukraine" aria-label="Country">
-            {['Ukraine', 'Poland', 'Germany', 'United States', 'United Kingdom'].map((country) => <option key={country}>{country}</option>)}
-          </select>
-          {paymentMethod === 'Card' && (
-            <>
-              <label><span>Demo card number</span><input inputMode="numeric" placeholder="4242 4242 4242 4242" minLength="12" maxLength="23" required /></label>
-              <div className="checkout-form-row">
-                <label><span>Expiry</span><input placeholder="12/30" required /></label>
-                <label><span>CVC</span><input inputMode="numeric" placeholder="123" maxLength="4" required /></label>
-              </div>
-            </>
-          )}
-          <label className="checkout-terms"><input type="checkbox" required /><span>I understand this is a demo checkout and no real subscription will be charged.</span></label>
-          {error && <p className="checkout-error" role="alert">{error}</p>}
-          <button className="pay-button" type="submit" disabled={submitting}>
-            {submitting ? 'Processing...' : `Subscribe to ${summary.name}${summary.price ? ` – $${summary.price}/mo` : ' (free)'}`}
-          </button>
-          <p className="demo-payment-note">&#128274; Demo checkout. No transaction occurs and no data is stored.</p>
-        </form>
+  return <main className="checkout-page">
+    <nav className="checkout-nav"><Link className="checkout-brand" to="/"><span>AI</span>AllModelAI</Link><Link to="/dashboard">Dashboard</Link></nav>
+    <section className="checkout-layout">
+      <div className="checkout-intro">
+        <p className="checkout-eyebrow">Plans and model limits</p><h1>Choose how much AI you need.</h1>
+        <p>Select a weekly or monthly request limit. Paid checkout is securely hosted by Stripe; AllModelAI never receives your card number or CVC.</p>
+        <div className="checkout-plan-grid checkout-plan-grid-four">{Object.values(plans).map((plan)=><button type="button" className={selectedPlan===plan.key?'selected':''} onClick={()=>setSelectedPlan(plan.key)} key={plan.key}><i>{plan.badge}</i><span>{plan.name}</span><strong>${plan.price}<small>/{plan.interval}</small></strong><small>{plan.limit} requests · {plan.models}</small><ul>{plan.perks.map((perk)=><li key={perk}>{perk}</li>)}</ul></button>)}</div>
+      </div>
+      <section className="checkout-form stripe-checkout-card">
+        <div className="secure-row"><span>STRIPE SECURE CHECKOUT</span><small>Encrypted payment</small></div>
+        <h2>{summary.name}</h2><div className="checkout-plan"><span>{summary.limit} requests / {summary.interval}</span><strong>${summary.price}<small>/{summary.interval}</small></strong></div>
+        <div className="checkout-model-access"><span>Model access</span><strong>{summary.models}</strong></div>
+        <ul className="checkout-summary-list">{summary.perks.map((perk)=><li key={perk}>{perk}</li>)}</ul>
+        {selectedPlan === 'developer' && <p className="developer-access-note">Developer access is free only for emails listed in <code>DEVELOPER_EMAILS</code>.</p>}
+        {searchParams.get('canceled') && <p className="checkout-error">Checkout was canceled. Nothing was charged.</p>}
+        {error && <p className="checkout-error" role="alert">{error}</p>}
+        <button className="pay-button" type="button" disabled={submitting} onClick={beginCheckout}>{submitting ? 'Preparing secure checkout...' : summary.price ? `Continue to Stripe · $${summary.price}/${summary.interval}` : 'Activate developer access'}</button>
+        <small className="checkout-disclaimer">Paid subscriptions renew automatically until canceled. Stripe collects billing details on the next screen.</small>
       </section>
-    </div>
-  );
+    </section>
+  </main>;
 }

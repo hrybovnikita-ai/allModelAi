@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Highlight, themes } from 'prism-react-renderer';
 import { dashboardModels } from '../../data/dashboardModels';
 import { apiFetch } from '../../lib/api';
 import './Chat.css';
@@ -12,6 +13,55 @@ const suggestions = [
   { icon: '◎', title: 'Compare models', prompt: 'Compare Claude, Gemini, GPT, and Llama.' },
 ];
 
+function CodeBlock({ language, code }) {
+  const [copied, setCopied] = useState(false);
+  const languageAliases = { js: 'javascript', jsx: 'jsx', ts: 'typescript', py: 'python', sh: 'bash', shell: 'bash', html: 'markup' };
+  const prismLanguage = languageAliases[language?.toLowerCase()] || language?.toLowerCase() || 'text';
+  const copyCode = async () => {
+    await navigator.clipboard.writeText(code);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+
+  return <section className="response-code-block">
+    <header><span>{language || 'code'}</span><button type="button" onClick={copyCode} aria-label="Copy code">{copied ? 'Copied' : 'Copy'}</button></header>
+    <Highlight theme={themes.vsDark} code={code} language={prismLanguage}>
+      {({ className, style, tokens, getLineProps, getTokenProps }) => (
+        <pre className={className} style={{ ...style, background: 'transparent' }}>
+          <code>{tokens.map((line, lineIndex) => {
+            const lineProps = getLineProps({ line });
+            return <span {...lineProps} className={`${lineProps.className || ''} code-line`} key={lineIndex}>
+              <span className="code-line-number" aria-hidden="true">{lineIndex + 1}</span>
+              <span className="code-line-content">{line.map((token, tokenIndex) => <span {...getTokenProps({ token })} key={tokenIndex} />)}</span>
+            </span>;
+          })}</code>
+        </pre>
+      )}
+    </Highlight>
+  </section>;
+}
+
+function MessageContent({ text, streaming }) {
+  const parts = [];
+  const codePattern = /```([\w.+#-]*)\s*\n?([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = codePattern.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push({ type: 'text', value: text.slice(lastIndex, match.index) });
+    parts.push({ type: 'code', language: match[1], value: match[2].replace(/\n$/, '') });
+    lastIndex = codePattern.lastIndex;
+  }
+  if (lastIndex < text.length) parts.push({ type: 'text', value: text.slice(lastIndex) });
+
+  return <div className="message-content">
+    {parts.map((part, index) => part.type === 'code'
+      ? <CodeBlock language={part.language} code={part.value} key={`code-${index}`} />
+      : part.value.trim() && <p key={`text-${index}`}>{part.value.trim()}</p>)}
+    {streaming && <i className="stream-cursor" aria-hidden="true" />}
+  </div>;
+}
+
 export default function Chat() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -23,7 +73,10 @@ export default function Chat() {
   const savedUser = sessionStorage.getItem('allmodelai_user');
   const user = savedUser ? JSON.parse(savedUser) : null;
   const isGuest = user?.guest === true;
-  const [selectedSlug, setSelectedSlug] = useState(searchParams.get('model') || 'gpt');
+  const [selectedSlug, setSelectedSlug] = useState(() => {
+    const requested = searchParams.get('model') || localStorage.getItem('allmodelai_selected_model') || 'gpt';
+    return dashboardModels.some((model) => model.slug === requested) ? requested : 'gpt';
+  });
   const [prompt, setPrompt] = useState(location.state?.starterPrompt || '');
   const [isSending, setIsSending] = useState(false);
   const [isStreamingResponse, setIsStreamingResponse] = useState(false);
@@ -60,10 +113,39 @@ export default function Chat() {
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [editDraft, setEditDraft] = useState('');
   const [routeInfo, setRouteInfo] = useState(null);
+  const [modelStatus, setModelStatus] = useState({});
+  const [modelNotice, setModelNotice] = useState('');
   const [themePreference, setThemePreference] = useState(() => JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}').theme || 'dark');
   const [themeSettingsVisible, setThemeSettingsVisible] = useState(() => localStorage.getItem('allmodelai_sidebar_theme_visible') !== 'false');
   const [contextSuggestions, setContextSuggestions] = useState([]);
   const selectedModel = dashboardModels.find((model) => model.slug === selectedSlug);
+
+  const modelIsOnline = (slug) => {
+    if (!Object.keys(modelStatus).length || slug === 'smart') return true;
+    const statusKey = ['gpt', 'gemini', 'claude', 'cloudflare'].includes(slug) ? slug : 'others';
+    return modelStatus[statusKey] !== false;
+  };
+
+  const chooseModel = (model) => {
+    if (!modelIsOnline(model.slug)) {
+      setChatError(`${model.name} needs an API connection. Configure its provider or OpenRouter in the backend environment.`);
+      return;
+    }
+    setSelectedSlug(model.slug);
+    localStorage.setItem('allmodelai_selected_model', model.slug);
+    navigate(`/chat?model=${encodeURIComponent(model.slug)}`, { replace: true });
+    setRouteInfo(null);
+    setChatError('');
+    setModelNotice(`${model.name} selected. Your next message will use ${model.provider}.`);
+    setModelMenuOpen(false);
+  };
+
+  useEffect(() => {
+    apiFetch('/api/status/models')
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => data?.models && setModelStatus(data.models))
+      .catch(() => {});
+  }, []);
 
   const changeTheme = (theme) => {
     const appearance = JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}');
@@ -93,7 +175,16 @@ export default function Chat() {
     recognition.interimResults = true;
     recognition.onstart = () => { setIsListening(true); setChatError(''); };
     recognition.onresult = (event) => setPrompt(Array.from(event.results).map((result) => result[0].transcript).join(''));
-    recognition.onerror = () => setChatError('Could not recognize speech. Check microphone permission.');
+    recognition.onerror = (event) => {
+      const voiceErrors = {
+        'not-allowed': 'Microphone access is blocked. Allow microphone access from the lock icon in the address bar, then try again.',
+        'service-not-allowed': 'Voice recognition is blocked by your browser settings.',
+        'audio-capture': 'No microphone was found. Connect a microphone and check your Windows sound settings.',
+        'no-speech': 'No speech was detected. Try again and speak after Listening appears.',
+        'network': 'Voice recognition could not reach the speech service. Check your internet connection.',
+      };
+      setChatError(voiceErrors[event.error] || 'Voice recognition stopped unexpectedly. Please try again.');
+    };
     recognition.onend = () => setIsListening(false);
     recognition.start();
   };
@@ -340,27 +431,11 @@ export default function Chat() {
       const decoder = new TextDecoder();
       let buffer = '';
       let assistantText = '';
-      let revealQueue = '';
-      let revealFrame = null;
-      let networkFinished = false;
-      let finishReveal;
-      const revealFinished = new Promise((resolve) => { finishReveal = resolve; });
-      const revealText = () => {
-        if (revealQueue.length) {
-          const amount = Math.max(1, Math.ceil(revealQueue.length / 90));
-          const visible = revealQueue.slice(0, amount);
-          revealQueue = revealQueue.slice(amount);
-          setMessages((current) => current.map((message, index) => (
-            index === assistantIndex ? { ...message, text: (message.text || '') + visible } : message
-          )));
-        }
-        if (revealQueue.length) revealFrame = requestAnimationFrame(revealText);
-        else { revealFrame = null; if (networkFinished) finishReveal(); }
-      };
       const enqueueReveal = (text) => {
-        revealQueue += text;
         setIsStreamingResponse(true);
-        if (!revealFrame) revealFrame = requestAnimationFrame(revealText);
+        setMessages((current) => current.map((message, index) => (
+          index === assistantIndex ? { ...message, text: (message.text || '') + text } : message
+        )));
       };
 
       while (true) {
@@ -377,7 +452,10 @@ export default function Chat() {
             setCreditStatus((current) => ({ ...current, ...event, remaining: event.creditsRemaining }));
           }
           if (event.unlimited) setCreditStatus((current) => ({ ...current, ...event, unlimited: true }));
-          if (event.routedModel) setRouteInfo({model:event.routedModel,reason:event.routeReason,sources:event.knowledgeSources||[]});
+          if (event.routedModel) {
+            setRouteInfo({model:event.routedModel,reason:event.routeReason,sources:event.knowledgeSources||[]});
+            if (selectedSlug !== 'smart' && event.actualModelId) setModelNotice(`${selectedModel.name} is answering with ${event.actualModelId}.`);
+          }
           const partialText = event.text;
           if (partialText) {
             assistantText += partialText;
@@ -387,9 +465,6 @@ export default function Chat() {
 
         if (done) break;
       }
-      networkFinished = true;
-      if (!revealFrame) finishReveal();
-      await revealFinished;
       if (conversationId) {
         await apiFetch(`/api/chat/history/${conversationId}`, {
           method: 'PATCH',
@@ -578,7 +653,7 @@ export default function Chat() {
             {chatMenuId === conversation.id && <div className="chat-history-menu"><button onClick={() => togglePinnedChat(conversation)}>{chatMeta[conversation.id]?.pinned ? '☆ Unpin' : '★ Pin'}</button><button onClick={() => editChatTags(conversation)}># Edit tags</button><button onClick={() => renameConversation(conversation)}>✎ Rename</button><button className="danger" onClick={() => deleteConversation(conversation)}>♲ Delete</button></div>}
           </div>)}
         </div>
-        <nav className="sidebar-links" aria-label="Chat navigation"><Link to="/dashboard">⌂ <span>Dashboard</span></Link><Link to="/studio">✦ <span>Workspace Studio</span></Link><Link to="/control-center">⌘ <span>Control Center</span></Link><Link to="/innovation-hub">◈ <span>Innovation Hub</span></Link><Link to="/models/gpt">▦ <span>Model library</span></Link></nav>
+        <nav className="sidebar-links" aria-label="Chat navigation"><Link to="/dashboard">⌂ <span>Dashboard</span></Link><Link to="/ai-platform">34 <span>AI Platform</span></Link><Link to="/website-builder">&lt;/&gt; <span>Website Builder</span></Link><Link to="/studio">✦ <span>Workspace Studio</span></Link><Link to="/control-center">⌘ <span>Control Center</span></Link><Link to="/models/gpt">▦ <span>Model library</span></Link></nav>
         <section className={`sidebar-theme-settings ${themeSettingsVisible?'expanded':'collapsed'}`} aria-label="Theme settings"><div><span>⚙</span><strong>Settings</strong><div className="sidebar-settings-actions"><button type="button" onClick={toggleThemeSettings} aria-expanded={themeSettingsVisible}>{themeSettingsVisible?'Hide':'Show'}</button><Link to="/control-center">More</Link></div></div>{themeSettingsVisible&&<><p>Appearance</p><div className="sidebar-theme-options">{[['light','☀','Light'],['dark','●','Dark'],['auto','◐','Auto']].map(([value,icon,label])=><button type="button" className={themePreference===value?'active':''} onClick={()=>changeTheme(value)} title={`${label} theme`} aria-pressed={themePreference===value} key={value}><i>{icon}</i><span>{label}</span></button>)}</div></>}</section>
         <div className="chat-profile"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><div><strong>{user.name || 'User'}</strong><small>{user.email}</small></div><button onClick={() => setDeleteModalOpen(true)} aria-label="Sign out" title="Sign out">↗</button></div>
       </aside>
@@ -586,13 +661,14 @@ export default function Chat() {
       <section className="chat-workspace">
         <header className="chat-header">
           <button className="sidebar-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open sidebar">☰</button>
-          <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? 'Temporary chat' : activeProject ? activeProject.name : 'Chatting with'}</small><strong>{selectedModel.name}</strong></span><i>Online</i></div>
-          <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setModelMenuOpen(false); }}><span>Model</span><button type="button" className="model-select-trigger" onClick={() => setModelMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={modelMenuOpen}><span>{selectedModel.name} — {selectedModel.provider}</span><i>⌄</i></button>{modelMenuOpen && <div className="model-options" role="listbox" aria-label="Choose AI model">{dashboardModels.map((model) => <button type="button" role="option" aria-selected={selectedSlug === model.slug} className={selectedSlug === model.slug ? 'selected' : ''} key={model.slug} onClick={() => { setSelectedSlug(model.slug); setModelMenuOpen(false); }}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider}</small></span>{selectedSlug === model.slug && <b>✓</b>}</button>)}</div>}</div>
+          <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? 'Temporary chat' : activeProject ? activeProject.name : 'Chatting with'}</small><strong>{selectedModel.name}</strong></span><i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? 'Online' : 'API needed'}</i></div>
+          <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setModelMenuOpen(false); }}><span>Model</span><button type="button" className="model-select-trigger" onClick={() => setModelMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={modelMenuOpen}><span>{selectedModel.name} — {selectedModel.provider}</span><i>⌄</i></button>{modelMenuOpen && <div className="model-options" role="listbox" aria-label="Choose AI model">{dashboardModels.map((model) => { const online = modelIsOnline(model.slug); return <button type="button" role="option" aria-selected={selectedSlug === model.slug} aria-disabled={!online} className={`${selectedSlug === model.slug ? 'selected' : ''}${online ? '' : ' unavailable'}`} key={model.slug} onClick={() => chooseModel(model)}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {online ? 'Ready' : 'API needed'}</small></span>{selectedSlug === model.slug && <b>✓</b>}</button>; })}</div>}</div>
           <Link className="dashboard-link" to="/dashboard">Dashboard</Link>
         </header>
-        {(creditStatus || (selectedSlug === 'smart' && routeInfo)) && <div className="chat-statuses">
+        {(creditStatus || (selectedSlug === 'smart' && routeInfo) || modelNotice) && <div className="chat-statuses">
           {creditStatus && <div className="credit-status" role="status">{creditStatus.unlimited ? 'API access active' : `${creditStatus.remaining} credits remaining`}</div>}
           {selectedSlug === 'smart' && routeInfo && <div className="credit-status" role="status">Smart Router → {routeInfo.model}: {routeInfo.reason}{routeInfo.sources.length ? ` · ${routeInfo.sources.length} knowledge source(s)` : ''}</div>}
+          {modelNotice && <div className="model-selection-notice" role="status"><span>{modelNotice}</span><button type="button" onClick={() => setModelNotice('')} aria-label="Dismiss model selection message">×</button></div>}
         </div>}
 
         <div className="chat-messages" ref={messagesContainer}>
@@ -605,7 +681,7 @@ export default function Chat() {
             const editing = message.role === 'user' && editingMessageIndex === index;
             const liked = messageLikes[index];
             const feedback = messageFeedback[index];
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>Cancel</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : text && <p>{text}{activelyStreaming && <i className="stream-cursor" aria-hidden="true" />}</p>}{message.imageUrl && <img className="generated-image" src={message.imageUrl} alt={text || 'Generated image'} />}{text && !activelyStreaming && !editing && <div className="message-actions">
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>Cancel</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : text && (message.role === 'assistant' ? <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.imageUrl && <img className="generated-image" src={message.imageUrl} alt={text || 'Generated image'} />}{text && !activelyStreaming && !editing && <div className="message-actions">
               {message.role === 'assistant' ? (
                 <>
                   <button type="button" data-tooltip="Copy" onClick={() => copyMessage(text)} aria-label="Copy response">⎘</button>
@@ -628,7 +704,7 @@ export default function Chat() {
            </article>
             })}
           {isSending && !isStreamingResponse && <article className="chat-message assistant thinking-message"><span className="thinking-avatar" aria-hidden="true"><i /></span><div><small>{selectedModel.name}</small><p className="typing-indicator"><b>Thinking<span className="thinking-dots"><i /><i /><i /></span></b></p></div></article>}
-          {chatError && <div className="chat-api-error" role="alert"><span>{chatError}</span><div><button type="button" onClick={() => { setSelectedSlug('gemini'); setChatError(''); setPrompt(messages.slice().reverse().find(message => message.role === 'user')?.text || ''); }}>Try with Gemini</button><Link to="/checkout?plan=pro">View demo plans</Link></div></div>}
+          {chatError && <div className="chat-api-error" role="alert"><span>{chatError}</span><div>{/(microphone|speech|voice recognition)/i.test(chatError) ? <><button type="button" onClick={() => { setChatError(''); toggleVoiceInput(); }}>Try microphone again</button><button type="button" onClick={() => setChatError('')}>Dismiss</button></> : <><button type="button" onClick={() => { setSelectedSlug('gemini'); setChatError(''); setPrompt(messages.slice().reverse().find(message => message.role === 'user')?.text || ''); }}>Try with Gemini</button><Link to="/checkout?plan=pro">View demo plans</Link></>}</div></div>}
           <div ref={messagesEnd} />
         </div>
 

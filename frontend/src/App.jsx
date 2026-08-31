@@ -35,6 +35,8 @@ import AIToolsLab from "./components/AIToolsLab/AIToolsLab";
 import CreatorLab from "./components/CreatorLab/CreatorLab";
 import SharedConversation from "./components/SharedConversation";
 import PromptGallery from "./components/PromptGallery/PromptGallery";
+import WebsiteBuilder from "./components/WebsiteBuilder/WebsiteBuilder";
+import AIPlatform from "./components/AIPlatform/AIPlatform";
 
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");
@@ -137,6 +139,8 @@ export default function App() {
       <Route path="/creator-tools" element={<CreatorLab />} />
       <Route path="/shared/:token" element={<SharedConversation />} />
       <Route path="/prompts" element={<PromptGallery />} />
+      <Route path="/website-builder" element={<WebsiteBuilder />} />
+      <Route path="/ai-platform" element={<AIPlatform />} />
     </Routes></>
   );
 }

@@ -1,0 +1,6 @@
+
+> allmodelai-backend@1.0.0 start
+> node server.js
+
+Server is running at http://localhost:5050
+Database is connected at C:\Users\Никита\Desktop\Nikita_Hrybov\allModelAi\backend\storage\database.sqlite

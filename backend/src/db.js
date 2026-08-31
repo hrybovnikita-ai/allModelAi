@@ -16,12 +16,25 @@ const connectDatabase = () => {
 	const isLegacyJson = path.extname(configuredPath).toLowerCase() === '.json';
 	const filePath = isLegacyJson ? `${configuredPath}.sqlite` : configuredPath;
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
-	const legacyData = isLegacyJson ? readLegacyData(configuredPath) : defaultDatabase;
+	const defaultLegacyPath = path.join(__dirname, '..', 'storage', 'database.json');
+	const legacyPath = isLegacyJson ? configuredPath : process.env.DB_FILE ? null : defaultLegacyPath;
+	const legacyData = legacyPath ? readLegacyData(legacyPath) : defaultDatabase;
 	const database = new Database(filePath);
 	database.exec(`
 		CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, password_hash TEXT);
 		CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY, name TEXT, email TEXT NOT NULL, city TEXT, date_of_birth TEXT, plan TEXT, created_at TEXT);
 		CREATE TABLE IF NOT EXISTS subscriptions (email TEXT PRIMARY KEY, plan TEXT NOT NULL);
+		CREATE TABLE IF NOT EXISTS subscription_details (
+			email TEXT PRIMARY KEY,
+			plan TEXT NOT NULL,
+			billing_interval TEXT NOT NULL,
+			request_limit INTEGER NOT NULL,
+			period_end TEXT,
+			stripe_customer_id TEXT,
+			stripe_subscription_id TEXT,
+			status TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
 		CREATE TABLE IF NOT EXISTS usage (email TEXT PRIMARY KEY, used INTEGER NOT NULL DEFAULT 0);
 		CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, email TEXT NOT NULL, model TEXT, title TEXT, messages TEXT NOT NULL, created_at TEXT, updated_at TEXT);
 		CREATE TABLE IF NOT EXISTS auth_sessions (token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
@@ -57,6 +70,18 @@ const connectDatabase = () => {
 			Object.entries(legacyData.subscriptions || {}).forEach(([email, plan]) => insertSubscription.run(email, plan));
 			Object.entries(legacyData.usage || {}).forEach(([email, used]) => insertUsage.run(email, used));
 			legacyData.conversations.forEach((conversation) => insertConversation.run(conversation.id, conversation.email, conversation.model, conversation.title, JSON.stringify(conversation.messages || []), conversation.createdAt, conversation.updatedAt));
+		})();
+	}
+	if (legacyData.users.length) {
+		const findUserByEmail = database.prepare('SELECT id FROM users WHERE lower(email) = lower(?)');
+		const findUserById = database.prepare('SELECT id FROM users WHERE id = ?');
+		const insertMissingUser = database.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)');
+		database.transaction(() => {
+			legacyData.users.forEach((user) => {
+				if (findUserByEmail.get(user.email)) return;
+				const availableId = findUserById.get(user.id) ? null : user.id;
+				insertMissingUser.run(availableId, user.name, user.email, user.passwordHash || null);
+			});
 		})();
 	}
 	connection = {

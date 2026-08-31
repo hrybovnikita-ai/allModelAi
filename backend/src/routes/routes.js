@@ -8,6 +8,7 @@ const {
     googleCallback,
     getSession,
     logout,
+    getCommunityUsers,
     getUsers,
     getUserById,
     createUser,
@@ -23,6 +24,8 @@ const {
     renameChat,
     deleteChat,
     createPurchase,
+    createCheckoutSession,
+    verifyCheckoutSession,
     createChatResponse,
     generateImage,
     getWorkspaceItems, createWorkspaceItem, updateWorkspaceItem, deleteWorkspaceItem, getUsageAnalytics, branchConversation, webResearch, getOllamaModels, checkAnswerQuality,
@@ -42,6 +45,7 @@ router.get('/auth/google/callback', googleCallback);
 router.get('/auth/session', getSession);
 router.post('/auth/logout', logout);
 router.get('/status/models', getModelStatus);
+router.get('/community/users', getCommunityUsers);
 router.get('/admin/stats', getAdminStats);
 router.get('/share/:token', getSharedConversation);
 
@@ -50,6 +54,8 @@ router.post('/chat', requireAuth, createChatResponse);
 router.post('/router/preview', requireAuth, previewRouter);
 router.post('/images', requireAuth, generateImage);
 router.post('/purchases', requireAuth, createPurchase);
+router.post('/payments/checkout', requireAuth, createCheckoutSession);
+router.get('/payments/session/:sessionId', requireAuth, verifyCheckoutSession);
 router.get('/credits', requireAuth, getCredits);
 router.get('/chat/history', requireAuth, getChatHistory);
 router.post('/chat/history', requireAuth, createChatHistory);

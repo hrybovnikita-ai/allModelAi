@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const { promisify } = require('node:util');
+const Stripe = require('stripe');
 const users = require('../data/data');
 
 const sessionCookie = 'allmodelai_session';
@@ -274,6 +275,14 @@ const getUsers = (req, res) => {
     res.status(200).json(users.map(publicUser));
 };
 
+const getCommunityUsers = (_req, res) => {
+    const communityUsers = users
+        .filter((user) => user.id >= 1 && user.id <= 8)
+        .map(({ id, name, email }) => ({ id, name, email }));
+
+    return res.status(200).json(communityUsers);
+};
+
 const getUserById = (req, res) => {
     const id = Number(req.params.id);
     const user = users.find((item) => item.id === id);
@@ -381,24 +390,34 @@ const deleteAccount = (req, res) => {
     return res.status(200).json({ message: 'Account deleted successfully', user: deletedUser });
 };
 
-const creditLimits = { free: 10, common: 100, plus: 1000 };
+const subscriptionPlans = {
+    free: { name: 'Developer', amount: 0, interval: 'month', limit: 5000, models: ['all'] },
+    week: { name: 'Weekly', amount: 599, interval: 'week', limit: 500, models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'cloudflare'] },
+    common: { name: 'Pro Monthly', amount: 1900, interval: 'month', limit: 3000, models: ['smart', 'gemini', 'gpt', 'claude', 'llama', 'grok', 'copilot', 'perplexity', 'kimi', 'deepseek', 'mistral', 'qwen', 'cohere', 'cloudflare'] },
+    plus: { name: 'Power Monthly', amount: 4900, interval: 'month', limit: 12000, models: ['all'] },
+};
+const creditLimits = Object.fromEntries(Object.entries(subscriptionPlans).map(([key, plan]) => [key, plan.limit]));
 const creditLimitsEnabled = () => process.env.ENFORCE_CREDIT_LIMITS === 'true';
+const developerEmails = () => new Set(String(process.env.DEVELOPER_EMAILS || 'hrybovnikita@gmail.com').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean));
 
 const getCreditStatus = (database, email) => {
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const data = database.read();
     data.subscriptions ||= {};
     data.usage ||= {};
-    const plan = data.subscriptions[normalizedEmail] || 'free';
-    const limit = creditLimits[plan] || creditLimits.free;
+    const detail = database.database.prepare('SELECT plan, billing_interval AS billingInterval, request_limit AS requestLimit, period_end AS periodEnd, status FROM subscription_details WHERE email = ?').get(normalizedEmail);
+    const detailActive = detail && detail.status === 'active' && (!detail.periodEnd || Date.parse(detail.periodEnd) > Date.now());
+    const plan = detailActive ? detail.plan : (data.subscriptions[normalizedEmail] || 'free');
+    const planDefinition = subscriptionPlans[plan] || subscriptionPlans.free;
+    const limit = detailActive ? detail.requestLimit : (creditLimits[plan] || creditLimits.free);
     const used = Number(data.usage[normalizedEmail] || 0);
 
-    return { data, email: normalizedEmail, plan, limit, used, remaining: Math.max(limit - used, 0) };
+    return { data, email: normalizedEmail, plan, limit, used, remaining: Math.max(limit - used, 0), billingInterval: detail?.billingInterval || planDefinition.interval, periodEnd: detailActive ? detail.periodEnd : null, models: planDefinition.models, enforced: creditLimitsEnabled() || Boolean(detailActive) };
 };
 
 const getModelStatus = (_req, res) => {
     const gateway = Boolean(process.env.OPENROUTER_API_KEY || process.env.API_KEY);
-    const openAI = Boolean(process.env.OPENAI_API_KEY);
+    const openAI = Boolean(process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY);
     return res.status(200).json({
         updatedAt: new Date().toISOString(),
         models: {
@@ -420,8 +439,8 @@ const getAdminStats = (req, res) => {
 
 const getCredits = (req, res) => {
     const status = getCreditStatus(req.app.locals.db, req.user.email);
-    const unlimited = !creditLimitsEnabled();
-    return res.status(200).json({ plan: status.plan, limit: status.limit, used: status.used, remaining: status.remaining, unlimited });
+    const unlimited = !status.enforced;
+    return res.status(200).json({ plan: status.plan, limit: status.limit, used: status.used, remaining: status.remaining, unlimited, billingInterval: status.billingInterval, periodEnd: status.periodEnd, models: status.models });
 };
 
 const getChatHistory = (req, res) => {
@@ -486,25 +505,13 @@ const deleteChat = (req, res) => {
     return res.status(200).json({ message: 'Conversation deleted successfully' });
 };
 
-const createPurchase = (req, res) => {
-    const { name, city, dateOfBirth, plan } = req.body;
-    const email = req.user.email;
+const normalizePlanKey = (value) => ({ starter: 'free', developer: 'free', pro: 'common', monthly: 'common', power: 'plus' }[String(value || '').toLowerCase()] || String(value || '').toLowerCase());
+const periodEndFor = (interval) => new Date(Date.now() + (interval === 'week' ? 7 : 30) * 24 * 60 * 60 * 1000).toISOString();
 
-    if (!name || !city || !dateOfBirth || !plan) {
-        return res.status(400).json({ message: 'All purchase fields are required' });
-    }
-
+const activateSubscription = (database, { email, name = 'Subscriber', city = '', dateOfBirth = '', planKey, stripeCustomerId = null, stripeSubscriptionId = null }) => {
+    const plan = subscriptionPlans[planKey];
+    if (!plan) throw new Error('Unknown subscription plan');
     const normalizedEmail = String(email).trim().toLowerCase();
-    const developerEmails = new Set(String(process.env.DEVELOPER_EMAILS || 'hrybovnikita@gmail.com').split(',').map((item)=>item.trim().toLowerCase()).filter(Boolean));
-    const developerAccess = developerEmails.has(normalizedEmail);
-    if (!developerAccess) {
-        return res.status(503).json({ message: 'A payment provider is not connected yet. No money was charged.' });
-    }
-    const database = req.app.locals.db;
-    const normalizedPlan = String(plan).trim().toLowerCase();
-    const planKey = normalizedPlan === 'starter' || normalizedPlan === 'free'
-        ? 'free'
-        : normalizedPlan === 'pro' || normalizedPlan === 'common' ? 'common' : 'plus';
     const data = database.read();
     data.subscriptions ||= {};
     data.usage ||= {};
@@ -517,14 +524,80 @@ const createPurchase = (req, res) => {
         dateOfBirth: String(dateOfBirth),
         createdAt: new Date().toISOString(),
     };
-
     data.purchases.push(purchase);
-    data.subscriptions[purchase.email] = planKey;
-    data.usage[purchase.email] = 0;
+    data.subscriptions[normalizedEmail] = planKey;
+    data.usage[normalizedEmail] = 0;
     database.write(data);
-
-    return res.status(201).json({ message: developerAccess ? 'Developer access activated. No payment was charged.' : 'Payment verified and subscription activated.', purchase, developerAccess, charged:false });
+    database.database.prepare(`INSERT INTO subscription_details (email, plan, billing_interval, request_limit, period_end, stripe_customer_id, stripe_subscription_id, status, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?) ON CONFLICT(email) DO UPDATE SET plan=excluded.plan, billing_interval=excluded.billing_interval, request_limit=excluded.request_limit, period_end=excluded.period_end, stripe_customer_id=excluded.stripe_customer_id, stripe_subscription_id=excluded.stripe_subscription_id, status='active', updated_at=excluded.updated_at`)
+        .run(normalizedEmail, planKey, plan.interval, plan.limit, periodEndFor(plan.interval), stripeCustomerId, stripeSubscriptionId, new Date().toISOString());
+    return purchase;
 };
+
+const createCheckoutSession = async (req, res) => {
+    const planKey = normalizePlanKey(req.body.plan);
+    const plan = subscriptionPlans[planKey];
+    if (!plan) return res.status(400).json({ message: 'Choose a valid subscription plan' });
+    const email = String(req.user.email).trim().toLowerCase();
+    if (developerEmails().has(email)) {
+        const purchase = activateSubscription(req.app.locals.db, { email, name: req.user.name, planKey: 'free' });
+        return res.status(201).json({ developerAccess: true, purchase, redirectUrl: `${process.env.FRONTEND_ORIGIN || 'http://localhost:5173'}/checkout?success=developer&plan=developer` });
+    }
+    if (plan.amount === 0) return res.status(403).json({ message: 'The Developer plan is available only to configured developer accounts.' });
+    if (!process.env.STRIPE_SECRET_KEY?.trim()) return res.status(503).json({ message: 'Payments are not configured. Add STRIPE_SECRET_KEY to the backend environment.' });
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
+    const frontendOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+    const session = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        customer_email: email,
+        client_reference_id: String(req.user.id),
+        billing_address_collection: 'required',
+        phone_number_collection: { enabled: true },
+        line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: plan.amount, recurring: { interval: plan.interval }, product_data: { name: `AllModelAI ${plan.name}`, description: `${plan.limit.toLocaleString()} AI requests per ${plan.interval}` } } }],
+        metadata: { email, plan: planKey, userName: req.user.name || 'Subscriber' },
+        subscription_data: { metadata: { email, plan: planKey } },
+        success_url: `${frontendOrigin}/checkout?success=1&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${frontendOrigin}/checkout?canceled=1&plan=${planKey}`,
+    });
+    return res.status(201).json({ checkoutUrl: session.url });
+};
+
+const fulfillStripeSession = (database, session) => {
+    const planKey = normalizePlanKey(session.metadata?.plan);
+    if (!subscriptionPlans[planKey] || (session.payment_status !== 'paid' && session.status !== 'complete')) throw new Error('Payment is not complete');
+    const existing = session.subscription && database.database.prepare('SELECT email FROM subscription_details WHERE stripe_subscription_id = ? AND status = ?').get(String(session.subscription), 'active');
+    if (existing) {
+        const previous = database.read().purchases.filter((item) => item.email === existing.email && item.plan === planKey).at(-1);
+        return previous || { email: existing.email, plan: planKey, name: session.metadata.userName || 'Subscriber' };
+    }
+    return activateSubscription(database, { email: session.metadata.email || session.customer_details?.email, name: session.metadata.userName, planKey, stripeCustomerId: session.customer, stripeSubscriptionId: session.subscription });
+};
+
+const verifyCheckoutSession = async (req, res) => {
+    if (!process.env.STRIPE_SECRET_KEY?.trim()) return res.status(503).json({ message: 'Payments are not configured' });
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
+    const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
+    if (String(session.metadata?.email).toLowerCase() !== String(req.user.email).toLowerCase()) return res.status(403).json({ message: 'This checkout belongs to another account' });
+    const purchase = fulfillStripeSession(req.app.locals.db, session);
+    return res.json({ purchase, plan: subscriptionPlans[purchase.plan] });
+};
+
+const stripeWebhook = (req, res) => {
+    if (!process.env.STRIPE_SECRET_KEY?.trim() || !process.env.STRIPE_WEBHOOK_SECRET?.trim()) return res.status(503).send('Stripe webhook is not configured');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
+    let event;
+    try { event = stripe.webhooks.constructEvent(req.body, req.get('stripe-signature'), process.env.STRIPE_WEBHOOK_SECRET.trim()); }
+    catch (error) { return res.status(400).send(`Webhook Error: ${error.message}`); }
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+        try { fulfillStripeSession(req.app.locals.db, event.data.object); } catch (error) { return res.status(400).send(error.message); }
+    }
+    if (event.type === 'customer.subscription.deleted') {
+        req.app.locals.db.database.prepare("UPDATE subscription_details SET status = 'canceled', updated_at = ? WHERE stripe_subscription_id = ?").run(new Date().toISOString(), String(event.data.object.id));
+    }
+    return res.json({ received: true });
+};
+
+const createPurchase = (req, res) => createCheckoutSession(req, res);
 
 const chooseSmartRoute = (prompt, mode = 'balanced') => {
     const text = String(prompt || '').toLowerCase();
@@ -552,7 +625,7 @@ const previewRouter = (req, res) => {
 };
 
 const createChatResponse = async (req, res) => {
-    const { messages, model = 'gpt', conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {}, useKnowledge = true, systemInstructions = '' } = req.body;
+    const { messages, model = 'gpt', conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {}, useKnowledge = true, systemInstructions = '', maxTokens } = req.body;
     const userEmail = req.user.email;
     const providerModels = {
         gpt: 'openai/gpt-4o-mini',
@@ -561,7 +634,7 @@ const createChatResponse = async (req, res) => {
         grok: '~x-ai/grok-latest',
         copilot: 'openai/gpt-4o-mini',
         perplexity: 'perplexity/sonar',
-        kimi: '~moonshotai/kimi-latest',
+        kimi: process.env.KIMI_MODEL || 'moonshotai/kimi-k2.5',
         deepseek: 'deepseek/deepseek-chat',
         llama: 'meta-llama/llama-3.3-70b-instruct',
         mistral: 'mistralai/mistral-small-3.1-24b-instruct',
@@ -580,14 +653,16 @@ const createChatResponse = async (req, res) => {
     // Prefer the shared OpenRouter connection for Claude when it is configured.
     // This keeps Claude available when a direct Anthropic account has no credits.
     const gatewayKey = process.env.OPENROUTER_API_KEY || process.env.API_KEY;
-    const openAIKey = process.env.OPENAI_API_KEY?.trim();
-    const isOpenAI = Boolean(openAIKey && (routedModel === 'gpt' || routedModel === 'copilot'));
+    const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
+    const preferGemini = process.env.PREFER_GEMINI === 'true' && Boolean(process.env.GEMINI_API_KEY?.trim());
+    const usePreferredGemini = preferGemini && model === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
+    let isOpenAI = Boolean(openAIKey && !usePreferredGemini && (routedModel === 'gpt' || routedModel === 'copilot'));
     const isClaude = routedModel === 'claude' && !gatewayKey?.trim();
-    const isGemini = routedModel === 'gemini' && !gatewayKey?.trim();
+    let isGemini = (routedModel === 'gemini' || usePreferredGemini) && Boolean(process.env.GEMINI_API_KEY?.trim());
     const hasCloudflareDirect = Boolean((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID);
     const isCloudflare = routedModel === 'cloudflare' && hasCloudflareDirect;
     const cloudflareKey = process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY;
-    const apiKey = isOpenAI ? openAIKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isCloudflare ? cloudflareKey : gatewayKey;
+    let apiKey = isOpenAI ? openAIKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isCloudflare ? cloudflareKey : gatewayKey;
     if (!apiKey) {
         return res.status(503).json({ message: `${isClaude ? 'The Claude' : isGemini ? 'The Gemini' : isCloudflare ? 'The Cloudflare' : 'The OpenRouter'} API key is not configured` });
     }
@@ -599,8 +674,11 @@ const createChatResponse = async (req, res) => {
     }
 
     const creditStatus = getCreditStatus(req.app.locals.db, userEmail);
-    if (creditLimitsEnabled() && creditStatus.used >= creditStatus.limit) {
+    if (creditStatus.enforced && creditStatus.used >= creditStatus.limit) {
         return res.status(429).json({ message: `Your ${creditStatus.plan} plan has reached its request limit. Choose a larger plan to continue.` });
+    }
+    if (creditStatus.enforced && !creditStatus.models.includes('all') && !creditStatus.models.includes(model) && model !== 'smart') {
+        return res.status(403).json({ message: `${model} is not included in your current plan. Upgrade your model access to use it.` });
     }
 
     const input = normalizeMessages(messages).map(({ role, content }) => ({
@@ -619,12 +697,19 @@ const createChatResponse = async (req, res) => {
     };
     const knowledgeContext = knowledge.length ? `\nKnowledge base excerpts (cite them as [KB1], [KB2]):\n${knowledge.map((item, index) => `[KB${index + 1}] ${item.name}: ${item.excerpt}`).join('\n')}` : '';
     const customInstructions = String(systemInstructions || '').trim().slice(0, 2000);
-    const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear and accurate. Always detect the language of the user's latest message and answer in that same language. If the message mixes languages, use the dominant language. Keep code, product names, and quoted text unchanged. Response preferences: length=${preferences.length}, tone=${preferences.tone}, creativity=${preferences.creativity}, format=${preferences.format}.${customInstructions ? ` User instructions: ${customInstructions}` : ''}${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}${knowledgeContext}`;
+    const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear and accurate. Always detect the language of the user's latest message and answer in that same language. If the message mixes languages, use the dominant language. Keep code, product names, and quoted text unchanged. Put all source code in complete fenced Markdown code blocks with the correct language tag so it can be copied directly into an IDE. Response preferences: length=${preferences.length}, tone=${preferences.tone}, creativity=${preferences.creativity}, format=${preferences.format}.${customInstructions ? ` User instructions: ${customInstructions}` : ''}${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}${knowledgeContext}`;
     let assistantText = '';
+    const outputTokenLimit = Math.min(Math.max(Number(maxTokens) || Number(process.env.MAX_TOKENS) || 1024, 128), 4096);
 
     try {
-        const directGeminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${directGeminiModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey.trim())}`;
+        const directGeminiModel = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
+        const getGeminiUrl = (key) => `https://generativelanguage.googleapis.com/v1beta/models/${directGeminiModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key.trim())}`;
+        const geminiBody = () => JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents: input.map(({ role, content }) => ({ role: role === 'assistant' ? 'model' : 'user', parts: [{ text: content }] })),
+            generationConfig: { maxOutputTokens: outputTokenLimit },
+        });
+        const geminiUrl = getGeminiUrl(apiKey);
         const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID || '')}/ai/run/${providerModels.cloudflare}`;
         let apiResponse = await fetch(isOpenAI ? 'https://api.openai.com/v1/responses' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
@@ -645,31 +730,42 @@ const createChatResponse = async (req, res) => {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(isOpenAI ? {
-                model: process.env.OPENAI_MODEL || 'gpt-5.6-luna',
+                model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
                 instructions: systemPrompt,
                 input,
-                max_output_tokens: Number(process.env.MAX_TOKENS) || 2048,
+                max_output_tokens: outputTokenLimit,
                 store: false,
             } : isClaude ? {
                 model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
                 stream: true,
-                max_tokens: Number(process.env.MAX_TOKENS) || 2048,
+                max_tokens: outputTokenLimit,
                 system: systemPrompt,
                 messages: input,
-            } : isGemini ? {
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                contents: input.map(({ role, content }) => ({ role: role === 'assistant' ? 'model' : 'user', parts: [{ text: content }] })),
-                generationConfig: { maxOutputTokens: Number(process.env.MAX_TOKENS) || 2048 },
-            } : {
+            } : isGemini ? JSON.parse(geminiBody()) : {
                 model: routedModel === 'grok' ? grokModel : routedModel === 'cloudflare' ? providerModels.llama : providerModels[routedModel],
                 stream: true,
-                max_tokens: Number(process.env.MAX_TOKENS) || 2048,
+                max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...input],
             }),
         });
-        let fallbackUsed = false;
+        let fallbackUsed = usePreferredGemini;
+        let fallbackModel = usePreferredGemini ? 'gemini' : null;
         let upstreamError = null;
-        if (!apiResponse.ok && !isOpenAI && !isClaude && !isGemini && !isCloudflare && routedModel !== 'gpt') {
+        if (!apiResponse.ok && isOpenAI && [402, 429].includes(apiResponse.status) && process.env.GEMINI_API_KEY?.trim()) {
+            upstreamError = await apiResponse.json().catch(() => ({}));
+            apiKey = process.env.GEMINI_API_KEY.trim();
+            isOpenAI = false;
+            isGemini = true;
+            apiResponse = await fetch(getGeminiUrl(apiKey), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: geminiBody(),
+            });
+            fallbackUsed = apiResponse.ok;
+            fallbackModel = 'gemini';
+            if (!apiResponse.ok) upstreamError = null;
+        }
+        if (!apiResponse.ok && model === 'smart' && !isOpenAI && !isClaude && !isGemini && !isCloudflare && routedModel !== 'gpt') {
             upstreamError = await apiResponse.json().catch(() => ({}));
             apiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
@@ -677,11 +773,12 @@ const createChatResponse = async (req, res) => {
                 body: JSON.stringify({
                     model: providerModels.gpt,
                     stream: true,
-                    max_tokens: Number(process.env.MAX_TOKENS) || 2048,
+                    max_tokens: outputTokenLimit,
                     messages: [{ role: 'system', content: `${systemPrompt} The requested ${routedModel} provider is temporarily unavailable; provide the best equivalent answer.` }, ...input],
                 }),
             });
             fallbackUsed = apiResponse.ok;
+            fallbackModel = 'gpt';
         }
         if (!apiResponse.ok) {
             const data = upstreamError || await apiResponse.json().catch(() => ({}));
@@ -699,14 +796,14 @@ const createChatResponse = async (req, res) => {
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
         const freeTierModels = new Set(['gemini', 'cloudflare']);
-        res.write(`data: ${JSON.stringify({ unlimited: true, plan: creditStatus.plan, requestedModel:model, routedModel, routeReason:model === 'smart' ? routeDecision.reason : 'Model selected manually.', routeCategory:routeDecision.category, knowledgeSources:knowledge.map(({id,name})=>({id,name})), costTier:freeTierModels.has(routedModel)?'free-allowance':'paid' })}\n\n`);
-        if (fallbackUsed) res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: 'gpt' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ unlimited: true, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:providerModels[routedModel], routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, knowledgeSources:knowledge.map(({id,name})=>({id,name})), costTier:freeTierModels.has(routedModel)?'free-allowance':'paid' })}\n\n`);
+        if (fallbackUsed) res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: fallbackModel })}\n\n`);
 
         if (isOpenAI) {
             const openAIData = await apiResponse.json();
             assistantText = String(openAIData.output_text || openAIData.output?.flatMap((item) => item.content || []).map((item) => item.text || '').join('') || '');
             if (!assistantText) throw new Error('OpenAI returned no response text');
-            res.write(`data: ${JSON.stringify({ text: assistantText, provider: 'OpenAI', model: openAIData.model || process.env.OPENAI_MODEL || 'gpt-5.6-luna' })}\n\n`);
+            res.write(`data: ${JSON.stringify({ text: assistantText, provider: 'OpenAI', model: openAIData.model || process.env.OPENAI_MODEL || 'gpt-4o-mini' })}\n\n`);
         } else if (isCloudflare) {
             const cloudflareData = await apiResponse.json();
             assistantText = String(cloudflareData.result?.response || '');
@@ -1123,6 +1220,7 @@ module.exports = {
     googleCallback,
     getSession,
     logout,
+    getCommunityUsers,
     getUsers,
     getUserById,
     createUser,
@@ -1138,6 +1236,9 @@ module.exports = {
     renameChat,
     deleteChat,
     createPurchase,
+    createCheckoutSession,
+    verifyCheckoutSession,
+    stripeWebhook,
     createChatResponse,
     generateImage,
     getWorkspaceItems,

@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import './AIToolsLab.css';
 
 const tools=[['research','Web research'],['voice','Voice chat'],['ollama','Local Ollama'],['documents','PDF & documents'],['slides','Presentation maker'],['website','Website generator'],['agents','Personal agents'],['memory','Shared memory'],['team','Team workspace'],['quality','Answer quality']];
 const download=(name,content,type='text/plain')=>{const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([content],{type}));link.download=name;link.click();URL.revokeObjectURL(link.href)};
 
 export default function AIToolsLab(){
- const navigate=useNavigate(); const saved=sessionStorage.getItem('allmodelai_user'); const user=saved?JSON.parse(saved):null;
- const [active,setActive]=useState('research'); const [query,setQuery]=useState(''); const [research,setResearch]=useState(null); const [busy,setBusy]=useState(false);
+ const navigate=useNavigate(); const [searchParams]=useSearchParams(); const requestedTool=searchParams.get('tool'); const saved=sessionStorage.getItem('allmodelai_user'); const user=saved?JSON.parse(saved):null;
+ const [active,setActive]=useState(tools.some(([key])=>key===requestedTool)?requestedTool:'research'); const [query,setQuery]=useState(''); const [research,setResearch]=useState(null); const [busy,setBusy]=useState(false);
  const [ollama,setOllama]=useState(null); const [topic,setTopic]=useState(''); const [slides,setSlides]=useState([]); const [sitePrompt,setSitePrompt]=useState(''); const [siteHtml,setSiteHtml]=useState('');
  const [members,setMembers]=useState([]); const [member,setMember]=useState(''); const [qualityText,setQualityText]=useState(''); const [quality,setQuality]=useState(null);
  useEffect(()=>{if(user?.email)fetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=team`).then(r=>r.ok?r.json():[]).then(setMembers)},[user?.email]);
