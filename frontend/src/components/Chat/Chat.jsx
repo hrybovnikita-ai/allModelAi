@@ -43,7 +43,7 @@ function CodeBlock({ language, code }) {
 
 function MessageContent({ text, streaming }) {
   const parts = [];
-  const codePattern = /```([\w.+#-]*)\s*\n?([\s\S]*?)```/g;
+  const codePattern = /```([\w.+#-]*)[\t ]*\r?\n([\s\S]*?)```/g;
   let lastIndex = 0;
   let match;
 
@@ -52,7 +52,22 @@ function MessageContent({ text, streaming }) {
     parts.push({ type: 'code', language: match[1], value: match[2].replace(/\n$/, '') });
     lastIndex = codePattern.lastIndex;
   }
-  if (lastIndex < text.length) parts.push({ type: 'text', value: text.slice(lastIndex) });
+
+  if (lastIndex < text.length) {
+    const remainder = text.slice(lastIndex);
+    const openFence = streaming
+      ? remainder.match(/(?:^|\n)[\t ]*```([\w.+#-]*)[\t ]*(?:\r?\n|$)([\s\S]*)$/)
+      : null;
+
+    if (openFence) {
+      const fenceIndex = openFence.index + (openFence[0].startsWith('\n') ? 1 : 0);
+      const beforeFence = remainder.slice(0, fenceIndex);
+      if (beforeFence) parts.push({ type: 'text', value: beforeFence });
+      parts.push({ type: 'code', language: openFence[1], value: openFence[2] });
+    } else {
+      parts.push({ type: 'text', value: remainder });
+    }
+  }
 
   return <div className="message-content">
     {parts.map((part, index) => part.type === 'code'
@@ -70,6 +85,8 @@ export default function Chat() {
   const messagesContainer = useRef(null);
   const fileInput = useRef(null);
   const activeRequest = useRef(null);
+  const speechRecognition = useRef(null);
+  const voiceTranscript = useRef('');
   const savedUser = sessionStorage.getItem('allmodelai_user');
   const user = savedUser ? JSON.parse(savedUser) : null;
   const isGuest = user?.guest === true;
@@ -94,7 +111,6 @@ export default function Chat() {
   const [feedbackMessageIndex, setFeedbackMessageIndex] = useState(null);
   const [feedbackText, setFeedbackText] = useState('');
   const [favorites, setFavorites] = useState(() => JSON.parse(localStorage.getItem('allmodelai_favorites') || '[]'));
-  const [sourcesOpen, setSourcesOpen] = useState(null);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [chatMenuId, setChatMenuId] = useState(null);
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
@@ -110,6 +126,12 @@ export default function Chat() {
   const [arenaTask, setArenaTask] = useState('');
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(() => localStorage.getItem('allmodelai_voice_mode') === 'true');
+  const [voicePanelOpen, setVoicePanelOpen] = useState(false);
+  const [speechLanguage, setSpeechLanguage] = useState(() => localStorage.getItem('allmodelai_voice_language') || navigator.language || 'en-US');
+  const [availableVoices, setAvailableVoices] = useState([]);
+  const [selectedVoice, setSelectedVoice] = useState(() => localStorage.getItem('allmodelai_voice_name') || '');
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [editDraft, setEditDraft] = useState('');
   const [routeInfo, setRouteInfo] = useState(null);
@@ -167,14 +189,69 @@ export default function Chat() {
       : themePreference;
   }, [themePreference]);
 
+  useEffect(() => {
+    if (!window.speechSynthesis) return undefined;
+    const loadVoices = () => setAvailableVoices(window.speechSynthesis.getVoices());
+    loadVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+  }, []);
+
+  useEffect(() => () => {
+    speechRecognition.current?.stop();
+    window.speechSynthesis?.cancel();
+  }, []);
+
+  const speakText = (text) => {
+    if (!window.speechSynthesis) { setChatError('Speech playback is not supported in this browser.'); return; }
+    window.speechSynthesis.cancel();
+    const cleanText = String(text || '')
+      .replace(/```[\s\S]*?```/g, ' Code block omitted. ')
+      .replace(/https?:\/\/\S+/g, ' link ')
+      .replace(/[#*_`>~-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!cleanText) return;
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = speechLanguage;
+    const voice = availableVoices.find((item) => item.name === selectedVoice)
+      || availableVoices.find((item) => item.lang.toLowerCase().startsWith(speechLanguage.split('-')[0].toLowerCase()));
+    if (voice) utterance.voice = voice;
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopSpeaking = () => {
+    window.speechSynthesis?.cancel();
+    setIsSpeaking(false);
+  };
+
+  const changeVoiceMode = () => {
+    setVoiceMode((enabled) => {
+      localStorage.setItem('allmodelai_voice_mode', String(!enabled));
+      if (enabled) stopSpeaking();
+      return !enabled;
+    });
+  };
+
   const toggleVoiceInput = () => {
+    if (isListening) { speechRecognition.current?.stop(); return; }
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Recognition) { setChatError('Voice input is not supported in this browser.'); return; }
     const recognition = new Recognition();
-    recognition.lang = navigator.language || 'en-US';
+    speechRecognition.current = recognition;
+    voiceTranscript.current = '';
+    recognition.lang = speechLanguage;
     recognition.interimResults = true;
+    recognition.continuous = false;
     recognition.onstart = () => { setIsListening(true); setChatError(''); };
-    recognition.onresult = (event) => setPrompt(Array.from(event.results).map((result) => result[0].transcript).join(''));
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results).map((result) => result[0].transcript).join('');
+      voiceTranscript.current = transcript;
+      setPrompt(transcript);
+    };
     recognition.onerror = (event) => {
       const voiceErrors = {
         'not-allowed': 'Microphone access is blocked. Allow microphone access from the lock icon in the address bar, then try again.',
@@ -185,7 +262,12 @@ export default function Chat() {
       };
       setChatError(voiceErrors[event.error] || 'Voice recognition stopped unexpectedly. Please try again.');
     };
-    recognition.onend = () => setIsListening(false);
+    recognition.onend = () => {
+      setIsListening(false);
+      speechRecognition.current = null;
+      const transcript = voiceTranscript.current.trim();
+      if (voiceMode && transcript) window.setTimeout(() => sendMessage(null, transcript), 100);
+    };
     recognition.start();
   };
 
@@ -194,7 +276,7 @@ export default function Chat() {
     .then((history) => setChatHistory(history))
     .catch(() => {});
 
-  const loadContextSuggestions = async (text) => {
+  const loadContextSuggestions = useCallback(async (text) => {
     const value = String(text || '').trim();
     if (!value || isSending || isGuest) { setContextSuggestions([]); return; }
     try {
@@ -205,7 +287,7 @@ export default function Chat() {
     } catch {
       setContextSuggestions([]);
     }
-  };
+  }, [isGuest, isSending, setContextSuggestions]);
 
   const conversationPreview = (conversation) => {
     const firstUserMessage = conversation.messages?.find((message) => message.role === 'user');
@@ -421,9 +503,11 @@ export default function Chat() {
 
       if (response.headers.get('content-type')?.includes('application/json')) {
         const responseData = await response.json();
+        const responseText = responseData.message || '';
         setMessages((current) => current.map((message, index) => (
-          index === assistantIndex ? { ...message, text: responseData.message || '' } : message
+          index === assistantIndex ? { ...message, text: responseText } : message
         )));
+        if (voiceMode) speakText(responseText);
         return;
       }
 
@@ -473,6 +557,7 @@ export default function Chat() {
         });
       }
       await refreshHistory();
+      if (voiceMode) speakText(assistantText);
       if (document.hidden && Notification.permission === 'granted') new Notification(`${selectedModel.name} finished`, { body: assistantText.slice(0, 120) || 'Your answer is ready.' });
     } catch (requestError) {
       if (requestError.name === 'AbortError') {
@@ -691,6 +776,7 @@ export default function Chat() {
                   <button type="button" data-tooltip="Bad response" className={messageRatings[index] === 'down' ? 'selected' : ''} onClick={() => rateMessage(index, 'down')} aria-label="Bad response">♧</button>
                   <button type="button" data-tooltip="Share" onClick={() => shareMessage(text)} aria-label="Share response">↗</button>
                   <button type="button" data-tooltip="Retry" onClick={() => retryMessage(index)} aria-label="Retry response">⟳</button>
+                  <button type="button" data-tooltip={isSpeaking ? 'Stop voice' : 'Read aloud'} onClick={() => isSpeaking ? stopSpeaking() : speakText(text)} aria-label={isSpeaking ? 'Stop reading response' : 'Read response aloud'}>{isSpeaking ? '■' : '🔊'}</button>
                   {feedback && <span className="feedback-badge" title={feedback}>Feedback sent</span>}
                 </>
               ) : (
@@ -711,6 +797,7 @@ export default function Chat() {
         <form className="chat-composer" onSubmit={sendMessage}>
           <div className="composer-shell">
             {composerMenuOpen && <div className="composer-menu">
+              <button type="button" onClick={() => { setComposerMenuOpen(false); setVoicePanelOpen((open) => !open); }}><span>♫</span> Voice conversation</button>
               <button type="button" onClick={() => { setComposerMenuOpen(false); fileInput.current?.click(); }}><span>⌕</span> Add photos and files</button>
               <button type="button" onClick={() => setComposerMenuOpen(false)}><span>◇</span> Add from Drive</button>
               <button type="button" onClick={() => chooseSkill('image')}><span>✦</span> Create image</button>
@@ -722,6 +809,13 @@ export default function Chat() {
               <button type="button" disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))} onClick={() => { const last = [...messages].reverse().find((message) => message.role === 'assistant' && (message.text || message.content)); if (last) toggleFavorite(last.text || last.content, last.modelSlug); setComposerMenuOpen(false); }}><span>★</span> Save last answer</button>
             </div>}
             <div className="composer-box">
+              {voicePanelOpen && <section className="voice-panel" aria-label="Voice mode settings">
+                <div><strong>Voice conversation</strong><button type="button" className={voiceMode ? 'voice-toggle active' : 'voice-toggle'} onClick={changeVoiceMode} aria-pressed={voiceMode}>{voiceMode ? 'On' : 'Off'}</button></div>
+                <p>Send speech automatically and read every AI response aloud.</p>
+                <label>Language<select value={speechLanguage} onChange={(event) => { setSpeechLanguage(event.target.value); localStorage.setItem('allmodelai_voice_language', event.target.value); }}><option value="en-US">English</option><option value="uk-UA">Українська</option><option value="ru-RU">Русский</option><option value="de-DE">Deutsch</option><option value="pl-PL">Polski</option><option value="es-ES">Español</option><option value="fr-FR">Français</option></select></label>
+                <label>Voice<select value={selectedVoice} onChange={(event) => { setSelectedVoice(event.target.value); localStorage.setItem('allmodelai_voice_name', event.target.value); }}><option value="">Automatic</option>{availableVoices.map((voice) => <option value={voice.name} key={`${voice.name}-${voice.lang}`}>{voice.name} ({voice.lang})</option>)}</select></label>
+                {isSpeaking && <button type="button" className="stop-speaking" onClick={stopSpeaking}>Stop speaking</button>}
+              </section>}
               {selectedSkill && <div className="selected-skill">
                 <span className={`selected-skill-icon ${selectedSkill}`} aria-hidden="true">{selectedSkill === 'image' ? '✦' : selectedSkill === 'web' ? '◎' : '▶'}</span>
                 <span><strong>{selectedSkill === 'image' ? 'Create image' : selectedSkill === 'web' ? 'Search the web' : 'Make a video'}</strong><small>{selectedSkill === 'image' ? 'Describe the image you want to create' : selectedSkill === 'web' ? 'Current information with sources' : 'Describe the video you want to create'}</small></span>
