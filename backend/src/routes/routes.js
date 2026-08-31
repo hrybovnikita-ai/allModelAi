@@ -30,7 +30,7 @@ const {
     generateImage,
     getWorkspaceItems, createWorkspaceItem, updateWorkspaceItem, deleteWorkspaceItem, getUsageAnalytics, branchConversation, webResearch, getOllamaModels, checkAnswerQuality,
     previewRouter, searchKnowledge, getTeams, createTeam, inviteTeamMember, updateTeamMember, removeTeamMember, shareConversation, getSharedConversation,
-    getSharedPromptTemplates, rateSharedPromptTemplate, chatSuggestions, recordArenaVote, getArenaLeaderboard,
+    getSharedPromptTemplates, rateSharedPromptTemplate, chatSuggestions, recordArenaVote, getArenaLeaderboard, improvePrompt,
 } = require('../controllers/controllers');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
@@ -51,6 +51,7 @@ router.get('/share/:token', getSharedConversation);
 
 router.delete('/auth/account', requireAuth, deleteAccount);
 router.post('/chat', requireAuth, createChatResponse);
+router.post('/chat/improve-prompt', requireAuth, improvePrompt);
 router.post('/router/preview', requireAuth, previewRouter);
 router.post('/images', requireAuth, generateImage);
 router.post('/purchases', requireAuth, createPurchase);

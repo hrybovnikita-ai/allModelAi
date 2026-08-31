@@ -1211,6 +1211,55 @@ const getArenaLeaderboard = (req, res) => {
     }
 };
 
+const improvePrompt = async (req, res) => {
+    const { prompt } = req.body;
+    if (!prompt || !prompt.trim()) {
+        return res.status(400).json({ message: 'Prompt is required' });
+    }
+    const apiKey = process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY || process.env.API_KEY;
+    if (!apiKey) {
+        return res.status(503).json({ message: 'Gemini or OpenRouter API key is not configured' });
+    }
+    const isGeminiDirect = Boolean(process.env.GEMINI_API_KEY);
+    const systemPrompt = `You are a prompt engineering expert. Take the user's raw, basic prompt and rewrite it into a highly effective, structured, and detailed prompt. Preserve the language of the prompt. Return ONLY the improved prompt text. No explanations, no markdown wrapper, no quotes. Just the prompt text itself.\n\nRaw prompt: "${prompt}"`;
+    try {
+        let apiResponse;
+        if (isGeminiDirect) {
+            const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+            apiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
+            });
+            if (!apiResponse.ok) throw new Error(`Gemini API returned ${apiResponse.status}`);
+            const data = await apiResponse.json();
+            const improvedText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (!improvedText) throw new Error('No content returned from Gemini');
+            return res.json({ improvedPrompt: improvedText });
+        } else {
+            apiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${apiKey.trim()}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: 'google/gemini-2.5-flash',
+                    messages: [{ role: 'user', content: systemPrompt }]
+                })
+            });
+            if (!apiResponse.ok) throw new Error(`OpenRouter returned ${apiResponse.status}`);
+            const data = await apiResponse.json();
+            const improvedText = data.choices?.[0]?.message?.content?.trim();
+            if (!improvedText) throw new Error('No content returned from OpenRouter');
+            return res.json({ improvedPrompt: improvedText });
+        }
+    } catch (error) {
+        console.error('[IMPROVE PROMPT ERROR]', error.message);
+        return res.status(502).json({ message: 'Could not improve the prompt due to an upstream error.' });
+    }
+};
+
 module.exports = {
     registerUser,
     loginUser,
@@ -1264,4 +1313,5 @@ module.exports = {
     chatSuggestions,
     recordArenaVote,
     getArenaLeaderboard,
+    improvePrompt,
 };

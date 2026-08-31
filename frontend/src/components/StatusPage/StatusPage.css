@@ -1,0 +1,123 @@
+.status-page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 48px 24px 96px;
+  color: var(--text-primary, #e8eaf2);
+}
+.status-hero {
+  text-align: center;
+  margin-bottom: 40px;
+}
+.status-hero h1 {
+  font-size: 2.4rem;
+  margin: 16px 0 8px;
+}
+.status-hero p {
+  color: var(--text-secondary, #9aa0b5);
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.08);
+}
+.status-pill.warn {
+  border-color: rgba(251, 191, 36, 0.4);
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.08);
+}
+.status-pill i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-list {
+  display: grid;
+  gap: 12px;
+}
+.status-row {
+  display: grid;
+  grid-template-columns: 200px 1fr 90px;
+  align-items: center;
+  gap: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 16px 20px;
+}
+.status-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.status-name strong {
+  display: block;
+  font-size: 0.95rem;
+}
+.status-name small {
+  color: var(--text-secondary, #9aa0b5);
+  font-size: 0.75rem;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.dot.ok {
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.7);
+}
+.dot.warn {
+  background: #fbbf24;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.7);
+}
+.dot.down {
+  background: #f87171;
+}
+
+.status-uptime-bars {
+  display: flex;
+  gap: 3px;
+}
+.status-uptime-bars span {
+  flex: 1;
+  height: 26px;
+  border-radius: 3px;
+}
+.status-uptime-bars span.ok {
+  background: rgba(52, 211, 153, 0.35);
+}
+.status-uptime-bars span.warn {
+  background: #fbbf24;
+}
+.status-uptime {
+  text-align: right;
+  font-size: 0.9rem;
+}
+
+.status-note {
+  margin-top: 32px;
+  text-align: center;
+  color: var(--text-secondary, #9aa0b5);
+  font-size: 0.9rem;
+}
+.status-note a {
+  color: #818cf8;
+}
+
+@media (max-width: 700px) {
+  .status-row {
+    grid-template-columns: 1fr;
+  }
+  .status-uptime {
+    text-align: left;
+  }
+}

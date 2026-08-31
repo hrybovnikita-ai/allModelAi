@@ -1,0 +1,110 @@
+.playground-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 48px 24px 96px;
+  color: var(--text-primary, #e8eaf2);
+}
+.playground-hero h1 {
+  font-size: 2.4rem;
+  margin-bottom: 8px;
+}
+.playground-hero p {
+  color: var(--text-secondary, #9aa0b5);
+  margin-bottom: 32px;
+}
+
+.playground-layout {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.playground-panel {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.playground-panel label {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #9aa0b5);
+  margin-top: 8px;
+}
+.playground-panel select,
+.playground-panel textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font: inherit;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+}
+.playground-panel textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+.playground-panel input[type="range"] {
+  accent-color: #6366f1;
+}
+.playground-run {
+  margin-top: 16px;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+}
+.playground-run:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.playground-output {
+  display: grid;
+  gap: 20px;
+}
+.playground-block {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 20px;
+}
+.playground-block h4 {
+  margin: 0 0 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.playground-block .latency {
+  font-size: 0.75rem;
+  color: #34d399;
+  font-weight: 500;
+}
+.playground-block pre {
+  margin: 0;
+  padding: 16px;
+  border-radius: 10px;
+  overflow: auto;
+  max-height: 360px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: #c9d1d9;
+}
+.playground-block .placeholder {
+  color: var(--text-secondary, #9aa0b5);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 860px) {
+  .playground-layout {
+    grid-template-columns: 1fr;
+  }
+}

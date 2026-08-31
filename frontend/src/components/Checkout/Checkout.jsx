@@ -26,16 +26,20 @@ export default function Checkout() {
   const [searchParams] = useSearchParams();
   const initial = aliases[searchParams.get('plan')] || searchParams.get('plan') || 'common';
   const [selectedPlan, setSelectedPlan] = useState(plans[initial] ? initial : 'common');
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState(() => {
+    const sessionId = searchParams.get('session_id');
+    return searchParams.get('success') === '1' && Boolean(sessionId);
+  });
   const [error, setError] = useState('');
-  const [purchase, setPurchase] = useState(null);
+  const [purchase, setPurchase] = useState(() => {
+    return searchParams.get('success') === 'developer' ? { plan: 'developer' } : null;
+  });
   const summary = useMemo(() => plans[selectedPlan], [selectedPlan]);
 
   useEffect(() => {
     const sessionId = searchParams.get('session_id');
-    if (searchParams.get('success') === 'developer') { setPurchase({ plan: 'developer' }); return; }
+    if (searchParams.get('success') === 'developer') return;
     if (!sessionId || searchParams.get('success') !== '1') return;
-    setSubmitting(true);
     axios.get(`/api/payments/session/${encodeURIComponent(sessionId)}`, { withCredentials: true })
       .then((response) => setPurchase(response.data.purchase))
       .catch((requestError) => setError(requestError.response?.data?.message || 'Stripe payment could not be verified.'))

@@ -1,0 +1,106 @@
+.history-page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 48px 24px 96px;
+  color: var(--text-primary, #e8eaf2);
+}
+.history-hero h1 {
+  font-size: 2.4rem;
+  margin-bottom: 8px;
+}
+.history-hero p {
+  color: var(--text-secondary, #9aa0b5);
+  margin-bottom: 28px;
+}
+
+.history-toolbar {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.history-toolbar input {
+  flex: 1;
+  min-width: 220px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font: inherit;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+}
+.history-folders {
+  display: flex;
+  gap: 8px;
+}
+.history-folders button {
+  padding: 8px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+.history-folders button.active {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-color: transparent;
+}
+
+.history-empty {
+  opacity: 0.6;
+  padding: 40px 0;
+  text-align: center;
+}
+.history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  transition: border-color 0.15s ease;
+}
+.history-item:hover {
+  border-color: rgba(129, 140, 248, 0.5);
+}
+.history-main {
+  flex: 1;
+}
+.history-main strong {
+  display: block;
+  font-size: 0.98rem;
+}
+.history-main small {
+  color: var(--text-secondary, #9aa0b5);
+}
+.history-actions {
+  display: flex;
+  gap: 6px;
+}
+.history-actions button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 6px;
+  border-radius: 8px;
+  opacity: 0.7;
+  transition: all 0.15s ease;
+}
+.history-actions button:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.08);
+}
+.history-actions button.danger:hover {
+  background: rgba(248, 113, 113, 0.15);
+}

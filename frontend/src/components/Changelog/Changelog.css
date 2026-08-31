@@ -1,0 +1,117 @@
+.changelog-page {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 48px 24px 96px;
+  color: var(--text-primary, #e8eaf2);
+}
+.changelog-hero h1 {
+  font-size: 2.4rem;
+  margin-bottom: 8px;
+}
+.changelog-hero p {
+  color: var(--text-secondary, #9aa0b5);
+  margin-bottom: 48px;
+}
+
+.changelog-timeline {
+  position: relative;
+  padding-left: 100px;
+}
+.changelog-timeline::before {
+  content: "";
+  position: absolute;
+  left: 74px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.changelog-entry {
+  position: relative;
+  margin-bottom: 32px;
+}
+.entry-marker {
+  position: absolute;
+  left: -100px;
+  top: 0;
+  width: 60px;
+  text-align: right;
+}
+.entry-marker span {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #818cf8;
+}
+
+.entry-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 20px 24px;
+}
+.entry-card header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.entry-card h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.entry-card time {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #9aa0b5);
+}
+.entry-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.tag-new {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.12);
+}
+.tag-improved {
+  color: #818cf8;
+  background: rgba(129, 140, 248, 0.12);
+}
+.tag-planned {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+}
+.tag-fix {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.entry-card ul {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+.entry-card li {
+  font-size: 0.9rem;
+  color: var(--text-secondary, #b7bccf);
+}
+
+@media (max-width: 620px) {
+  .changelog-timeline {
+    padding-left: 0;
+  }
+  .changelog-timeline::before {
+    display: none;
+  }
+  .entry-marker {
+    position: static;
+    width: auto;
+    text-align: left;
+    margin-bottom: 8px;
+  }
+}

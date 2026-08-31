@@ -53,7 +53,7 @@ export default function WebsiteBuilder() {
   const [previewKey, setPreviewKey] = useState(0);
   const [viewport, setViewport] = useState('desktop');
 
-  const preview = useMemo(() => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${files.css}</style></head><body>${files.html}<script>${files.js}<\/script></body></html>`, [files]);
+  const preview = useMemo(() => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${files.css}</style></head><body>${files.html}<script>${files.js}</script></body></html>`, [files]);
   if (!user) return <Navigate to="/" replace />;
 
   const updateFile = (value) => {

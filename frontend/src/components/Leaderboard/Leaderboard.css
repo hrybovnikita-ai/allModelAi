@@ -1,0 +1,144 @@
+.leaderboard-page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 48px 24px 96px;
+  color: var(--text-primary, #e8eaf2);
+}
+.leaderboard-hero h1 {
+  font-size: 2.4rem;
+  margin-bottom: 8px;
+}
+.leaderboard-hero p {
+  color: var(--text-secondary, #9aa0b5);
+  margin-bottom: 28px;
+}
+
+.leaderboard-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.leaderboard-tabs button {
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+.leaderboard-tabs button.active {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-color: transparent;
+}
+
+.leaderboard-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 40px;
+  display: grid;
+  gap: 10px;
+}
+.leader-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+}
+.leader-row.rank-1 {
+  border-color: rgba(250, 204, 21, 0.45);
+}
+.leader-rank {
+  width: 44px;
+  font-weight: 700;
+  text-align: center;
+}
+.leader-row img {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+}
+.leader-info {
+  flex: 1;
+  min-width: 140px;
+}
+.leader-info strong {
+  display: block;
+}
+.leader-info small {
+  color: var(--text-secondary, #9aa0b5);
+}
+.leader-score {
+  flex: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.leader-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.leader-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #22d3ee);
+  border-radius: 5px;
+}
+.leader-voted {
+  color: #34d399;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+.leader-try {
+  padding: 7px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+}
+.leader-try:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.leaderboard-vote h3 {
+  margin-bottom: 12px;
+}
+.vote-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.vote-chips button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+.vote-chips button img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+.vote-chips button.active {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-color: transparent;
+}
+.vote-confirm {
+  margin-top: 14px;
+  color: #34d399;
+}

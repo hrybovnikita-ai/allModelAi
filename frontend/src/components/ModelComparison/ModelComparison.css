@@ -1,0 +1,49 @@
+.comparison-page { max-width: 1200px; margin: 0 auto; padding: 48px 24px 96px; color: var(--text-primary, #e8eaf2); }
+.comparison-hero h1 { font-size: 2.4rem; margin-bottom: 8px; }
+.comparison-hero p { color: var(--text-secondary, #9aa0b5); margin-bottom: 32px; }
+
+.comparison-picker { margin-bottom: 32px; }
+.comparison-picker h3 { margin-bottom: 12px; }
+.picker-chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.picker-chips .chip {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 8px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.04); color: inherit; font: inherit; transition: all .18s ease;
+}
+.picker-chips .chip img { width: 20px; height: 20px; border-radius: 50%; }
+.picker-chips .chip:hover { border-color: rgba(255,255,255,.35); }
+.picker-chips .chip.active { background: linear-gradient(135deg, #6366f1, #8b5cf6); border-color: transparent; }
+
+.comparison-empty { opacity: .6; padding: 32px 0; }
+
+.comparison-grid { display: grid; grid-template-columns: repeat(var(--cols, 3), 1fr); gap: 16px; margin-bottom: 48px; }
+.comparison-card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); border-radius: 16px; padding: 20px; }
+.comparison-card > header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.comparison-card > header img { width: 40px; height: 40px; border-radius: 10px; }
+.comparison-card h3 { margin: 0; font-size: 1.05rem; }
+.comparison-card small { color: var(--text-secondary, #9aa0b5); }
+
+.spec-list { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 8px; }
+.spec-list li { display: flex; justify-content: space-between; gap: 12px; font-size: .85rem; }
+.spec-list li span { color: var(--text-secondary, #9aa0b5); }
+
+.bench-list { display: grid; gap: 10px; }
+.bench-row { display: grid; grid-template-columns: 76px 1fr 32px; align-items: center; gap: 10px; font-size: .8rem; }
+.bench-bar { height: 6px; border-radius: 4px; background: rgba(255,255,255,.08); overflow: hidden; }
+.bench-bar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #6366f1, #22d3ee); }
+
+.comparison-prompt h3 { margin-bottom: 12px; }
+.comparison-prompt textarea {
+  width: 100%; min-height: 80px; resize: vertical; margin-bottom: 20px; padding: 14px;
+  border-radius: 12px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05);
+  color: inherit; font: inherit;
+}
+.answer-grid { display: grid; grid-template-columns: repeat(var(--cols, 3), 1fr); gap: 16px; }
+.answer-card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 16px; }
+.answer-card header { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 10px; font-size: .9rem; }
+.answer-card header img { width: 22px; height: 22px; border-radius: 6px; }
+.answer-card p { margin: 0; font-size: .85rem; line-height: 1.6; color: var(--text-secondary, #b7bccf); }
+
+@media (max-width: 900px) {
+  .comparison-grid, .answer-grid { grid-template-columns: 1fr; }
+}
