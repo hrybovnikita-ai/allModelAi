@@ -144,7 +144,7 @@ export default function Chat() {
 
   const modelIsOnline = (slug) => {
     if (!Object.keys(modelStatus).length || slug === 'smart') return true;
-    const statusKey = ['gpt', 'gemini', 'claude', 'cloudflare'].includes(slug) ? slug : 'others';
+    const statusKey = ['gpt', 'gemini', 'claude', 'kimi', 'cloudflare'].includes(slug) ? slug : 'others';
     return modelStatus[statusKey] !== false;
   };
 
@@ -487,7 +487,7 @@ export default function Chat() {
       const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedSlug, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || localStorage.getItem('allmodelai_router_mode') || 'balanced', responsePrefs: JSON.parse(localStorage.getItem('allmodelai_response_prefs') || '{}'), systemInstructions: localStorage.getItem('allmodelai_system_instructions') || '' }),
+        body: JSON.stringify({ model: selectedSlug, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || localStorage.getItem('allmodelai_router_mode') || 'balanced', responsePrefs: JSON.parse(localStorage.getItem('allmodelai_response_prefs') || '{}'), systemInstructions: localStorage.getItem('allmodelai_system_instructions') || '', fallbackEnabled: localStorage.getItem('allmodelai_fallback') !== 'false' }),
         signal: controller.signal,
       });
 
@@ -540,6 +540,7 @@ export default function Chat() {
             setRouteInfo({model:event.routedModel,reason:event.routeReason,sources:event.knowledgeSources||[]});
             if (selectedSlug !== 'smart' && event.actualModelId) setModelNotice(`${selectedModel.name} is answering with ${event.actualModelId}.`);
           }
+          if (event.fallback) setModelNotice(`${event.requestedModel} was unavailable, so AllModelAI continued with ${event.actualModel}.`);
           const partialText = event.text;
           if (partialText) {
             assistantText += partialText;

@@ -424,6 +424,7 @@ const getModelStatus = (_req, res) => {
             gpt: openAI || gateway,
             gemini: Boolean(process.env.GEMINI_API_KEY || gateway),
             claude: Boolean(process.env.CLAUDE_API_KEY || gateway),
+            kimi: Boolean(process.env.KIMI_API_KEY || gateway),
             cloudflare: Boolean(((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID) || gateway),
             others: gateway,
         },
@@ -625,7 +626,8 @@ const previewRouter = (req, res) => {
 };
 
 const createChatResponse = async (req, res) => {
-    const { messages, model = 'gpt', conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {}, useKnowledge = true, systemInstructions = '', maxTokens } = req.body;
+    const requestStartedAt = Date.now();
+    const { messages, model = 'gpt', conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {}, useKnowledge = true, systemInstructions = '', maxTokens, fallbackEnabled = true } = req.body;
     const userEmail = req.user.email;
     const providerModels = {
         gpt: 'openai/gpt-4o-mini',
@@ -654,17 +656,19 @@ const createChatResponse = async (req, res) => {
     // This keeps Claude available when a direct Anthropic account has no credits.
     const gatewayKey = process.env.OPENROUTER_API_KEY || process.env.API_KEY;
     const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
+    const directKimiKey = process.env.KIMI_API_KEY?.trim();
     const preferGemini = process.env.PREFER_GEMINI === 'true' && Boolean(process.env.GEMINI_API_KEY?.trim());
     const usePreferredGemini = preferGemini && model === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
     let isOpenAI = Boolean(openAIKey && !usePreferredGemini && (routedModel === 'gpt' || routedModel === 'copilot'));
     const isClaude = routedModel === 'claude' && !gatewayKey?.trim();
     let isGemini = (routedModel === 'gemini' || usePreferredGemini) && Boolean(process.env.GEMINI_API_KEY?.trim());
+    const isKimi = routedModel === 'kimi' && Boolean(directKimiKey || gatewayKey);
     const hasCloudflareDirect = Boolean((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID);
     const isCloudflare = routedModel === 'cloudflare' && hasCloudflareDirect;
     const cloudflareKey = process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY;
-    let apiKey = isOpenAI ? openAIKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isCloudflare ? cloudflareKey : gatewayKey;
+    let apiKey = isOpenAI ? openAIKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isCloudflare ? cloudflareKey : gatewayKey;
     if (!apiKey) {
-        return res.status(503).json({ message: `${isClaude ? 'The Claude' : isGemini ? 'The Gemini' : isCloudflare ? 'The Cloudflare' : 'The OpenRouter'} API key is not configured` });
+        return res.status(503).json({ message: `${isClaude ? 'The Claude' : isGemini ? 'The Gemini' : isKimi ? 'The Kimi' : isCloudflare ? 'The Cloudflare' : 'The OpenRouter'} API key is not configured` });
     }
     if (!providerModels[routedModel]) {
         return res.status(400).json({ message: 'Unsupported AI model' });
@@ -711,7 +715,8 @@ const createChatResponse = async (req, res) => {
         });
         const geminiUrl = getGeminiUrl(apiKey);
         const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID || '')}/ai/run/${providerModels.cloudflare}`;
-        let apiResponse = await fetch(isOpenAI ? 'https://api.openai.com/v1/responses' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
+        const directKimiUrl = 'https://api.moonshot.cn/v1/chat/completions';
+        let apiResponse = await fetch(isOpenAI ? 'https://api.openai.com/v1/responses' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isKimi && directKimiKey ? directKimiUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             headers: isOpenAI ? {
                 Authorization: `Bearer ${apiKey.trim()}`,
@@ -721,6 +726,9 @@ const createChatResponse = async (req, res) => {
                 'anthropic-version': '2023-06-01',
                 'Content-Type': 'application/json',
             } : isGemini ? {
+                'Content-Type': 'application/json',
+            } : isKimi && directKimiKey ? {
+                Authorization: `Bearer ${directKimiKey.trim()}`,
                 'Content-Type': 'application/json',
             } : isCloudflare ? {
                 messages: [{ role: 'system', content: systemPrompt }, ...input],
@@ -741,7 +749,12 @@ const createChatResponse = async (req, res) => {
                 max_tokens: outputTokenLimit,
                 system: systemPrompt,
                 messages: input,
-            } : isGemini ? JSON.parse(geminiBody()) : {
+            } : isGemini ? JSON.parse(geminiBody()) : isKimi && directKimiKey ? {
+                model: process.env.KIMI_MODEL || 'kimi-k2-0711-preview',
+                stream: true,
+                max_tokens: outputTokenLimit,
+                messages: [{ role: 'system', content: systemPrompt }, ...input],
+            } : {
                 model: routedModel === 'grok' ? grokModel : routedModel === 'cloudflare' ? providerModels.llama : providerModels[routedModel],
                 stream: true,
                 max_tokens: outputTokenLimit,
@@ -765,7 +778,7 @@ const createChatResponse = async (req, res) => {
             fallbackModel = 'gemini';
             if (!apiResponse.ok) upstreamError = null;
         }
-        if (!apiResponse.ok && model === 'smart' && !isOpenAI && !isClaude && !isGemini && !isCloudflare && routedModel !== 'gpt') {
+        if (!apiResponse.ok && fallbackEnabled !== false && !isOpenAI && !isClaude && !isGemini && !isCloudflare && routedModel !== 'gpt') {
             upstreamError = await apiResponse.json().catch(() => ({}));
             apiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
@@ -796,7 +809,7 @@ const createChatResponse = async (req, res) => {
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
         const freeTierModels = new Set(['gemini', 'cloudflare']);
-        res.write(`data: ${JSON.stringify({ unlimited: true, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:providerModels[routedModel], routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, knowledgeSources:knowledge.map(({id,name})=>({id,name})), costTier:freeTierModels.has(routedModel)?'free-allowance':'paid' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ unlimited: true, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:fallbackUsed ? providerModels[fallbackModel] : providerModels[routedModel], routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, knowledgeSources:knowledge.map(({id,name,excerpt,score})=>({id,name,excerpt,score})), costTier:freeTierModels.has(fallbackUsed ? fallbackModel : routedModel)?'free-allowance':'paid' })}\n\n`);
         if (fallbackUsed) res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: fallbackModel })}\n\n`);
 
         if (isOpenAI) {
@@ -841,6 +854,11 @@ const createChatResponse = async (req, res) => {
             if (done) break;
         }
 
+        const inputTokens = Math.ceil(input.reduce((sum, message) => sum + message.content.length, 0) / 4);
+        const outputTokens = Math.ceil(assistantText.length / 4);
+        const actualUsageModel = fallbackUsed ? fallbackModel : routedModel;
+        const estimatedCost = Number((((inputTokens * 0.5) + (outputTokens * 1.5)) / 1000000).toFixed(6));
+        req.app.locals.db.database.prepare('INSERT INTO usage_events (email,model,input_tokens,output_tokens,latency_ms,fallback_used,estimated_cost,created_at) VALUES (?,?,?,?,?,?,?,?)').run(userEmail, actualUsageModel, inputTokens, outputTokens, Date.now() - requestStartedAt, fallbackUsed ? 1 : 0, estimatedCost, new Date().toISOString());
         if (temporary) {
             res.write('data: [DONE]\n\n');
             return res.end();
@@ -934,7 +952,7 @@ const generateImage = async (req, res) => {
     }
 };
 
-const workspaceTypes = new Set(['memory', 'project', 'document', 'prompt', 'assistant', 'team', 'presentation', 'website']);
+const workspaceTypes = new Set(['memory', 'project', 'document', 'prompt', 'assistant', 'agent', 'evaluation', 'workflow', 'meeting', 'prompt_version', 'marketplace_item', 'skill_session', 'team', 'presentation', 'website']);
 const cleanEmail = (value) => String(value || '').trim().toLowerCase();
 const parseWorkspaceItem = (row) => ({ id: row.id, type: row.type, ...JSON.parse(row.data), createdAt: row.created_at, updatedAt: row.updated_at });
 
@@ -1048,16 +1066,31 @@ const checkAnswerQuality = (req, res) => {
     return res.json({ score, metrics:{ clarity:Math.round(clarity), completeness:Math.round(completeness), evidence:Math.round(evidence) }, suggestions });
 };
 
-const tokenize = (value) => [...new Set(String(value || '').toLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) || [])].slice(0, 40);
+const tokenize = (value) => [...new Set(String(value || '').toLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) || [])].slice(0, 60);
+const stemToken = (token) => token
+    .replace(/(ing|ed|es|s)$/i, '')
+    .replace(/(ами|ями|ого|ему|ому|ий|ый|ая|ое|ые|ів|ами|ями|ого|ому|ими|ий|а|и|у|я)$/iu, '');
+const chunksFor = (content, size = 1200, overlap = 180) => {
+    const text = String(content || '').replace(/\r\n/g, '\n').trim();
+    if (!text) return [];
+    const chunks = [];
+    for (let start = 0; start < text.length; start += size - overlap) chunks.push(text.slice(start, start + size));
+    return chunks.slice(0, 80);
+};
 const findKnowledge = (database, email, query, limit = 5) => {
-    const terms = tokenize(query);
+    const terms = tokenize(query).map(stemToken).filter(Boolean);
     if (!terms.length) return [];
     return database.prepare("SELECT * FROM workspace_items WHERE email = ? AND type = 'document' ORDER BY updated_at DESC").all(email)
-        .map((row) => {
-            const data = JSON.parse(row.data); const content = `${data.name || ''}\n${data.content || ''}`; const lower = content.toLowerCase();
-            const score = terms.reduce((total, term) => total + (lower.includes(term) ? 1 : 0), 0);
-            const firstMatch = terms.map((term) => lower.indexOf(term)).filter((index) => index >= 0).sort((a, b) => a - b)[0] || 0;
-            return { id: row.id, name: data.name || 'Untitled document', score, excerpt: content.slice(Math.max(0, firstMatch - 180), firstMatch + 1000).trim() };
+        .flatMap((row) => {
+            const data = JSON.parse(row.data);
+            return chunksFor(data.content).map((chunk, chunkIndex) => {
+                const words = tokenize(`${data.name || ''} ${chunk}`).map(stemToken);
+                const matches = terms.filter((term) => words.some((word) => word.includes(term) || term.includes(word)));
+                const phraseBonus = chunk.toLowerCase().includes(String(query).toLowerCase()) ? 4 : 0;
+                const titleBonus = terms.filter((term) => stemToken(String(data.name || '').toLowerCase()).includes(term)).length * 2;
+                const score = matches.length + phraseBonus + titleBonus;
+                return { id: row.id, chunkId: `${row.id}:${chunkIndex}`, name: data.name || 'Untitled document', score, excerpt: chunk.trim() };
+            });
         }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, Math.min(Number(limit) || 5, 10));
 };
 
@@ -1099,6 +1132,29 @@ const searchKnowledge = (req, res) => {
     const query = String(req.body.query || '').trim();
     if (!query) return res.status(400).json({ message: 'Search query is required' });
     return res.json({ query, results: findKnowledge(req.app.locals.db.database, req.user.email, query, req.body.limit) });
+};
+
+const listDeveloperKeys = (req, res) => {
+    const rows = req.app.locals.db.database.prepare('SELECT id, name, prefix, created_at AS createdAt, last_used_at AS lastUsedAt, expires_at AS expiresAt, request_limit AS requestLimit, used_count AS usedCount FROM developer_api_keys WHERE email = ? ORDER BY created_at DESC').all(req.user.email);
+    return res.json(rows);
+};
+
+const createDeveloperKey = (req, res) => {
+    const name = String(req.body.name || '').trim().slice(0, 80);
+    if (!name) return res.status(400).json({ message: 'Key name is required' });
+    const secret = `amai_${crypto.randomBytes(28).toString('base64url')}`;
+    const id = `key-${crypto.randomUUID()}`;
+    const prefix = `${secret.slice(0, 12)}...`;
+    const createdAt = new Date().toISOString();
+    const requestLimit = Math.min(Math.max(Number(req.body.requestLimit) || 1000, 10), 100000);
+    const expiresAt = req.body.expiresAt ? new Date(req.body.expiresAt).toISOString() : null;
+    req.app.locals.db.database.prepare('INSERT INTO developer_api_keys (id, email, name, key_hash, prefix, created_at, expires_at, request_limit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, req.user.email, name, hashToken(secret), prefix, createdAt, expiresAt, requestLimit);
+    return res.status(201).json({ id, name, prefix, createdAt, expiresAt, requestLimit, usedCount: 0, secret, warning: 'Copy this key now. It will not be shown again.' });
+};
+
+const revokeDeveloperKey = (req, res) => {
+    const result = req.app.locals.db.database.prepare('DELETE FROM developer_api_keys WHERE id = ? AND email = ?').run(req.params.id, req.user.email);
+    return result.changes ? res.json({ message: 'API key revoked' }) : res.status(404).json({ message: 'API key not found' });
 };
 
 const teamAccess = (database, teamId, email) => database.prepare(`SELECT teams.*, team_members.role FROM teams JOIN team_members ON team_members.team_id = teams.id WHERE teams.id = ? AND team_members.email = ?`).get(teamId, email);
@@ -1314,4 +1370,7 @@ module.exports = {
     recordArenaVote,
     getArenaLeaderboard,
     improvePrompt,
+    listDeveloperKeys,
+    createDeveloperKey,
+    revokeDeveloperKey,
 };

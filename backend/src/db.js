@@ -52,7 +52,38 @@ const connectDatabase = () => {
 			winner TEXT NOT NULL,
 			created_at TEXT NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS developer_api_keys (
+			id TEXT PRIMARY KEY,
+			email TEXT NOT NULL,
+			name TEXT NOT NULL,
+			key_hash TEXT NOT NULL UNIQUE,
+			prefix TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			last_used_at TEXT,
+			expires_at TEXT,
+			request_limit INTEGER NOT NULL DEFAULT 1000,
+			used_count INTEGER NOT NULL DEFAULT 0
+		);
+		CREATE INDEX IF NOT EXISTS developer_api_keys_owner ON developer_api_keys(email, created_at DESC);
+		CREATE TABLE IF NOT EXISTS background_jobs (id TEXT PRIMARY KEY, email TEXT NOT NULL, type TEXT NOT NULL, status TEXT NOT NULL, progress INTEGER NOT NULL DEFAULT 0, stage TEXT, payload TEXT NOT NULL, result TEXT, error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+		CREATE INDEX IF NOT EXISTS background_jobs_owner ON background_jobs(email, created_at DESC);
+		CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, email TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, kind TEXT NOT NULL, read_at TEXT, created_at TEXT NOT NULL);
+		CREATE INDEX IF NOT EXISTS notifications_owner ON notifications(email, created_at DESC);
+		CREATE TABLE IF NOT EXISTS usage_events (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, model TEXT, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, latency_ms INTEGER NOT NULL DEFAULT 0, fallback_used INTEGER NOT NULL DEFAULT 0, estimated_cost REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+		CREATE INDEX IF NOT EXISTS usage_events_owner ON usage_events(email, created_at DESC);
+		CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, action TEXT NOT NULL, target_type TEXT, target_id TEXT, metadata TEXT, ip TEXT, created_at TEXT NOT NULL);
+		CREATE INDEX IF NOT EXISTS audit_events_owner ON audit_events(email, created_at DESC);
+		CREATE TABLE IF NOT EXISTS webhooks (id TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL, url TEXT NOT NULL, secret_hash TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL);
+		CREATE INDEX IF NOT EXISTS webhooks_owner ON webhooks(email, created_at DESC);
+		CREATE TABLE IF NOT EXISTS account_tokens (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, purpose TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at TEXT NOT NULL);
 	`);
+	const apiKeyColumns = database.prepare('PRAGMA table_info(developer_api_keys)').all();
+	if (!apiKeyColumns.some((column) => column.name === 'expires_at')) database.exec('ALTER TABLE developer_api_keys ADD COLUMN expires_at TEXT');
+	if (!apiKeyColumns.some((column) => column.name === 'request_limit')) database.exec('ALTER TABLE developer_api_keys ADD COLUMN request_limit INTEGER NOT NULL DEFAULT 1000');
+	if (!apiKeyColumns.some((column) => column.name === 'used_count')) database.exec('ALTER TABLE developer_api_keys ADD COLUMN used_count INTEGER NOT NULL DEFAULT 0');
+	const productionUserColumns = database.prepare('PRAGMA table_info(users)').all();
+	if (!productionUserColumns.some((column) => column.name === 'email_verified')) database.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0');
+	if (!productionUserColumns.some((column) => column.name === 'role')) database.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
 	const userColumns = database.prepare('PRAGMA table_info(users)').all();
 	if (!userColumns.some((column) => column.name === 'password_hash')) {
 		database.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');

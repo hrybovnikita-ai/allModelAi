@@ -66,7 +66,7 @@ export default function Dashboard() {
           <p className="dashboard-eyebrow">Workspace ready</p>
           <h1>Welcome, {user.name?.split(' ')[0] || 'creator'}.</h1>
           <p>Your account is connected to the backend. Choose a model and start building something remarkable.</p>
-          <div className="dashboard-actions"><a href="#dashboard-models">Explore models</a><Link to="/checkout?plan=pro">View pricing</Link></div>
+          <div className="dashboard-actions"><Link to="/production">Production Center</Link><Link to="/skills-hub">Skills Hub</Link><Link to="/expansion-hub">Expansion Hub</Link></div>
         </div>
         <div className="dashboard-orbit" aria-hidden="true"><span>AI</span></div>
       </section>

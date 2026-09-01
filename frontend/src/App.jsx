@@ -37,6 +37,10 @@ import SharedConversation from "./components/SharedConversation";
 import PromptGallery from "./components/PromptGallery/PromptGallery";
 import WebsiteBuilder from "./components/WebsiteBuilder/WebsiteBuilder";
 import AIPlatform from "./components/AIPlatform/AIPlatform";
+import InnovationLab from "./components/InnovationLab/InnovationLab";
+import ExpansionHub from "./components/ExpansionHub/ExpansionHub";
+import SkillsHub from "./components/SkillsHub/SkillsHub";
+import ProductionCenter from "./components/ProductionCenter/ProductionCenter";
 
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");
@@ -141,6 +145,10 @@ export default function App() {
       <Route path="/prompts" element={<PromptGallery />} />
       <Route path="/website-builder" element={<WebsiteBuilder />} />
       <Route path="/ai-platform" element={<AIPlatform />} />
+      <Route path="/innovation-lab" element={<InnovationLab />} />
+      <Route path="/expansion-hub" element={<ExpansionHub />} />
+      <Route path="/skills-hub" element={<SkillsHub />} />
+      <Route path="/production" element={<ProductionCenter />} />
     </Routes></>
   );
 }

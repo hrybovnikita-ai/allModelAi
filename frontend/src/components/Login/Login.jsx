@@ -1,11 +1,24 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './Login.css';
 
+const demoAccounts = [
+  { name: 'Alice Johnson', email: 'alice.johnson@gmail.com', password: 'AliceAI1!' },
+  { name: 'Jack Wilson', email: 'jack.wilson@gmail.com', password: 'JackAI2!' },
+  { name: 'Tom Anderson', email: 'tom.anderson@gmail.com', password: 'TomAI3!' },
+  { name: 'Emma Davis', email: 'emma.davis@gmail.com', password: 'EmmaAI4!' },
+  { name: 'Daniel Brown', email: 'daniel.brown@gmail.com', password: 'DanielAI5!' },
+  { name: 'Sophia Miller', email: 'sophia.miller@gmail.com', password: 'SophiaAI6!' },
+  { name: 'Michael Taylor', email: 'michael.taylor@gmail.com', password: 'MichaelAI7!' },
+  { name: 'Olivia Moore', email: 'olivia.moore@gmail.com', password: 'OliviaAI8!' },
+];
+
 export default function Login({ mode, onClose, onModeChange }) {
   const signingUp = mode === 'signup';
   const navigate = useNavigate();
+  const emailRef = useRef(null);
+  const passwordRef = useRef(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -52,6 +65,16 @@ export default function Login({ mode, onClose, onModeChange }) {
     }
   };
 
+  const useDemoAccount = (account) => {
+    setError('');
+    if (emailRef.current) emailRef.current.value = account.email;
+    if (passwordRef.current) passwordRef.current.value = account.password;
+    if (!signingUp) {
+      const form = document.querySelector('.login-form');
+      form?.requestSubmit();
+    }
+  };
+
   const changeMode = (nextMode) => {
     setError('');
     onModeChange(nextMode);
@@ -75,10 +98,30 @@ export default function Login({ mode, onClose, onModeChange }) {
 
         <form className="login-form" onSubmit={handleSubmit}>
           {signingUp && <label><span>Name</span><input name="name" type="text" placeholder="Your name" autoComplete="name" required /></label>}
-          <label><span>Email</span><input name="email" type="email" placeholder="you@example.com" autoComplete="email" required /></label>
-          <label><span>Password</span><span className="password-field"><input name="password" type={passwordVisible ? 'text' : 'password'} placeholder={signingUp ? 'Choose any password' : 'Your password'} autoComplete={signingUp ? 'new-password' : 'current-password'} required /><button type="button" className="password-toggle" onClick={() => setPasswordVisible((visible) => !visible)} aria-label={passwordVisible ? 'Hide password' : 'Show password'} aria-pressed={passwordVisible} title={passwordVisible ? 'Hide password' : 'Show password'}>{passwordVisible ? '◉' : '◎'}</button></span></label>
+          <label><span>Email</span><input ref={emailRef} name="email" type="email" placeholder="you@example.com" autoComplete="email" required /></label>
+          <label><span>Password</span><span className="password-field"><input ref={passwordRef} name="password" type={passwordVisible ? 'text' : 'password'} placeholder={signingUp ? 'Choose any password' : 'Your password'} autoComplete={signingUp ? 'new-password' : 'current-password'} required /><button type="button" className="password-toggle" onClick={() => setPasswordVisible((visible) => !visible)} aria-label={passwordVisible ? 'Hide password' : 'Show password'} aria-pressed={passwordVisible} title={passwordVisible ? 'Hide password' : 'Show password'}>{passwordVisible ? '◉' : '◎'}</button></span></label>
           {signingUp && <label><span>Confirm password</span><span className="password-field"><input name="confirmPassword" type={confirmPasswordVisible ? 'text' : 'password'} placeholder="Repeat your password" autoComplete="new-password" required /><button type="button" className="password-toggle" onClick={() => setConfirmPasswordVisible((visible) => !visible)} aria-label={confirmPasswordVisible ? 'Hide password' : 'Show password'} aria-pressed={confirmPasswordVisible} title={confirmPasswordVisible ? 'Hide password' : 'Show password'}>{confirmPasswordVisible ? '◉' : '◎'}</button></span></label>}
           {!signingUp && <a className="login-forgot" href="/forgot-password">Forgot password?</a>}
+          {!signingUp && (
+            <div className="login-demo-section" aria-label="Demo accounts">
+              <div className="login-demo-header">Demo accounts</div>
+              <div className="login-demo-list">
+                {demoAccounts.map((account) => (
+                  <button
+                    key={account.email}
+                    type="button"
+                    className="login-demo-account"
+                    onClick={() => useDemoAccount(account)}
+                    title={`Sign in with ${account.email} / ${account.password}`}
+                  >
+                    <strong>{account.name}</strong>
+                    <span>{account.email}</span>
+                    <small>Password: {account.password}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {error && <p className="login-error" role="alert">{error}</p>}
           <button className="login-submit" type="submit" disabled={submitting}>
             {submitting ? 'Please wait...' : signingUp ? 'Create account' : 'Sign in'}

@@ -29,10 +29,11 @@ const {
     createChatResponse,
     generateImage,
     getWorkspaceItems, createWorkspaceItem, updateWorkspaceItem, deleteWorkspaceItem, getUsageAnalytics, branchConversation, webResearch, getOllamaModels, checkAnswerQuality,
-    previewRouter, searchKnowledge, getTeams, createTeam, inviteTeamMember, updateTeamMember, removeTeamMember, shareConversation, getSharedConversation,
+    previewRouter, searchKnowledge, getTeams, createTeam, inviteTeamMember, updateTeamMember, removeTeamMember, shareConversation, getSharedConversation, listDeveloperKeys, createDeveloperKey, revokeDeveloperKey,
     getSharedPromptTemplates, rateSharedPromptTemplate, chatSuggestions, recordArenaVote, getArenaLeaderboard, improvePrompt,
 } = require('../controllers/controllers');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { health, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
 
 const router = express.Router();
 
@@ -44,7 +45,10 @@ router.get('/auth/google', startGoogleAuth);
 router.get('/auth/google/callback', googleCallback);
 router.get('/auth/session', getSession);
 router.post('/auth/logout', logout);
+router.post('/auth/password-reset/request', requestPasswordReset);
+router.post('/auth/password-reset/confirm', confirmPasswordReset);
 router.get('/status/models', getModelStatus);
+router.get('/health', health);
 router.get('/community/users', getCommunityUsers);
 router.get('/admin/stats', getAdminStats);
 router.get('/share/:token', getSharedConversation);
@@ -83,6 +87,23 @@ router.post('/prompts/:id/rate', requireAuth, rateSharedPromptTemplate);
 router.post('/chat/suggestions', requireAuth, chatSuggestions);
 router.post('/arena/vote', requireAuth, recordArenaVote);
 router.get('/arena/leaderboard', requireAuth, getArenaLeaderboard);
+router.get('/developer/keys', requireAuth, listDeveloperKeys);
+router.post('/developer/keys', requireAuth, createDeveloperKey);
+router.delete('/developer/keys/:id', requireAuth, revokeDeveloperKey);
+router.get('/search', requireAuth, globalSearch);
+router.get('/jobs', requireAuth, listJobs);
+router.post('/jobs', requireAuth, createJob);
+router.delete('/jobs/:id', requireAuth, cancelJob);
+router.get('/notifications', requireAuth, listNotifications);
+router.patch('/notifications/:id/read', requireAuth, readNotification);
+router.get('/usage/report', requireAuth, usageReport);
+router.get('/audit', requireAuth, auditLog);
+router.get('/webhooks', requireAuth, listWebhooks);
+router.post('/webhooks', requireAuth, createWebhook);
+router.delete('/webhooks/:id', requireAuth, deleteWebhook);
+router.get('/privacy/export', requireAuth, privacyExport);
+router.post('/auth/verify/request', requireAuth, requestEmailVerification);
+router.post('/auth/verify/confirm', requireAuth, confirmEmailVerification);
 router.get('/users', requireAdmin, getUsers);
 router.get('/users/:id', requireAdmin, getUserById);
 router.post('/users', requireAdmin, createUser);
