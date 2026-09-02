@@ -56,7 +56,7 @@ export default function Dashboard() {
     <main className="dashboard-page">
       <nav className="dashboard-nav">
         <Link to="/" className="dashboard-brand"><span>AI</span>AllModelAI</Link>
-        <div className="dashboard-nav-links"><Link to="/chat">Chat</Link><Link to="/next-25">Next 25</Link><Link to="/next-9">Next 9</Link><Link to="/next-10">Next 10</Link><Link to="/ai-platform">AI Platform</Link><Link to="/website-builder">Website Builder</Link><Link to="/arena">Arena</Link><Link to="/explore">Models</Link><Link to="/studio">Studio</Link><Link to="/ai-tools">Power Lab</Link><Link to="/creator-tools">Creator Lab</Link><Link to="/features">Features</Link><Link to="/control-center">Control</Link></div>
+        <div className="dashboard-nav-links"><Link to="/chat">Chat</Link><Link to="/builder-25">Builder 25</Link><Link to="/next-25">Next 25</Link><Link to="/next-9">Next 9</Link><Link to="/next-10">Next 10</Link><Link to="/ai-platform">AI Platform</Link><Link to="/website-builder">Website Builder</Link><Link to="/arena">Arena</Link><Link to="/explore">Models</Link><Link to="/studio">Studio</Link><Link to="/ai-tools">Power Lab</Link><Link to="/creator-tools">Creator Lab</Link><Link to="/features">Features</Link><Link to="/control-center">Control</Link></div>
         <div className="dashboard-user"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><Link to="/settings"><small>{user.name || user.email}</small></Link><button onClick={() => setDeleteModalOpen(true)}>Sign out</button></div>
       </nav>
       {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user.email}</div>}
@@ -66,7 +66,7 @@ export default function Dashboard() {
           <p className="dashboard-eyebrow">Workspace ready</p>
           <h1>Welcome, {user.name?.split(' ')[0] || 'creator'}.</h1>
           <p>Your account is connected to the backend. Choose a model and start building something remarkable.</p>
-          <div className="dashboard-actions"><Link to="/next-25">Explore 25 capabilities</Link><Link to="/next-9">Explore 9 new ideas</Link><Link to="/next-10">Explore 10 new tools</Link><Link to="/production">Production Center</Link><Link to="/skills-hub">Skills Hub</Link><Link to="/expansion-hub">Expansion Hub</Link></div>
+          <div className="dashboard-actions"><Link to="/builder-25">Open Builder 25</Link><Link to="/next-25">Explore 25 capabilities</Link><Link to="/next-9">Explore 9 new ideas</Link><Link to="/next-10">Explore 10 new tools</Link><Link to="/production">Production Center</Link><Link to="/skills-hub">Skills Hub</Link><Link to="/expansion-hub">Expansion Hub</Link></div>
         </div>
         <div className="dashboard-orbit" aria-hidden="true"><span>AI</span></div>
       </section>

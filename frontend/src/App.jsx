@@ -45,6 +45,7 @@ import NextTen from "./components/NextTen/NextTen";
 import NextNine from "./components/NextNine/NextNine";
 import NextTwentyFive from "./components/NextTwentyFive/NextTwentyFive";
 import ChatSettings from "./components/ChatSettings/ChatSettings";
+import BuilderTwentyFive from "./components/BuilderTwentyFive/BuilderTwentyFive";
 
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");
@@ -157,6 +158,7 @@ export default function App() {
       <Route path="/next-9" element={<NextNine />} />
       <Route path="/next-25" element={<NextTwentyFive />} />
       <Route path="/chat/settings" element={<ChatSettings />} />
+      <Route path="/builder-25" element={<BuilderTwentyFive />} />
     </Routes></>
   );
 }
