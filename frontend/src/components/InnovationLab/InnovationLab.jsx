@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import './InnovationLab.css';
 
 const modules = [['rag','Semantic RAG','Ranked document chunks and citations'],['agents','Agent Builder','Reusable experts with tools'],['fallback','Model Fallback','Automatic provider recovery'],['multimodal','Multimodal','Voice, files, images, and prompts'],['evals','Evaluation Lab','Multi-model quality benchmarks']];
@@ -8,8 +8,8 @@ async function api(url, options={}){const response=await fetch(url,{credentials:
 async function ask(model,prompt,fallbackEnabled=true){const started=performance.now();const response=await fetch('/api/chat',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({model,messages:[{role:'user',text:prompt}],temporary:true,fallbackEnabled})});if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.message||`${model} failed`);}const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',text='',fallback=null;while(true){const{done,value}=await reader.read();buffer+=decoder.decode(value||new Uint8Array(),{stream:!done});const events=buffer.replaceAll('\r\n','\n').split('\n\n');buffer=events.pop()||'';events.forEach(raw=>{const line=raw.split('\n').find(item=>item.startsWith('data: '));if(!line||line.slice(6)==='[DONE]')return;const event=JSON.parse(line.slice(6));if(event.text)text+=event.text;if(event.fallback)fallback=event.actualModel;});if(done)break;}return{text,fallback,latency:Math.round(performance.now()-started)};}
 
 export default function InnovationLab(){
- const saved=sessionStorage.getItem('allmodelai_user'),user=saved?JSON.parse(saved):null,navigate=useNavigate(),picker=useRef(null);
- const[active,setActive]=useState('rag'),[error,setError]=useState(''),[documents,setDocuments]=useState([]),[doc,setDoc]=useState({name:'',content:''}),[query,setQuery]=useState(''),[results,setResults]=useState([]);
+ const saved=sessionStorage.getItem('allmodelai_user'),user=saved?JSON.parse(saved):null,navigate=useNavigate(),picker=useRef(null),[searchParams]=useSearchParams(),requestedFeature=searchParams.get('feature');
+ const[active,setActive]=useState(modules.some(([key])=>key===requestedFeature)?requestedFeature:'rag'),[error,setError]=useState(''),[documents,setDocuments]=useState([]),[doc,setDoc]=useState({name:'',content:''}),[query,setQuery]=useState(''),[results,setResults]=useState([]);
  const[agents,setAgents]=useState([]),[agent,setAgent]=useState({name:'',model:'smart',instructions:'',tools:['knowledge','fallback']});
  const[fallbackEnabled,setFallbackEnabled]=useState(()=>localStorage.getItem('allmodelai_fallback')!=='false'),[fallbackPrompt,setFallbackPrompt]=useState(''),[fallbackResult,setFallbackResult]=useState(null),[busy,setBusy]=useState(false);
  const[attachment,setAttachment]=useState(null),[multiPrompt,setMultiPrompt]=useState(''),[listening,setListening]=useState(false);

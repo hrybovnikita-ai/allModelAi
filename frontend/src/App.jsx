@@ -41,6 +41,10 @@ import InnovationLab from "./components/InnovationLab/InnovationLab";
 import ExpansionHub from "./components/ExpansionHub/ExpansionHub";
 import SkillsHub from "./components/SkillsHub/SkillsHub";
 import ProductionCenter from "./components/ProductionCenter/ProductionCenter";
+import NextTen from "./components/NextTen/NextTen";
+import NextNine from "./components/NextNine/NextNine";
+import NextTwentyFive from "./components/NextTwentyFive/NextTwentyFive";
+import ChatSettings from "./components/ChatSettings/ChatSettings";
 
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");
@@ -149,6 +153,10 @@ export default function App() {
       <Route path="/expansion-hub" element={<ExpansionHub />} />
       <Route path="/skills-hub" element={<SkillsHub />} />
       <Route path="/production" element={<ProductionCenter />} />
+      <Route path="/next-10" element={<NextTen />} />
+      <Route path="/next-9" element={<NextNine />} />
+      <Route path="/next-25" element={<NextTwentyFive />} />
+      <Route path="/chat/settings" element={<ChatSettings />} />
     </Routes></>
   );
 }

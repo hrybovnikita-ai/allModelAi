@@ -703,7 +703,7 @@ const createChatResponse = async (req, res) => {
     const customInstructions = String(systemInstructions || '').trim().slice(0, 2000);
     const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear and accurate. Always detect the language of the user's latest message and answer in that same language. If the message mixes languages, use the dominant language. Keep code, product names, and quoted text unchanged. Put all source code in complete fenced Markdown code blocks with the correct language tag so it can be copied directly into an IDE. Response preferences: length=${preferences.length}, tone=${preferences.tone}, creativity=${preferences.creativity}, format=${preferences.format}.${customInstructions ? ` User instructions: ${customInstructions}` : ''}${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}${knowledgeContext}`;
     let assistantText = '';
-    const outputTokenLimit = Math.min(Math.max(Number(maxTokens) || Number(process.env.MAX_TOKENS) || 1024, 128), 4096);
+    const outputTokenLimit = Math.min(Math.max(Number(maxTokens) || Number(process.env.MAX_TOKENS) || 2048, 128), 4096);
 
     try {
         const directGeminiModel = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
@@ -764,7 +764,12 @@ const createChatResponse = async (req, res) => {
         let fallbackUsed = usePreferredGemini;
         let fallbackModel = usePreferredGemini ? 'gemini' : null;
         let upstreamError = null;
-        if (!apiResponse.ok && isOpenAI && [402, 429].includes(apiResponse.status) && process.env.GEMINI_API_KEY?.trim()) {
+        // A provider key only belongs to that provider. Previously a failed direct
+        // Kimi request fell through to the OpenRouter retry below while still using
+        // the Kimi key, which produced a misleading "OpenRouter rejected the key"
+        // error. Prefer the independently configured Gemini connection for every
+        // failed non-Gemini provider before attempting a gateway fallback.
+        if (!apiResponse.ok && fallbackEnabled !== false && !isGemini && process.env.GEMINI_API_KEY?.trim()) {
             upstreamError = await apiResponse.json().catch(() => ({}));
             apiKey = process.env.GEMINI_API_KEY.trim();
             isOpenAI = false;

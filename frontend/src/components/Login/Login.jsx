@@ -65,7 +65,7 @@ export default function Login({ mode, onClose, onModeChange }) {
     }
   };
 
-  const useDemoAccount = (account) => {
+  const selectDemoAccount = (account) => {
     setError('');
     if (emailRef.current) emailRef.current.value = account.email;
     if (passwordRef.current) passwordRef.current.value = account.password;
@@ -111,7 +111,7 @@ export default function Login({ mode, onClose, onModeChange }) {
                     key={account.email}
                     type="button"
                     className="login-demo-account"
-                    onClick={() => useDemoAccount(account)}
+                    onClick={() => selectDemoAccount(account)}
                     title={`Sign in with ${account.email} / ${account.password}`}
                   >
                     <strong>{account.name}</strong>

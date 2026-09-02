@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import './ExpansionHub.css';
 
 const modules=[['workflow','Workflow Builder','Connect repeatable AI steps'],['marketplace','Model Marketplace','Install agents and templates'],['meetings','Meeting Assistant','Turn transcripts into action'],['collaboration','Live Collaboration','Work together with roles'],['memory','Memory Graph','Explore connected knowledge'],['versions','Prompt Versions','Compare and restore revisions'],['security','Security Center','Scan prompts and content'],['local','Local Models','Manage your Ollama connection'],['research','Research Agent','Build cited research reports'],['developer','Developer API','Keys, SDK examples, and usage']];
@@ -9,8 +9,8 @@ async function api(url,options={}){const response=await fetch(url,{credentials:'
 const post=(url,body)=>api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 
 export default function ExpansionHub(){
- const saved=sessionStorage.getItem('allmodelai_user'),user=saved?JSON.parse(saved):null,navigate=useNavigate();
- const[active,setActive]=useState('workflow'),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ const saved=sessionStorage.getItem('allmodelai_user'),user=saved?JSON.parse(saved):null,navigate=useNavigate(),[searchParams]=useSearchParams(),requestedFeature=searchParams.get('feature');
+ const[active,setActive]=useState(modules.some(([key])=>key===requestedFeature)?requestedFeature:'workflow'),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const[workflow,setWorkflow]=useState({name:'Content production',nodes:['Input','Research','Draft','Review']}),[savedWorkflows,setSavedWorkflows]=useState([]);
  const[meeting,setMeeting]=useState({name:'',transcript:''}),[teams,setTeams]=useState([]),[graph,setGraph]=useState([]);
  const[promptName,setPromptName]=useState(''),[promptText,setPromptText]=useState(''),[versions,setVersions]=useState([]);

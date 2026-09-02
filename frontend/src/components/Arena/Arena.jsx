@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { dashboardModels } from '../../data/dashboardModels';
 import './Arena.css';
 
@@ -44,6 +44,7 @@ async function ask(model, prompt, email) {
 }
 
 export default function Arena() {
+  const location = useLocation();
   const saved = sessionStorage.getItem('allmodelai_user');
   const user = saved ? JSON.parse(saved) : null;
   const [params] = useSearchParams();
@@ -58,7 +59,7 @@ export default function Arena() {
       ? [initial, 'gpt'].filter((v, i, a) => a.indexOf(v) === i)
       : ['gpt', 'claude', 'gemini']
   );
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState(location.state?.starterPrompt || '');
   const [results, setResults] = useState({});
   const [running, setRunning] = useState(false);
   const [winner, setWinner] = useState('');

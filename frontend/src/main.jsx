@@ -5,7 +5,11 @@ import './index.css'
 import App from './App.jsx'
 
 const savedAppearance = JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}')
-document.documentElement.style.setProperty('--user-text-color', savedAppearance.textColor || '#ffffff')
+const savedMessageColor = !savedAppearance.textColor || savedAppearance.textColor.toLowerCase() === '#ffffff' ? '#8b5cf6' : savedAppearance.textColor
+const colorValue = savedMessageColor.replace('#', '')
+const colorChannels = [0, 2, 4].map(index => Number.parseInt(colorValue.slice(index, index + 2), 16))
+document.documentElement.style.setProperty('--user-text-color', savedMessageColor)
+document.documentElement.style.setProperty('--user-bubble-text', (colorChannels[0] * 299 + colorChannels[1] * 587 + colorChannels[2] * 114) / 1000 > 155 ? '#111111' : '#ffffff')
 const systemTheme = window.matchMedia('(prefers-color-scheme: light)')
 const applyTheme = () => {
   const preference = JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}').theme || 'dark'

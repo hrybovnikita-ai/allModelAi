@@ -1,6 +1,6 @@
 /* eslint-disable no-useless-escape */
 import { useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import './InnovationHub.css';
 
 const ideas=[
@@ -16,7 +16,7 @@ const assistants=[['Code Reviewer','DeepSeek','Installed'],['Growth Strategist',
 const load=(key,fallback)=>{try{return JSON.parse(localStorage.getItem(key))??fallback}catch{return fallback}};
 
 export default function InnovationHub(){
- const navigate=useNavigate(); const saved=sessionStorage.getItem('allmodelai_user'); const user=saved?JSON.parse(saved):null; const [active,setActive]=useState('market');
+ const navigate=useNavigate(); const[searchParams]=useSearchParams(); const requestedFeature=searchParams.get('feature'); const saved=sessionStorage.getItem('allmodelai_user'); const user=saved?JSON.parse(saved):null; const [active,setActive]=useState(ideas.some(([key])=>key===requestedFeature)?requestedFeature:'market');
  const [tasks,setTasks]=useState(()=>load('allmodelai_tasks',[])); const [task,setTask]=useState(''); const [canvas,setCanvas]=useState(()=>localStorage.getItem('allmodelai_canvas')||'');
  const [code,setCode]=useState("document.body.innerHTML='<h1>Hello from AllModelAI</h1><p>Your code runs in a sandbox.</p>';document.body.style='font-family:system-ui;background:#111827;color:white;padding:24px'"); const [runId,setRunId]=useState(0);
  const [budget,setBudget]=useState(()=>localStorage.getItem('allmodelai_budget')||'25'); const [members,setMembers]=useState(()=>load('allmodelai_team',[])); const [member,setMember]=useState('');

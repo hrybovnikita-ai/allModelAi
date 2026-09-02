@@ -13,6 +13,13 @@ const suggestions = [
   { icon: '◎', title: 'Compare models', prompt: 'Compare Claude, Gemini, GPT, and Llama.' },
 ];
 
+const chatTextColors = [
+  ['Blue', '#3b82f6'], ['Yellow', '#facc15'], ['Purple', '#a855f7'],
+  ['Lime', '#a3e635'], ['Orange', '#f97316'], ['Red', '#ef4444'],
+  ['Red orange', '#ff4500'], ['Violet', '#8b5cf6'], ['Gray', '#9ca3af'],
+  ['Green yellow', '#adff2f'],
+];
+
 function CodeBlock({ language, code }) {
   const [copied, setCopied] = useState(false);
   const languageAliases = { js: 'javascript', jsx: 'jsx', ts: 'typescript', py: 'python', sh: 'bash', shell: 'bash', html: 'markup' };
@@ -55,9 +62,10 @@ function MessageContent({ text, streaming }) {
 
   if (lastIndex < text.length) {
     const remainder = text.slice(lastIndex);
-    const openFence = streaming
-      ? remainder.match(/(?:^|\n)[\t ]*```([\w.+#-]*)[\t ]*(?:\r?\n|$)([\s\S]*)$/)
-      : null;
+    // Long model responses can finish at the token limit before emitting the
+    // closing fence. Keep a valid opening fence rendered as code after the
+    // stream ends instead of reverting it to visible ```python plain text.
+    const openFence = remainder.match(/(?:^|\n)[\t ]*```([\w.+#-]*)[\t ]*(?:\r?\n|$)([\s\S]*)$/);
 
     if (openFence) {
       const fenceIndex = openFence.index + (openFence[0].startsWith('\n') ? 1 : 0);
@@ -137,8 +145,11 @@ export default function Chat() {
   const [routeInfo, setRouteInfo] = useState(null);
   const [modelStatus, setModelStatus] = useState({});
   const [modelNotice, setModelNotice] = useState('');
-  const [themePreference, setThemePreference] = useState(() => JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}').theme || 'dark');
-  const [themeSettingsVisible, setThemeSettingsVisible] = useState(() => localStorage.getItem('allmodelai_sidebar_theme_visible') !== 'false');
+  const [themePreference] = useState(() => JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}').theme || 'dark');
+  const [textColor] = useState(() => {
+    const savedColor = JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}').textColor;
+    return !savedColor || savedColor.toLowerCase() === '#ffffff' ? '#8b5cf6' : savedColor;
+  });
   const [contextSuggestions, setContextSuggestions] = useState([]);
   const selectedModel = dashboardModels.find((model) => model.slug === selectedSlug);
 
@@ -168,19 +179,6 @@ export default function Chat() {
       .then((data) => data?.models && setModelStatus(data.models))
       .catch(() => {});
   }, []);
-
-  const changeTheme = (theme) => {
-    const appearance = JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}');
-    localStorage.setItem('allmodelai_appearance', JSON.stringify({ ...appearance, theme }));
-    setThemePreference(theme);
-  };
-
-  const toggleThemeSettings = () => {
-    setThemeSettingsVisible((visible) => {
-      localStorage.setItem('allmodelai_sidebar_theme_visible', String(!visible));
-      return !visible;
-    });
-  };
 
   useEffect(() => {
     document.documentElement.dataset.themePreference = themePreference;
@@ -740,7 +738,7 @@ export default function Chat() {
           </div>)}
         </div>
         <nav className="sidebar-links" aria-label="Chat navigation"><Link to="/dashboard">⌂ <span>Dashboard</span></Link><Link to="/ai-platform">34 <span>AI Platform</span></Link><Link to="/website-builder">&lt;/&gt; <span>Website Builder</span></Link><Link to="/studio">✦ <span>Workspace Studio</span></Link><Link to="/control-center">⌘ <span>Control Center</span></Link><Link to="/models/gpt">▦ <span>Model library</span></Link></nav>
-        <section className={`sidebar-theme-settings ${themeSettingsVisible?'expanded':'collapsed'}`} aria-label="Theme settings"><div><span>⚙</span><strong>Settings</strong><div className="sidebar-settings-actions"><button type="button" onClick={toggleThemeSettings} aria-expanded={themeSettingsVisible}>{themeSettingsVisible?'Hide':'Show'}</button><Link to="/control-center">More</Link></div></div>{themeSettingsVisible&&<><p>Appearance</p><div className="sidebar-theme-options">{[['light','☀','Light'],['dark','●','Dark'],['auto','◐','Auto']].map(([value,icon,label])=><button type="button" className={themePreference===value?'active':''} onClick={()=>changeTheme(value)} title={`${label} theme`} aria-pressed={themePreference===value} key={value}><i>{icon}</i><span>{label}</span></button>)}</div></>}</section>
+        <section className="sidebar-theme-settings collapsed" aria-label="Theme settings"><button type="button" className="chat-settings-trigger" onClick={()=>navigate('/chat/settings')}><span className="settings-gear" aria-hidden="true">⚙</span><span><strong>Settings</strong><small>{themePreference} · {chatTextColors.find(([,color])=>color===textColor)?.[0]||'Custom'} message</small></span><b>›</b></button></section>
         <div className="chat-profile"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><div><strong>{user.name || 'User'}</strong><small>{user.email}</small></div><button onClick={() => setDeleteModalOpen(true)} aria-label="Sign out" title="Sign out">↗</button></div>
       </aside>
 
