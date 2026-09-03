@@ -714,6 +714,7 @@ export default function Chat() {
         </div>
         <button className="new-chat" onClick={newChat}><span>＋</span> New conversation</button>
         <div className="workspace-tools">
+          <button className="settings-quick-access" onClick={() => navigate('/chat/settings')}><span>⚙</span><span><strong>Chat settings</strong><small>Change input and message colors</small></span><b>›</b></button>
           <button className={temporaryChat ? 'active' : ''} onClick={startTemporaryChat}><span>◌</span><span><strong>Temporary chat</strong><small>Not saved to history</small></span></button>
           <button onClick={createProject}><span>▣</span><span><strong>New project</strong><small>Organize chats by goal</small></span></button>
           <button onClick={() => navigate('/arena')}><span>⚔</span><span><strong>AI Arena</strong><small>Compare answers side by side</small></span></button>
@@ -790,10 +791,10 @@ export default function Chat() {
             })}
           {isSending && !isStreamingResponse && <article className="chat-message assistant thinking-message"><span className="thinking-avatar" aria-hidden="true"><i /></span><div><small>{selectedModel.name}</small><p className="typing-indicator"><b>Thinking<span className="thinking-dots"><i /><i /><i /></span></b></p></div></article>}
           {chatError && <div className="chat-api-error" role="alert"><span>{chatError}</span><div>{/(microphone|speech|voice recognition)/i.test(chatError) ? <><button type="button" onClick={() => { setChatError(''); toggleVoiceInput(); }}>Try microphone again</button><button type="button" onClick={() => setChatError('')}>Dismiss</button></> : <><button type="button" onClick={() => { setSelectedSlug('gemini'); setChatError(''); setPrompt(messages.slice().reverse().find(message => message.role === 'user')?.text || ''); }}>Try with Gemini</button><Link to="/checkout?plan=pro">View demo plans</Link></>}</div></div>}
-          <div ref={messagesEnd} />
+          <div className="chat-scroll-tail" ref={messagesEnd} aria-hidden="true" />
         </div>
 
-        <form className="chat-composer" onSubmit={sendMessage}>
+        <form className={`chat-composer ${messages.length === 0 ? 'welcome-composer' : 'conversation-composer'}`} onSubmit={sendMessage}>
           <div className="composer-shell">
             {composerMenuOpen && <div className="composer-menu">
               <button type="button" onClick={() => { setComposerMenuOpen(false); setVoicePanelOpen((open) => !open); }}><span>♫</span> Voice conversation</button>

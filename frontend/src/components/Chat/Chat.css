@@ -97,6 +97,14 @@ html[data-theme="light"] .sidebar-text-colors button{border-color:#d4d8e0;backgr
 @media (min-width:1600px){.chat-page{grid-template-columns:290px minmax(0,1fr)}.chat-messages,.chat-composer{width:min(calc(100% - 80px),1050px)}.chat-message{max-width:1000px}.chat-empty{max-width:1000px}}
 @media (max-height:700px){.chat-history{margin-top:12px}.workspace-tools{margin-top:7px}.sidebar-links{padding-bottom:5px}.sidebar-theme-settings{margin-bottom:5px}.chat-profile{padding-top:8px}.chat-empty{margin-top:2vh}}
 
+/* Gemini-inspired ambient blue field shown behind a new conversation. */
+.chat-workspace:has(.chat-empty){background-color:#090a0d;background-image:radial-gradient(ellipse 66% 43% at 50% 55%,rgba(36,74,214,.34) 0%,rgba(29,54,153,.27) 26%,rgba(20,34,91,.19) 45%,rgba(12,18,48,.09) 62%,transparent 78%),radial-gradient(ellipse 35% 23% at 50% 57%,rgba(50,91,255,.22),transparent 74%)}
+.chat-workspace:has(.chat-empty) .chat-empty{position:relative;z-index:1}
+.chat-workspace:has(.chat-empty) .prompt-suggestions button{background:rgba(9,9,11,.88);backdrop-filter:blur(12px)}
+.chat-workspace:has(.chat-empty) .composer-box{background:rgba(20,20,22,.94);backdrop-filter:blur(18px)}
+html[data-theme="light"] .chat-workspace:has(.chat-empty){background-image:radial-gradient(ellipse 66% 43% at 50% 55%,rgba(79,112,231,.18),rgba(126,148,226,.1) 42%,transparent 76%)}
+@media(max-width:620px){.chat-workspace:has(.chat-empty){background-image:radial-gradient(ellipse 100% 42% at 50% 49%,rgba(36,74,214,.32),rgba(17,31,83,.16) 50%,transparent 78%)}}
+
 /* Keep the composer visibly above desktop docks and system taskbars. */
 @media (min-width:601px){
   .chat-composer{
@@ -124,3 +132,35 @@ html[data-theme="light"] .sidebar-text-colors button{border-color:#d4d8e0;backgr
 @media (min-width:1600px){
   .chat-composer{left:290px;width:min(calc(100% - 370px),1050px)}
 }
+
+/* Gemini-like composer movement: centered for a new chat, docked after send. */
+@media (min-width:601px){
+  .chat-composer{transition:bottom .62s cubic-bezier(.22,1,.36,1),transform .62s cubic-bezier(.22,1,.36,1),opacity .25s ease}
+  .chat-composer.welcome-composer{bottom:calc(100vh - clamp(520px,54vh,690px) - 105px);transform:translateY(0)}
+  .chat-composer.conversation-composer{bottom:72px;transform:translateY(0);animation:composer-dock .62s cubic-bezier(.22,1,.36,1)}
+}
+@keyframes composer-dock{0%{transform:translateY(-18px);opacity:.88}100%{transform:translateY(0);opacity:1}}
+
+/* New answers and rich code blocks enter without jumping the layout. */
+.chat-message{animation:chat-message-enter .42s cubic-bezier(.22,1,.36,1) both}
+.chat-message.assistant pre,.chat-message.assistant .code-block{animation:chat-code-enter .5s .08s cubic-bezier(.22,1,.36,1) both;transform-origin:top center}
+@keyframes chat-message-enter{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes chat-code-enter{from{opacity:0;transform:translateY(10px) scaleY(.97)}to{opacity:1;transform:translateY(0) scaleY(1)}}
+@media(prefers-reduced-motion:reduce){.chat-composer,.chat-message,.chat-message.assistant pre,.chat-message.assistant .code-block{transition:none!important;animation:none!important}}
+
+/* Keep the final answer fully scrollable above the fixed composer. */
+.chat-messages{scroll-padding-bottom:280px;overscroll-behavior:contain}
+.chat-scroll-tail{display:block;width:100%;height:280px;pointer-events:none}
+@media(max-width:600px){.chat-messages{scroll-padding-bottom:150px}.chat-scroll-tail{height:150px}}
+
+/* User-selected input color from Personal Chat Settings. */
+.chat-page .composer-box{background:var(--composer-color,#262626)!important}
+.chat-page .chat-composer textarea{color:var(--composer-text,#fff)!important}
+.chat-page .chat-composer textarea::placeholder{color:color-mix(in srgb,var(--composer-text,#fff) 55%,transparent)!important}
+
+/* Settings shortcut inside the main tools block. */
+.workspace-tools .settings-quick-access{order:10;margin:3px 0;border:1px solid #5b4ed466!important;background:linear-gradient(90deg,#28204d99,#151515)!important}
+.workspace-tools .settings-quick-access>span:first-child{border-color:#7567f8;background:#302763;color:#c4bfff;box-shadow:0 0 16px #7567f833}
+.workspace-tools .settings-quick-access strong{color:#c9c4ff!important}
+.workspace-tools .settings-quick-access>b{margin-left:auto;color:#9d94ff;font-size:1.05rem}
+.workspace-tools .settings-quick-access:hover{border-color:#8b80ff!important;background:linear-gradient(90deg,#34286a,#1a1a1a)!important}
