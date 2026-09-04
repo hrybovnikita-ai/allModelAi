@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import './CommandPalette.css';
 
 const commands = [
+  ['12 Reliability Tools','Provider setup, health checks, privacy, and smart retry','/next-12','12'],
+  ['15 New Ideas','Daily planning, quality control, teamwork, learning, and export','/next-15','15'],
+  ['30 New Features','Compare, verify, organize, automate, create, and measure','/next-30','30'],
   ['New smart chat','Ask anything and auto-select a model','/chat?model=smart','✦'],
   ['AI Arena','Compare multiple models side by side','/arena','⚔'],
   ['Model Explorer','Search and filter every model','/explore','◈'],

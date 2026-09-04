@@ -3,49 +3,69 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import '../NextTen/NextTen.css';
 import '../NextTwentyFive/NextTwentyFive.css';
 
-const prompt=(role,output)=>`Act as ${role}. Analyze the input carefully, state assumptions, do not invent unavailable facts, and produce ${output}.\n\nINPUT:\n`;
-const tools=[
- ['autopilot','AI Model Autopilot','Autopilot','Plan and execute a goal using the right models and tools.',prompt('an AI orchestration architect','an ordered execution plan with model choices, tool calls, checkpoints, risks, and a final success test')],
- ['convert','Universal File Converter','Productivity','Plan safe conversion between common document and data formats.',prompt('a document conversion specialist','the converted content when possible, preservation warnings, and exact conversion steps')],
- ['email','Email Assistant','Business','Summarize threads, draft replies, and extract actions.',prompt('an expert executive email assistant','a thread summary, decisions, action items with owners, and a concise reply draft')],
- ['calendar','Calendar Copilot','Productivity','Turn goals and constraints into an effective schedule.',prompt('a scheduling copilot','a conflict-aware agenda, preparation checklist, buffers, and follow-up plan')],
- ['github','GitHub Repository Assistant','Developer','Understand repositories, architecture, risks, and changes.',prompt('a senior repository engineer','an architecture map, important files, risks, and a file-by-file implementation plan')],
- ['pr','Pull Request Reviewer','Developer','Review code changes for correctness and security.',prompt('a strict pull-request reviewer','findings ordered by severity with evidence, impact, and precise fixes')],
- ['bug','Bug Reproduction Agent','Developer','Create reliable reproduction steps and regression tests.',prompt('a software QA engineer','minimal reproduction steps, expected versus actual behavior, likely causes, and a regression-test design')],
- ['api','API Integration Builder','Developer','Build integrations from API specifications.',prompt('an API integration engineer','authentication setup, typed request examples, retries, validation, error handling, and tests')],
- ['database','Database Playground','Developer','Design safe SQL and database verification plans.',null,'/skills-hub'],
- ['logs','Log Analyzer','Developer','Group failures and identify likely root causes.',prompt('a production incident engineer','a normalized incident timeline, error clusters, root-cause hypotheses, verification commands, and safe fixes')],
- ['graph','Knowledge Graph','Knowledge','Explore relationships between workspace information.',null,'/expansion-hub?feature=memory'],
- ['meeting','Automatic Meeting Bot','Content','Extract decisions and work from meeting transcripts.',null,'/expansion-hub?feature=meetings'],
- ['video','Video Summary','Content','Create chapters, highlights, and study notes.',prompt('a video analysis editor','a concise summary, timestamp-ready chapter plan, key claims, quotes-to-verify, and follow-up questions')],
- ['podcast','Podcast Studio','Content','Develop episodes, scripts, descriptions, and chapters.',prompt('a podcast producer','an episode concept, structured script, host cues, chapter markers, title options, and show notes')],
- ['image','Image Editing Workspace','Content','Plan and create precise visual edits.',null,'/creator-tools'],
- ['brand','Brand Voice Manager','Content','Define and enforce a consistent brand style.',prompt('a brand voice strategist','voice principles, do/don’t rules, vocabulary, examples, and a compliance review of the supplied content')],
- ['repurpose','Content Repurposing Pipeline','Content','Turn one source into channel-native assets.',prompt('a multi-channel content strategist','an article outline, email, social posts, short-video script, and a repurposing calendar')],
- ['social','Social Media Scheduler','Content','Create platform-specific publishing calendars.',null,'/skills-hub'],
- ['seo','SEO Content Monitor','Business','Audit content and prioritize useful updates.',prompt('a technical SEO content analyst','an evidence-based content audit, decay risks, refresh priorities, internal-link plan, and measurement checklist')],
- ['competitor','Competitor Watch','Business','Structure recurring competitor product monitoring.',null,'/expansion-hub?feature=research'],
- ['support','Customer Support Copilot','Business','Draft grounded, empathetic customer answers.',null,'/skills-hub'],
- ['tickets','Ticket Auto-Triage','Business','Classify, prioritize, route, and escalate requests.',prompt('a support operations lead','category, urgency, sentiment, routing team, SLA recommendation, and escalation reason')],
- ['leads','CRM Lead Scoring','Business','Score leads transparently without hidden assumptions.',prompt('an ethical revenue-operations analyst','a transparent scoring rubric, per-lead score, evidence, uncertainty, and recommended next action')],
- ['sales','Sales Call Coach','Business','Review objections, discovery, and next steps.',prompt('an ethical sales coach','call summary, needs discovered, objections, missed questions, coaching notes, and a respectful follow-up')],
- ['invoice','Invoice & Receipt Analyzer','Business','Check extracted financial records for inconsistencies.',prompt('an accounts-payable reviewer','structured line items, totals and tax reconciliation, duplicates, anomalies, and fields requiring human verification')],
- ['contract','Contract Version Comparison','Business','Compare clauses and highlight changed risk.',null,'/skills-hub'],
- ['learn','Personal Learning Coach','Knowledge','Adapt lessons and exercises to learner progress.',null,'/studio?tool=learn'],
- ['gaps','Team Knowledge Gaps','Knowledge','Find questions the knowledge base cannot answer.',prompt('a knowledge-management analyst','a gap inventory, business impact, missing sources, owners, and a prioritized documentation backlog')],
- ['sdk','Plugin & Tool SDK','Platform','Design extensions for AllModelAI.',null,'/api-docs'],
- ['white','White-label Workspaces','Platform','Configure branded client and company workspaces.',null,'/settings'],
+const prompt = (role, output) => `Act as ${role}. Use supported facts, mark uncertainty, and produce ${output}.\n\nUSER INPUT:\n`;
+
+const features = [
+  ['parallel', 'Parallel AI Chat', 'Models', 'Send one prompt to several models and compare their answers side by side.', '/arena'],
+  ['judge', 'AI Answer Judge', 'Models', 'Evaluate responses for accuracy, clarity, speed, usefulness, and cost.', null, prompt('an impartial AI response evaluator', 'a scored comparison, evidence for every score, and a clear winner')],
+  ['merge', 'Response Merger', 'Models', 'Combine the strongest parts of several model responses into one final answer.', null, prompt('a senior synthesis editor', 'one accurate final answer and a note explaining which ideas were retained')],
+  ['fact-check', 'Fact-Checking Mode', 'Research', 'Check important claims, flag uncertainty, and request supporting sources.', null, prompt('a rigorous fact-checker', 'a claim-by-claim verdict, corrections, confidence levels, and sources to verify')],
+  ['web-research', 'Live Web Research', 'Research', 'Run guided research and produce an organized report with citations.', '/expansion-hub?feature=research'],
+  ['model-quiz', 'Model Recommendation Quiz', 'Models', 'Describe your goal and receive a model recommendation that explains the tradeoffs.', null, prompt('an AI model selection consultant', 'the best primary model, two alternatives, tradeoffs, and a recommended configuration')],
+  ['switching', 'Automatic Model Switching', 'Models', 'Use Smart Router to select the best model whenever the task changes.', '/chat?model=smart'],
+  ['optimizer', 'Prompt Optimizer', 'Prompts', 'Transform a rough request into a precise, structured, reusable prompt.', null, prompt('an expert prompt engineer', 'an improved prompt with role, context, constraints, output format, and success criteria')],
+  ['debugger', 'Prompt Debugger', 'Prompts', 'Understand why a prompt failed and receive a corrected version.', null, prompt('a prompt-debugging specialist', 'failure causes, an ambiguity report, missing context, and a corrected prompt')],
+  ['variables', 'Prompt Variables', 'Prompts', 'Create reusable templates with variables such as {product}, {audience}, and {tone}.', '/expansion-hub?feature=versions'],
+  ['branches', 'Branching Conversations', 'Workspace', 'Explore several directions from one message without losing the original conversation.', '/chat?model=smart'],
+  ['folders', 'Chat Folders & Tags', 'Workspace', 'Organize saved conversations by client, topic, project, and custom labels.', '/studio?tool=history'],
+  ['search', 'Universal Search', 'Workspace', 'Search chats, documents, prompts, agents, projects, and generated files.', '/production'],
+  ['summaries', 'Automatic Chat Summaries', 'Workspace', 'Turn long conversations into concise summaries, decisions, and action items.', null, prompt('an executive conversation analyst', 'a concise summary, decisions, open questions, and action items')],
+  ['memory', 'Permanent User Memory', 'Workspace', 'Save preferences, writing style, profession, and recurring instructions.', '/expansion-hub?feature=memory'],
+  ['projects', 'Project Workspaces', 'Workspace', 'Keep chats, documents, instructions, agents, and collaborators together.', '/studio'],
+  ['marketplace', 'AI Agent Marketplace', 'Agents', 'Discover, install, share, and rate specialized agents and templates.', '/expansion-hub?feature=marketplace'],
+  ['teams', 'Agent Teams', 'Agents', 'Coordinate researcher, writer, reviewer, and fact-checker agents on one goal.', null, prompt('an AI agent-team coordinator', 'role assignments, execution order, handoff rules, review gates, and a final deliverable plan')],
+  ['scheduled', 'Scheduled Agents', 'Agents', 'Define repeatable AI reports and tasks that are ready to run on a schedule.', '/expansion-hub?feature=workflow'],
+  ['approval', 'Human Approval Steps', 'Agents', 'Add review checkpoints before an automated workflow continues.', '/expansion-hub?feature=workflow'],
+  ['document-compare', 'Document Comparison', 'Files', 'Compare two documents and highlight wording, meaning, and risk changes.', null, prompt('a meticulous document comparison specialist', 'a section-by-section change report, additions, removals, meaning changes, and risk flags')],
+  ['ocr', 'OCR Document Scanner', 'Files', 'Extract, clean, and analyze text from screenshots, scans, and photographs.', '/creator-tools'],
+  ['media', 'Audio & Video Analysis', 'Files', 'Create transcripts, summaries, chapters, highlights, and action items.', null, prompt('an audio and video content analyst', 'a structured analysis, summary, chapters, key moments, and action items')],
+  ['images', 'Image Generation Studio', 'Create', 'Generate, edit, upscale, and remove backgrounds from images.', '/creator-tools'],
+  ['sandbox', 'Code Sandbox', 'Build', 'Generate code, test its logic, explain the output, and prepare verification steps.', null, prompt('a senior software engineer working in a safe code sandbox', 'runnable code, setup instructions, expected output, tests, and security notes')],
+  ['website', 'Website Preview Sandbox', 'Build', 'Generate HTML, CSS, and JavaScript with an immediate live preview.', '/website-builder'],
+  ['cost', 'Token & Cost Calculator', 'Analytics', 'Estimate request cost before running and understand actual usage afterward.', '/production'],
+  ['performance', 'Model Performance Dashboard', 'Analytics', 'Compare model response time, availability, quality, usage, and cost.', '/control-center'],
+  ['extension', 'Browser Extension', 'Everywhere', 'Prepare webpage summarizing, translating, explaining, and rewriting workflows.', null, prompt('a browser-extension product architect', 'a feature specification, user flow, permissions, privacy safeguards, architecture, and milestones')],
+  ['offline', 'Mobile / PWA Offline Mode', 'Everywhere', 'Install AllModelAI as an app and keep essential workspace data available offline.', '/settings'],
 ];
-const categories=['All',...new Set(tools.map(item=>item[2]))];
-export default function NextThirty(){
- const saved=sessionStorage.getItem('allmodelai_user'),user=saved?JSON.parse(saved):null,navigate=useNavigate();
- const[active,setActive]=useState('autopilot'),[category,setCategory]=useState('All'),[query,setQuery]=useState(''),[input,setInput]=useState('');
- const visible=useMemo(()=>tools.filter(item=>(category==='All'||item[2]===category)&&`${item[1]} ${item[2]} ${item[3]}`.toLowerCase().includes(query.toLowerCase())),[category,query]);
- const selected=tools.find(item=>item[0]===active)||tools[0]; if(!user)return <Navigate to="/" replace/>;
- const launch=()=>{if(selected[4]){if(!input.trim())return;navigate('/chat?model=smart',{state:{starterPrompt:`${selected[4]}${input}`}})}else navigate(selected[5])};
- return <main className="next-ten-page next-25-page"><header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><b>AI</b>AllModelAI</Link><nav><Link to="/app-20">App 20</Link><Link to="/power-center">Power Center</Link><Link to="/dashboard">Dashboard</Link></nav></header>
-  <section className="next-ten-hero"><div><p>ALLMODEL AI · NEXT 30</p><h1>From assistant<br/><span>to operating system.</span></h1><small>Thirty practical tools for software, knowledge, content, business operations, integrations, and autonomous work.</small></div><strong>30</strong></section>
-  <section className="next-25-toolbar"><label><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Find a tool..."/></label><div>{categories.map(value=><button className={category===value?'active':''} onClick={()=>setCategory(value)} key={value}>{value}</button>)}</div></section>
-  <section className="next-ten-shell next-25-shell"><aside>{visible.map(item=><button className={active===item[0]?'active':''} onClick={()=>{setActive(item[0]);setInput('')}} key={item[0]}><i>{String(tools.indexOf(item)+1).padStart(2,'0')}</i><span>✦</span><div><strong>{item[1]}</strong><small>{item[2]}</small></div></button>)}</aside><article className="next-ten-panel"><div className="next-ten-panel-title"><span>{String(tools.findIndex(item=>item[0]===selected[0])+1).padStart(2,'0')}</span><div><small>{selected[2].toUpperCase()} TOOL</small><h2>{selected[1]}</h2></div></div><p className="next-ten-description">{selected[3]}</p>{selected[4]?<div className="agent-team"><label>Task input<textarea value={input} onChange={e=>setInput(e.target.value)} placeholder="Paste source material or describe the goal..."/></label></div>:<div className="next-ten-flow"><div><i>1</i><span>Add context</span></div><b>→</b><div><i>2</i><span>Run workflow</span></div><b>→</b><div><i>3</i><span>Review output</span></div></div>}<button className="next-ten-launch" disabled={Boolean(selected[4])&&!input.trim()} onClick={launch}>Open {selected[1]} <span>→</span></button><footer><span>● Tool ready</span><small>Connected to Smart Router, workspace, projects, and usage controls.</small></footer></article></section>
- </main>;
+
+const categories = ['All', ...new Set(features.map((feature) => feature[2]))];
+
+export default function NextThirty() {
+  const saved = sessionStorage.getItem('allmodelai_user');
+  const user = saved ? JSON.parse(saved) : null;
+  const navigate = useNavigate();
+  const [active, setActive] = useState(features[0][0]);
+  const [category, setCategory] = useState('All');
+  const [query, setQuery] = useState('');
+  const [input, setInput] = useState('');
+  const visible = useMemo(() => features.filter((feature) => (category === 'All' || feature[2] === category) && `${feature[1]} ${feature[2]} ${feature[3]}`.toLowerCase().includes(query.toLowerCase())), [category, query]);
+  const selected = features.find((feature) => feature[0] === active) || features[0];
+  if (!user) return <Navigate to="/" replace />;
+  const launch = () => {
+    if (selected[5]) {
+      if (!input.trim()) return;
+      navigate('/chat?model=smart', { state: { starterPrompt: `${selected[5]}${input}` } });
+    } else navigate(selected[4]);
+  };
+  return <main className="next-ten-page next-25-page">
+    <header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><b>AI</b>AllModelAI</Link><nav><Link to="/arena">AI Arena</Link><Link to="/studio">Projects</Link><Link to="/dashboard">Dashboard</Link></nav></header>
+    <section className="next-ten-hero"><div><p>ALLMODEL AI · 30 NEW FEATURES</p><h1>One workspace.<br/><span>Thirty new powers.</span></h1><small>Compare, verify, organize, automate, create, and measure your AI work from one connected feature hub.</small></div><strong>30</strong></section>
+    <section className="next-25-toolbar"><label><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search 30 features..." aria-label="Search features" /></label><div>{categories.map((value) => <button type="button" className={category === value ? 'active' : ''} onClick={() => setCategory(value)} key={value}>{value}</button>)}</div></section>
+    <section className="next-ten-shell next-25-shell"><aside>{visible.map((feature) => <button type="button" className={active === feature[0] ? 'active' : ''} onClick={() => { setActive(feature[0]); setInput(''); }} key={feature[0]}><i>{String(features.indexOf(feature) + 1).padStart(2, '0')}</i><span>✦</span><div><strong>{feature[1]}</strong><small>{feature[2]}</small></div></button>)}</aside>
+      <article className="next-ten-panel"><div className="next-ten-panel-title"><span>{String(features.findIndex((feature) => feature[0] === selected[0]) + 1).padStart(2, '0')}</span><div><small>{selected[2].toUpperCase()} FEATURE</small><h2>{selected[1]}</h2></div></div><p className="next-ten-description">{selected[3]}</p>
+        {selected[5] ? <div className="agent-team"><label>What should this feature work on?<textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder="Paste content or describe your goal..." /></label></div> : <div className="next-ten-flow"><div><i>1</i><span>Open module</span></div><b>→</b><div><i>2</i><span>Add your context</span></div><b>→</b><div><i>3</i><span>Create & save</span></div></div>}
+        <button className="next-ten-launch" type="button" disabled={Boolean(selected[5]) && !input.trim()} onClick={launch}>{selected[5] ? `Run ${selected[1]}` : `Open ${selected[1]}`} <span>→</span></button><footer><span>● Feature ready</span><small>Connected to Smart Router, models, projects, memory, and usage controls.</small></footer>
+      </article>
+    </section>
+  </main>;
 }

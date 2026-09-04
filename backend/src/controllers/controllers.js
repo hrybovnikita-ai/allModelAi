@@ -418,6 +418,7 @@ const getCreditStatus = (database, email) => {
 const getModelStatus = (_req, res) => {
     const gateway = Boolean(process.env.OPENROUTER_API_KEY || process.env.API_KEY);
     const openAI = Boolean(process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY);
+    const xai = Boolean(process.env.XAI_API_KEY);
     return res.status(200).json({
         updatedAt: new Date().toISOString(),
         models: {
@@ -426,6 +427,7 @@ const getModelStatus = (_req, res) => {
             claude: Boolean(process.env.CLAUDE_API_KEY || gateway),
             kimi: Boolean(process.env.KIMI_API_KEY || gateway),
             cloudflare: Boolean(((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID) || gateway),
+            grok: xai || gateway,
             others: gateway,
         },
     });
@@ -656,19 +658,22 @@ const createChatResponse = async (req, res) => {
     // This keeps Claude available when a direct Anthropic account has no credits.
     const gatewayKey = process.env.OPENROUTER_API_KEY || process.env.API_KEY;
     const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
+    const xaiKey = process.env.XAI_API_KEY?.trim();
     const directKimiKey = process.env.KIMI_API_KEY?.trim();
     const preferGemini = process.env.PREFER_GEMINI === 'true' && Boolean(process.env.GEMINI_API_KEY?.trim());
     const usePreferredGemini = preferGemini && model === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
     let isOpenAI = Boolean(openAIKey && !usePreferredGemini && (routedModel === 'gpt' || routedModel === 'copilot'));
-    const isClaude = routedModel === 'claude' && !gatewayKey?.trim();
+    let isXAI = routedModel === 'grok' && Boolean(xaiKey);
+    let isClaude = routedModel === 'claude' && !gatewayKey?.trim();
     let isGemini = (routedModel === 'gemini' || usePreferredGemini) && Boolean(process.env.GEMINI_API_KEY?.trim());
-    const isKimi = routedModel === 'kimi' && Boolean(directKimiKey || gatewayKey);
+    let isKimi = routedModel === 'kimi' && Boolean(directKimiKey || gatewayKey);
     const hasCloudflareDirect = Boolean((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID);
-    const isCloudflare = routedModel === 'cloudflare' && hasCloudflareDirect;
+    let isCloudflare = routedModel === 'cloudflare' && hasCloudflareDirect;
     const cloudflareKey = process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY;
-    let apiKey = isOpenAI ? openAIKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isCloudflare ? cloudflareKey : gatewayKey;
+    let apiKey = isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isCloudflare ? cloudflareKey : gatewayKey;
     if (!apiKey) {
-        return res.status(503).json({ message: `${isClaude ? 'The Claude' : isGemini ? 'The Gemini' : isKimi ? 'The Kimi' : isCloudflare ? 'The Cloudflare' : 'The OpenRouter'} API key is not configured` });
+        const provider = routedModel === 'grok' ? 'Grok (set XAI_API_KEY or OPENROUTER_API_KEY)' : isClaude ? 'Claude' : isGemini ? 'Gemini' : isKimi ? 'Kimi' : isCloudflare ? 'Cloudflare' : 'OpenRouter';
+        return res.status(503).json({ message: `${provider} API key is not configured in backend/.env` });
     }
     if (!providerModels[routedModel]) {
         return res.status(400).json({ message: 'Unsupported AI model' });
@@ -701,7 +706,11 @@ const createChatResponse = async (req, res) => {
     };
     const knowledgeContext = knowledge.length ? `\nKnowledge base excerpts (cite them as [KB1], [KB2]):\n${knowledge.map((item, index) => `[KB${index + 1}] ${item.name}: ${item.excerpt}`).join('\n')}` : '';
     const customInstructions = String(systemInstructions || '').trim().slice(0, 2000);
-    const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear and accurate. Always detect the language of the user's latest message and answer in that same language. If the message mixes languages, use the dominant language. Keep code, product names, and quoted text unchanged. Put all source code in complete fenced Markdown code blocks with the correct language tag so it can be copied directly into an IDE. Response preferences: length=${preferences.length}, tone=${preferences.tone}, creativity=${preferences.creativity}, format=${preferences.format}.${customInstructions ? ` User instructions: ${customInstructions}` : ''}${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}${knowledgeContext}`;
+    const codeRequested = /\b(code|coding|program|script|function|class|app|game|html|css|javascript|typescript|python|react|node|c\+\+|c#|java|sql|код|программ|скрипт|функц|класс|игр)\b/i.test(latestPrompt);
+    const codeFirstInstruction = codeRequested
+        ? ' The user requested code. Start the answer immediately with the complete runnable code in a fenced Markdown block using the correct language tag. Do not write an introduction before the code. Never promise code later in the answer. After the closing fence, add concise setup and usage instructions.'
+        : '';
+    const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear and accurate. Always detect the language of the user's latest message and answer in that same language. If the message mixes languages, use the dominant language. Keep code, product names, and quoted text unchanged. Put all source code in complete fenced Markdown code blocks with the correct language tag so it can be copied directly into an IDE.${codeFirstInstruction} Response preferences: length=${preferences.length}, tone=${preferences.tone}, creativity=${preferences.creativity}, format=${preferences.format}.${customInstructions ? ` User instructions: ${customInstructions}` : ''}${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}${knowledgeContext}`;
     let assistantText = '';
     const outputTokenLimit = Math.min(Math.max(Number(maxTokens) || Number(process.env.MAX_TOKENS) || 2048, 128), 4096);
 
@@ -716,9 +725,12 @@ const createChatResponse = async (req, res) => {
         const geminiUrl = getGeminiUrl(apiKey);
         const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID || '')}/ai/run/${providerModels.cloudflare}`;
         const directKimiUrl = 'https://api.moonshot.cn/v1/chat/completions';
-        let apiResponse = await fetch(isOpenAI ? 'https://api.openai.com/v1/responses' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isKimi && directKimiKey ? directKimiUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
+        const providerTimeoutMs = Math.min(Math.max(Number(process.env.AI_REQUEST_TIMEOUT_MS) || 45000, 5000), 120000);
+        const requestSignal = () => AbortSignal.timeout(providerTimeoutMs);
+        let apiResponse = await fetch(isOpenAI ? 'https://api.openai.com/v1/responses' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isKimi && directKimiKey ? directKimiUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
-            headers: isOpenAI ? {
+            signal: requestSignal(),
+            headers: isOpenAI || isXAI ? {
                 Authorization: `Bearer ${apiKey.trim()}`,
                 'Content-Type': 'application/json',
             } : isClaude ? {
@@ -743,6 +755,11 @@ const createChatResponse = async (req, res) => {
                 input,
                 max_output_tokens: outputTokenLimit,
                 store: false,
+            } : isXAI ? {
+                model: process.env.XAI_MODEL || 'grok-4-latest',
+                stream: true,
+                max_tokens: outputTokenLimit,
+                messages: [{ role: 'system', content: systemPrompt }, ...input],
             } : isClaude ? {
                 model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
                 stream: true,
@@ -776,6 +793,7 @@ const createChatResponse = async (req, res) => {
             isGemini = true;
             apiResponse = await fetch(getGeminiUrl(apiKey), {
                 method: 'POST',
+                signal: requestSignal(),
                 headers: { 'Content-Type': 'application/json' },
                 body: geminiBody(),
             });
@@ -783,27 +801,45 @@ const createChatResponse = async (req, res) => {
             fallbackModel = 'gemini';
             if (!apiResponse.ok) upstreamError = null;
         }
-        if (!apiResponse.ok && fallbackEnabled !== false && !isOpenAI && !isClaude && !isGemini && !isCloudflare && routedModel !== 'gpt') {
+        // If the selected provider is unavailable or overloaded, try several
+        // independent models through the shared gateway. This also covers
+        // direct xAI, Anthropic, OpenAI, Gemini, Kimi, and Cloudflare failures.
+        if (!apiResponse.ok && fallbackEnabled !== false && gatewayKey?.trim()) {
             upstreamError = await apiResponse.json().catch(() => ({}));
-            apiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${apiKey.trim()}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: providerModels.gpt,
-                    stream: true,
-                    max_tokens: outputTokenLimit,
-                    messages: [{ role: 'system', content: `${systemPrompt} The requested ${routedModel} provider is temporarily unavailable; provide the best equivalent answer.` }, ...input],
-                }),
-            });
-            fallbackUsed = apiResponse.ok;
-            fallbackModel = 'gpt';
+            const gatewayFallbacks = ['gpt', 'gemini', 'mistral'].filter((candidate) => candidate !== routedModel);
+            for (const candidate of gatewayFallbacks) {
+                apiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                    method: 'POST',
+                    signal: requestSignal(),
+                    headers: { Authorization: `Bearer ${gatewayKey.trim()}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: providerModels[candidate],
+                        stream: true,
+                        max_tokens: outputTokenLimit,
+                        messages: [{ role: 'system', content: `${systemPrompt} The requested ${routedModel} provider is temporarily unavailable; provide the best equivalent answer without mentioning the outage.` }, ...input],
+                    }),
+                });
+                if (apiResponse.ok) {
+                    fallbackUsed = true;
+                    fallbackModel = candidate;
+                    isOpenAI = false;
+                    isXAI = false;
+                    isClaude = false;
+                    isGemini = false;
+                    isKimi = false;
+                    isCloudflare = false;
+                    upstreamError = null;
+                    break;
+                }
+                upstreamError = await apiResponse.json().catch(() => ({}));
+            }
         }
         if (!apiResponse.ok) {
             const data = upstreamError || await apiResponse.json().catch(() => ({}));
-            console.error(`[${isOpenAI ? 'OPENAI' : isClaude ? 'CLAUDE' : isGemini ? 'GEMINI' : isCloudflare ? 'CLOUDFLARE' : 'OPENROUTER'} API]`, apiResponse.status, data.error?.message || data.errors?.[0]?.message || data.error);
+            console.error(`[${isOpenAI ? 'OPENAI' : isXAI ? 'XAI' : isClaude ? 'CLAUDE' : isGemini ? 'GEMINI' : isCloudflare ? 'CLOUDFLARE' : 'OPENROUTER'} API]`, apiResponse.status, data.error?.message || data.errors?.[0]?.message || data.error);
             return res.status(apiResponse.status === 401 ? 502 : apiResponse.status).json({
                 message: apiResponse.status === 401
-                    ? `The server API key was rejected by ${isOpenAI ? 'OpenAI' : isClaude ? 'Anthropic' : isGemini ? 'Google Gemini' : isCloudflare ? 'Cloudflare' : 'OpenRouter'}`
+                    ? `The server API key was rejected by ${isOpenAI ? 'OpenAI' : isXAI ? 'xAI' : isClaude ? 'Anthropic' : isGemini ? 'Google Gemini' : isCloudflare ? 'Cloudflare' : 'OpenRouter'}`
                     : (data.error?.message || data.errors?.[0]?.message || 'The AI service could not answer'),
             });
         }
@@ -900,7 +936,14 @@ const createChatResponse = async (req, res) => {
         return res.end();
     } catch (error) {
         console.error('[OPENROUTER CONNECTION]', error.message);
-        return res.status(502).json({ message: 'Could not connect to the AI service' });
+        const timedOut = error.name === 'TimeoutError' || /timed?\s*out/i.test(error.message);
+        const message = timedOut ? 'The AI provider took too long to respond. Try again or choose another configured model.' : 'Could not connect to the AI service. Check your internet connection and backend API key.';
+        if (res.headersSent) {
+            res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
+            res.write('data: [DONE]\n\n');
+            return res.end();
+        }
+        return res.status(timedOut ? 504 : 502).json({ message });
     }
 };
 

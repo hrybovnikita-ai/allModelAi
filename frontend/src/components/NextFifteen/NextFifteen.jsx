@@ -3,33 +3,56 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import '../NextTen/NextTen.css';
 import '../NextTwentyFive/NextTwentyFive.css';
 
-const ideas=[
- ['launcher','Unified App Launcher','Navigation','Find tools, models, projects, and favorite actions from one menu.',null,'/ai-platform'],
- ['dashboard','Custom Dashboard','Workspace','Organize the modules and shortcuts that matter most to you.',null,'/dashboard'],
- ['assistant','Floating AI Assistant','AI','Carry a small context-aware assistant across every workspace.','Act as an in-app copilot. Based on the current page, goal, and context below, recommend the next action and help complete it.\n\nCONTEXT:\n'],
- ['split','Split View','Workspace','Work with chat and a document, site, or code artifact side by side.',null,'/website-builder'],
- ['focus','Focus Mode','Chat','Remove distractions and concentrate on one conversation.',null,'/chat'],
- ['bookmarks','Answer Bookmarks','Knowledge','Save valuable paragraphs and code snippets into a project.',null,'/studio?tool=project'],
- ['find','Conversation Search','Chat','Find and revisit exact text inside long conversations.',null,'/chat'],
- ['minimap','Answer Minimap','Chat','Navigate headings, lists, and code blocks in long responses.',null,'/chat'],
- ['toc','Answer Table of Contents','Productivity','Generate clickable structure for a long response.','Create a concise hierarchical table of contents for the material below. Preserve its real heading structure, name unnamed sections clearly, and include short anchor-friendly labels.\n\nMATERIAL:\n'],
- ['continue','Smart Continue','Chat','Continue an answer from its exact stopping point without repetition.',null,'/chat'],
- ['quote','Ask About Selection','Chat','Quote a selected passage and ask a focused follow-up.',null,'/chat'],
- ['slash','Slash Commands','Productivity','Launch image, research, compare, translate, summarize, and code actions.',null,'/chat'],
- ['drop','Drag & Drop Files','Files','Drop documents, images, data, or code directly into chat.',null,'/chat?feature=multimodal'],
- ['naming','AI Project Naming','Workspace','Generate a useful project title, icon, and short description.','Create five concise project names for the context below. For each include an emoji or simple icon, one-line description, and explain which name is strongest.\n\nPROJECT CONTEXT:\n'],
- ['tabs','Workspace Tabs','Navigation','Keep several chats and tools open without losing their state.',null,'/studio'],
+const prompt = (role, output) => `Act as ${role}. Ask only essential questions, state assumptions, and produce ${output}.\n\nUSER INPUT:\n`;
+
+const ideas = [
+  ['briefing', 'AI Daily Briefing', 'Productivity', 'Create a personal morning briefing from tasks, meetings, news, and unfinished projects.', null, prompt('a proactive executive assistant', 'a concise daily briefing with priorities, schedule, risks, and the three best next actions')],
+  ['battle-history', 'Model Battle History', 'Models', 'Review previous model comparisons and identify which model performs best for each task.', '/arena'],
+  ['style-clone', 'AI Writing Style Clone', 'Content', 'Analyze writing samples and create a reusable personal voice profile.', null, prompt('a writing-style analyst', 'a style profile covering tone, rhythm, vocabulary, structure, do/don’t rules, and a reusable system prompt')],
+  ['quality-alerts', 'Response Quality Alerts', 'Trust', 'Detect contradictions, weak evidence, uncertainty, and potentially outdated information.', null, prompt('a strict response-quality reviewer', 'alerts ordered by severity, quoted problem areas, explanations, corrections, and verification steps')],
+  ['prompt-collections', 'Shared Prompt Collections', 'Team', 'Build reusable prompt libraries that teammates can share, review, and improve.', '/prompts'],
+  ['form-builder', 'AI Form Builder', 'Build', 'Generate surveys, questionnaires, registrations, and feedback forms from a description.', null, prompt('a product designer specializing in accessible forms', 'a complete form specification with sections, field types, validation, conditional logic, confirmation text, and privacy notes')],
+  ['conversation-workflow', 'Conversation-to-Workflow', 'Automation', 'Turn a successful conversation into a reusable sequence of automated AI steps.', '/expansion-hub?feature=workflow'],
+  ['knowledge-vault', 'Private Knowledge Vault', 'Knowledge', 'Store sensitive project documents with controlled access and grounded AI retrieval.', '/studio?tool=documents'],
+  ['decision', 'AI Decision Assistant', 'Productivity', 'Compare options across cost, benefits, risks, effort, and your own criteria.', null, prompt('an impartial decision analyst', 'a weighted decision matrix, assumptions, risks, sensitivity analysis, recommendation, and conditions that would change it')],
+  ['focus', 'Focus Mode', 'Workspace', 'Open a distraction-free environment containing only the conversation and current task.', '/chat?mode=focus'],
+  ['ab-testing', 'Prompt A/B Testing', 'Prompts', 'Compare two prompt variants and evaluate which one produces better results.', '/innovation-lab?feature=evaluations'],
+  ['learning', 'AI Learning Paths', 'Learning', 'Create personalized lessons, exercises, checkpoints, and progress plans.', null, prompt('an adaptive learning designer', 'a personalized learning path with goals, weekly lessons, practice tasks, checkpoints, and mastery criteria')],
+  ['activity', 'Workspace Activity Feed', 'Team', 'Follow new documents, prompts, agents, workflow runs, and team changes.', '/production'],
+  ['export', 'Export Center', 'Workspace', 'Prepare conversations and results for PDF, DOCX, Markdown, JSON, and CSV export.', '/settings'],
+  ['notifications', 'AI Notification Center', 'Productivity', 'Track completed jobs, model errors, usage limits, and workspace updates.', '/production'],
 ];
-const categories=['All',...new Set(ideas.map(item=>item[2]))];
-export default function NextFifteen(){
- const saved=sessionStorage.getItem('allmodelai_user'),user=saved?JSON.parse(saved):null,navigate=useNavigate();
- const[active,setActive]=useState('launcher'),[category,setCategory]=useState('All'),[query,setQuery]=useState(''),[input,setInput]=useState('');
- const visible=useMemo(()=>ideas.filter(item=>(category==='All'||item[2]===category)&&`${item[1]} ${item[2]} ${item[3]}`.toLowerCase().includes(query.toLowerCase())),[category,query]);
- const selected=ideas.find(item=>item[0]===active)||ideas[0]; if(!user)return <Navigate to="/" replace/>;
- const launch=()=>{if(selected[4]){if(!input.trim())return;navigate('/chat?model=smart',{state:{starterPrompt:`${selected[4]}${input}`}})}else navigate(selected[5])};
- return <main className="next-ten-page next-25-page"><header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><b>AI</b>AllModelAI</Link><nav><Link to="/next-30">Next 30</Link><Link to="/chat">Chat</Link><Link to="/dashboard">Dashboard</Link></nav></header>
-  <section className="next-ten-hero"><div><p>ALLMODEL AI · NEXT 15</p><h1>Work faster.<br/><span>Stay in your flow.</span></h1><small>Fifteen interface and navigation ideas for handling long answers, many tools, projects, and files.</small></div><strong>15</strong></section>
-  <section className="next-25-toolbar"><label><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Find an idea..."/></label><div>{categories.map(value=><button className={category===value?'active':''} onClick={()=>setCategory(value)} key={value}>{value}</button>)}</div></section>
-  <section className="next-ten-shell next-25-shell"><aside>{visible.map(item=><button className={active===item[0]?'active':''} onClick={()=>{setActive(item[0]);setInput('')}} key={item[0]}><i>{String(ideas.indexOf(item)+1).padStart(2,'0')}</i><span>✦</span><div><strong>{item[1]}</strong><small>{item[2]}</small></div></button>)}</aside><article className="next-ten-panel"><div className="next-ten-panel-title"><span>{String(ideas.findIndex(item=>item[0]===selected[0])+1).padStart(2,'0')}</span><div><small>{selected[2].toUpperCase()} MODULE</small><h2>{selected[1]}</h2></div></div><p className="next-ten-description">{selected[3]}</p>{selected[4]?<div className="agent-team"><label>Context<textarea value={input} onChange={e=>setInput(e.target.value)} placeholder="Describe your task or paste the content..."/></label></div>:<div className="next-ten-flow"><div><i>1</i><span>Open</span></div><b>→</b><div><i>2</i><span>Work naturally</span></div><b>→</b><div><i>3</i><span>Keep context</span></div></div>}<button className="next-ten-launch" disabled={Boolean(selected[4])&&!input.trim()} onClick={launch}>Open {selected[1]} <span>→</span></button><footer><span>● Module ready</span><small>Connected to your AllModelAI workspace and chat.</small></footer></article></section>
- </main>;
+
+const categories = ['All', ...new Set(ideas.map((idea) => idea[2]))];
+
+export default function NextFifteen() {
+  const saved = sessionStorage.getItem('allmodelai_user');
+  const user = saved ? JSON.parse(saved) : null;
+  const navigate = useNavigate();
+  const [active, setActive] = useState(ideas[0][0]);
+  const [category, setCategory] = useState('All');
+  const [query, setQuery] = useState('');
+  const [input, setInput] = useState('');
+  const visible = useMemo(() => ideas.filter((idea) => (category === 'All' || idea[2] === category) && `${idea[1]} ${idea[2]} ${idea[3]}`.toLowerCase().includes(query.toLowerCase())), [category, query]);
+  const selected = ideas.find((idea) => idea[0] === active) || ideas[0];
+  if (!user) return <Navigate to="/" replace />;
+
+  const launch = () => {
+    if (selected[5]) {
+      if (!input.trim()) return;
+      navigate('/chat?model=smart', { state: { starterPrompt: `${selected[5]}${input}` } });
+    } else navigate(selected[4]);
+  };
+
+  return <main className="next-ten-page next-25-page">
+    <header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><b>AI</b>AllModelAI</Link><nav><Link to="/next-30">30 Features</Link><Link to="/chat">Chat</Link><Link to="/dashboard">Dashboard</Link></nav></header>
+    <section className="next-ten-hero"><div><p>ALLMODEL AI · 15 NEW IDEAS</p><h1>Know more.<br/><span>Work with confidence.</span></h1><small>Fifteen connected tools for daily planning, quality control, team knowledge, automation, learning, and export.</small></div><strong>15</strong></section>
+    <section className="next-25-toolbar"><label><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search 15 new ideas..." aria-label="Search new ideas" /></label><div>{categories.map((value) => <button type="button" className={category === value ? 'active' : ''} onClick={() => setCategory(value)} key={value}>{value}</button>)}</div></section>
+    <section className="next-ten-shell next-25-shell"><aside>{visible.map((idea) => <button type="button" className={active === idea[0] ? 'active' : ''} onClick={() => { setActive(idea[0]); setInput(''); }} key={idea[0]}><i>{String(ideas.indexOf(idea) + 1).padStart(2, '0')}</i><span>✦</span><div><strong>{idea[1]}</strong><small>{idea[2]}</small></div></button>)}</aside>
+      <article className="next-ten-panel"><div className="next-ten-panel-title"><span>{String(ideas.findIndex((idea) => idea[0] === selected[0]) + 1).padStart(2, '0')}</span><div><small>{selected[2].toUpperCase()} MODULE</small><h2>{selected[1]}</h2></div></div><p className="next-ten-description">{selected[3]}</p>
+        {selected[5] ? <div className="agent-team"><label>What should the tool work on?<textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder="Describe your goal or paste the source material..." /></label></div> : <div className="next-ten-flow"><div><i>1</i><span>Open module</span></div><b>→</b><div><i>2</i><span>Add context</span></div><b>→</b><div><i>3</i><span>Review & save</span></div></div>}
+        <button className="next-ten-launch" type="button" disabled={Boolean(selected[5]) && !input.trim()} onClick={launch}>{selected[5] ? `Run ${selected[1]}` : `Open ${selected[1]}`} <span>→</span></button><footer><span>● Module ready</span><small>Connected to Smart Router, workspace, projects, and usage controls.</small></footer>
+      </article>
+    </section>
+  </main>;
 }

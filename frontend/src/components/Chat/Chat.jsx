@@ -22,6 +22,7 @@ const chatTextColors = [
 
 function CodeBlock({ language, code }) {
   const [copied, setCopied] = useState(false);
+  const [wrapped, setWrapped] = useState(false);
   const languageAliases = { js: 'javascript', jsx: 'jsx', ts: 'typescript', py: 'python', sh: 'bash', shell: 'bash', html: 'markup' };
   const prismLanguage = languageAliases[language?.toLowerCase()] || language?.toLowerCase() || 'text';
   const copyCode = async () => {
@@ -30,8 +31,19 @@ function CodeBlock({ language, code }) {
     window.setTimeout(() => setCopied(false), 1600);
   };
 
-  return <section className="response-code-block">
-    <header><span>{language || 'code'}</span><button type="button" onClick={copyCode} aria-label="Copy code">{copied ? 'Copied' : 'Copy'}</button></header>
+  const downloadCode = () => {
+    const extensions = { javascript: 'js', typescript: 'ts', python: 'py', bash: 'sh', markup: 'html', css: 'css', cpp: 'cpp', csharp: 'cs', java: 'java', json: 'json' };
+    const extension = extensions[prismLanguage] || String(language || 'txt').replace(/[^a-z0-9]/gi, '') || 'txt';
+    const url = URL.createObjectURL(new Blob([code], { type: 'text/plain;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `allmodelai-code.${extension}`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return <section className={`response-code-block ${wrapped ? 'code-wrapped' : ''}`}>
+    <header><span>{language || 'code'}</span><div><button type="button" onClick={() => setWrapped((value) => !value)} aria-label="Toggle line wrapping">{wrapped ? 'Scroll' : 'Wrap'}</button><button type="button" onClick={downloadCode} aria-label="Download code">Download</button><button type="button" onClick={copyCode} aria-label="Copy code">{copied ? 'Copied!' : 'Copy'}</button></div></header>
     <Highlight theme={themes.vsDark} code={code} language={prismLanguage}>
       {({ className, style, tokens, getLineProps, getTokenProps }) => (
         <pre className={className} style={{ ...style, background: 'transparent' }}>
@@ -46,6 +58,41 @@ function CodeBlock({ language, code }) {
       )}
     </Highlight>
   </section>;
+}
+
+function InlineText({ children }) {
+  const tokens = String(children).split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  return tokens.map((token, index) => {
+    if (token.startsWith('`') && token.endsWith('`')) return <code className="inline-code" key={index}>{token.slice(1, -1)}</code>;
+    if (token.startsWith('**') && token.endsWith('**')) return <strong key={index}>{token.slice(2, -2)}</strong>;
+    return token;
+  });
+}
+
+function TextBlock({ value }) {
+  const lines = value.trim().split(/\r?\n/);
+  const elements = [];
+  let list = [];
+  const flushList = () => {
+    if (!list.length) return;
+    elements.push(<ul key={`list-${elements.length}`}>{list.map((item, index) => <li key={index}><InlineText>{item}</InlineText></li>)}</ul>);
+    list = [];
+  };
+
+  lines.forEach((line, index) => {
+    const bullet = line.match(/^\s*[-*]\s+(.+)/);
+    if (bullet) { list.push(bullet[1]); return; }
+    flushList();
+    const heading = line.match(/^\s*(#{1,3})\s+(.+)/);
+    if (heading) {
+      const Tag = `h${Math.min(heading[1].length + 2, 5)}`;
+      elements.push(<Tag key={index}><InlineText>{heading[2]}</InlineText></Tag>);
+    } else if (line.trim()) {
+      elements.push(<p key={index}><InlineText>{line}</InlineText></p>);
+    }
+  });
+  flushList();
+  return elements;
 }
 
 function MessageContent({ text, streaming }) {
@@ -80,7 +127,7 @@ function MessageContent({ text, streaming }) {
   return <div className="message-content">
     {parts.map((part, index) => part.type === 'code'
       ? <CodeBlock language={part.language} code={part.value} key={`code-${index}`} />
-      : part.value.trim() && <p key={`text-${index}`}>{part.value.trim()}</p>)}
+      : part.value.trim() && <TextBlock value={part.value} key={`text-${index}`} />)}
     {streaming && <i className="stream-cursor" aria-hidden="true" />}
   </div>;
 }
@@ -155,21 +202,20 @@ export default function Chat() {
 
   const modelIsOnline = (slug) => {
     if (!Object.keys(modelStatus).length || slug === 'smart') return true;
-    const statusKey = ['gpt', 'gemini', 'claude', 'kimi', 'cloudflare'].includes(slug) ? slug : 'others';
+    const statusKey = ['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'grok'].includes(slug) ? slug : 'others';
     return modelStatus[statusKey] !== false;
   };
 
   const chooseModel = (model) => {
-    if (!modelIsOnline(model.slug)) {
-      setChatError(`${model.name} needs an API connection. Configure its provider or OpenRouter in the backend environment.`);
-      return;
-    }
+    const online = modelIsOnline(model.slug);
     setSelectedSlug(model.slug);
     localStorage.setItem('allmodelai_selected_model', model.slug);
     navigate(`/chat?model=${encodeURIComponent(model.slug)}`, { replace: true });
     setRouteInfo(null);
     setChatError('');
-    setModelNotice(`${model.name} selected. Your next message will use ${model.provider}.`);
+    setModelNotice(online
+      ? `${model.name} selected. Your next message will use ${model.provider}.`
+      : `${model.name} selected. Add its provider key or OPENROUTER_API_KEY before sending.`);
     setModelMenuOpen(false);
   };
 
@@ -485,7 +531,7 @@ export default function Chat() {
       const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedSlug, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || localStorage.getItem('allmodelai_router_mode') || 'balanced', responsePrefs: JSON.parse(localStorage.getItem('allmodelai_response_prefs') || '{}'), systemInstructions: localStorage.getItem('allmodelai_system_instructions') || '', fallbackEnabled: localStorage.getItem('allmodelai_fallback') !== 'false' }),
+        body: JSON.stringify({ model: selectedSlug, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || localStorage.getItem('allmodelai_router_mode') || 'balanced', responsePrefs: JSON.parse(localStorage.getItem('allmodelai_response_prefs') || '{}'), systemInstructions: localStorage.getItem('allmodelai_system_instructions') || '', fallbackEnabled: true }),
         signal: controller.signal,
       });
 
@@ -539,6 +585,7 @@ export default function Chat() {
             if (selectedSlug !== 'smart' && event.actualModelId) setModelNotice(`${selectedModel.name} is answering with ${event.actualModelId}.`);
           }
           if (event.fallback) setModelNotice(`${event.requestedModel} was unavailable, so AllModelAI continued with ${event.actualModel}.`);
+          if (event.error) throw new Error(event.error);
           const partialText = event.text;
           if (partialText) {
             assistantText += partialText;
@@ -751,7 +798,7 @@ export default function Chat() {
           <Link className="dashboard-link" to="/dashboard">Dashboard</Link>
         </header>
         {(creditStatus || (selectedSlug === 'smart' && routeInfo) || modelNotice) && <div className="chat-statuses">
-          {creditStatus && <div className="credit-status" role="status">{creditStatus.unlimited ? 'API access active' : `${creditStatus.remaining} credits remaining`}</div>}
+          {creditStatus && <div className="credit-status" role="status">{creditStatus.unlimited ? 'Plan access active' : `${creditStatus.remaining} credits remaining`}</div>}
           {selectedSlug === 'smart' && routeInfo && <div className="credit-status" role="status">Smart Router → {routeInfo.model}: {routeInfo.reason}{routeInfo.sources.length ? ` · ${routeInfo.sources.length} knowledge source(s)` : ''}</div>}
           {modelNotice && <div className="model-selection-notice" role="status"><span>{modelNotice}</span><button type="button" onClick={() => setModelNotice('')} aria-label="Dismiss model selection message">×</button></div>}
         </div>}

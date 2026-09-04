@@ -164,3 +164,60 @@ html[data-theme="light"] .chat-workspace:has(.chat-empty){background-image:radia
 .workspace-tools .settings-quick-access strong{color:#c9c4ff!important}
 .workspace-tools .settings-quick-access>b{margin-left:auto;color:#9d94ff;font-size:1.05rem}
 .workspace-tools .settings-quick-access:hover{border-color:#8b80ff!important;background:linear-gradient(90deg,#34286a,#1a1a1a)!important}
+
+/* Keep the composer in its own layout row so it never covers the final answer. */
+@media (min-width:601px){
+  .chat-composer,
+  .chat-composer.welcome-composer,
+  .chat-composer.conversation-composer{
+    position:relative;
+    right:auto;
+    bottom:auto;
+    left:auto;
+    width:min(calc(100% - 56px),860px);
+    margin:0 auto;
+    transform:none;
+  }
+  .chat-messages{padding-bottom:24px}
+  .chat-scroll-tail{height:32px}
+}
+
+@media (min-width:901px) and (max-width:1280px){
+  .chat-composer,
+  .chat-composer.welcome-composer,
+  .chat-composer.conversation-composer{width:min(calc(100% - 36px),760px)}
+}
+
+@media (min-width:1600px){
+  .chat-composer,
+  .chat-composer.welcome-composer,
+  .chat-composer.conversation-composer{width:min(calc(100% - 80px),1050px)}
+}
+
+/* Explicit rows prevent the composer from moving when the optional status bar is absent. */
+.chat-workspace{grid-template-rows:58px auto minmax(0,1fr) auto}
+.chat-header{grid-row:1}
+.chat-statuses{grid-row:2}
+.chat-messages{grid-row:3;min-height:0}
+.chat-composer{grid-row:4}
+
+@media (max-width:600px){
+  .chat-workspace{grid-template-rows:60px auto minmax(0,1fr) auto}
+}
+
+/* Leave enough scroll room to read the last lines above the composer. */
+.chat-messages{
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding-bottom:clamp(120px,18vh,240px);
+  scroll-padding-bottom:clamp(120px,18vh,240px);
+}
+.chat-scroll-tail{height:clamp(120px,18vh,240px)}
+
+@media (max-width:600px){
+  .chat-messages{
+    padding-bottom:140px;
+    scroll-padding-bottom:140px;
+  }
+  .chat-scroll-tail{height:140px}
+}

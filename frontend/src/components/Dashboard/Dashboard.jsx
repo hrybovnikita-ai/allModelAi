@@ -66,6 +66,7 @@ export default function Dashboard() {
           <p className="dashboard-eyebrow">Workspace ready</p>
           <h1>Welcome, {user.name?.split(' ')[0] || 'creator'}.</h1>
           <p>Your account is connected to the backend. Choose a model and start building something remarkable.</p>
+          <div className="dashboard-actions"><Link to="/next-12">Explore 12 reliability tools</Link></div>
         <div className="dashboard-actions"><Link to="/next-15">Explore Next 15</Link><Link to="/next-30">Explore Next 30</Link><Link to="/app-20">Explore App 20</Link><Link to="/next-20">Explore 20 new powers</Link><Link to="/power-center">Open Power Center</Link><Link to="/builder-25">Open Builder 25</Link><Link to="/next-25">Explore 25 capabilities</Link><Link to="/next-9">Explore 9 new ideas</Link><Link to="/next-10">Explore 10 new tools</Link><Link to="/production">Production Center</Link><Link to="/skills-hub">Skills Hub</Link><Link to="/expansion-hub">Expansion Hub</Link></div>
         </div>
         <div className="dashboard-orbit" aria-hidden="true"><span>AI</span></div>

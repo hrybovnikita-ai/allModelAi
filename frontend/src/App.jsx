@@ -51,6 +51,7 @@ import NextTwenty from "./components/NextTwenty/NextTwenty";
 import AppTwenty from "./components/AppTwenty/AppTwenty";
 import NextThirty from "./components/NextThirty/NextThirty";
 import NextFifteen from "./components/NextFifteen/NextFifteen";
+import NextTwelve from "./components/NextTwelve/NextTwelve";
 
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");
@@ -169,6 +170,7 @@ export default function App() {
       <Route path="/app-20" element={<AppTwenty />} />
       <Route path="/next-30" element={<NextThirty />} />
       <Route path="/next-15" element={<NextFifteen />} />
+      <Route path="/next-12" element={<NextTwelve />} />
     </Routes></>
   );
 }
