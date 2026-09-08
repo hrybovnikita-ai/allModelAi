@@ -1,28 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 
 export default function ForgotPassword() {
   const [searchParams] = useSearchParams();
 
+  const tokenFromUrl = searchParams.get('token') || '';
+
   const [email, setEmail] = useState('');
-  const [token, setToken] = useState('');
+  const [token, setToken] = useState(() => tokenFromUrl);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-
-  const [step, setStep] = useState('email');
+  const [step, setStep] = useState(() =>
+    tokenFromUrl ? 'reset' : 'email'
+  );
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const tokenFromUrl = searchParams.get('token');
-
-    if (tokenFromUrl) {
-      setToken(tokenFromUrl);
-      setStep('reset');
-    }
-  }, [searchParams]);
 
   const requestReset = async (event) => {
     event.preventDefault();
@@ -44,11 +38,9 @@ export default function ForgotPassword() {
         '/api/auth/password-reset/request',
         {
           method: 'POST',
-
           headers: {
             'Content-Type': 'application/json',
           },
-
           body: JSON.stringify({
             email: cleanEmail,
           }),
@@ -74,8 +66,8 @@ export default function ForgotPassword() {
        * backend/.env:
        * EXPOSE_ACCOUNT_TOKENS=true
        *
-       * Backend will return the reset token so we can test
-       * Forgot Password before configuring real emails.
+       * Backend can return the reset token so Forgot Password can be
+       * tested locally before real email delivery is configured.
        */
       if (data.token) {
         setToken(data.token);
@@ -83,8 +75,9 @@ export default function ForgotPassword() {
       }
     } catch (requestError) {
       setError(
-        requestError.message ||
-          'Something went wrong. Please try again.'
+        requestError instanceof Error
+          ? requestError.message
+          : 'Something went wrong. Please try again.'
       );
     } finally {
       setLoading(false);
@@ -97,15 +90,15 @@ export default function ForgotPassword() {
     setError('');
     setMessage('');
 
-    if (!token.trim()) {
+    const cleanToken = token.trim();
+
+    if (!cleanToken) {
       setError('Reset token is missing.');
       return;
     }
 
     if (password.length < 8) {
-      setError(
-        'New password must contain at least 8 characters.'
-      );
+      setError('New password must contain at least 8 characters.');
       return;
     }
 
@@ -121,13 +114,11 @@ export default function ForgotPassword() {
         '/api/auth/password-reset/confirm',
         {
           method: 'POST',
-
           headers: {
             'Content-Type': 'application/json',
           },
-
           body: JSON.stringify({
-            token: token.trim(),
+            token: cleanToken,
             password,
           }),
         }
@@ -136,9 +127,7 @@ export default function ForgotPassword() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.message || 'Could not change password.'
-        );
+        throw new Error(data.message || 'Could not change password.');
       }
 
       setMessage(
@@ -151,8 +140,9 @@ export default function ForgotPassword() {
       setStep('success');
     } catch (resetError) {
       setError(
-        resetError.message ||
-          'Could not reset password. The link may have expired.'
+        resetError instanceof Error
+          ? resetError.message
+          : 'Could not reset password. The link may have expired.'
       );
     } finally {
       setLoading(false);
@@ -213,12 +203,12 @@ export default function ForgotPassword() {
             <h1>Forgot password?</h1>
 
             <p style={{ color: '#a7b4ce' }}>
-              Enter the email associated with your AllModelAI
-              account.
+              Enter the email associated with your AllModelAI account.
             </p>
 
             <form onSubmit={requestReset}>
               <label
+                htmlFor="forgot-password-email"
                 style={{
                   display: 'block',
                   marginTop: '24px',
@@ -229,14 +219,14 @@ export default function ForgotPassword() {
               </label>
 
               <input
+                id="forgot-password-email"
                 type="email"
                 value={email}
-                onChange={(event) =>
-                  setEmail(event.target.value)
-                }
+                onChange={(event) => setEmail(event.target.value)}
                 placeholder="you@example.com"
                 autoComplete="email"
                 required
+                disabled={loading}
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',
@@ -262,11 +252,10 @@ export default function ForgotPassword() {
                   color: '#fff',
                   fontWeight: '700',
                   cursor: loading ? 'wait' : 'pointer',
+                  opacity: loading ? 0.7 : 1,
                 }}
               >
-                {loading
-                  ? 'Creating request...'
-                  : 'Reset password'}
+                {loading ? 'Creating request...' : 'Reset password'}
               </button>
             </form>
           </>
@@ -293,6 +282,7 @@ export default function ForgotPassword() {
 
             <form onSubmit={resetPassword}>
               <label
+                htmlFor="new-password"
                 style={{
                   display: 'block',
                   marginTop: '22px',
@@ -303,14 +293,15 @@ export default function ForgotPassword() {
               </label>
 
               <input
+                id="new-password"
                 type="password"
                 value={password}
-                onChange={(event) =>
-                  setPassword(event.target.value)
-                }
+                onChange={(event) => setPassword(event.target.value)}
                 placeholder="At least 8 characters"
                 autoComplete="new-password"
+                minLength={8}
                 required
+                disabled={loading}
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',
@@ -319,10 +310,12 @@ export default function ForgotPassword() {
                   border: '1px solid #3b4967',
                   background: '#202d49',
                   color: '#fff',
+                  outline: 'none',
                 }}
               />
 
               <label
+                htmlFor="confirm-password"
                 style={{
                   display: 'block',
                   marginTop: '16px',
@@ -333,6 +326,7 @@ export default function ForgotPassword() {
               </label>
 
               <input
+                id="confirm-password"
                 type="password"
                 value={confirmPassword}
                 onChange={(event) =>
@@ -340,7 +334,9 @@ export default function ForgotPassword() {
                 }
                 placeholder="Repeat your new password"
                 autoComplete="new-password"
+                minLength={8}
                 required
+                disabled={loading}
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',
@@ -349,6 +345,7 @@ export default function ForgotPassword() {
                   border: '1px solid #3b4967',
                   background: '#202d49',
                   color: '#fff',
+                  outline: 'none',
                 }}
               />
 
@@ -365,11 +362,10 @@ export default function ForgotPassword() {
                   color: '#fff',
                   fontWeight: '700',
                   cursor: loading ? 'wait' : 'pointer',
+                  opacity: loading ? 0.7 : 1,
                 }}
               >
-                {loading
-                  ? 'Changing password...'
-                  : 'Change password'}
+                {loading ? 'Changing password...' : 'Change password'}
               </button>
             </form>
           </>
@@ -391,8 +387,8 @@ export default function ForgotPassword() {
             <h1>Password changed ✅</h1>
 
             <p style={{ color: '#a7b4ce' }}>
-              Your new password is ready. Sign in again using the
-              new password.
+              Your new password is ready. Sign in again using the new
+              password.
             </p>
 
             <Link
@@ -416,6 +412,7 @@ export default function ForgotPassword() {
 
         {error && (
           <div
+            role="alert"
             style={{
               marginTop: '18px',
               padding: '12px',
@@ -431,6 +428,8 @@ export default function ForgotPassword() {
 
         {message && step !== 'success' && (
           <div
+            role="status"
+            aria-live="polite"
             style={{
               marginTop: '18px',
               padding: '12px',
