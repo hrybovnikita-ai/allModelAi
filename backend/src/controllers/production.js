@@ -9,10 +9,10 @@ const audit = (req, action, targetType, targetId, metadata = {}) => req.app.loca
 
 const health = (req, res) => {
     const database = req.app.locals.db.database;
-    const checks = { database: false, openai: Boolean(process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY), openrouter: Boolean(process.env.OPENROUTER_API_KEY || process.env.API_KEY), email: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM), payments: Boolean(process.env.STRIPE_SECRET_KEY), postgres: Boolean(process.env.DATABASE_URL), monitoring: Boolean(process.env.SENTRY_DSN) };
+    const checks = { database: false, openai: Boolean(process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY), openrouter: Boolean(process.env.OPENROUTER_API_KEY || process.env.API_KEY), email: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM), payments: Boolean(process.env.STRIPE_SECRET_KEY), postgres: false, monitoring: Boolean(process.env.SENTRY_DSN) };
     try { database.prepare('SELECT 1').get(); checks.database = true; } catch { /* reported below */ }
     const ready = checks.database;
-    return res.status(ready ? 200 : 503).json({ status: ready ? 'healthy' : 'degraded', service: 'AllModelAI', version: process.env.APP_VERSION || '1.0.0', uptimeSeconds: Math.floor(process.uptime()), checks, timestamp: now() });
+    return res.status(ready ? 200 : 503).json({ status: ready ? 'healthy' : 'degraded', service: 'AllModelAI', database: { engine: 'sqlite', connected: checks.database }, version: process.env.APP_VERSION || '1.0.0', uptimeSeconds: Math.floor(process.uptime()), checks, timestamp: now() });
 };
 
 const globalSearch = (req, res) => {

@@ -1,5 +1,7 @@
 AllModelAI
 
+SQL database setup and verification: [DATABASE.md](DATABASE.md).
+
 A unified workspace for multiple AI models: secure chat, an explainable Smart Router, a knowledge base, AI Arena, and team workspaces.
 
 Getting Started
