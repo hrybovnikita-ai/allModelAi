@@ -17,7 +17,6 @@ export default function Dashboard() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-  const [modelStatus, setModelStatus] = useState({});
   const [creditStatus, setCreditStatus] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [recentProjects, setRecentProjects] = useState([]);
@@ -29,7 +28,6 @@ export default function Dashboard() {
       .then((data) => { if (data?.user) { setUser(data.user); sessionStorage.setItem('allmodelai_user', JSON.stringify(data.user)); } })
       .finally(() => setCheckingSession(false));
   }, [user]);
-  useEffect(() => { fetch('/api/status/models').then((response) => response.ok ? response.json() : null).then((data) => data && setModelStatus(data.models)).catch(() => {}); }, []);
   useEffect(() => { if (user?.email) fetch(`/api/credits?email=${encodeURIComponent(user.email)}`).then((response) => response.ok ? response.json() : null).then((data) => data && setCreditStatus(data)).catch(() => {}); }, [user?.email]);
   useEffect(() => { if (!user?.email) return; Promise.all([fetch(`/api/analytics?email=${encodeURIComponent(user.email)}`).then(r => r.ok ? r.json() : null), fetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`).then(r => r.ok ? r.json() : [])]).then(([stats, projects]) => { setAnalytics(stats); setRecentProjects(projects.slice(0, 3)); }).catch(() => {}); }, [user?.email]);
 
@@ -100,7 +98,7 @@ export default function Dashboard() {
       <section className="dashboard-models" id="dashboard-models">
         <div className="dashboard-section-title"><div><span>Model library</span><h2>Choose your intelligence</h2></div><p>Switch providers whenever your task changes.</p></div>
         <div className="dashboard-grid">
-          {models.map((model) => { const statusKey = ['gemini','claude','gpt','cloudflare'].includes(model.slug) ? model.slug : 'others'; const online = modelStatus[statusKey] !== false; return <Link className="dashboard-model-card" to={`/models/${model.slug}`} key={model.name}><article><img src={model.image} alt={`${model.name} logo`} /><small>{model.provider} · {model.priceLabel||'Premium'}</small><h3>{model.name}</h3><p>{model.note}</p><div className="model-meta"><span>{modelMeta[model.name]?.[0] || 'Available'}</span><span>{modelMeta[model.name]?.[1] || 'Unified API'}</span><i className={online ? '' : 'offline'}>{online ? 'Online' : 'Offline'}</i></div><span className="model-open">Open {model.name} <b>→</b></span></article></Link>; })}
+          {models.map((model) => <Link className="dashboard-model-card" to={`/models/${model.slug}`} key={model.name}><article><img src={model.image} alt={`${model.name} logo`} /><small>{model.provider} · {model.priceLabel||'Premium'}</small><h3>{model.name}</h3><p>{model.note}</p><div className="model-meta"><span>{modelMeta[model.name]?.[0] || 'Available'}</span><span>{modelMeta[model.name]?.[1] || 'Unified API'}</span><i>Online</i></div><span className="model-open">Open {model.name} <b>→</b></span></article></Link>)}
         </div>
       </section>
       <section className="dashboard-code-section">

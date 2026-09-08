@@ -538,7 +538,10 @@ export default function Chat() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         if (response.status === 401) {
-          throw new Error('Your session expired. Please sign out and sign in again.');
+          sessionStorage.removeItem('allmodelai_user');
+          await apiFetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+          window.location.assign('/');
+          return;
         }
         throw new Error(errorData.message || 'Could not connect to the AI server.');
       }
