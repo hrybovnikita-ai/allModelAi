@@ -162,6 +162,7 @@ export default function Chat() {
   const [messageRatings, setMessageRatings] = useState({});
   const [messageLikes, setMessageLikes] = useState(() => JSON.parse(localStorage.getItem('allmodelai_message_likes') || '{}'));
   const [messageFeedback, setMessageFeedback] = useState(() => JSON.parse(localStorage.getItem('allmodelai_message_feedback') || '{}'));
+  const [backgroundNotification, setBackgroundNotification] = useState(null);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [feedbackMessageIndex, setFeedbackMessageIndex] = useState(null);
   const [feedbackText, setFeedbackText] = useState('');
@@ -197,8 +198,16 @@ export default function Chat() {
     const savedColor = JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}').textColor;
     return !savedColor || savedColor.toLowerCase() === '#ffffff' ? '#8b5cf6' : savedColor;
   });
+  const [attachedImage, setAttachedImage] = useState(null);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [previewModalImage, setPreviewModalImage] = useState(null);
   const [contextSuggestions, setContextSuggestions] = useState([]);
+  const activeConversationIdRef = useRef(null);
   const selectedModel = dashboardModels.find((model) => model.slug === selectedSlug);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
 
   const modelIsOnline = (slug) => {
     if (!Object.keys(modelStatus).length || slug === 'smart') return true;
@@ -214,8 +223,8 @@ export default function Chat() {
     setRouteInfo(null);
     setChatError('');
     setModelNotice(online
-      ? `${model.name} selected. Your next message will use ${model.provider}.`
-      : `${model.name} selected. Add its provider key or OPENROUTER_API_KEY before sending.`);
+      ? `${model.name} selected. Automatic fallback is ready if this provider is unavailable.`
+      : `${model.name} selected. Configure OPENROUTER_API_KEY or this provider's key to receive an answer.`);
     setModelMenuOpen(false);
   };
 
@@ -340,6 +349,86 @@ export default function Chat() {
   const visibleHistory = chatHistory
     .filter((conversation) => `${conversation.title} ${conversationPreview(conversation)} ${(conversation.messages || []).map((message) => message.text || message.content || '').join(' ')} ${(chatMeta[conversation.id]?.tags || []).join(' ')}`.toLowerCase().includes(historyQuery.toLowerCase()))
     .sort((first, second) => Number(Boolean(chatMeta[second.id]?.pinned)) - Number(Boolean(chatMeta[first.id]?.pinned)));
+  const handleImageUpload = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setChatError('Please select a valid image or screenshot file (PNG, JPG, WebP, GIF, etc.).');
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setChatError('Image file is too large (max 25MB).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      setAttachedImage({
+        url: dataUrl,
+        name: file.name || 'screenshot.png',
+        size: `${(file.size / 1024).toFixed(0)} KB`,
+        type: file.type,
+      });
+      setChatError('');
+    };
+    reader.onerror = () => {
+      setChatError('Could not read the selected image file.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const readFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.type.startsWith('image/') || /\.(png|jpg|jpeg|webp|gif|bmp|svg)$/i.test(file.name)) {
+      handleImageUpload(file);
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) { setChatError('Files must be smaller than 25 MB.'); event.target.value = ''; return; }
+    const textLike = /^(text\/|application\/(json|xml|javascript|csv))/.test(file.type) || /\.(txt|md|csv|json|js|jsx|ts|tsx|py|html|css)$/i.test(file.name);
+    const content = textLike ? (await file.text()).slice(0, 12000) : `[Attached ${file.type || 'file'}: ${file.name}, ${(file.size / 1024).toFixed(1)} KB. Analyze it using available multimodal/file capabilities.]`;
+    setPrompt((current) => `${current}${current ? '\n\n' : ''}[${file.name}]\n${content}`);
+    event.target.value = '';
+  };
+
+  const handlePaste = (event) => {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        event.preventDefault();
+        const blob = item.getAsFile();
+        if (blob) {
+          const file = new File([blob], `screenshot-${new Date().toISOString().slice(11, 19).replace(/:/g, '')}.png`, { type: blob.type });
+          handleImageUpload(file);
+          return;
+        }
+      }
+    }
+  };
+
+  const handleDragOver = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isDraggingImage) setIsDraggingImage(true);
+  };
+
+  const handleDragLeave = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDraggingImage(false);
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDraggingImage(false);
+    const file = event.dataTransfer?.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      handleImageUpload(file);
+    }
+  };
+
   const copyMessage = async (text) => { await navigator.clipboard.writeText(text); };
   const shareMessage = async (text) => { if(!activeConversationId){await copyMessage(text);return;} const response=await apiFetch(`/api/chat/history/${activeConversationId}/share`,{method:'POST'});const data=await response.json();if(!response.ok){setChatError(data.message||'Could not create sharing link');return;}await navigator.clipboard.writeText(`${location.origin}${new URL(data.url).pathname}`);setChatError('Read-only link copied to clipboard.'); };
   const rateMessage = (index, rating) => setMessageRatings((ratings) => ({ ...ratings, [index]: rating }));
@@ -414,15 +503,7 @@ export default function Chat() {
     setEditDraft(message.content ?? message.text ?? '');
     setChatError('');
   };
-  const readFile = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (file.size > 1024 * 1024) { setChatError('Files must be smaller than 1 MB.'); return; }
-    const textLike = /^(text\/|application\/(json|xml|javascript|csv))/.test(file.type) || /\.(txt|md|csv|json|js|jsx|ts|tsx|py|html|css)$/i.test(file.name);
-    const content = textLike ? (await file.text()).slice(0, 12000) : `[Attached ${file.type || 'file'}: ${file.name}, ${(file.size / 1024).toFixed(1)} KB. Analyze it using available multimodal/file capabilities.]`;
-    setPrompt((current) => `${current}${current ? '\n\n' : ''}[${file.name}]\n${content}`);
-    event.target.value = '';
-  };
+
   const exportConversation = () => {
     const content = messages.map((message) => `${message.role === 'user' ? 'You' : selectedModel.name}:\n${message.content ?? message.text ?? ''}`).join('\n\n');
     const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' })); link.download = `${conversationPreview({ messages }) || 'allmodelai-chat'}.txt`; link.click(); URL.revokeObjectURL(link.href);
@@ -466,11 +547,21 @@ export default function Chat() {
 
   const sendMessage = async (event, overrideText, overrideMessages) => {
     event?.preventDefault();
-    const text = String(overrideText ?? prompt).trim();
+    const rawText = String(overrideText ?? prompt).trim();
+    const currentAttachment = attachedImage;
+    const text = rawText || (currentAttachment ? 'Проанализируй этот скриншот: подробно опиши, что здесь отображено, и подскажи по шагам, куда нужно нажимать и что делать.' : '');
     if (!text || isSending) return;
-    const nextMessages = [...(overrideMessages ?? messages), { role: 'user', text }];
+    const userMessage = {
+      role: 'user',
+      text,
+      content: text,
+      ...(currentAttachment?.url ? { image: currentAttachment.url, imageUrl: currentAttachment.url } : {})
+    };
+    const nextMessages = [...(overrideMessages ?? messages), userMessage];
+    const startedConversationId = activeConversationIdRef.current;
     setMessages(nextMessages);
     setPrompt('');
+    setAttachedImage(null);
     setChatError('');
     setIsSending(true);
     const controller = new AbortController();
@@ -523,10 +614,15 @@ export default function Chat() {
         if (historyResponse.ok) {
           const conversation = await historyResponse.json();
           conversationId = conversation.id;
-          setActiveConversationId(conversation.id);
+          if (activeConversationIdRef.current === startedConversationId) {
+            activeConversationIdRef.current = conversation.id;
+            setActiveConversationId(conversation.id);
+          }
           setChatHistory((history) => [conversation, ...history]);
         }
       }
+
+      const responseBelongsToOpenChat = () => activeConversationIdRef.current === (conversationId || startedConversationId);
 
       const response = await apiFetch('/api/chat', {
         method: 'POST',
@@ -551,9 +647,22 @@ export default function Chat() {
       if (response.headers.get('content-type')?.includes('application/json')) {
         const responseData = await response.json();
         const responseText = responseData.message || '';
-        setMessages((current) => current.map((message, index) => (
-          index === assistantIndex ? { ...message, text: responseText } : message
-        )));
+        if (responseBelongsToOpenChat()) {
+          setMessages((current) => current.map((message, index) => (
+            index === assistantIndex ? { ...message, text: responseText } : message
+          )));
+        }
+        if (conversationId) {
+          await apiFetch(`/api/chat/history/${conversationId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: user.email, messages: [...nextMessages, { role: 'assistant', text: responseText, modelSlug: selectedSlug }] }),
+          });
+          await refreshHistory();
+        }
+        if (!responseBelongsToOpenChat()) {
+          setBackgroundNotification({ conversationId, title: `${selectedModel.name} ответил`, text: responseText.slice(0, 140) || 'Ответ готов.' });
+        }
         if (voiceMode) speakText(responseText);
         return;
       }
@@ -564,9 +673,11 @@ export default function Chat() {
       let assistantText = '';
       const enqueueReveal = (text) => {
         setIsStreamingResponse(true);
-        setMessages((current) => current.map((message, index) => (
-          index === assistantIndex ? { ...message, text: (message.text || '') + text } : message
-        )));
+        if (responseBelongsToOpenChat()) {
+          setMessages((current) => current.map((message, index) => (
+            index === assistantIndex ? { ...message, text: (message.text || '') + text } : message
+          )));
+        }
       };
 
       while (true) {
@@ -607,7 +718,12 @@ export default function Chat() {
       }
       await refreshHistory();
       if (voiceMode) speakText(assistantText);
-      if (document.hidden && Notification.permission === 'granted') new Notification(`${selectedModel.name} finished`, { body: assistantText.slice(0, 120) || 'Your answer is ready.' });
+      if (!responseBelongsToOpenChat()) {
+        setBackgroundNotification({ conversationId, title: `${selectedModel.name} ответил`, text: assistantText.slice(0, 140) || 'Ответ готов.' });
+      }
+      if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification(`${selectedModel.name} finished`, { body: assistantText.slice(0, 120) || 'Your answer is ready.' });
+      }
     } catch (requestError) {
       if (requestError.name === 'AbortError') {
         setMessages((current) => current.filter((message, index) => index !== assistantIndex || String(message.text || message.content || '').trim()));
@@ -663,6 +779,7 @@ export default function Chat() {
     setTemporaryChat(false);
     setActiveProject(null);
     setActiveConversationId(conversation.id);
+    activeConversationIdRef.current = conversation.id;
     setMessages(conversation.messages || []);
     setSelectedSlug(conversation.model || 'gpt');
     setPrompt('');
@@ -704,7 +821,7 @@ export default function Chat() {
     setChatMenuId(null);
   };
 
-  const newChat = () => { setTemporaryChat(false); setActiveConversationId(null); setMessages([]); setPrompt(''); setSelectedSkill(null); setChatError(''); setSidebarOpen(false); };
+  const newChat = () => { setTemporaryChat(false); setActiveConversationId(null); activeConversationIdRef.current = null; setMessages([]); setPrompt(''); setSelectedSkill(null); setChatError(''); setSidebarOpen(false); };
   const startTemporaryChat = () => { newChat(); setTemporaryChat(true); setActiveProject(null); };
   const createProject = () => {
     const name = window.prompt('Project name (example: Website launch, Study plan, Marketing)')?.trim();
@@ -793,30 +910,41 @@ export default function Chat() {
         <div className="chat-profile"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><div><strong>{user.name || 'User'}</strong><small>{user.email}</small></div><button onClick={() => setDeleteModalOpen(true)} aria-label="Sign out" title="Sign out">↗</button></div>
       </aside>
 
-      <section className="chat-workspace">
+      <section className="chat-workspace" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+        {isDraggingImage && (
+          <div className="drag-drop-overlay">
+            <div className="drag-drop-card">
+              <span className="drag-drop-icon">📷</span>
+              <h3>Drop screenshot or image here</h3>
+              <p>AI will analyze your screen, explain what is shown, and provide step-by-step guidance on where to click</p>
+            </div>
+          </div>
+        )}
         <header className="chat-header">
           <button className="sidebar-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open sidebar">☰</button>
           <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? 'Temporary chat' : activeProject ? activeProject.name : 'Chatting with'}</small><strong>{selectedModel.name}</strong></span><i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? 'Online' : 'API needed'}</i></div>
-          <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setModelMenuOpen(false); }}><span>Model</span><button type="button" className="model-select-trigger" onClick={() => setModelMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={modelMenuOpen}><span>{selectedModel.name} — {selectedModel.provider}</span><i>⌄</i></button>{modelMenuOpen && <div className="model-options" role="listbox" aria-label="Choose AI model">{dashboardModels.map((model) => { const online = modelIsOnline(model.slug); return <button type="button" role="option" aria-selected={selectedSlug === model.slug} aria-disabled={!online} className={`${selectedSlug === model.slug ? 'selected' : ''}${online ? '' : ' unavailable'}`} key={model.slug} onClick={() => chooseModel(model)}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {online ? 'Ready' : 'API needed'}</small></span>{selectedSlug === model.slug && <b>✓</b>}</button>; })}</div>}</div>
+          <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onBlur={(event) => { const root = event.currentTarget; window.setTimeout(() => { if (!root.contains(document.activeElement) && !root.matches(':hover')) setModelMenuOpen(false); }, 180); }}><span>Model</span><button type="button" className="model-select-trigger" onClick={() => setModelMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={modelMenuOpen}><span>{selectedModel.name} — {selectedModel.provider}</span><i>⌄</i></button>{modelMenuOpen && <div className="model-options" role="listbox" aria-label="Choose AI model">{dashboardModels.map((model) => { const online = modelIsOnline(model.slug); return <button type="button" role="option" aria-selected={selectedSlug === model.slug} aria-disabled={!online} className={`${selectedSlug === model.slug ? 'selected' : ''}${online ? '' : ' unavailable'}`} key={model.slug} onClick={() => chooseModel(model)}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {online ? 'Ready' : 'API needed'}</small></span>{selectedSlug === model.slug && <b>✓</b>}</button>; })}</div>}</div>
           <Link className="dashboard-link" to="/dashboard">Dashboard</Link>
         </header>
-        {(creditStatus || (selectedSlug === 'smart' && routeInfo) || modelNotice) && <div className="chat-statuses">
+        {(creditStatus || (selectedSlug === 'smart' && routeInfo) || modelNotice || backgroundNotification) && <div className="chat-statuses">
           {creditStatus && <div className="credit-status" role="status">{creditStatus.unlimited ? 'Plan access active' : `${creditStatus.remaining} credits remaining`}</div>}
           {selectedSlug === 'smart' && routeInfo && <div className="credit-status" role="status">Smart Router → {routeInfo.model}: {routeInfo.reason}{routeInfo.sources.length ? ` · ${routeInfo.sources.length} knowledge source(s)` : ''}</div>}
           {modelNotice && <div className="model-selection-notice" role="status"><span>{modelNotice}</span><button type="button" onClick={() => setModelNotice('')} aria-label="Dismiss model selection message">×</button></div>}
+          {backgroundNotification && <div className="model-selection-notice chat-background-notification" role="status"><span><strong>{backgroundNotification.title}</strong><small>{backgroundNotification.text}</small></span><button type="button" onClick={async () => { const history = await apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`).then((response) => response.ok ? response.json() : []); const conversation = history.find((item) => item.id === backgroundNotification.conversationId); if (conversation) openConversation(conversation); setBackgroundNotification(null); }} aria-label="Open completed response">Open chat</button><button type="button" onClick={() => setBackgroundNotification(null)} aria-label="Dismiss notification">×</button></div>}
         </div>}
 
         <div className="chat-messages" ref={messagesContainer}>
-          {messages.length === 0 && <div className="chat-empty"><div className="model-orb"><img src={selectedModel.image} alt={`${selectedModel.name} logo`} /></div><p className="chat-eyebrow">{selectedModel.provider} · {selectedModel.name}</p><h1>What can I help you create?</h1><p className="chat-subtitle">Start with your own question or choose one of these ideas.</p><div className="prompt-suggestions">{suggestions.map((item) => <button key={item.title} onClick={() => chooseSuggestion(item.prompt)}><span>{item.icon}</span><strong>{item.title}</strong><small>{item.prompt}</small></button>)}</div></div>}
+          {messages.length === 0 && <div className="chat-empty"><div className="model-orb"><img src={selectedModel.image} alt={`${selectedModel.name} logo`} /></div><p className="chat-eyebrow">{selectedModel.provider} · {selectedModel.name}</p><h1>What can I help you create?</h1><p className="chat-subtitle">Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.</p><div className="prompt-suggestions">{suggestions.map((item) => <button key={item.title} onClick={() => chooseSuggestion(item.prompt)}><span>{item.icon}</span><strong>{item.title}</strong><small>{item.prompt}</small></button>)}</div></div>}
           {messages.map((message, index) => {
             const messageModel = dashboardModels.find((model) => model.slug === message.modelSlug) || selectedModel;
             const text = message.content ?? message.text ?? '';
-            if (!text && message.role === 'assistant' && isSending && index === messages.length - 1) return null;
+            const messageImage = message.image || (message.role === 'user' ? message.imageUrl : null);
+            if (!text && !messageImage && message.role === 'assistant' && isSending && index === messages.length - 1) return null;
             const activelyStreaming = isStreamingResponse && isSending && index === messages.length - 1 && message.role === 'assistant';
             const editing = message.role === 'user' && editingMessageIndex === index;
             const liked = messageLikes[index];
             const feedback = messageFeedback[index];
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>Cancel</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : text && (message.role === 'assistant' ? <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.imageUrl && <img className="generated-image" src={message.imageUrl} alt={text || 'Generated image'} />}{text && !activelyStreaming && !editing && <div className="message-actions">
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>Cancel</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : text && (message.role === 'assistant' ? <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.imageUrl && message.role !== 'user' && <img className="generated-image" src={message.imageUrl} alt={text || 'Generated image'} onClick={() => setPreviewModalImage(message.imageUrl)} />}{text && !activelyStreaming && !editing && <div className="message-actions">
               {message.role === 'assistant' ? (
                 <>
                   <button type="button" data-tooltip="Copy" onClick={() => copyMessage(text)} aria-label="Copy response">⎘</button>
@@ -847,13 +975,12 @@ export default function Chat() {
         <form className={`chat-composer ${messages.length === 0 ? 'welcome-composer' : 'conversation-composer'}`} onSubmit={sendMessage}>
           <div className="composer-shell">
             {composerMenuOpen && <div className="composer-menu">
-              <button type="button" onClick={() => { setComposerMenuOpen(false); setVoicePanelOpen((open) => !open); }}><span>♫</span> Voice conversation</button>
-              <button type="button" onClick={() => { setComposerMenuOpen(false); fileInput.current?.click(); }}><span>⌕</span> Add photos and files</button>
-              <button type="button" onClick={() => setComposerMenuOpen(false)}><span>◇</span> Add from Drive</button>
-              <button type="button" onClick={() => chooseSkill('image')}><span>✦</span> Create image</button>
-              <button type="button" onClick={() => chooseSkill('video')}><span>▶</span> Make a video</button>
-              <button type="button" onClick={() => setComposerMenuOpen(false)}><span>▣</span> Canvas</button>
-              <button type="button" onClick={() => chooseSkill('web')}><span>◎</span> Search the web</button>
+              <button type="button" onClick={() => { setComposerMenuOpen(false); setVoicePanelOpen((open) => !open); }}><span>♫</span> Voice mode</button>
+              <button type="button" onClick={() => { setComposerMenuOpen(false); fileInput.current?.click(); }}><span>📷</span> Send screenshot / photo (Ctrl+V)</button>
+              <button type="button" onClick={() => { setComposerMenuOpen(false); fileInput.current?.click(); }}><span>⌕</span> Attach files &amp; documents</button>
+              <button type="button" onClick={() => chooseSkill('image')}><span>✦</span> Create image (generation)</button>
+              <button type="button" onClick={() => chooseSkill('video')}><span>▶</span> Make video</button>
+              <button type="button" onClick={() => chooseSkill('web')}><span>◎</span> Search web</button>
               <button type="button" disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))} onClick={() => { setComposerMenuOpen(false); sendMessage(null, 'Continue the previous answer from exactly where it stopped. Do not repeat completed content.'); }}><span>→</span> Continue last answer</button>
               <button type="button" disabled={!activeConversationId || !messages.length} onClick={() => { setComposerMenuOpen(false); branchCurrentConversation(); }}><span>⑂</span> Branch conversation</button>
               <button type="button" disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))} onClick={() => { const last = [...messages].reverse().find((message) => message.role === 'assistant' && (message.text || message.content)); if (last) toggleFavorite(last.text || last.content, last.modelSlug); setComposerMenuOpen(false); }}><span>★</span> Save last answer</button>
@@ -871,15 +998,44 @@ export default function Chat() {
                 <span><strong>{selectedSkill === 'image' ? 'Create image' : selectedSkill === 'web' ? 'Search the web' : 'Make a video'}</strong><small>{selectedSkill === 'image' ? 'Describe the image you want to create' : selectedSkill === 'web' ? 'Current information with sources' : 'Describe the video you want to create'}</small></span>
                 <button type="button" className="selected-skill-remove" onClick={() => setSelectedSkill(null)} aria-label="Remove selected skill" title="Remove skill">×</button>
               </div>}
-              <input ref={fileInput} className="chat-file-input" type="file" accept=".pdf,.doc,.docx,.txt,.md,.json,.csv,.png,.jpg,.jpeg,.webp,.js,.jsx,.ts,.tsx,.py,.html,.css" onChange={readFile} />
-              <textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); loadContextSuggestions(event.target.value); }} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={isSending ? selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : selectedSkill === 'image' ? 'Example: a gold dragon flying over a fantasy city at night...' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : `Message ${selectedModel.name}...`} rows="1" aria-label="Chat message" />
-              {contextSuggestions.length > 0 && !isSending && <div className="context-suggestions">{contextSuggestions.map((item) => <button key={item} type="button" onClick={() => { setPrompt(item); setContextSuggestions([]); document.querySelector('.chat-composer textarea')?.focus(); }}>{item}</button>)}</div>}
-              <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label="Open tools" aria-expanded={composerMenuOpen}>＋</button></div><span>{selectedModel.name} · {isListening ? 'Listening…' : isSending ? 'Generating — you can keep typing' : 'Ready · replies in your language'}</span><div className="composer-actions"><button type="button" className={isListening ? 'voice-active' : ''} onClick={toggleVoiceInput} aria-label="Use microphone" title="Use microphone">●</button>{isSending ? <button className="stop-generation" type="button" onClick={stopGenerating} aria-label="Stop generating" title="Stop generating"><i /></button> : <button className="send-message" type="submit" disabled={!prompt.trim()} aria-label="Send message">↑</button>}</div></div>
+              {attachedImage && (
+                <div className="attached-image-preview">
+                  <div className="attached-image-info">
+                    <img src={attachedImage.url} alt="Attached screenshot preview" onClick={() => setPreviewModalImage(attachedImage.url)} title="Click to preview" />
+                    <div className="attached-image-meta">
+                      <strong>📷 {attachedImage.name}</strong>
+                      <small>{attachedImage.size} · Screenshot attached</small>
+                    </div>
+                    <button type="button" className="remove-attached-image" onClick={() => setAttachedImage(null)} title="Remove attached image" aria-label="Remove attached image">✕</button>
+                  </div>
+                  <div className="image-action-chips">
+                    <button type="button" onClick={() => setPrompt('Carefully examine this screenshot. Guide me on where to click and what steps to take in order.')}>🎯 Where to click?</button>
+                    <button type="button" onClick={() => setPrompt('Describe in detail everything shown on this screen/screenshot.')}>🔍 What is on screen?</button>
+                    <button type="button" onClick={() => setPrompt('There is an error or issue visible in this screenshot. Explain what caused it and provide step-by-step instructions on how to fix it.')}>🛠️ Fix error</button>
+                    <button type="button" onClick={() => setPrompt('Extract all visible text, labels, and code snippets from this screenshot.')}>📋 Extract text &amp; code</button>
+                  </div>
+                </div>
+              )}
+              <input ref={fileInput} className="chat-file-input" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.pdf,.txt,.md,.json,.csv,.js,.jsx,.ts,.tsx,.py,.html,.css" onChange={readFile} />
+              <textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); loadContextSuggestions(event.target.value); }} onPaste={handlePaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={isSending ? selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : attachedImage ? 'Ask anything about this screenshot (e.g. "Where should I click?") or press Send...' : selectedSkill === 'image' ? 'Example: a gold dragon flying over a fantasy city at night...' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : `Message ${selectedModel.name}... (paste screenshot with Ctrl+V)`} rows="1" aria-label="Chat message" />
+              {contextSuggestions.length > 0 && !isSending && !attachedImage && <div className="context-suggestions">{contextSuggestions.map((item) => <button key={item} type="button" onClick={() => { setPrompt(item); setContextSuggestions([]); document.querySelector('.chat-composer textarea')?.focus(); }}>{item}</button>)}</div>}
+              <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label="Open tools" aria-expanded={composerMenuOpen}>＋</button><button type="button" className="composer-camera" onClick={() => fileInput.current?.click()} aria-label="Upload screenshot or image" title="Upload screenshot or image (or paste Ctrl+V)">📷</button></div><span>{selectedModel.name} · {isListening ? 'Listening…' : isSending ? 'Generating — you can keep typing' : attachedImage ? 'Screenshot ready to send' : 'Ready · replies in your language'}</span><div className="composer-actions"><button type="button" className={isListening ? 'voice-active' : ''} onClick={toggleVoiceInput} aria-label="Use microphone" title="Use microphone">●</button>{isSending ? <button className="stop-generation" type="button" onClick={stopGenerating} aria-label="Stop generating" title="Stop generating"><i /></button> : <button className="send-message" type="submit" disabled={!prompt.trim() && !attachedImage} aria-label="Send message">↑</button>}</div></div>
             </div>
           </div>
           <p>{selectedModel.name} can make mistakes. Check important information.</p>
         </form>
       </section>
+      {previewModalImage && (
+        <div className="image-lightbox-modal" onClick={() => setPreviewModalImage(null)}>
+          <div className="lightbox-content" onClick={(event) => event.stopPropagation()}>
+            <button className="lightbox-close" onClick={() => setPreviewModalImage(null)} aria-label="Close image preview">✕</button>
+            <img src={previewModalImage} alt="Full resolution screenshot preview" />
+            <div className="lightbox-actions">
+              <a href={previewModalImage} download="screenshot.png" target="_blank" rel="noopener noreferrer">↓ Download image</a>
+            </div>
+          </div>
+        </div>
+      )}
       {deleteModalOpen && <AccountDeleteModal onCancel={() => { setDeleteModalOpen(false); setDeleteError(''); }} onConfirm={deleteAccount} isDeleting={isDeleting} error={deleteError} />}
       {arenaOpen && <div className="feature-modal-backdrop" onClick={() => setArenaOpen(false)}><section className="feature-modal" onClick={(event) => event.stopPropagation()}><span className="feature-modal-icon">⚔</span><small>AI ARENA</small><h2>Compare the best models</h2><p>Describe the exact task you want the models to compare.</p><textarea autoFocus value={arenaTask} onChange={(event) => setArenaTask(event.target.value)} placeholder="Example: Build a launch plan for my new fitness app" rows="3" /><div className="arena-models"><span>GPT</span><span>Claude</span><span>Gemini</span><span>Grok</span></div><button disabled={!arenaTask.trim()} onClick={launchArena}>Create comparison prompt</button><button className="modal-cancel" onClick={() => setArenaOpen(false)}>Cancel</button></section></div>}
       {feedbackModalOpen && <div className="feature-modal-backdrop" onClick={() => setFeedbackModalOpen(false)}><section className="feature-modal" onClick={(event) => event.stopPropagation()}><span className="feature-modal-icon">💬</span><small>FEEDBACK</small><h2>Tell us what this response did well</h2><p>Your feedback helps improve the model.</p><textarea autoFocus value={feedbackText} onChange={(event) => setFeedbackText(event.target.value)} placeholder="Example: very clear explanation, great code example" rows="4" /><div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:12}}><button className="modal-cancel" onClick={() => setFeedbackModalOpen(false)}>Cancel</button><button disabled={!feedbackText.trim()} onClick={submitFeedback}>Send feedback</button></div></section></div>}

@@ -1,4 +1,6 @@
 import "./App.css";
+import AuthPage from "./components/Login/AuthPage";
+import RequireAuth from "./components/Login/RequireAuth";
 import { useState } from "react";
 import { Route, Routes } from "react-router-dom";
 import claudeLogo from "./assets/claude.png";
@@ -52,6 +54,9 @@ import AppTwenty from "./components/AppTwenty/AppTwenty";
 import NextThirty from "./components/NextThirty/NextThirty";
 import NextFifteen from "./components/NextFifteen/NextFifteen";
 import NextTwelve from "./components/NextTwelve/NextTwelve";
+import CookieConsent from "./components/CookieConsent/CookieConsent";
+import ModelComparison from "./components/ModelComparison/ModelComparison";
+import UsageAnalytics from "./components/UsageAnalytics/UsageAnalytics";
 
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");
@@ -129,12 +134,9 @@ function HomePage() {
 
 export default function App() {
   return (
-    <><CommandPalette /><Routes>
+    <><CommandPalette /><CookieConsent /><Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/auth/:provider" element={<SocialAuth />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/settings" element={<Settings />} />
-      <Route path="/admin" element={<Admin />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/api-docs" element={<ApiDocs />} />
       <Route path="/privacy" element={<InfoPage type="privacy" />} />
@@ -142,18 +144,26 @@ export default function App() {
       <Route path="/refunds" element={<InfoPage type="refund" />} />
       <Route path="/cookies" element={<InfoPage type="cookies" />} />
       <Route path="/models/:slug" element={<ModelDetails />} />
+      <Route path="/explore" element={<ModelExplorer />} />
+      <Route path="/shared/:token" element={<SharedConversation />} />
+      <Route path="/prompts" element={<PromptGallery />} />
+      <Route path="/login" element={<AuthPage mode="signin" />} />
+      <Route path="/register" element={<AuthPage mode="signup" />} />
+      <Route element={<RequireAuth />}>
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/settings" element={<Settings />} />
+      <Route path="/admin" element={<Admin />} />
       <Route path="/checkout" element={<Checkout />} />
       <Route path="/chat" element={<Chat />} />
+      <Route path="/model-comparison" element={<ModelComparison />} />
+      <Route path="/usage-analytics" element={<UsageAnalytics />} />
       <Route path="/studio" element={<Studio />} />
-      <Route path="/explore" element={<ModelExplorer />} />
       <Route path="/arena" element={<Arena />} />
       <Route path="/control-center" element={<ControlCenter />} />
       <Route path="/innovation-hub" element={<InnovationHub />} />
       <Route path="/features" element={<ProductSuite />} />
       <Route path="/ai-tools" element={<AIToolsLab />} />
       <Route path="/creator-tools" element={<CreatorLab />} />
-      <Route path="/shared/:token" element={<SharedConversation />} />
-      <Route path="/prompts" element={<PromptGallery />} />
       <Route path="/website-builder" element={<WebsiteBuilder />} />
       <Route path="/ai-platform" element={<AIPlatform />} />
       <Route path="/innovation-lab" element={<InnovationLab />} />
@@ -171,6 +181,7 @@ export default function App() {
       <Route path="/next-30" element={<NextThirty />} />
       <Route path="/next-15" element={<NextFifteen />} />
       <Route path="/next-12" element={<NextTwelve />} />
+      </Route>
     </Routes></>
   );
 }

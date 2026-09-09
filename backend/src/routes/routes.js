@@ -27,6 +27,7 @@ const {
     createCheckoutSession,
     verifyCheckoutSession,
     createChatResponse,
+    analyzeVision,
     generateImage,
     getWorkspaceItems, createWorkspaceItem, updateWorkspaceItem, deleteWorkspaceItem, getUsageAnalytics, branchConversation, webResearch, getOllamaModels, checkAnswerQuality,
     previewRouter, searchKnowledge, getTeams, createTeam, inviteTeamMember, updateTeamMember, removeTeamMember, shareConversation, getSharedConversation, listDeveloperKeys, createDeveloperKey, revokeDeveloperKey,
@@ -56,6 +57,7 @@ router.get('/share/:token', getSharedConversation);
 router.delete('/auth/account', requireAuth, deleteAccount);
 router.post('/chat', requireAuth, createChatResponse);
 router.post('/chat/improve-prompt', requireAuth, improvePrompt);
+router.post('/vision/analyze', requireAuth, analyzeVision);
 router.post('/router/preview', requireAuth, previewRouter);
 router.post('/images', requireAuth, generateImage);
 router.post('/purchases', requireAuth, createPurchase);
@@ -104,11 +106,11 @@ router.delete('/webhooks/:id', requireAuth, deleteWebhook);
 router.get('/privacy/export', requireAuth, privacyExport);
 router.post('/auth/verify/request', requireAuth, requestEmailVerification);
 router.post('/auth/verify/confirm', requireAuth, confirmEmailVerification);
-router.get('/users', requireAdmin, getUsers);
-router.get('/users/:id', requireAdmin, getUserById);
-router.post('/users', requireAdmin, createUser);
-router.put('/users/:id', requireAdmin, updateUser);
-router.patch('/users/:id', requireAdmin, patchUser);
-router.delete('/users/:id', requireAdmin, deleteUser);
+router.get('/users', requireAuth, requireAdmin, getUsers);
+router.get('/users/:id', requireAuth, requireAdmin, getUserById);
+router.post('/users', requireAuth, requireAdmin, createUser);
+router.put('/users/:id', requireAuth, requireAdmin, updateUser);
+router.patch('/users/:id', requireAuth, requireAdmin, patchUser);
+router.delete('/users/:id', requireAuth, requireAdmin, deleteUser);
 
 module.exports = router;

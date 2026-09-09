@@ -63,7 +63,7 @@ export default function NextTen() {
 
   return <main className="next-ten-page">
     <header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><b>AI</b>AllModelAI</Link><nav><Link to="/chat">Chat</Link><Link to="/arena">Arena</Link><Link to="/dashboard">Dashboard</Link></nav></header>
-    <section className="next-ten-hero"><div><p>ALLMODEL AI · NEXT 10</p><h1>Ten tools.<br/><span>One intelligent workspace.</span></h1><small>Compare, route, orchestrate, verify, remember, automate, and create with every model in one place.</small></div><strong>10</strong></section>
+    <section className="next-ten-hero"><div><p>ALLMODEL AI · MODEL TOOLKIT</p><h1>Ten tools.<br/><span>One intelligent workspace.</span></h1><small>Compare, route, orchestrate, verify, remember, automate, and create with every model in one place.</small></div><strong>10</strong></section>
     <section className="next-ten-shell">
       <aside>{features.map((item, index) => <button type="button" className={active === item.id ? 'active' : ''} onClick={() => setActive(item.id)} key={item.id}><i>{String(index + 1).padStart(2, '0')}</i><span>{item.icon}</span><div><strong>{item.title}</strong><small>{item.label}</small></div></button>)}</aside>
       <article className="next-ten-panel">

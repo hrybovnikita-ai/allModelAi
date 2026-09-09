@@ -23,6 +23,12 @@ npm run dev
 
 The frontend will be available at http://localhost:5173, and the backend at http://localhost:5050.
 
+Production mode without VS Code
+
+After building the frontend, the backend serves the complete application from one port. On Windows, double-click `start-allmodelai.bat` in the `allModelAi` folder. It builds `frontend/dist` when needed and starts the app at http://localhost:5050. Keep the opened server window running; the editor itself can be closed.
+
+To stop the application, close that server window or press Ctrl+C in it. The SQLite database remains in `backend/storage/database.sqlite`.
+
 New Features
 All private APIs use a server-side HTTP-only session; an email address provided by the client does not determine data ownership.
 Smart Router detects the task type and returns the selected model along with an explanation.
@@ -46,3 +52,7 @@ npm run lint
 npm run build
 
 Secrets are stored only in backend/.env. The demo social account selection feature is disabled by default and must not be enabled in production.
+
+Authentication
+
+Sign in at `/login` or create an account at `/register`. Private workspace pages verify the server session before rendering and return you to the requested page after sign-in. Remember me keeps the HTTP-only session cookie for 30 days; otherwise the cookie lasts for the browser session, with an 8-hour server expiry. Sign out revokes the session without deleting the account. Passwordless accounts must use their original provider or the password recovery flow; public login and registration cannot assign a password to an existing account. The legacy ALLOW_ANY_PASSWORD bypass is no longer supported.

@@ -6,6 +6,7 @@ const { stripeWebhook } = require('./src/controllers/controllers');
 const { connectDatabase } = require('./src/db');
 const users = require('./src/data/data');
 const path = require('path');
+const fs = require('fs');
 
 if (process.env.NODE_ENV !== 'test') {
     try {
@@ -40,7 +41,8 @@ if (storedData.users.length) {
 
 app.use(cors({ origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173', credentials: true }));
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 const requestCounts = new Map();
 app.use('/api', (req, res, next) => {
@@ -60,13 +62,21 @@ app.use('/api', (req, res, next) => {
     return next();
 });
 
-app.get('/', (req, res) => {
-    res.status(200).json({
-        message: 'AllModelAI API is running',
-    });
-});
-
 app.use('/api', routes);
+
+// In production the backend serves the built React app, so Vite/VS Code is not required.
+const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
+if (fs.existsSync(frontendDist)) {
+    app.use(express.static(frontendDist));
+    app.get('/{*splat}', (req, res, next) => {
+        if (req.path.startsWith('/api/')) return next();
+        return res.sendFile(path.join(frontendDist, 'index.html'));
+    });
+} else {
+    app.get('/', (req, res) => {
+        res.status(200).json({ message: 'AllModelAI API is running' });
+    });
+}
 
 app.use((req, res) => {
     res.status(404).json({ message: 'Route not found' });

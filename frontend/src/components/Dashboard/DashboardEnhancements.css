@@ -173,6 +173,29 @@
 	min-width: 0;
 }
 
+/* Use the full desktop monitor width for the model library. */
+@media (min-width: 1200px) {
+	.dashboard-page {
+		padding-inline: clamp(28px, 3.5vw, 72px);
+	}
+
+	.dashboard-models {
+		width: 100%;
+		max-width: 1440px;
+	}
+
+	.dashboard-grid {
+		width: 100%;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: clamp(16px, 1.5vw, 24px);
+	}
+
+	.dashboard-grid article {
+		min-height: 300px;
+		padding: clamp(20px, 1.6vw, 28px);
+	}
+}
+
 .dashboard-usage > a {
 	white-space: nowrap;
 }

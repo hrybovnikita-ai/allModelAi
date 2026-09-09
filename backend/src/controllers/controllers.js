@@ -58,22 +58,51 @@ const setSession = (req, res, user, remember = false) => {
     res.cookie(sessionCookie, token, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', ...(remember ? { maxAge: sessionDuration } : {}) });
 };
 
-const createMessage = ({ role, text, content, id, timestamp }) => ({
-    id: id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    role: role === 'assistant' ? 'assistant' : 'user',
-    content: String(content ?? text ?? ''),
-    timestamp: timestamp || new Date().toISOString(),
-});
+const parseImagePayload = (raw) => {
+    if (!raw || typeof raw !== 'string') return null;
+    const match = raw.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+    if (match) {
+        return {
+            mimeType: match[1],
+            base64Data: match[2],
+            dataUrl: raw,
+        };
+    }
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+        return {
+            mimeType: 'image/jpeg',
+            base64Data: null,
+            dataUrl: raw,
+        };
+    }
+    return null;
+};
+
+const createMessage = ({ role, text, content, id, timestamp, image, imageUrl, images }) => {
+    const rawImage = image || imageUrl || (Array.isArray(images) && images[0]) || null;
+    return {
+        id: id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        role: role === 'assistant' ? 'assistant' : 'user',
+        content: String(content ?? text ?? ''),
+        image: rawImage,
+        imageUrl: rawImage,
+        timestamp: timestamp || new Date().toISOString(),
+    };
+};
 
 const normalizeMessages = (messages) => (Array.isArray(messages) ? messages : [])
     .map(createMessage)
-    .filter((message) => message.content.trim())
+    .filter((message) => message.content.trim() || message.image)
     .slice(-20);
 
 const createConversationTitle = (messages) => {
-    const firstMessage = normalizeMessages(messages).find((message) => message.role === 'user')?.content || '';
-    const cleaned = firstMessage.replace(/\s+/g, ' ').trim().replace(/[.!?]+$/, '');
+    const firstUserMessage = normalizeMessages(messages).find((message) => message.role === 'user');
+    const firstContent = firstUserMessage?.content || '';
+    const hasImage = Boolean(firstUserMessage?.image || firstUserMessage?.imageUrl);
+    const cleaned = firstContent.replace(/\s+/g, ' ').trim().replace(/[.!?]+$/, '');
+    if (!cleaned && hasImage) return 'Screenshot / Image Analysis';
     if (!cleaned) return 'New conversation';
+    if (/\b(куда\s+нажимать|где\s+нажать|как\s+нажать|where to click|where should i click|how to navigate)\b/i.test(cleaned)) return 'UI Navigation Guide';
     if (/\b(torch|pytorch)\b/i.test(cleaned) && /\b(agent|ai)\b/i.test(cleaned)) return 'AI Agent with PyTorch';
     if (/\bjwt\b/i.test(cleaned) && /auth/i.test(cleaned)) return 'JWT Authentication';
     if (/react\s+useeffect/i.test(cleaned)) return 'React useEffect';
@@ -104,34 +133,23 @@ const registerUser = async (req, res) => {
         return res.status(400).json({ message: 'Name, email and password are required' });
     }
 
-    if (typeof password !== 'string') return res.status(400).json({ message: 'Password must be text' });
+    if (typeof name !== 'string' || !name.trim() || name.length > 100 || typeof email !== 'string' || email.length > 254 || typeof password !== 'string' || password.length > 1024) return res.status(400).json({ message: 'Enter a valid name, email and password' });
 
     const normalizedEmail = email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
         return res.status(400).json({ message: 'Enter a valid email address' });
     }
+    const passwordHash = await hashPassword(password);
     const existingUser = users.find((user) => user.email.toLowerCase() === normalizedEmail);
-    if (existingUser?.passwordHash) {
-        return res.status(409).json({ message: 'An account with this email already exists' });
-    }
-
     if (existingUser) {
-        existingUser.name = name.trim() || existingUser.name;
-        existingUser.passwordHash = await hashPassword(password);
-        saveUsers(req.app.locals.db);
-        setSession(req, res, existingUser, req.body.rememberMe === true || req.body.rememberMe === 'true');
-        return res.status(200).json({
-            message: 'Password added to your existing account',
-            user: publicUser(existingUser),
-            welcomeEmail: { sent: false, reason: 'existing_account' },
-        });
+        return res.status(409).json({ message: 'An account with this email already exists' });
     }
 
     const newUser = {
         id: users.length ? Math.max(...users.map((user) => user.id)) + 1 : 1,
         name: name.trim(),
         email: normalizedEmail,
-        passwordHash: await hashPassword(password),
+        passwordHash,
     };
 
     users.push(newUser);
@@ -152,34 +170,18 @@ const registerUser = async (req, res) => {
 };
 
 const loginUser = async (req, res) => {
-    const { email, password } = req.body;
+    const { name, email, password } = req.body;
 
-    if (!email || !password) {
-        return res.status(400).json({ message: 'Email and password are required' });
+    if (!email || !password || (name !== undefined && !name)) {
+        return res.status(400).json({ message: 'Name, email and password are required' });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
-    const user = users.find(
-        (item) => item.email.toLowerCase() === email.trim().toLowerCase()
-    );
-    const remoteAddress = req.socket.remoteAddress;
-    const isLocalRequest = remoteAddress === '127.0.0.1'
-        || remoteAddress === '::1'
-        || remoteAddress === '::ffff:127.0.0.1';
-    const allowAnyPassword = process.env.ALLOW_ANY_PASSWORD === 'true' && isLocalRequest;
-
-    if (user && !user.passwordHash) {
-        user.passwordHash = await hashPassword(password);
-        saveUsers(req.app.locals.db);
-        setSession(req, res, user, req.body.rememberMe === true || req.body.rememberMe === 'true');
-        return res.status(200).json({
-            message: 'Password created and signed in successfully',
-            passwordCreated: true,
-            user: publicUser(user),
-        });
+    if (typeof email !== 'string' || typeof password !== 'string' || (name !== undefined && (typeof name !== 'string' || name.length > 100)) || email.length > 254 || password.length > 1024) {
+        return res.status(400).json({ message: 'Enter a valid name, email and password' });
     }
-    if (!user || (!allowAnyPassword && !(await verifyPassword(password, user.passwordHash)))) {
-        return res.status(401).json({ message: 'Incorrect email or password' });
+    const user = users.find((item) => item.email.toLowerCase() === email.trim().toLowerCase());
+    if (!user || (name !== undefined && user.name.trim().toLowerCase() !== name.trim().toLowerCase()) || !(await verifyPassword(password, user.passwordHash))) {
+        return res.status(401).json({ message: 'Incorrect name, email or password' });
     }
 
     setSession(req, res, user, req.body.rememberMe === true || req.body.rememberMe === 'true');
@@ -418,7 +420,7 @@ const getCreditStatus = (database, email) => {
 const getModelStatus = (_req, res) => {
     const gateway = Boolean(process.env.OPENROUTER_API_KEY || process.env.API_KEY);
     const openAI = Boolean(process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY);
-    const xai = Boolean(process.env.XAI_API_KEY);
+    const xai = Boolean(process.env.XAI_API_KEY || process.env.GROK_API_KEY);
     return res.status(200).json({
         updatedAt: new Date().toISOString(),
         models: {
@@ -602,15 +604,21 @@ const stripeWebhook = (req, res) => {
 
 const createPurchase = (req, res) => createCheckoutSession(req, res);
 
-const chooseSmartRoute = (prompt, mode = 'balanced') => {
+const chooseSmartRoute = (prompt, mode = 'balanced', hasImage = false) => {
     const text = String(prompt || '').toLowerCase();
+    if (hasImage) {
+        if (mode === 'quality') return { model: 'gpt', reason: 'High-precision GPT vision selected for detailed screenshot and UI analysis.', category: 'vision' };
+        return { model: 'gemini', reason: 'Fast and accurate Gemini multimodal vision selected for image understanding and UI navigation.', category: 'vision' };
+    }
     const signals = {
+        vision: /скриншот|картинк|фото|изображен|куда нажимать|куда нажать|где нажать|screenshot|image|where to click|what do you see/.test(text),
         coding: /code|debug|function|react|javascript|typescript|python|api|sql|ошибк|код|функц/.test(text),
         research: /research|latest|source|news|find|citation|исслед|источник|новост|найди/.test(text),
         writing: /write|rewrite|essay|story|email|текст|перепиш|стать|письм/.test(text),
         multilingual: /translate|translation|перевод|переведи|україн|украин/.test(text),
         longContext: text.length > 3500 || /document|report|pdf|документ|отч[её]т/.test(text),
     };
+    if (signals.vision) return { model: 'gemini', reason: 'Visual UI navigation and screenshot analysis intent detected.', category: 'vision' };
     if (mode === 'economy') return { model: process.env.CLOUDFLARE_ACCOUNT_ID ? 'cloudflare' : 'gemini', reason: 'Economy mode selected the lowest-cost available model.', category: 'economy' };
     if (mode === 'speed') return { model: 'gemini', reason: 'Speed mode selected Gemini for low-latency generation.', category: 'speed' };
     if (signals.research) return { model: 'perplexity', reason: 'Research intent and source-related terms were detected.', category: 'research' };
@@ -623,8 +631,9 @@ const chooseSmartRoute = (prompt, mode = 'balanced') => {
 
 const previewRouter = (req, res) => {
     const prompt = String(req.body.prompt || '').trim();
-    if (!prompt) return res.status(400).json({ message: 'Prompt is required' });
-    return res.json(chooseSmartRoute(prompt, req.body.routerMode));
+    const hasImage = Boolean(req.body.image || req.body.hasImage);
+    if (!prompt && !hasImage) return res.status(400).json({ message: 'Prompt or image is required' });
+    return res.json(chooseSmartRoute(prompt, req.body.routerMode, hasImage));
 };
 
 const createChatResponse = async (req, res) => {
@@ -650,15 +659,23 @@ const createChatResponse = async (req, res) => {
     const grokModel = configuredGrokModel && !/grok-3-mini/i.test(configuredGrokModel)
         ? configuredGrokModel
         : providerModels.grok;
-    const latestPrompt = String(messages?.at(-1)?.text || messages?.at(-1)?.content || '');
-    const routeDecision = chooseSmartRoute(latestPrompt, routerMode);
+    
+    const normalizedInputMessages = normalizeMessages(messages);
+    if (!Array.isArray(normalizedInputMessages) || normalizedInputMessages.length === 0) {
+        return res.status(400).json({ message: 'At least one message is required' });
+    }
+
+    const latestMessage = normalizedInputMessages.at(-1);
+    const latestPrompt = String(latestMessage?.content || '');
+    const hasAttachedImage = normalizedInputMessages.some((m) => Boolean(m.image || m.imageUrl));
+    const routeDecision = chooseSmartRoute(latestPrompt, routerMode, hasAttachedImage);
     const routedModel = model === 'smart' ? routeDecision.model : model;
 
     // Prefer the shared OpenRouter connection for Claude when it is configured.
     // This keeps Claude available when a direct Anthropic account has no credits.
     const gatewayKey = process.env.OPENROUTER_API_KEY || process.env.API_KEY;
     const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
-    const xaiKey = process.env.XAI_API_KEY?.trim();
+    const xaiKey = (process.env.XAI_API_KEY || process.env.GROK_API_KEY)?.trim();
     const directKimiKey = process.env.KIMI_API_KEY?.trim();
     const preferGemini = process.env.PREFER_GEMINI === 'true' && Boolean(process.env.GEMINI_API_KEY?.trim());
     const usePreferredGemini = preferGemini && model === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
@@ -678,9 +695,6 @@ const createChatResponse = async (req, res) => {
     if (!providerModels[routedModel]) {
         return res.status(400).json({ message: 'Unsupported AI model' });
     }
-    if (!Array.isArray(messages) || messages.length === 0) {
-        return res.status(400).json({ message: 'At least one message is required' });
-    }
 
     const creditStatus = getCreditStatus(req.app.locals.db, userEmail);
     if (creditStatus.enforced && creditStatus.used >= creditStatus.limit) {
@@ -690,10 +704,6 @@ const createChatResponse = async (req, res) => {
         return res.status(403).json({ message: `${model} is not included in your current plan. Upgrade your model access to use it.` });
     }
 
-    const input = normalizeMessages(messages).map(({ role, content }) => ({
-        role: role === 'assistant' ? 'assistant' : 'user',
-        content: content.slice(0, 8000),
-    }));
     const memoryRows = req.app.locals.db.database.prepare("SELECT data FROM workspace_items WHERE email = ? AND type = 'memory' ORDER BY updated_at DESC LIMIT 20").all(String(userEmail).trim().toLowerCase());
     const memories = memoryRows.map((row) => JSON.parse(row.data).name).filter(Boolean);
     const knowledge = useKnowledge ? findKnowledge(req.app.locals.db.database, userEmail, latestPrompt, 4) : [];
@@ -710,16 +720,98 @@ const createChatResponse = async (req, res) => {
     const codeFirstInstruction = codeRequested
         ? ' The user requested code. Start the answer immediately with the complete runnable code in a fenced Markdown block using the correct language tag. Do not write an introduction before the code. Never promise code later in the answer. After the closing fence, add concise setup and usage instructions.'
         : '';
-    const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear and accurate. Always detect the language of the user's latest message and answer in that same language. If the message mixes languages, use the dominant language. Keep code, product names, and quoted text unchanged. Put all source code in complete fenced Markdown code blocks with the correct language tag so it can be copied directly into an IDE.${codeFirstInstruction} Response preferences: length=${preferences.length}, tone=${preferences.tone}, creativity=${preferences.creativity}, format=${preferences.format}.${customInstructions ? ` User instructions: ${customInstructions}` : ''}${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}${knowledgeContext}`;
+    
+    const visionInstruction = hasAttachedImage || /\b(скриншот|картинк|фото|изображен|куда нажимать|куда нажать|где нажать|как нажать|screenshot|where to click|what do you see)\b/i.test(latestPrompt)
+        ? ' Visual Navigation & UI Guide Mode:\nWhen an image or screenshot is provided or UI help is requested:\n1. Describe what screen/application/site is shown.\n2. When asked where to click or how to perform an action, provide numbered, step-by-step instructions. Clearly identify buttons, icons, menus, and their exact visual positions (e.g. "[Top-Right] Click \'Save\'", "[Left sidebar] Select \'Settings\'", "[Center dialog] Choose option").\n3. If an error or issue is visible on screen, explain the cause and provide the exact fix.\n4. Make instructions clear, practical, and easy to follow.'
+        : '';
+
+    const systemPrompt = `You are the helpful AI assistant inside AllModelAI. Be clear and accurate. Always detect the language of the user's latest message and answer in that same language. If the message mixes languages, use the dominant language. Keep code, product names, and quoted text unchanged. Put all source code in complete fenced Markdown code blocks with the correct language tag so it can be copied directly into an IDE.${codeFirstInstruction} ${visionInstruction} Response preferences: length=${preferences.length}, tone=${preferences.tone}, creativity=${preferences.creativity}, format=${preferences.format}.${customInstructions ? ` User instructions: ${customInstructions}` : ''}${memories.length ? ` User-controlled memory: ${memories.join('; ')}` : ''}${knowledgeContext}`;
     let assistantText = '';
     const outputTokenLimit = Math.min(Math.max(Number(maxTokens) || Number(process.env.MAX_TOKENS) || 2048, 128), 4096);
+
+    // Multimodal Builders for Providers
+    const buildOpenAIMessages = (list) => {
+        return list.map(({ role, content, image, imageUrl }) => {
+            const rawImg = image || imageUrl;
+            if (role === 'assistant' || !rawImg) {
+                return { role: role === 'assistant' ? 'assistant' : 'user', content: String(content || '').slice(0, 8000) };
+            }
+            const parsed = parseImagePayload(rawImg);
+            const textContent = content ? String(content).slice(0, 8000) : 'Analyze this screenshot/image: describe what is shown and guide me on where to click and what steps to take next.';
+            return {
+                role: 'user',
+                content: [
+                    { type: 'text', text: textContent },
+                    { type: 'image_url', image_url: { url: parsed?.dataUrl || rawImg } }
+                ]
+            };
+        });
+    };
+
+    const buildGeminiContents = (list) => {
+        return list.map(({ role, content, image, imageUrl }) => {
+            const rawImg = image || imageUrl;
+            const parts = [];
+            const textContent = content ? String(content).slice(0, 8000) : (rawImg ? 'Analyze this screenshot: describe the interface in detail and provide step-by-step guidance on where to click to perform the desired action.' : '');
+            if (textContent) {
+                parts.push({ text: textContent });
+            }
+            if (rawImg) {
+                const parsed = parseImagePayload(rawImg);
+                if (parsed && parsed.base64Data) {
+                    parts.push({
+                        inlineData: {
+                            mimeType: parsed.mimeType || 'image/png',
+                            data: parsed.base64Data
+                        }
+                    });
+                }
+            }
+            return {
+                role: role === 'assistant' ? 'model' : 'user',
+                parts: parts.length ? parts : [{ text: '...' }]
+            };
+        });
+    };
+
+    const buildClaudeMessages = (list) => {
+        return list.map(({ role, content, image, imageUrl }) => {
+            const rawImg = image || imageUrl;
+            if (role === 'assistant' || !rawImg) {
+                return { role: role === 'assistant' ? 'assistant' : 'user', content: String(content || '').slice(0, 8000) };
+            }
+            const parsed = parseImagePayload(rawImg);
+            if (parsed && parsed.base64Data) {
+                return {
+                    role: 'user',
+                    content: [
+                        {
+                            type: 'image',
+                            source: {
+                                type: 'base64',
+                                media_type: parsed.mimeType || 'image/png',
+                                data: parsed.base64Data
+                            }
+                        },
+                        {
+                            type: 'text',
+                            text: (content || 'Analyze this screenshot and guide me on where to click and what actions to take.').slice(0, 8000)
+                        }
+                    ]
+                };
+            }
+            return { role: 'user', content: String(content || '').slice(0, 8000) };
+        });
+    };
+
+    const standardInput = buildOpenAIMessages(normalizedInputMessages);
 
     try {
         const directGeminiModel = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
         const getGeminiUrl = (key) => `https://generativelanguage.googleapis.com/v1beta/models/${directGeminiModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key.trim())}`;
         const geminiBody = () => JSON.stringify({
             systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents: input.map(({ role, content }) => ({ role: role === 'assistant' ? 'model' : 'user', parts: [{ text: content }] })),
+            contents: buildGeminiContents(normalizedInputMessages),
             generationConfig: { maxOutputTokens: outputTokenLimit },
         });
         const geminiUrl = getGeminiUrl(apiKey);
@@ -727,7 +819,7 @@ const createChatResponse = async (req, res) => {
         const directKimiUrl = 'https://api.moonshot.cn/v1/chat/completions';
         const providerTimeoutMs = Math.min(Math.max(Number(process.env.AI_REQUEST_TIMEOUT_MS) || 45000, 5000), 120000);
         const requestSignal = () => AbortSignal.timeout(providerTimeoutMs);
-        let apiResponse = await fetch(isOpenAI ? 'https://api.openai.com/v1/responses' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isKimi && directKimiKey ? directKimiUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
+        let apiResponse = await fetch(isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isKimi && directKimiKey ? directKimiUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             signal: requestSignal(),
             headers: isOpenAI || isXAI ? {
@@ -743,7 +835,7 @@ const createChatResponse = async (req, res) => {
                 Authorization: `Bearer ${directKimiKey.trim()}`,
                 'Content-Type': 'application/json',
             } : isCloudflare ? {
-                messages: [{ role: 'system', content: systemPrompt }, ...input],
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
                 max_tokens: Number(process.env.MAX_TOKENS) || 2048,
             } : {
                 Authorization: `Bearer ${apiKey.trim()}`,
@@ -751,41 +843,36 @@ const createChatResponse = async (req, res) => {
             },
             body: JSON.stringify(isOpenAI ? {
                 model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-                instructions: systemPrompt,
-                input,
-                max_output_tokens: outputTokenLimit,
-                store: false,
+                stream: true,
+                max_tokens: outputTokenLimit,
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : isXAI ? {
                 model: process.env.XAI_MODEL || 'grok-4-latest',
                 stream: true,
                 max_tokens: outputTokenLimit,
-                messages: [{ role: 'system', content: systemPrompt }, ...input],
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : isClaude ? {
                 model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
                 stream: true,
                 max_tokens: outputTokenLimit,
                 system: systemPrompt,
-                messages: input,
+                messages: buildClaudeMessages(normalizedInputMessages),
             } : isGemini ? JSON.parse(geminiBody()) : isKimi && directKimiKey ? {
                 model: process.env.KIMI_MODEL || 'kimi-k2-0711-preview',
                 stream: true,
                 max_tokens: outputTokenLimit,
-                messages: [{ role: 'system', content: systemPrompt }, ...input],
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : {
                 model: routedModel === 'grok' ? grokModel : routedModel === 'cloudflare' ? providerModels.llama : providerModels[routedModel],
                 stream: true,
                 max_tokens: outputTokenLimit,
-                messages: [{ role: 'system', content: systemPrompt }, ...input],
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             }),
         });
         let fallbackUsed = usePreferredGemini;
         let fallbackModel = usePreferredGemini ? 'gemini' : null;
         let upstreamError = null;
-        // A provider key only belongs to that provider. Previously a failed direct
-        // Kimi request fell through to the OpenRouter retry below while still using
-        // the Kimi key, which produced a misleading "OpenRouter rejected the key"
-        // error. Prefer the independently configured Gemini connection for every
-        // failed non-Gemini provider before attempting a gateway fallback.
+        // Prefer independently configured Gemini connection for failed non-Gemini provider
         if (!apiResponse.ok && fallbackEnabled !== false && !isGemini && process.env.GEMINI_API_KEY?.trim()) {
             upstreamError = await apiResponse.json().catch(() => ({}));
             apiKey = process.env.GEMINI_API_KEY.trim();
@@ -801,12 +888,17 @@ const createChatResponse = async (req, res) => {
             fallbackModel = 'gemini';
             if (!apiResponse.ok) upstreamError = null;
         }
-        // If the selected provider is unavailable or overloaded, try several
-        // independent models through the shared gateway. This also covers
-        // direct xAI, Anthropic, OpenAI, Gemini, Kimi, and Cloudflare failures.
+        // Gateway fallback through OpenRouter
         if (!apiResponse.ok && fallbackEnabled !== false && gatewayKey?.trim()) {
             upstreamError = await apiResponse.json().catch(() => ({}));
-            const gatewayFallbacks = ['gpt', 'gemini', 'mistral'].filter((candidate) => candidate !== routedModel);
+            const configuredFallbacks = String(process.env.OPENROUTER_FALLBACK_MODELS || '')
+                .split(',')
+                .map((item) => item.trim())
+                .filter(Boolean);
+            const gatewayFallbacks = (configuredFallbacks.length
+                ? configuredFallbacks
+                : ['gpt', 'gemini', 'mistral', 'deepseek', 'llama'])
+                .filter((candidate) => providerModels[candidate] && candidate !== routedModel);
             for (const candidate of gatewayFallbacks) {
                 apiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                     method: 'POST',
@@ -816,7 +908,7 @@ const createChatResponse = async (req, res) => {
                         model: providerModels[candidate],
                         stream: true,
                         max_tokens: outputTokenLimit,
-                        messages: [{ role: 'system', content: `${systemPrompt} The requested ${routedModel} provider is temporarily unavailable; provide the best equivalent answer without mentioning the outage.` }, ...input],
+                        messages: [{ role: 'system', content: `${systemPrompt} The requested ${routedModel} provider is temporarily unavailable; provide the best equivalent answer without mentioning the outage.` }, ...standardInput],
                     }),
                 });
                 if (apiResponse.ok) {
@@ -847,6 +939,7 @@ const createChatResponse = async (req, res) => {
         res.status(200);
         res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
         res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('X-Accel-Buffering', 'no');
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
         const freeTierModels = new Set(['gemini', 'cloudflare']);
@@ -895,43 +988,44 @@ const createChatResponse = async (req, res) => {
             if (done) break;
         }
 
-        const inputTokens = Math.ceil(input.reduce((sum, message) => sum + message.content.length, 0) / 4);
+        const inputTokens = Math.ceil(normalizedInputMessages.reduce((sum, message) => sum + (message.content || '').length, 0) / 4);
         const outputTokens = Math.ceil(assistantText.length / 4);
         const actualUsageModel = fallbackUsed ? fallbackModel : routedModel;
         const estimatedCost = Number((((inputTokens * 0.5) + (outputTokens * 1.5)) / 1000000).toFixed(6));
-        req.app.locals.db.database.prepare('INSERT INTO usage_events (email,model,input_tokens,output_tokens,latency_ms,fallback_used,estimated_cost,created_at) VALUES (?,?,?,?,?,?,?,?)').run(userEmail, actualUsageModel, inputTokens, outputTokens, Date.now() - requestStartedAt, fallbackUsed ? 1 : 0, estimatedCost, new Date().toISOString());
-        if (temporary) {
-            res.write('data: [DONE]\n\n');
-            return res.end();
-        }
+        setImmediate(() => {
+            try {
+                req.app.locals.db.database.prepare('INSERT INTO usage_events (email,model,input_tokens,output_tokens,latency_ms,fallback_used,estimated_cost,created_at) VALUES (?,?,?,?,?,?,?,?)').run(userEmail, actualUsageModel, inputTokens, outputTokens, Date.now() - requestStartedAt, fallbackUsed ? 1 : 0, estimatedCost, new Date().toISOString());
+                if (temporary) return;
 
-        creditStatus.data.usage[creditStatus.email] = creditStatus.used + 1;
-        req.app.locals.db.write(creditStatus.data);
-
-        const data = req.app.locals.db.read();
-        data.conversations ||= [];
-        const now = new Date().toISOString();
-        const normalizedEmail = String(userEmail).trim().toLowerCase();
-        const savedMessages = normalizeMessages([...messages, { role: 'assistant', content: assistantText }]);
-        const conversation = conversationId
-            ? data.conversations.find((item) => item.id === conversationId && item.email === normalizedEmail)
-            : null;
-        if (conversation) {
-            conversation.messages = savedMessages;
-            conversation.updatedAt = now;
-        } else {
-            data.conversations.push({
-                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                email: normalizedEmail,
-                model,
-                title: createConversationTitle(savedMessages),
-                messages: savedMessages,
-                createdAt: now,
-                updatedAt: now,
-            });
-        }
-        req.app.locals.db.write(data);
-
+                creditStatus.data.usage[creditStatus.email] = creditStatus.used + 1;
+                req.app.locals.db.write(creditStatus.data);
+                const data = req.app.locals.db.read();
+                data.conversations ||= [];
+                const now = new Date().toISOString();
+                const normalizedEmail = String(userEmail).trim().toLowerCase();
+                const savedMessages = normalizeMessages([...messages, { role: 'assistant', content: assistantText }]);
+                const conversation = conversationId
+                    ? data.conversations.find((item) => item.id === conversationId && item.email === normalizedEmail)
+                    : null;
+                if (conversation) {
+                    conversation.messages = savedMessages;
+                    conversation.updatedAt = now;
+                } else {
+                    data.conversations.push({
+                        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        email: normalizedEmail,
+                        model,
+                        title: createConversationTitle(savedMessages),
+                        messages: savedMessages,
+                        createdAt: now,
+                        updatedAt: now,
+                    });
+                }
+                req.app.locals.db.write(data);
+            } catch (error) {
+                console.error('[CHAT PERSISTENCE]', error.message);
+            }
+        });
         res.write('data: [DONE]\n\n');
         return res.end();
     } catch (error) {
@@ -944,6 +1038,99 @@ const createChatResponse = async (req, res) => {
             return res.end();
         }
         return res.status(timedOut ? 504 : 502).json({ message });
+    }
+};
+
+const analyzeVision = async (req, res) => {
+    const { image, prompt = '', mode = 'navigation' } = req.body;
+    if (!image) {
+        return res.status(400).json({ message: 'An image or screenshot is required' });
+    }
+
+    const gatewayKey = process.env.OPENROUTER_API_KEY || process.env.API_KEY;
+    const geminiKey = process.env.GEMINI_API_KEY?.trim();
+    const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
+
+    const modePrompts = {
+        navigation: 'Analyze this UI/screenshot in detail. Point out specific buttons, inputs, tabs, and menu items. Give clear, numbered step-by-step instructions on WHERE TO CLICK and what action to take (e.g. "[Top-Right] Click \'Settings\'", "[Center] Enter value", "[Bottom] Click \'Save\'"). If an error is visible, explain how to resolve it.',
+        general: 'Analyze this image in detail and describe everything you see clearly and accurately.',
+        error_fix: 'Detect any error message, warning, or broken interface element in this screenshot. Explain why it occurred and give exact instructions on how to fix it.',
+        ocr: 'Extract all visible text, code, titles, and labels from this image/screenshot verbatim, organized by sections.',
+    };
+
+    const userPrompt = String(prompt || '').trim() || modePrompts[mode] || modePrompts.navigation;
+    const systemPrompt = `You are the expert Vision and UI Navigation AI Assistant in AllModelAI. Always respond in the same language as the user's prompt (or Russian if the prompt is in Russian or default). ${modePrompts[mode] || modePrompts.navigation}`;
+
+    const parsedImage = parseImagePayload(image);
+    if (!parsedImage) {
+        return res.status(400).json({ message: 'Invalid image format. Expected data URL or image URL.' });
+    }
+
+    try {
+        if (geminiKey && parsedImage.base64Data) {
+            const directGeminiModel = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${directGeminiModel}:generateContent?key=${encodeURIComponent(geminiKey)}`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    contents: [{
+                        role: 'user',
+                        parts: [
+                            { text: userPrompt },
+                            { inlineData: { mimeType: parsedImage.mimeType || 'image/png', data: parsedImage.base64Data } }
+                        ]
+                    }],
+                    generationConfig: { maxOutputTokens: 2048 }
+                })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+                if (text) {
+                    return res.json({ analysis: text, model: directGeminiModel, provider: 'Google Gemini' });
+                }
+            }
+        }
+
+        const apiKey = gatewayKey || openAIKey;
+        if (!apiKey) {
+            return res.status(503).json({ message: 'No Vision AI API key configured (set GEMINI_API_KEY or OPENROUTER_API_KEY).' });
+        }
+
+        const model = gatewayKey ? 'google/gemini-2.5-flash' : (process.env.OPENAI_MODEL || 'gpt-4o-mini');
+        const endpoint = gatewayKey ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions';
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${apiKey.trim()}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    {
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: userPrompt },
+                            { type: 'image_url', image_url: { url: parsedImage.dataUrl } }
+                        ]
+                    }
+                ],
+                max_tokens: 2048
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error?.message || 'Vision analysis failed');
+        }
+        const text = data.choices?.[0]?.message?.content || '';
+        return res.json({ analysis: text, model, provider: gatewayKey ? 'OpenRouter' : 'OpenAI' });
+    } catch (error) {
+        console.error('[VISION ANALYZE ERROR]', error.message);
+        return res.status(500).json({ message: error.message || 'Could not analyze image' });
     }
 };
 
@@ -1393,6 +1580,7 @@ module.exports = {
     verifyCheckoutSession,
     stripeWebhook,
     createChatResponse,
+    analyzeVision,
     generateImage,
     getWorkspaceItems,
     createWorkspaceItem,

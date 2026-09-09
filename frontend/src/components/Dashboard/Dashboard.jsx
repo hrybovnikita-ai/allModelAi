@@ -6,13 +6,14 @@ import './DashboardEnhancements.css';
 import './DashboardNav.css';
 import './DashboardFeatureCards.css';
 import AccountDeleteModal from '../AccountDeleteModal';
+import DashboardResources from './DashboardResources';
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
 
 export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
   const saved = sessionStorage.getItem('allmodelai_user');
-  const [user, setUser] = useState(location.state?.user || (saved ? JSON.parse(saved) : null));
+  const [user, setUser] = useState(saved ? JSON.parse(saved) : null);
   const [checkingSession, setCheckingSession] = useState(!user);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -52,20 +53,21 @@ export default function Dashboard() {
 
   return (
     <main className="dashboard-page">
-      <nav className="dashboard-nav">
+      <nav className="dashboard-nav" aria-label="Workspace navigation">
         <Link to="/" className="dashboard-brand"><span>AI</span>AllModelAI</Link>
-        <div className="dashboard-nav-links"><Link to="/chat">Chat</Link><Link to="/builder-25">Builder 25</Link><Link to="/next-20">Next 20</Link><Link to="/next-25">Next 25</Link><Link to="/next-9">Next 9</Link><Link to="/next-10">Next 10</Link><Link to="/ai-platform">AI Platform</Link><Link to="/website-builder">Website Builder</Link><Link to="/arena">Arena</Link><Link to="/explore">Models</Link><Link to="/studio">Studio</Link><Link to="/ai-tools">Power Lab</Link><Link to="/creator-tools">Creator Lab</Link><Link to="/features">Features</Link><Link to="/control-center">Control</Link></div>
-        <div className="dashboard-user"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><Link to="/settings"><small>{user.name || user.email}</small></Link><button onClick={() => setDeleteModalOpen(true)}>Sign out</button></div>
+        <div className="dashboard-nav-links"><Link to="/chat">Chat</Link><Link to="/builder-25">Developer Toolkit</Link><Link to="/next-20">Workspace Tools</Link><Link to="/next-25">AI Workflows</Link><Link to="/next-9">Research & Learning</Link><Link to="/next-10">Model Toolkit</Link><Link to="/ai-platform">AI Platform</Link><Link to="/website-builder">Website Builder</Link><Link to="/arena">Arena</Link><Link to="/explore">Models</Link><Link to="/studio">Studio</Link><Link to="/ai-tools">Power Lab</Link><Link to="/creator-tools">Creator Lab</Link><Link to="/features">Features</Link><Link to="/control-center">Control</Link></div>
+        <div className="dashboard-user"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><Link to="/settings"><small>{user.name || user.email}</small></Link><button onClick={async () => { try { const response = await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); if (!response.ok) throw new Error('Could not sign out. Try again.'); sessionStorage.removeItem('allmodelai_user'); navigate('/login', { replace: true }); } catch (error) { setDeleteError(error.message); } }}>Sign out</button><button onClick={() => setDeleteModalOpen(true)}>Delete account</button></div>
       </nav>
       {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user.email}</div>}
       {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}
+      {deleteError && !deleteModalOpen && <p role="alert">{deleteError}</p>}
       <section className="dashboard-hero">
         <div>
           <p className="dashboard-eyebrow">Workspace ready</p>
           <h1>Welcome, {user.name?.split(' ')[0] || 'creator'}.</h1>
           <p>Your account is connected to the backend. Choose a model and start building something remarkable.</p>
           <div className="dashboard-actions"><Link to="/next-12">Explore 12 reliability tools</Link></div>
-        <div className="dashboard-actions"><Link to="/next-15">Explore Next 15</Link><Link to="/next-30">Explore Next 30</Link><Link to="/app-20">Explore App 20</Link><Link to="/next-20">Explore 20 new powers</Link><Link to="/power-center">Open Power Center</Link><Link to="/builder-25">Open Builder 25</Link><Link to="/next-25">Explore 25 capabilities</Link><Link to="/next-9">Explore 9 new ideas</Link><Link to="/next-10">Explore 10 new tools</Link><Link to="/production">Production Center</Link><Link to="/skills-hub">Skills Hub</Link><Link to="/expansion-hub">Expansion Hub</Link></div>
+        <div className="dashboard-actions"><Link to="/next-15">Explore Next 15</Link><Link to="/next-30">Explore Next 30</Link><Link to="/app-20">Explore App 20</Link><Link to="/next-20">Open Workspace Tools</Link><Link to="/power-center">Open Power Center</Link><Link to="/builder-25">Open Developer Toolkit</Link><Link to="/next-25">Explore AI Workflows</Link><Link to="/next-9">Research & Learning</Link><Link to="/next-10">Open Model Toolkit</Link><Link to="/production">Production Center</Link><Link to="/skills-hub">Skills Hub</Link><Link to="/expansion-hub">Expansion Hub</Link></div>
         </div>
         <div className="dashboard-orbit" aria-hidden="true"><span>AI</span></div>
       </section>
@@ -105,6 +107,7 @@ export default function Dashboard() {
         <div><span>One API for every model</span><h2>Start with a few lines of code.</h2><p>Choose a model card above to see its company, capabilities, and a ready-to-use example.</p><Link to="/models/claude">Read model guide →</Link></div>
         <pre><code>{`const result = await allModelAI.chat({\n  model: 'claude-sonnet',\n  prompt: 'Create something great'\n});\n\nconsole.log(result.text);`}</code></pre>
       </section>
+      <DashboardResources />
       {deleteModalOpen && <AccountDeleteModal onCancel={() => { setDeleteModalOpen(false); setDeleteError(''); }} onConfirm={deleteAccount} isDeleting={isDeleting} error={deleteError} />}
     </main>
   );

@@ -39,3 +39,5 @@
 .login-socials button:hover { border-color: #64748b; background: #1e293b; }
 .login-socials img { width: 17px; height: 17px; object-fit: contain; }
 @media (max-width: 520px) { .login-backdrop { padding: 10px; }.login-modal { max-height: calc(100vh - 20px); padding: 30px 20px 22px; border-radius: 15px; }.login-modal h2 { font-size: 1.6rem; }.login-socials { grid-template-columns: 1fr; }.login-socials button { justify-content: flex-start; padding-left: 40%; } }
+
+.login-form input[type="checkbox"] { width: auto; margin-right: 8px; accent-color: #818cf8; }

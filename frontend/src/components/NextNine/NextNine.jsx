@@ -25,8 +25,8 @@ export default function NextNine(){
   const needsInput=Boolean(selected.prompt);
   const launch=()=>{if(needsInput){if(!input.trim())return;navigate('/chat?model=smart',{state:{starterPrompt:`${selected.prompt}${input}`}});return;}navigate(selected.route);};
   return <main className="next-ten-page">
-    <header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><b>AI</b>AllModelAI</Link><nav><Link to="/next-10">Next 10</Link><Link to="/chat">Chat</Link><Link to="/dashboard">Dashboard</Link></nav></header>
-    <section className="next-ten-hero"><div><p>ALLMODEL AI · NEXT 9</p><h1>Nine new ideas.<br/><span>Ready to use.</span></h1><small>Research deeply, branch conversations, review code, learn, automate work, and verify facts from one connected workspace.</small></div><strong>09</strong></section>
+    <header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><b>AI</b>AllModelAI</Link><nav><Link to="/next-10">Model Toolkit</Link><Link to="/chat">Chat</Link><Link to="/dashboard">Dashboard</Link></nav></header>
+    <section className="next-ten-hero"><div><p>ALLMODEL AI · RESEARCH & LEARNING</p><h1>Nine new ideas.<br/><span>Ready to use.</span></h1><small>Research deeply, branch conversations, review code, learn, automate work, and verify facts from one connected workspace.</small></div><strong>09</strong></section>
     <section className="next-ten-shell">
       <aside>{ideas.map((item,index)=><button type="button" className={active===item.id?'active':''} onClick={()=>{setActive(item.id);setInput('');}} key={item.id}><i>{String(index+1).padStart(2,'0')}</i><span>{item.icon}</span><div><strong>{item.title}</strong><small>{item.tag}</small></div></button>)}</aside>
       <article className="next-ten-panel"><div className="next-ten-panel-title"><span>{selected.icon}</span><div><small>{selected.tag.toUpperCase()} MODULE</small><h2>{selected.title}</h2></div></div><p className="next-ten-description">{selected.text}</p>

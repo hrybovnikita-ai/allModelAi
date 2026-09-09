@@ -27,6 +27,20 @@ npm.cmd run dev
 Откройте http://localhost:5173. Проверка соединения: http://localhost:5050/api/health.
 Регистрация и сохранение чатов в интерфейсе используют эту базу через API.
 
+## Оплата в режиме разработки
+
+Оплата подключена через Stripe Hosted Checkout. Номер карты и CVC не проходят через frontend или SQLite: их обрабатывает Stripe. Для локальной проверки используйте только тестовые ключи Stripe:
+
+```dotenv
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+DEVELOPER_EMAILS=your-email@example.com
+```
+
+В Stripe test mode можно использовать карту `4242 4242 4242 4242`, любую будущую дату и любой тестовый CVC. Это не списывает деньги. После успешного Checkout сервер проверяет Stripe session и сохраняет покупку в `purchases`, а активную подписку в `subscription_details`.
+
+Для разработчика с email из `DEVELOPER_EMAILS` кнопка Developer активирует бесплатный доступ без Stripe. Пароли, номера карт и CVC никогда не сохраняются в базе и не должны отправляться в API оплаты.
+
 ## Настройка
 
 - `backend/.env`: `DB_FILE=storage/database.sqlite`. Относительный путь всегда считается от `backend`, независимо от директории запуска.
