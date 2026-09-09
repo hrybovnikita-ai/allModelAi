@@ -90,15 +90,28 @@ const connectDatabase = () => {
     database.pragma('journal_mode = WAL');
     database.pragma('busy_timeout = 5000');
 
-    database.exec(fs.readFileSync(path.join(__dirname, '..', 'sql', 'schema.sql'), 'utf8'));
+    database.exec(
+        fs.readFileSync(
+            path.join(
+                __dirname,
+                '..',
+                'sql',
+                'schema.sql'
+            ),
+            'utf8'
+        )
+    );
 
     const apiKeyColumns = database
-        .prepare('PRAGMA table_info(developer_api_keys)')
+        .prepare(
+            'PRAGMA table_info(developer_api_keys)'
+        )
         .all();
 
     if (
         !apiKeyColumns.some(
-            (column) => column.name === 'expires_at'
+            (column) =>
+                column.name === 'expires_at'
         )
     ) {
         database.exec(
@@ -108,7 +121,8 @@ const connectDatabase = () => {
 
     if (
         !apiKeyColumns.some(
-            (column) => column.name === 'request_limit'
+            (column) =>
+                column.name === 'request_limit'
         )
     ) {
         database.exec(
@@ -118,7 +132,8 @@ const connectDatabase = () => {
 
     if (
         !apiKeyColumns.some(
-            (column) => column.name === 'used_count'
+            (column) =>
+                column.name === 'used_count'
         )
     ) {
         database.exec(
@@ -127,12 +142,15 @@ const connectDatabase = () => {
     }
 
     const productionUserColumns = database
-        .prepare('PRAGMA table_info(users)')
+        .prepare(
+            'PRAGMA table_info(users)'
+        )
         .all();
 
     if (
         !productionUserColumns.some(
-            (column) => column.name === 'email_verified'
+            (column) =>
+                column.name === 'email_verified'
         )
     ) {
         database.exec(
@@ -142,7 +160,8 @@ const connectDatabase = () => {
 
     if (
         !productionUserColumns.some(
-            (column) => column.name === 'role'
+            (column) =>
+                column.name === 'role'
         )
     ) {
         database.exec(
@@ -151,12 +170,15 @@ const connectDatabase = () => {
     }
 
     const userColumns = database
-        .prepare('PRAGMA table_info(users)')
+        .prepare(
+            'PRAGMA table_info(users)'
+        )
         .all();
 
     if (
         !userColumns.some(
-            (column) => column.name === 'password_hash'
+            (column) =>
+                column.name === 'password_hash'
         )
     ) {
         database.exec(
@@ -172,7 +194,9 @@ const connectDatabase = () => {
     `);
 
     const usersCount = database
-        .prepare('SELECT COUNT(*) AS count FROM users')
+        .prepare(
+            'SELECT COUNT(*) AS count FROM users'
+        )
         .get()
         .count;
 
@@ -233,44 +257,52 @@ const connectDatabase = () => {
         `);
 
         database.transaction(() => {
-            legacyData.users.forEach((user) => {
-                insertUser.run(
-                    user.id,
-                    user.name,
-                    user.email,
-                    user.passwordHash || null
-                );
-            });
+            legacyData.users.forEach(
+                (user) => {
+                    insertUser.run(
+                        user.id,
+                        user.name,
+                        user.email,
+                        user.passwordHash || null
+                    );
+                }
+            );
 
-            legacyData.purchases.forEach((purchase) => {
-                insertPurchase.run(
-                    purchase.id,
-                    purchase.name,
-                    purchase.email,
-                    purchase.city,
-                    purchase.dateOfBirth,
-                    purchase.plan,
-                    purchase.createdAt
-                );
-            });
+            legacyData.purchases.forEach(
+                (purchase) => {
+                    insertPurchase.run(
+                        purchase.id,
+                        purchase.name,
+                        purchase.email,
+                        purchase.city,
+                        purchase.dateOfBirth,
+                        purchase.plan,
+                        purchase.createdAt
+                    );
+                }
+            );
 
             Object.entries(
                 legacyData.subscriptions || {}
-            ).forEach(([email, plan]) => {
-                insertSubscription.run(
-                    email,
-                    plan
-                );
-            });
+            ).forEach(
+                ([email, plan]) => {
+                    insertSubscription.run(
+                        email,
+                        plan
+                    );
+                }
+            );
 
             Object.entries(
                 legacyData.usage || {}
-            ).forEach(([email, used]) => {
-                insertUsage.run(
-                    email,
-                    used
-                );
-            });
+            ).forEach(
+                ([email, used]) => {
+                    insertUsage.run(
+                        email,
+                        used
+                    );
+                }
+            );
 
             legacyData.conversations.forEach(
                 (conversation) => {
@@ -291,50 +323,57 @@ const connectDatabase = () => {
     }
 
     if (legacyData.users.length) {
-        const findUserByEmail = database.prepare(`
-            SELECT id
-            FROM users
-            WHERE lower(email) = lower(?)
-        `);
+        const findUserByEmail =
+            database.prepare(`
+                SELECT id
+                FROM users
+                WHERE lower(email) = lower(?)
+            `);
 
-        const findUserById = database.prepare(`
-            SELECT id
-            FROM users
-            WHERE id = ?
-        `);
+        const findUserById =
+            database.prepare(`
+                SELECT id
+                FROM users
+                WHERE id = ?
+            `);
 
-        const insertMissingUser = database.prepare(`
-            INSERT INTO users (
-                id,
-                name,
-                email,
-                password_hash
-            )
-            VALUES (?, ?, ?, ?)
-        `);
+        const insertMissingUser =
+            database.prepare(`
+                INSERT INTO users (
+                    id,
+                    name,
+                    email,
+                    password_hash
+                )
+                VALUES (?, ?, ?, ?)
+            `);
 
         database.transaction(() => {
-            legacyData.users.forEach((user) => {
-                if (
-                    findUserByEmail.get(
-                        user.email
-                    )
-                ) {
-                    return;
+            legacyData.users.forEach(
+                (user) => {
+                    if (
+                        findUserByEmail.get(
+                            user.email
+                        )
+                    ) {
+                        return;
+                    }
+
+                    const availableId =
+                        findUserById.get(
+                            user.id
+                        )
+                            ? null
+                            : user.id;
+
+                    insertMissingUser.run(
+                        availableId,
+                        user.name,
+                        user.email,
+                        user.passwordHash || null
+                    );
                 }
-
-                const availableId =
-                    findUserById.get(user.id)
-                        ? null
-                        : user.id;
-
-                insertMissingUser.run(
-                    availableId,
-                    user.name,
-                    user.email,
-                    user.passwordHash || null
-                );
-            });
+            );
         })();
     }
 
@@ -371,86 +410,85 @@ const connectDatabase = () => {
                     `)
                     .all(),
 
-                subscriptions: Object.fromEntries(
+                subscriptions:
+                    Object.fromEntries(
+                        database
+                            .prepare(`
+                                SELECT
+                                    email,
+                                    plan
+                                FROM subscriptions
+                            `)
+                            .all()
+                            .map(
+                                (row) => [
+                                    row.email,
+                                    row.plan,
+                                ]
+                            )
+                    ),
+
+                usage:
+                    Object.fromEntries(
+                        database
+                            .prepare(`
+                                SELECT
+                                    email,
+                                    used
+                                FROM usage
+                            `)
+                            .all()
+                            .map(
+                                (row) => [
+                                    row.email,
+                                    row.used,
+                                ]
+                            )
+                    ),
+
+                conversations:
                     database
                         .prepare(`
-                            SELECT email, plan
-                            FROM subscriptions
+                            SELECT
+                                id,
+                                email,
+                                model,
+                                title,
+                                messages,
+                                created_at AS createdAt,
+                                updated_at AS updatedAt
+                            FROM conversations
+                            ORDER BY updated_at DESC
                         `)
                         .all()
-                        .map((row) => [
-                            row.email,
-                            row.plan,
-                        ])
-                ),
-
-                usage: Object.fromEntries(
-                    database
-                        .prepare(`
-                            SELECT email, used
-                            FROM usage
-                        `)
-                        .all()
-                        .map((row) => [
-                            row.email,
-                            row.used,
-                        ])
-                ),
-
-                conversations: database
-                    .prepare(`
-                        SELECT
-                            id,
-                            email,
-                            model,
-                            title,
-                            messages,
-                            created_at AS createdAt,
-                            updated_at AS updatedAt
-                        FROM conversations
-                        ORDER BY updated_at DESC
-                    `)
-                    .all()
-                    .map((item) => ({
-                        ...item,
-                        messages: JSON.parse(
-                            item.messages
+                        .map(
+                            (item) => ({
+                                ...item,
+                                messages:
+                                    JSON.parse(
+                                        item.messages
+                                    ),
+                            })
                         ),
-                    })),
             };
         },
 
         write(data) {
             database.transaction(() => {
-                const userIds = (
-                    data.users || []
-                )
-                    .map((user) =>
-                        Number(user.id)
-                    )
-                    .filter(Number.isFinite);
 
-                if (userIds.length) {
-                    database
-                        .prepare(`
-                            DELETE FROM users
-                            WHERE id NOT IN (
-                                ${userIds
-                                    .map(() => '?')
-                                    .join(',')}
-                            )
-                        `)
-                        .run(...userIds);
-                } else {
-                    database.exec(
-                        'DELETE FROM users'
-                    );
-                }
+                // IMPORTANT:
+                // Do not delete users here.
+                // auth_sessions references users with
+                // ON DELETE CASCADE, so deleting and
+                // recreating users would destroy sessions.
 
                 const conversationIds = (
                     data.conversations || []
                 )
-                    .map((item) => item.id)
+                    .map(
+                        (item) =>
+                            item.id
+                    )
                     .filter(Boolean);
 
                 if (conversationIds.length) {
@@ -459,11 +497,15 @@ const connectDatabase = () => {
                             DELETE FROM conversations
                             WHERE id NOT IN (
                                 ${conversationIds
-                                    .map(() => '?')
-                                    .join(',')}
+                                .map(
+                                    () => '?'
+                                )
+                                .join(',')}
                             )
                         `)
-                        .run(...conversationIds);
+                        .run(
+                            ...conversationIds
+                        );
                 } else {
                     database.exec(
                         'DELETE FROM conversations'
@@ -476,15 +518,30 @@ const connectDatabase = () => {
                     DELETE FROM usage;
                 `);
 
+                // IMPORTANT:
+                // Do NOT use INSERT OR REPLACE here.
+                // SQLite REPLACE may delete the existing
+                // user row before inserting it again,
+                // which can remove auth_sessions through
+                // ON DELETE CASCADE.
                 const insertUser =
                     database.prepare(`
-                        INSERT OR REPLACE INTO users (
+                        INSERT INTO users (
                             id,
                             name,
                             email,
                             password_hash
                         )
                         VALUES (?, ?, ?, ?)
+
+                        ON CONFLICT(id)
+                        DO UPDATE SET
+                            name =
+                                excluded.name,
+                            email =
+                                excluded.email,
+                            password_hash =
+                                excluded.password_hash
                     `);
 
                 const insertPurchase =
@@ -531,16 +588,24 @@ const connectDatabase = () => {
                             updated_at
                         )
                         VALUES (?, ?, ?, ?, ?, ?, ?)
+
                         ON CONFLICT(id)
                         DO UPDATE SET
-                            email = excluded.email,
-                            model = excluded.model,
-                            title = excluded.title,
-                            messages = excluded.messages,
-                            updated_at = excluded.updated_at
+                            email =
+                                excluded.email,
+                            model =
+                                excluded.model,
+                            title =
+                                excluded.title,
+                            messages =
+                                excluded.messages,
+                            updated_at =
+                                excluded.updated_at
                     `);
 
-                (data.users || []).forEach(
+                (
+                    data.users || []
+                ).forEach(
                     (user) => {
                         insertUser.run(
                             user.id,
@@ -553,51 +618,59 @@ const connectDatabase = () => {
 
                 (
                     data.purchases || []
-                ).forEach((purchase) => {
-                    insertPurchase.run(
-                        purchase.id,
-                        purchase.name,
-                        purchase.email,
-                        purchase.city,
-                        purchase.dateOfBirth,
-                        purchase.plan,
-                        purchase.createdAt
-                    );
-                });
+                ).forEach(
+                    (purchase) => {
+                        insertPurchase.run(
+                            purchase.id,
+                            purchase.name,
+                            purchase.email,
+                            purchase.city,
+                            purchase.dateOfBirth,
+                            purchase.plan,
+                            purchase.createdAt
+                        );
+                    }
+                );
 
                 Object.entries(
                     data.subscriptions || {}
-                ).forEach(([email, plan]) => {
-                    insertSubscription.run(
-                        email,
-                        plan
-                    );
-                });
+                ).forEach(
+                    ([email, plan]) => {
+                        insertSubscription.run(
+                            email,
+                            plan
+                        );
+                    }
+                );
 
                 Object.entries(
                     data.usage || {}
-                ).forEach(([email, used]) => {
-                    insertUsage.run(
-                        email,
-                        used
-                    );
-                });
+                ).forEach(
+                    ([email, used]) => {
+                        insertUsage.run(
+                            email,
+                            used
+                        );
+                    }
+                );
 
                 (
                     data.conversations || []
-                ).forEach((item) => {
-                    insertConversation.run(
-                        item.id,
-                        item.email,
-                        item.model,
-                        item.title,
-                        JSON.stringify(
-                            item.messages || []
-                        ),
-                        item.createdAt,
-                        item.updatedAt
-                    );
-                });
+                ).forEach(
+                    (item) => {
+                        insertConversation.run(
+                            item.id,
+                            item.email,
+                            item.model,
+                            item.title,
+                            JSON.stringify(
+                                item.messages || []
+                            ),
+                            item.createdAt,
+                            item.updatedAt
+                        );
+                    }
+                );
             })();
 
             return data;
