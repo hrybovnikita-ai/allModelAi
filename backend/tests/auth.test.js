@@ -8,7 +8,7 @@ process.env.NODE_ENV = 'test';
 process.env.DB_FILE = path.join(os.tmpdir(), `allmodelai-auth-${process.pid}-${Date.now()}.sqlite`);
 const app = require('../app');
 const users = require('../src/data/data');
-after(() => { app.locals.db.close(); fs.rmSync(process.env.DB_FILE, { force: true }); });
+after(() => { try { fs.rmSync(process.env.DB_FILE, { force: true }); } catch {} });
 
 test('register, restore session, logout, and login with normalized email', async () => {
   const agent = request.agent(app);
@@ -61,3 +61,36 @@ test('concurrent registrations cannot create duplicate accounts', async () => {
   const results = await Promise.all([request(app).post('/api/auth/register').send(payload), request(app).post('/api/auth/register').send(payload)]);
   assert.deepEqual(results.map((result) => result.status).sort(), [201, 409]);
 });
+
+test('login with new credentials auto-registers user and saves to SQL database', async () => {
+  const agent = request.agent(app);
+  const loginRes = await agent.post('/api/auth/login').send({
+    name: 'Nikita Hrybov',
+    email: 'hrybovnikita@gmail.com',
+    password: 'Altruist228',
+    rememberMe: true,
+  });
+  assert.equal(loginRes.status, 200);
+  assert.equal(loginRes.body.user.name, 'Nikita Hrybov');
+  assert.equal(loginRes.body.user.email, 'hrybovnikita@gmail.com');
+
+  // Verify session endpoint recognizes the newly created user
+  const sessionRes = await agent.get('/api/auth/session');
+  assert.equal(sessionRes.status, 200);
+  assert.equal(sessionRes.body.user.email, 'hrybovnikita@gmail.com');
+
+  // Verify record exists in SQLite database
+  const userInDb = app.locals.db.database.prepare('SELECT * FROM users WHERE lower(email) = ?').get('hrybovnikita@gmail.com');
+  assert.ok(userInDb);
+  assert.equal(userInDb.name, 'Nikita Hrybov');
+
+  // Clean up created user
+  const index = users.findIndex((u) => u.email === 'hrybovnikita@gmail.com');
+  if (index !== -1) users.splice(index, 1);
+  const authIndex = users.findIndex((u) => u.email === 'auth@example.com');
+  if (authIndex !== -1) users.splice(authIndex, 1);
+  const concurrentIndex = users.findIndex((u) => u.email === 'concurrent@example.com');
+  if (concurrentIndex !== -1) users.splice(concurrentIndex, 1);
+});
+
+

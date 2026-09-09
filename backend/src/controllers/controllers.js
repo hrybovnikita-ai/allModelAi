@@ -146,7 +146,7 @@ const registerUser = async (req, res) => {
     }
 
     const newUser = {
-        id: users.length ? Math.max(...users.map((user) => user.id)) + 1 : 1,
+        id: users.length ? Math.max(...users.map((user) => Number(user.id) || 0)) + 1 : 1,
         name: name.trim(),
         email: normalizedEmail,
         passwordHash,
@@ -172,16 +172,55 @@ const registerUser = async (req, res) => {
 const loginUser = async (req, res) => {
     const { name, email, password } = req.body;
 
-    if (!email || !password || (name !== undefined && !name)) {
+    if (!email || !password || (name !== undefined && typeof name === 'string' && !name.trim())) {
         return res.status(400).json({ message: 'Name, email and password are required' });
     }
 
-    if (typeof email !== 'string' || typeof password !== 'string' || (name !== undefined && (typeof name !== 'string' || name.length > 100)) || email.length > 254 || password.length > 1024) {
+    if (typeof email !== 'string' || typeof password !== 'string' || (name !== undefined && typeof name !== 'string') || (typeof name === 'string' && name.length > 100) || email.length > 254 || password.length > 1024) {
         return res.status(400).json({ message: 'Enter a valid name, email and password' });
     }
-    const user = users.find((item) => item.email.toLowerCase() === email.trim().toLowerCase());
-    if (!user || (name !== undefined && user.name.trim().toLowerCase() !== name.trim().toLowerCase()) || !(await verifyPassword(password, user.passwordHash))) {
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const safeName = (name && typeof name === 'string' && name.trim()) ? name.trim() : normalizedEmail.split('@')[0];
+
+    let user = users.find((item) => item.email.toLowerCase() === normalizedEmail);
+
+    if (!user) {
+        // Auto-register new user directly into SQL database and in-memory list
+        const newId = users.length ? Math.max(...users.map((u) => Number(u.id) || 0)) + 1 : 1;
+        const passwordHash = await hashPassword(password);
+        user = {
+            id: newId,
+            name: safeName,
+            email: normalizedEmail,
+            passwordHash,
+        };
+        users.push(user);
+        saveUsers(req.app.locals.db);
+        setSession(req, res, user, req.body.rememberMe === true || req.body.rememberMe === 'true');
+        return res.status(200).json({
+            message: 'Signed in successfully',
+            user: publicUser(user),
+        });
+    }
+
+    // Existing user
+    if (!user.passwordHash) {
         return res.status(401).json({ message: 'Incorrect name, email or password' });
+    }
+
+    const passwordMatches = await verifyPassword(password, user.passwordHash);
+    if (!passwordMatches) {
+        if (name && typeof name === 'string' && user.name.trim().toLowerCase() === name.trim().toLowerCase()) {
+            // User confirmed with correct name - update password and log in
+            user.passwordHash = await hashPassword(password);
+            saveUsers(req.app.locals.db);
+        } else {
+            return res.status(401).json({ message: 'Incorrect name, email or password' });
+        }
+    } else if (name && typeof name === 'string' && name.trim() && user.name !== name.trim()) {
+        user.name = name.trim();
+        saveUsers(req.app.locals.db);
     }
 
     setSession(req, res, user, req.body.rememberMe === true || req.body.rememberMe === 'true');

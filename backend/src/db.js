@@ -478,18 +478,13 @@ const connectDatabase = () => {
 
                 const insertUser =
                     database.prepare(`
-                        INSERT INTO users (
+                        INSERT OR REPLACE INTO users (
                             id,
                             name,
                             email,
                             password_hash
                         )
                         VALUES (?, ?, ?, ?)
-                        ON CONFLICT(id)
-                        DO UPDATE SET
-                            name = excluded.name,
-                            email = excluded.email,
-                            password_hash = excluded.password_hash
                     `);
 
                 const insertPurchase =
