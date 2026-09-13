@@ -8,23 +8,70 @@ const cacheDuration = 5 * 60 * 1000;
  * All operations sync both storages to keep legacy code working.
  */
 function getStorage() {
-  const primary = typeof localStorage !== 'undefined' ? localStorage : sessionStorage;
+  const local =
+    typeof globalThis !== 'undefined' &&
+    typeof globalThis.localStorage !== 'undefined'
+      ? globalThis.localStorage
+      : null;
+
+  const session =
+    typeof globalThis !== 'undefined' &&
+    typeof globalThis.sessionStorage !== 'undefined'
+      ? globalThis.sessionStorage
+      : null;
+
+  const primary = local || session;
+  const fallback = primary === local ? session : local;
+
+  function read(storage, key) {
+    if (!storage) return null;
+
+    try {
+      return storage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+
+  function write(storage, key, value) {
+    if (!storage) return;
+
+    try {
+      storage.setItem(key, value);
+    } catch {
+      return;
+    }
+  }
+
+  function remove(storage, key) {
+    if (!storage) return;
+
+    try {
+      storage.removeItem(key);
+    } catch {
+      return;
+    }
+  }
+
   return {
     getItem(key) {
-      const val = primary.getItem(key);
-      if (val !== null) return val;
-      const fallback = primary === localStorage ? sessionStorage : localStorage;
-      return fallback.getItem(key);
+      const val = read(primary, key);
+
+      if (val !== null) {
+        return val;
+      }
+
+      return read(fallback, key);
     },
+
     setItem(key, value) {
-      primary.setItem(key, value);
-      const other = primary === localStorage ? sessionStorage : localStorage;
-      try { other.setItem(key, value); } catch (_) {}
+      write(primary, key, value);
+      write(fallback, key, value);
     },
+
     removeItem(key) {
-      primary.removeItem(key);
-      const other = primary === localStorage ? sessionStorage : localStorage;
-      try { other.removeItem(key); } catch (_) {}
+      remove(primary, key);
+      remove(fallback, key);
     },
   };
 }

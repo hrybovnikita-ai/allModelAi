@@ -7,7 +7,6 @@ import './DashboardNav.css';
 import './DashboardFeatureCards.css';
 import AccountDeleteModal from '../AccountDeleteModal';
 import DashboardResources from './DashboardResources';
-import { clearAllSessionData } from '../../lib/session';
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
 
 export default function Dashboard() {
