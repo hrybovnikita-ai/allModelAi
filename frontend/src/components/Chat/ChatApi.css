@@ -298,3 +298,8 @@ html[data-theme="light"] .chat-message.assistant p{color:#202123}html[data-theme
     opacity:1!important;
   }
 }
+
+.chat-session-recovery { max-width: 850px; margin: 0 auto 18px; display: grid; gap: 10px; }
+.chat-session-recovery label { display: grid; gap: 5px; }
+.chat-session-recovery input { padding: 10px; border: 1px solid #64748b; border-radius: 8px; background: #111827; color: #fff; }
+.chat-session-recovery button { padding: 10px; border: 1px solid #64748b; border-radius: 8px; background: #312e81; color: #fff; cursor: pointer; }

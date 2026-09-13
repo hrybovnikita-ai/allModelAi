@@ -23,6 +23,18 @@ npm run dev
 
 The frontend will be available at http://localhost:5173, and the backend at http://localhost:5050.
 
+Access from a phone or tablet while this computer is off
+
+The chat API and the website now run as one cloud-ready process. A laptop, Cursor, and Vite do not need to stay open. Deploy the repository to a host that stays online:
+
+1. Push this project to GitHub.
+2. Create a [Render](https://render.com) Web Service from `render.yaml`, or use Railway / Fly.io with the included `Dockerfile`.
+3. Copy API keys from `backend/.env` into the host environment. Never commit that file.
+4. Set `PUBLIC_URL` and `FRONTEND_ORIGIN` to the HTTPS URL Render shows, for example `https://allmodelai.onrender.com`.
+5. Open that URL on a phone, tablet, or another computer. Sign in and chat. Add the site to the home screen from the browser menu for an app-like shortcut.
+
+Keep `COOKIE_SECURE=true` on HTTPS. The SQLite database is stored on the attached disk so conversations survive restarts.
+
 Production mode without VS Code
 
 After building the frontend, the backend serves the complete application from one port. On Windows, double-click `start-allmodelai.bat` in the `allModelAi` folder. It builds `frontend/dist` when needed and starts the app at http://localhost:5050. Keep the opened server window running; the editor itself can be closed.

@@ -1,9 +1,9 @@
 const express = require('express');
-const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const routes = require('./src/routes/routes');
 const { stripeWebhook } = require('./src/controllers/controllers');
 const { connectDatabase } = require('./src/db');
+const { configurePublicAccess } = require('./src/publicAccess');
 const users = require('./src/data/data');
 const path = require('path');
 const fs = require('fs');
@@ -39,7 +39,7 @@ if (storedData.users.length) {
     app.locals.db.write(storedData);
 }
 
-app.use(cors({ origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173', credentials: true }));
+configurePublicAccess(app);
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -62,6 +62,10 @@ app.use('/api', (req, res, next) => {
     return next();
 });
 
+app.use('/api', (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+});
 app.use('/api', routes);
 
 // In production the backend serves the built React app, so Vite/VS Code is not required.

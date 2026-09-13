@@ -1,0 +1,32 @@
+app = "allmodelai"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  HOST = "0.0.0.0"
+  COOKIE_SECURE = "true"
+  DB_FILE = "/app/backend/storage/database.sqlite"
+
+[http_service]
+  internal_port = 5050
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.http_options]
+    idle_timeout = 300
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "8s"
+  grace_period = "20s"
+  method = "GET"
+  path = "/api/health"
+
+[mounts]
+  source = "allmodelai_data"
+  destination = "/app/backend/storage"

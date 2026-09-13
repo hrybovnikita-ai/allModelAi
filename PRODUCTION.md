@@ -11,6 +11,7 @@
 - Signed-webhook registration and secret management. Secrets are displayed once and stored only as hashes.
 - Public health endpoint with database and provider configuration checks.
 - Docker images, Compose configuration, health checks, and GitHub Actions verification.
+- A single cloud image that serves the React app and `/api` together, so phones and tablets can chat while the developer machine is off. Use `render.yaml`, `fly.toml`, or `railway.json`.
 - Production Center UI at `/production`.
 
 ## Adapters required before a multi-instance public launch

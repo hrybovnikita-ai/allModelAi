@@ -1,3 +1,5 @@
+const { sessionCookieOptions } = require('../sessionCookie');
+const { publicAppOrigin } = require('../publicAccess');
 const crypto = require('node:crypto');
 const { promisify } = require('node:util');
 const Stripe = require('stripe');
@@ -55,7 +57,7 @@ const setSession = (req, res, user, remember = false) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + (remember ? sessionDuration : 1000 * 60 * 60 * 8);
     req.app.locals.db.database.prepare('INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(hashToken(token), user.id, expiresAt);
-    res.cookie(sessionCookie, token, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', ...(remember ? { maxAge: sessionDuration } : {}) });
+    res.cookie(sessionCookie, token, { ...sessionCookieOptions(), ...(remember ? { maxAge: sessionDuration } : {}) });
 };
 
 const parseImagePayload = (raw) => {
@@ -258,8 +260,8 @@ const socialLogin = (req, res) => {
     return res.status(200).json({ message: `Signed in with ${providerNames[provider]}`, user });
 };
 
-const googleRedirectUri = () => process.env.GOOGLE_REDIRECT_URI || `${process.env.BACKEND_ORIGIN || 'http://localhost:5050'}/api/auth/google/callback`;
-const frontendOrigin = () => process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+const googleRedirectUri = (req) => process.env.GOOGLE_REDIRECT_URI || `${process.env.BACKEND_ORIGIN || publicAppOrigin(req)}/api/auth/google/callback`;
+const frontendOrigin = (req) => publicAppOrigin(req);
 
 const startGoogleAuth = (req, res) => {
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
@@ -267,7 +269,7 @@ const startGoogleAuth = (req, res) => {
     }
     const state = crypto.randomBytes(24).toString('hex');
     res.cookie('allmodelai_oauth_state', state, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 10 * 60 * 1000 });
-    const query = new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: googleRedirectUri(), response_type: 'code', scope: 'openid email profile', state, prompt: 'select_account' });
+    const query = new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: googleRedirectUri(req), response_type: 'code', scope: 'openid email profile', state, prompt: 'select_account' });
     return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${query}`);
 };
 
@@ -276,7 +278,7 @@ const googleCallback = async (req, res) => {
     res.clearCookie('allmodelai_oauth_state', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
     if (!req.query.code || !expectedState || req.query.state !== expectedState) return res.status(400).send('Google sign-in could not be verified. Please try again.');
     try {
-        const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code: req.query.code, client_id: process.env.GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET, redirect_uri: googleRedirectUri(), grant_type: 'authorization_code' }) });
+        const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code: req.query.code, client_id: process.env.GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET, redirect_uri: googleRedirectUri(req), grant_type: 'authorization_code' }) });
         const tokens = await tokenResponse.json();
         if (!tokenResponse.ok || !tokens.access_token) throw new Error('Google token exchange failed');
         const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
@@ -290,10 +292,10 @@ const googleCallback = async (req, res) => {
             saveUsers(req.app.locals.db);
         }
         setSession(req, res, user, true);
-        return res.redirect(`${frontendOrigin()}/dashboard`);
+        return res.redirect(`${frontendOrigin(req)}/dashboard`);
     } catch (error) {
         console.error('[AUTH GOOGLE ERROR]', error.message);
-        return res.redirect(`${frontendOrigin()}/?authError=google`);
+        return res.redirect(`${frontendOrigin(req)}/?authError=google`);
     }
 };
 
@@ -308,7 +310,7 @@ const getSession = (req, res) => {
 const logout = (req, res) => {
     const token = req.cookies?.[sessionCookie];
     if (token) req.app.locals.db.database.prepare('DELETE FROM auth_sessions WHERE token_hash = ?').run(hashToken(token));
-    res.clearCookie(sessionCookie, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
+    res.clearCookie(sessionCookie, sessionCookieOptions());
     return res.status(204).send();
 };
 
@@ -426,7 +428,7 @@ const deleteAccount = (req, res) => {
     if (data.usage) delete data.usage[email];
     req.app.locals.db.write(data);
     req.app.locals.db.database.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(deletedUser.id);
-    res.clearCookie(sessionCookie, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
+    res.clearCookie(sessionCookie, sessionCookieOptions());
 
     return res.status(200).json({ message: 'Account deleted successfully', user: deletedUser });
 };
@@ -585,12 +587,12 @@ const createCheckoutSession = async (req, res) => {
     const email = String(req.user.email).trim().toLowerCase();
     if (developerEmails().has(email)) {
         const purchase = activateSubscription(req.app.locals.db, { email, name: req.user.name, planKey: 'free' });
-        return res.status(201).json({ developerAccess: true, purchase, redirectUrl: `${process.env.FRONTEND_ORIGIN || 'http://localhost:5173'}/checkout?success=developer&plan=developer` });
+        return res.status(201).json({ developerAccess: true, purchase, redirectUrl: `${frontendOrigin(req)}/checkout?success=developer&plan=developer` });
     }
     if (plan.amount === 0) return res.status(403).json({ message: 'The Developer plan is available only to configured developer accounts.' });
     if (!process.env.STRIPE_SECRET_KEY?.trim()) return res.status(503).json({ message: 'Payments are not configured. Add STRIPE_SECRET_KEY to the backend environment.' });
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
-    const frontendOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+    const checkoutOrigin = frontendOrigin(req);
     const session = await stripe.checkout.sessions.create({
         mode: 'subscription',
         customer_email: email,
@@ -600,8 +602,8 @@ const createCheckoutSession = async (req, res) => {
         line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: plan.amount, recurring: { interval: plan.interval }, product_data: { name: `AllModelAI ${plan.name}`, description: `${plan.limit.toLocaleString()} AI requests per ${plan.interval}` } } }],
         metadata: { email, plan: planKey, userName: req.user.name || 'Subscriber' },
         subscription_data: { metadata: { email, plan: planKey } },
-        success_url: `${frontendOrigin}/checkout?success=1&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${frontendOrigin}/checkout?canceled=1&plan=${planKey}`,
+        success_url: `${checkoutOrigin}/checkout?success=1&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${checkoutOrigin}/checkout?canceled=1&plan=${planKey}`,
     });
     return res.status(201).json({ checkoutUrl: session.url });
 };
@@ -1438,7 +1440,7 @@ const createTeam = (req, res) => { const name=String(req.body.name||'').trim().s
 const inviteTeamMember = (req,res) => {const database=req.app.locals.db.database;const access=teamAccess(database,req.params.id,req.user.email);if(!access||!['owner','editor'].includes(access.role))return res.status(403).json({message:'Only owners and editors can invite members'});const email=cleanEmail(req.body.email);const role=['editor','viewer'].includes(req.body.role)?req.body.role:'viewer';if(!email)return res.status(400).json({message:'Member email is required'});database.prepare('INSERT INTO team_members (team_id,email,role,created_at) VALUES (?,?,?,?) ON CONFLICT(team_id,email) DO UPDATE SET role=excluded.role').run(req.params.id,email,role,new Date().toISOString());return res.status(201).json(teamPayload(database,access));};
 const updateTeamMember = (req,res) => {const database=req.app.locals.db.database;const access=teamAccess(database,req.params.id,req.user.email);if(!access||access.role!=='owner')return res.status(403).json({message:'Only the owner can change roles'});const email=cleanEmail(req.params.email);if(email===access.owner_email)return res.status(400).json({message:'The owner role cannot be changed'});const role=['editor','viewer'].includes(req.body.role)?req.body.role:null;if(!role)return res.status(400).json({message:'Role must be editor or viewer'});const result=database.prepare('UPDATE team_members SET role=? WHERE team_id=? AND email=?').run(role,req.params.id,email);return result.changes?res.json(teamPayload(database,access)):res.status(404).json({message:'Member not found'});};
 const removeTeamMember = (req,res) => {const database=req.app.locals.db.database;const access=teamAccess(database,req.params.id,req.user.email);if(!access||access.role!=='owner')return res.status(403).json({message:'Only the owner can remove members'});const email=cleanEmail(req.params.email);if(email===access.owner_email)return res.status(400).json({message:'The owner cannot be removed'});const result=database.prepare('DELETE FROM team_members WHERE team_id=? AND email=?').run(req.params.id,email);return result.changes?res.json({message:'Member removed'}):res.status(404).json({message:'Member not found'});};
-const shareConversation = (req,res) => {const database=req.app.locals.db.database;const conversation=database.prepare('SELECT id FROM conversations WHERE id=? AND email=?').get(req.params.id,req.user.email);if(!conversation)return res.status(404).json({message:'Conversation not found'});let share=database.prepare('SELECT token FROM shared_conversations WHERE conversation_id=? AND owner_email=?').get(conversation.id,req.user.email);if(!share){share={token:crypto.randomBytes(24).toString('base64url')};database.prepare('INSERT INTO shared_conversations (token,conversation_id,owner_email,created_at) VALUES (?,?,?,?)').run(share.token,conversation.id,req.user.email,new Date().toISOString());}return res.json({token:share.token,url:`${frontendOrigin()}/shared/${share.token}`});};
+const shareConversation = (req,res) => {const database=req.app.locals.db.database;const conversation=database.prepare('SELECT id FROM conversations WHERE id=? AND email=?').get(req.params.id,req.user.email);if(!conversation)return res.status(404).json({message:'Conversation not found'});let share=database.prepare('SELECT token FROM shared_conversations WHERE conversation_id=? AND owner_email=?').get(conversation.id,req.user.email);if(!share){share={token:crypto.randomBytes(24).toString('base64url')};database.prepare('INSERT INTO shared_conversations (token,conversation_id,owner_email,created_at) VALUES (?,?,?,?)').run(share.token,conversation.id,req.user.email,new Date().toISOString());}return res.json({token:share.token,url:`${frontendOrigin(req)}/shared/${share.token}`});};
 const getSharedConversation = (req,res) => {const row=req.app.locals.db.database.prepare('SELECT conversations.title,conversations.model,conversations.messages,shared_conversations.created_at AS sharedAt FROM shared_conversations JOIN conversations ON conversations.id=shared_conversations.conversation_id WHERE shared_conversations.token=?').get(req.params.token);if(!row)return res.status(404).json({message:'Shared conversation not found'});return res.json({...row,messages:normalizeMessages(JSON.parse(row.messages))});};
 
 const recordArenaVote = (req, res) => {

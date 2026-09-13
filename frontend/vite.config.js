@@ -14,8 +14,9 @@ export default defineConfig(({ mode }) => {
  return {
   plugins: [react()],
   server: {
+    host: '0.0.0.0',
     proxy,
   },
-  preview: { proxy },
+  preview: { host: '0.0.0.0', proxy },
  }
 })

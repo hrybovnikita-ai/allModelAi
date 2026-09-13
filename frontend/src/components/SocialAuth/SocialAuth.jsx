@@ -1,3 +1,4 @@
+import { rememberSession } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
@@ -31,7 +32,7 @@ export default function SocialAuth() {
     setError('');
     try {
       const { data } = await axios.post('/api/auth/social', { provider: providerKey, accountId: selectedAccount.id }, { withCredentials: true });
-      sessionStorage.setItem('allmodelai_user', JSON.stringify(data.user));
+      rememberSession(data.user);
       navigate('/dashboard', { state: { user: data.user }, replace: true });
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Could not complete sign in.');

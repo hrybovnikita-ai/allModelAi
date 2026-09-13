@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: allmodelai
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    disk:
+      name: allmodelai-data
+      mountPath: /app/backend/storage
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: DB_FILE
+        value: /app/backend/storage/database.sqlite
+      - key: PUBLIC_URL
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CLAUDE_API_KEY
+        sync: false
+      - key: IMAGE_API_KEY
+        sync: false

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Highlight, themes } from 'prism-react-renderer';
 import { dashboardModels } from '../../data/dashboardModels';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, checkChatResponse } from '../../lib/api';
+import SessionRecovery from './SessionRecovery';
 import './Chat.css';
 import './ChatApi.css';
 import AccountDeleteModal from '../AccountDeleteModal';
@@ -153,6 +154,7 @@ export default function Chat() {
   const [isSending, setIsSending] = useState(false);
   const [isStreamingResponse, setIsStreamingResponse] = useState(false);
   const [chatError, setChatError] = useState('');
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [creditStatus, setCreditStatus] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -545,10 +547,10 @@ export default function Chat() {
 
   if (!user) return <Navigate to="/" replace />;
 
-  const sendMessage = async (event, overrideText, overrideMessages) => {
+  const sendMessage = async (event, overrideText, overrideMessages, overrideAttachment) => {
     event?.preventDefault();
     const rawText = String(overrideText ?? prompt).trim();
-    const currentAttachment = attachedImage;
+    const currentAttachment = overrideAttachment ?? attachedImage;
     const text = rawText || (currentAttachment ? 'Проанализируй этот скриншот: подробно опиши, что здесь отображено, и подскажи по шагам, куда нужно нажимать и что делать.' : '');
     if (!text || isSending) return;
     const userMessage = {
@@ -579,6 +581,7 @@ export default function Chat() {
       }
       if (selectedSkill === 'web') {
         const researchResponse = await apiFetch('/api/research', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:text}), signal:controller.signal });
+        await checkChatResponse(researchResponse);
         const researchData = await researchResponse.json().catch(() => ({}));
         if (!researchResponse.ok) throw new Error(researchData.message || 'Could not search the web.');
         const sourceList=(researchData.sources||[]).map((source,index)=>`[${index+1}] ${source.title}\n${source.excerpt}\n${source.url}`).join('\n\n');
@@ -594,6 +597,7 @@ export default function Chat() {
           body: JSON.stringify({ prompt: text }),
           signal: controller.signal,
         });
+        await checkChatResponse(imageResponse);
         const imageData = await imageResponse.json().catch(() => ({}));
         if (!imageResponse.ok) throw new Error(imageData.message || 'Could not create the image.');
         setMessages((current) => current.map((message, index) => (
@@ -611,6 +615,7 @@ export default function Chat() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: user.email, model: selectedSlug, messages: nextMessages }),
         });
+        if (historyResponse.status === 401) await checkChatResponse(historyResponse);
         if (historyResponse.ok) {
           const conversation = await historyResponse.json();
           conversationId = conversation.id;
@@ -631,16 +636,7 @@ export default function Chat() {
         signal: controller.signal,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 401) {
-          sessionStorage.removeItem('allmodelai_user');
-          await apiFetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-          window.location.assign('/');
-          return;
-        }
-        throw new Error(errorData.message || 'Could not connect to the AI server.');
-      }
+      await checkChatResponse(response);
 
       if (!response.body) throw new Error('The AI server did not return a stream.');
 
@@ -728,8 +724,9 @@ export default function Chat() {
       if (requestError.name === 'AbortError') {
         setMessages((current) => current.filter((message, index) => index !== assistantIndex || String(message.text || message.content || '').trim()));
       } else {
+        setSessionExpired(requestError.status === 401);
         const fallbackMessage = requestError.message === 'Failed to fetch'
-          ? 'Could not connect to the backend. Start it with: cd backend && npm start'
+          ? 'Could not connect to the server. Check your connection and try again.'
           : (requestError.message || 'Could not connect to the AI server.');
         setChatError(fallbackMessage);
         setMessages((current) => current.filter((_, index) => index !== assistantIndex));
@@ -968,7 +965,17 @@ export default function Chat() {
            </article>
             })}
           {isSending && !isStreamingResponse && <article className="chat-message assistant thinking-message"><span className="thinking-avatar" aria-hidden="true"><i /></span><div><small>{selectedModel.name}</small><p className="typing-indicator"><b>Thinking<span className="thinking-dots"><i /><i /><i /></span></b></p></div></article>}
-          {chatError && <div className="chat-api-error" role="alert"><span>{chatError}</span><div>{/(microphone|speech|voice recognition)/i.test(chatError) ? <><button type="button" onClick={() => { setChatError(''); toggleVoiceInput(); }}>Try microphone again</button><button type="button" onClick={() => setChatError('')}>Dismiss</button></> : <><button type="button" onClick={() => { setSelectedSlug('gemini'); setChatError(''); setPrompt(messages.slice().reverse().find(message => message.role === 'user')?.text || ''); }}>Try with Gemini</button><Link to="/checkout?plan=pro">View demo plans</Link></>}</div></div>}
+          {chatError && <div className="chat-api-error" role="alert"><span>{chatError}</span><div>{/(microphone|speech|voice recognition)/i.test(chatError) ? <><button type="button" onClick={() => { setChatError(''); toggleVoiceInput(); }}>Try microphone again</button><button type="button" onClick={() => setChatError('')}>Dismiss</button></> : !sessionExpired && <button type="button" disabled={isSending} onClick={() => {
+            const lastUserIndex = messages.findLastIndex((message) => message.role === 'user');
+            if (lastUserIndex >= 0) {
+              const message = messages[lastUserIndex];
+              sendMessage(null, message.text || message.content, messages.slice(0, lastUserIndex), message.imageUrl || message.image ? { url: message.imageUrl || message.image } : null);
+            }
+          }}>Retry message</button>}</div></div>}
+          {sessionExpired && <SessionRecovery user={user} onSuccess={() => {
+            setSessionExpired(false);
+            setChatError('Signed in successfully. You can now retry your message.');
+          }} />}
           <div className="chat-scroll-tail" ref={messagesEnd} aria-hidden="true" />
         </div>
 

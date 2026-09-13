@@ -1,3 +1,4 @@
+import { rememberSession } from '../../lib/session';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -37,7 +38,7 @@ export default function Login({ mode, onClose, onModeChange, returnTo = "/dashbo
       const endpoint = signingUp ? '/api/auth/register' : '/api/auth/login';
       payload.rememberMe = payload.rememberMe === 'on';
       const response = await axios.post(endpoint, payload, { withCredentials: true });
-      sessionStorage.setItem('allmodelai_user', JSON.stringify(response.data.user));
+      rememberSession(response.data.user);
       onClose();
       navigate(returnTo, { replace: true, state: { ...returnState, user: response.data.user, welcomeEmail: response.data.welcomeEmail } });
     } catch (requestError) {
