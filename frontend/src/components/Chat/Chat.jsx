@@ -159,7 +159,7 @@ export default function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
-  const [chatMeta, setChatMeta] = useState(() => JSON.parse(localStorage.getItem('allmodelai_chat_meta') || '{}'));
+  const [chatMeta] = useState(() => JSON.parse(localStorage.getItem('allmodelai_chat_meta') || '{}'));
   const [historyQuery, setHistoryQuery] = useState('');
   const [messageRatings, setMessageRatings] = useState({});
   const [messageLikes, setMessageLikes] = useState(() => JSON.parse(localStorage.getItem('allmodelai_message_likes') || '{}'));
@@ -463,18 +463,6 @@ export default function Chat() {
       localStorage.setItem('allmodelai_favorites', JSON.stringify(next));
       return next;
     });
-  };
-  const updateChatMeta = (conversationId, patch) => {
-    const next = { ...chatMeta, [conversationId]: { ...(chatMeta[conversationId] || {}), ...patch } };
-    setChatMeta(next);
-    localStorage.setItem('allmodelai_chat_meta', JSON.stringify(next));
-  };
-  const togglePinnedChat = (conversation) => { updateChatMeta(conversation.id, { pinned: !chatMeta[conversation.id]?.pinned }); setChatMenuId(null); };
-  const editChatTags = (conversation) => {
-    const value = window.prompt('Tags separated by commas', (chatMeta[conversation.id]?.tags || []).join(', '));
-    if (value === null) return;
-    updateChatMeta(conversation.id, { tags: value.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 8) });
-    setChatMenuId(null);
   };
   const editSystemInstructions = () => {
     const current = localStorage.getItem('allmodelai_system_instructions') || '';
@@ -891,16 +879,18 @@ export default function Chat() {
         </div>
         {projects.length > 0 && <div className="project-list"><p>Projects</p>{projects.map((project) => <div className={`project-item ${activeProject?.id === project.id ? 'active' : ''}`} key={project.id}><button className="project-open" onClick={() => { setActiveProject(project); setTemporaryChat(false); setProjectMenuId(null); newChat(); }}><span>▰</span><strong>{project.name}</strong></button><button className="project-more" onClick={() => setProjectMenuId((id) => id === project.id ? null : project.id)} aria-label={`Options for ${project.name}`}>•••</button>{projectMenuId === project.id && <div className="project-menu"><button onClick={() => renameProject(project)}>✎ Rename</button><button className="danger" onClick={() => deleteProject(project)}>Delete</button></div>}</div>)}</div>}
         {favorites.length > 0 && <div className="favorite-list"><p>Favorites <span>{favorites.length}</span></p>{favorites.slice(0, 4).map((favorite) => <button key={favorite.id} onClick={() => chooseSuggestion(favorite.text)} title={favorite.text}><span>★</span><span><strong>{dashboardModels.find((model) => model.slug === favorite.modelSlug)?.name || 'AI response'}</strong><small>{favorite.text}</small></span></button>)}</div>}
-        <div className="chat-history">
+        <div className="chat-history" onKeyDown={(event) => { if (event.key === 'Escape') { setChatMenuId(null); event.target.closest('.chat-history-item')?.querySelector('.chat-history-more')?.focus(); } }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setChatMenuId(null); }}>
           <p>Saved conversations <span className="chat-history-count">{chatHistory.length}</span><button className="chat-history-export" type="button" onClick={exportConversation} disabled={!messages.length} title="Export current conversation">↓</button></p>
           <input className="chat-history-search" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Search saved chats" aria-label="Search saved chats" />
+          <div className="chat-history-list" tabIndex={0} aria-label="Saved conversations">
           {chatHistory.length === 0 && <small className="chat-history-empty">Your saved chats will appear here.</small>}
           {chatHistory.length > 0 && visibleHistory.length === 0 && <small className="chat-history-empty">No matching conversations.</small>}
           {visibleHistory.map((conversation) => <div className={`chat-history-item ${activeConversationId === conversation.id ? 'active' : ''}`} key={conversation.id}>
             <button className="chat-history-open" onClick={() => openConversation(conversation)}><span>{chatMeta[conversation.id]?.pinned ? '★' : '◇'}</span><span><strong>{conversation.title || conversationPreview(conversation)}</strong><small>{conversationPreview(conversation)}</small>{chatMeta[conversation.id]?.tags?.length > 0 && <small className="chat-tags">{chatMeta[conversation.id].tags.map((tag) => `#${tag}`).join(' ')}</small>}<em>Saved · {conversation.model}</em></span></button>
-            <button className="chat-history-more" onClick={() => setChatMenuId((id) => id === conversation.id ? null : conversation.id)} aria-label={`Options for ${conversation.title}`}>•••</button>
-            {chatMenuId === conversation.id && <div className="chat-history-menu"><button onClick={() => togglePinnedChat(conversation)}>{chatMeta[conversation.id]?.pinned ? '☆ Unpin' : '★ Pin'}</button><button onClick={() => editChatTags(conversation)}># Edit tags</button><button onClick={() => renameConversation(conversation)}>✎ Rename</button><button className="danger" onClick={() => deleteConversation(conversation)}>♲ Delete</button></div>}
+            <button type="button" aria-expanded={chatMenuId === conversation.id} className="chat-history-more" onClick={() => setChatMenuId((id) => id === conversation.id ? null : conversation.id)} aria-label={`Options for ${conversation.title}`}>•••</button>
+            {chatMenuId === conversation.id && <div className="chat-history-menu"><button type="button" onClick={() => renameConversation(conversation)}>Edit</button><button type="button" className="danger" onClick={() => deleteConversation(conversation)}>Delete</button></div>}
           </div>)}
+          </div>
         </div>
         <nav className="sidebar-links" aria-label="Chat navigation"><Link to="/dashboard">⌂ <span>Dashboard</span></Link><Link to="/ai-platform">34 <span>AI Platform</span></Link><Link to="/website-builder">&lt;/&gt; <span>Website Builder</span></Link><Link to="/studio">✦ <span>Workspace Studio</span></Link><Link to="/control-center">⌘ <span>Control Center</span></Link><Link to="/models/gpt">▦ <span>Model library</span></Link></nav>
         <section className="sidebar-theme-settings collapsed" aria-label="Theme settings"><button type="button" className="chat-settings-trigger" onClick={()=>navigate('/chat/settings')}><span className="settings-gear" aria-hidden="true">⚙</span><span><strong>Settings</strong><small>{themePreference} · {chatTextColors.find(([,color])=>color===textColor)?.[0]||'Custom'} message</small></span><b>›</b></button></section>

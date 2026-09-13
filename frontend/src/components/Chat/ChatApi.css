@@ -303,3 +303,29 @@ html[data-theme="light"] .chat-message.assistant p{color:#202123}html[data-theme
 .chat-session-recovery label { display: grid; gap: 5px; }
 .chat-session-recovery input { padding: 10px; border: 1px solid #64748b; border-radius: 8px; background: #111827; color: #fff; }
 .chat-session-recovery button { padding: 10px; border: 1px solid #64748b; border-radius: 8px; background: #312e81; color: #fff; cursor: pointer; }
+
+/* Keep history inside the viewport and reserve space for its actions. */
+.chat-sidebar { min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.chat-sidebar > * { flex-shrink: 0; }
+.chat-sidebar .chat-history {
+  display: flex; flex-direction: column; gap: 4px;
+  flex: 1 0 210px; min-height: 210px; max-height: none; overflow: hidden;
+}
+.chat-history > p, .chat-history-search { flex-shrink: 0; }
+.chat-history-list {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain; scrollbar-gutter: stable;
+  scrollbar-width: thin; scrollbar-color: #59677d transparent;
+}
+.chat-history-list .chat-history-item { width: 100%; min-width: 0; }
+.chat-history-list .chat-history-open { box-sizing: border-box; min-width: 0; width: 100%; }
+.chat-history-list .chat-history-open > span:last-child { flex: 1; overflow: hidden; }
+.chat-history-list .chat-history-more {
+  top: 12px; right: 4px; transform: none; opacity: 1;
+}
+.chat-history-list .chat-history-menu {
+  position: relative; inset: auto; box-sizing: border-box;
+  width: calc(100% - 12px); margin: 0 6px 6px;
+}
+.chat-history-more:focus-visible, .chat-history-menu button:focus-visible,
+.chat-history-list:focus-visible { outline: 2px solid #8d83ff; outline-offset: -2px; }

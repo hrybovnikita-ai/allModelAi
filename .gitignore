@@ -4,3 +4,6 @@ dist/
 .env.local
 *.log
 backend/storage/
+
+.runtime/
+HOME-ACCESS.txt

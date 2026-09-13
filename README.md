@@ -2,6 +2,8 @@ AllModelAI
 
 SQL database setup and verification: [DATABASE.md](DATABASE.md).
 
+Phone and tablet on home Wi-Fi: double-click `start-home-server.bat`, then open the address in `HOME-ACCESS.txt`. The server runs in the background after you close the editor and startup window. See [HOME-WIFI.md](HOME-WIFI.md) for instructions and connection help.
+
 A unified workspace for multiple AI models: secure chat, an explainable Smart Router, a knowledge base, AI Arena, and team workspaces.
 
 Getting Started

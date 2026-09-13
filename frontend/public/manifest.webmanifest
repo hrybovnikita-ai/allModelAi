@@ -6,5 +6,12 @@
   "display": "standalone",
   "background_color": "#080b12",
   "theme_color": "#7165ef",
-  "icons": [{ "src": "/aihub-dragon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "icons": [
+    {
+      "src": "/gold-dragon.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
 }

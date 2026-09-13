@@ -469,6 +469,7 @@ const getModelStatus = (_req, res) => {
             gemini: Boolean(process.env.GEMINI_API_KEY || gateway),
             claude: Boolean(process.env.CLAUDE_API_KEY || gateway),
             kimi: Boolean(process.env.KIMI_API_KEY || gateway),
+            mistral: Boolean(process.env.MISTRAL_API_KEY || gateway),
             cloudflare: Boolean(((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID) || gateway),
             grok: xai || gateway,
             others: gateway,
@@ -691,7 +692,7 @@ const createChatResponse = async (req, res) => {
         kimi: process.env.KIMI_MODEL || 'moonshotai/kimi-k2.5',
         deepseek: 'deepseek/deepseek-chat',
         llama: 'meta-llama/llama-3.3-70b-instruct',
-        mistral: 'mistralai/mistral-small-3.1-24b-instruct',
+        mistral: process.env.MISTRAL_MODEL || 'mistral-small-latest',
         qwen: 'qwen/qwen-2.5-72b-instruct',
         cohere: 'cohere/command-a',
         cloudflare: process.env.CLOUDFLARE_MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
@@ -718,6 +719,7 @@ const createChatResponse = async (req, res) => {
     const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
     const xaiKey = (process.env.XAI_API_KEY || process.env.GROK_API_KEY)?.trim();
     const directKimiKey = process.env.KIMI_API_KEY?.trim();
+    const directMistralKey = process.env.MISTRAL_API_KEY?.trim();
     const preferGemini = process.env.PREFER_GEMINI === 'true' && Boolean(process.env.GEMINI_API_KEY?.trim());
     const usePreferredGemini = preferGemini && model === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
     let isOpenAI = Boolean(openAIKey && !usePreferredGemini && (routedModel === 'gpt' || routedModel === 'copilot'));
@@ -725,12 +727,13 @@ const createChatResponse = async (req, res) => {
     let isClaude = routedModel === 'claude' && !gatewayKey?.trim();
     let isGemini = (routedModel === 'gemini' || usePreferredGemini) && Boolean(process.env.GEMINI_API_KEY?.trim());
     let isKimi = routedModel === 'kimi' && Boolean(directKimiKey || gatewayKey);
+    let isMistral = routedModel === 'mistral' && Boolean(directMistralKey);
     const hasCloudflareDirect = Boolean((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID);
     let isCloudflare = routedModel === 'cloudflare' && hasCloudflareDirect;
     const cloudflareKey = process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY;
-    let apiKey = isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isCloudflare ? cloudflareKey : gatewayKey;
+    let apiKey = isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isCloudflare ? cloudflareKey : gatewayKey;
     if (!apiKey) {
-        const provider = routedModel === 'grok' ? 'Grok (set XAI_API_KEY or OPENROUTER_API_KEY)' : isClaude ? 'Claude' : isGemini ? 'Gemini' : isKimi ? 'Kimi' : isCloudflare ? 'Cloudflare' : 'OpenRouter';
+        const provider = routedModel === 'grok' ? 'Grok (set XAI_API_KEY or OPENROUTER_API_KEY)' : isClaude ? 'Claude' : isGemini ? 'Gemini' : isKimi ? 'Kimi' : isMistral ? 'Mistral (set MISTRAL_API_KEY or OPENROUTER_API_KEY)' : isCloudflare ? 'Cloudflare' : 'OpenRouter';
         return res.status(503).json({ message: `${provider} API key is not configured in backend/.env` });
     }
     if (!providerModels[routedModel]) {
@@ -858,9 +861,10 @@ const createChatResponse = async (req, res) => {
         const geminiUrl = getGeminiUrl(apiKey);
         const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID || '')}/ai/run/${providerModels.cloudflare}`;
         const directKimiUrl = 'https://api.moonshot.cn/v1/chat/completions';
+        const directMistralUrl = 'https://api.mistral.ai/v1/chat/completions';
         const providerTimeoutMs = Math.min(Math.max(Number(process.env.AI_REQUEST_TIMEOUT_MS) || 45000, 5000), 120000);
         const requestSignal = () => AbortSignal.timeout(providerTimeoutMs);
-        let apiResponse = await fetch(isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isKimi && directKimiKey ? directKimiUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
+        let apiResponse = await fetch(isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             signal: requestSignal(),
             headers: isOpenAI || isXAI ? {
@@ -874,6 +878,9 @@ const createChatResponse = async (req, res) => {
                 'Content-Type': 'application/json',
             } : isKimi && directKimiKey ? {
                 Authorization: `Bearer ${directKimiKey.trim()}`,
+                'Content-Type': 'application/json',
+            } : isMistral ? {
+                Authorization: `Bearer ${directMistralKey.trim()}`,
                 'Content-Type': 'application/json',
             } : isCloudflare ? {
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
@@ -900,6 +907,11 @@ const createChatResponse = async (req, res) => {
                 messages: buildClaudeMessages(normalizedInputMessages),
             } : isGemini ? JSON.parse(geminiBody()) : isKimi && directKimiKey ? {
                 model: process.env.KIMI_MODEL || 'kimi-k2-0711-preview',
+                stream: true,
+                max_tokens: outputTokenLimit,
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
+            } : isMistral ? {
+                model: process.env.MISTRAL_MODEL || 'mistral-small-latest',
                 stream: true,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
@@ -960,6 +972,7 @@ const createChatResponse = async (req, res) => {
                     isClaude = false;
                     isGemini = false;
                     isKimi = false;
+                    isMistral = false;
                     isCloudflare = false;
                     upstreamError = null;
                     break;
@@ -969,10 +982,10 @@ const createChatResponse = async (req, res) => {
         }
         if (!apiResponse.ok) {
             const data = upstreamError || await apiResponse.json().catch(() => ({}));
-            console.error(`[${isOpenAI ? 'OPENAI' : isXAI ? 'XAI' : isClaude ? 'CLAUDE' : isGemini ? 'GEMINI' : isCloudflare ? 'CLOUDFLARE' : 'OPENROUTER'} API]`, apiResponse.status, data.error?.message || data.errors?.[0]?.message || data.error);
+            console.error(`[${isOpenAI ? 'OPENAI' : isXAI ? 'XAI' : isClaude ? 'CLAUDE' : isGemini ? 'GEMINI' : isMistral ? 'MISTRAL' : isCloudflare ? 'CLOUDFLARE' : 'OPENROUTER'} API]`, apiResponse.status, data.error?.message || data.errors?.[0]?.message || data.error);
             return res.status(apiResponse.status === 401 ? 502 : apiResponse.status).json({
                 message: apiResponse.status === 401
-                    ? `The server API key was rejected by ${isOpenAI ? 'OpenAI' : isXAI ? 'xAI' : isClaude ? 'Anthropic' : isGemini ? 'Google Gemini' : isCloudflare ? 'Cloudflare' : 'OpenRouter'}`
+                    ? `The server API key was rejected by ${isOpenAI ? 'OpenAI' : isXAI ? 'xAI' : isClaude ? 'Anthropic' : isGemini ? 'Google Gemini' : isMistral ? 'Mistral AI' : isCloudflare ? 'Cloudflare' : 'OpenRouter'}`
                     : (data.error?.message || data.errors?.[0]?.message || 'The AI service could not answer'),
             });
         }
