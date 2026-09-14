@@ -26,6 +26,8 @@ export const LANGUAGES = [
   { name: "Greek", code: "el", native: "Ελληνικά" },
   { name: "Bulgarian", code: "bg", native: "Български" },
   { name: "Slovak", code: "sk", native: "Slovenčina" },
+  { name: "Serbian", code: "sr", native: "Српски" },
+  { name: "Danish", code: "da", native: "Dansk" },
 ];
 
 // UI strings for the Settings page. Languages without a dictionary entry
@@ -57,6 +59,8 @@ const STRINGS = {
     el: "Λογαριασμός",
     bg: "Акаунт",
     sk: "Účet",
+    sr: "Налог",
+    da: "Konto",
   },
   heading: {
     en: "Your workspace profile",
@@ -84,6 +88,8 @@ const STRINGS = {
     el: "Το προφίλ του χώρου εργασίας σας",
     bg: "Профил на работното ви пространство",
     sk: "Váš profil pracovného priestoru",
+    sr: "Профил вашег радног простора",
+    da: "Din arbejdsområdeprofil",
   },
   subtitle: {
     en: "Manage your avatar, identity, language, and account security.",
@@ -111,6 +117,8 @@ const STRINGS = {
     el: "Διαχειριστείτε το avatar, την ταυτότητα, τη γλώσσα και την ασφάλεια του λογαριασμού.",
     bg: "Управлявайте аватара, самоличността, езика и сигурността на акаунта.",
     sk: "Spravujte avatara, identitu, jazyk a zabezpečenie účtu.",
+    sr: "Управљајте аватаром, идентитетом, језиком и безбедношћу налога.",
+    da: "Administrér din avatar, identitet, sprog og kontosikkerhed.",
   },
   fullName: {
     en: "Full name",
@@ -138,6 +146,8 @@ const STRINGS = {
     el: "Πλήρες όνομα",
     bg: "Пълно име",
     sk: "Celé meno",
+    sr: "Пуно име",
+    da: "Fulde navn",
   },
   email: {
     en: "Email address",
@@ -165,6 +175,8 @@ const STRINGS = {
     el: "Διεύθυνση email",
     bg: "Имейл адрес",
     sk: "E-mailová adresa",
+    sr: "Имејл адреса",
+    da: "E-mailadresse",
   },
   avatar: {
     en: "Avatar image URL",
@@ -192,6 +204,8 @@ const STRINGS = {
     el: "URL εικόνας avatar",
     bg: "URL на аватар",
     sk: "URL obrázku avatara",
+    sr: "URL адреса аватара",
+    da: "Avatar-billede-URL",
   },
   language: {
     en: "Interface language",
@@ -219,6 +233,8 @@ const STRINGS = {
     el: "Γλώσσα περιβάλλοντος",
     bg: "Език на интерфейса",
     sk: "Jazyk rozhrania",
+    sr: "Језик интерфејса",
+    da: "Grænsefladesprog",
   },
   save: {
     en: "Save profile",
@@ -246,6 +262,8 @@ const STRINGS = {
     el: "Αποθήκευση προφίλ",
     bg: "Запази профила",
     sk: "Uložiť profil",
+    sr: "Сачувај профил",
+    da: "Gem profil",
   },
   notice: {
     en: "Profile and language preferences saved.",
@@ -273,6 +291,8 @@ const STRINGS = {
     el: "Το προφίλ και οι γλωσικές προτιμήσεις αποθηκεύτηκαν.",
     bg: "Профилът и езиковите настройки са запазени.",
     sk: "Profil a jazykové nastavenia boli uložené.",
+    sr: "Профил и језичке поставке су сачувани.",
+    da: "Profil og sprogpræferencer er gemt.",
   },
   confirmTitle: {
     en: "Change interface language?",
@@ -300,6 +320,8 @@ const STRINGS = {
     el: "Να αλλάξει η γλώσσα του περιβάλλοντος;",
     bg: "Промяна на езика на интерфейса?",
     sk: "Zmeniť jazyk rozhrania?",
+    sr: "Променити језик интерфејса?",
+    da: "Skift grænsefladesprog?",
   },
   confirmText: {
     en: "The site will switch to the selected language. Do you want to continue?",
@@ -327,6 +349,8 @@ const STRINGS = {
     el: "Ο ιστότοπος θα αλλάξει στην επιλεγμένη γλώσσα. Θέλετε να συνεχίσετε;",
     bg: "Сайтът ще превключи на избрания език. Искате ли да продължите?",
     sk: "Stránka sa prepne do vybraného jazyka. Chcete pokračovať?",
+    sr: "Сајт ће се пребацити на изабрани језик. Да ли желите да наставите?",
+    da: "Webstedet skifter til det valgte sprog. Vil du fortsætte?",
   },
   yes: {
     en: "Yes",
@@ -354,6 +378,8 @@ const STRINGS = {
     el: "Ναι",
     bg: "Да",
     sk: "Áno",
+    sr: "Да",
+    da: "Ja",
   },
   no: {
     en: "No",
@@ -381,6 +407,8 @@ const STRINGS = {
     el: "Όχι",
     bg: "Не",
     sk: "Nie",
+    sr: "Не",
+    da: "Nej",
   },
   security: {
     en: "Security",
@@ -408,6 +436,8 @@ const STRINGS = {
     el: "Ασφάλεια",
     bg: "Сигурност",
     sk: "Zabezpečenie",
+    sr: "Безбедност",
+    da: "Sikkerhed",
   },
   securityHeading: {
     en: "Keep your account in your control.",
@@ -435,6 +465,8 @@ const STRINGS = {
     el: "Κρατήστε τον λογαριασμό σας υπό έλεγχο.",
     bg: "Дръжте акаунта си под контрол.",
     sk: "Majte svoj účet pod kontrolou.",
+    sr: "Држите свој налог под својом контролом.",
+    da: "Hold din konto under din egen kontrol.",
   },
   changePassword: {
     en: "Change password",
@@ -462,6 +494,8 @@ const STRINGS = {
     el: "Αλλαγή κωδικού",
     bg: "Промени паролата",
     sk: "Zmeniť heslo",
+    sr: "Промени лозинку",
+    da: "Skift adgangskode",
   },
   logout: {
     en: "Sign out of AllModelAI",
@@ -489,6 +523,8 @@ const STRINGS = {
     el: "Αποσύνδεση από το AllModelAI",
     bg: "Излез от AllModelAI",
     sk: "Odhlásiť sa z AllModelAI",
+    sr: "Одјавите се из AllModelAI",
+    da: "Log ud af AllModelAI",
   },
 };
 

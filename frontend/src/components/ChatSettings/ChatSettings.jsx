@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
-import { LANGUAGES, translate, applyLanguage, isRtlLanguage } from '../lib/languages';
+import { LANGUAGES, translate, applyLanguage } from '../../lib/languages';
 import './ChatSettings.css';
 
 const colors=[['Blue','#3b82f6'],['Yellow','#facc15'],['Purple','#a855f7'],['Lime','#a3e635'],['Orange','#f97316'],['Red','#ef4444'],['Red orange','#ff4500'],['Violet','#8b5cf6'],['Gray','#9ca3af'],['Green yellow','#adff2f']];
@@ -19,7 +19,6 @@ export default function ChatSettings(){
  const chooseColor=value=>setColor(value);
  const currentCode=applyLanguage(lang).code;
  const t=key=>translate(key,currentCode);
- const rtl=isRtlLanguage(currentCode);
  const confirmLanguage=()=>{
   localStorage.setItem('allmodelai_language',pendingLang);
   setLang(pendingLang);

@@ -501,7 +501,7 @@ const setAccessMode = (req, res) => {
     const mode = req.body.mode;
     if (!['user', 'developer'].includes(mode)) return res.status(400).json({ message: 'Выберите User или Developer.' });
     const status = getCreditStatus(req.app.locals.db, req.user.email);
-    if (mode === 'developer' && !status.canUseDeveloper) return res.status(403).json({ message: 'Все модели доступны по подписке или для подтверждённого аккаунта разработчика.' });
+    if (mode === 'developer' && !status.canUseDeveloper) return res.status(403).json({ message: 'All models are available with a subscription or for a verified developer account.' });
     req.app.locals.db.database.prepare('INSERT INTO account_access_modes (email,mode) VALUES (?,?) ON CONFLICT(email) DO UPDATE SET mode=excluded.mode').run(status.email, mode);
     return getCredits(req, res);
 };
