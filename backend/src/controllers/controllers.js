@@ -428,13 +428,14 @@ const deleteAccount = (req, res) => {
     if (data.usage) delete data.usage[email];
     req.app.locals.db.write(data);
     req.app.locals.db.database.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(deletedUser.id);
+    req.app.locals.db.database.prepare('DELETE FROM account_access_modes WHERE email = ?').run(email);
     res.clearCookie(sessionCookie, sessionCookieOptions());
 
     return res.status(200).json({ message: 'Account deleted successfully', user: deletedUser });
 };
 
 const subscriptionPlans = {
-    free: { name: 'Developer', amount: 0, interval: 'month', limit: 5000, models: ['all'] },
+    free: { name: 'User', amount: 0, interval: 'month', limit: 5000, models: ['gemini', 'llama', 'deepseek', 'mistral', 'qwen'] },
     week: { name: 'Weekly', amount: 599, interval: 'week', limit: 500, models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'cloudflare'] },
     common: { name: 'Pro Monthly', amount: 1900, interval: 'month', limit: 3000, models: ['smart', 'gemini', 'gpt', 'claude', 'llama', 'grok', 'copilot', 'perplexity', 'kimi', 'deepseek', 'mistral', 'qwen', 'cohere', 'cloudflare'] },
     plus: { name: 'Power Monthly', amount: 4900, interval: 'month', limit: 12000, models: ['all'] },
@@ -450,12 +451,18 @@ const getCreditStatus = (database, email) => {
     data.usage ||= {};
     const detail = database.database.prepare('SELECT plan, billing_interval AS billingInterval, request_limit AS requestLimit, period_end AS periodEnd, status FROM subscription_details WHERE email = ?').get(normalizedEmail);
     const detailActive = detail && detail.status === 'active' && (!detail.periodEnd || Date.parse(detail.periodEnd) > Date.now());
-    const plan = detailActive ? detail.plan : (data.subscriptions[normalizedEmail] || 'free');
+    const plan = detailActive && subscriptionPlans[detail.plan] ? detail.plan : 'free';
+    const isDeveloper = developerEmails().has(normalizedEmail);
+    const hasSubscription = Boolean(detailActive && subscriptionPlans[plan]?.amount > 0);
+    const canUseDeveloper = isDeveloper || hasSubscription;
+    const savedMode = database.database.prepare('SELECT mode FROM account_access_modes WHERE email = ?').get(normalizedEmail)?.mode;
+    const mode = canUseDeveloper && savedMode !== 'user' ? 'developer' : 'user';
+    const fullAccess = mode === 'developer' && canUseDeveloper;
     const planDefinition = subscriptionPlans[plan] || subscriptionPlans.free;
     const limit = detailActive ? detail.requestLimit : (creditLimits[plan] || creditLimits.free);
     const used = Number(data.usage[normalizedEmail] || 0);
 
-    return { data, email: normalizedEmail, plan, limit, used, remaining: Math.max(limit - used, 0), billingInterval: detail?.billingInterval || planDefinition.interval, periodEnd: detailActive ? detail.periodEnd : null, models: planDefinition.models, enforced: creditLimitsEnabled() || Boolean(detailActive) };
+    return { data, email: normalizedEmail, plan, limit, used, remaining: Math.max(limit - used, 0), billingInterval: detail?.billingInterval || planDefinition.interval, periodEnd: detailActive ? detail.periodEnd : null, models: fullAccess ? ['all'] : subscriptionPlans.free.models, enforced: !fullAccess && creditLimitsEnabled(), isDeveloper, hasSubscription, canUseDeveloper, mode, unlimited: fullAccess };
 };
 
 const getModelStatus = (_req, res) => {
@@ -486,8 +493,17 @@ const getAdminStats = (req, res) => {
 
 const getCredits = (req, res) => {
     const status = getCreditStatus(req.app.locals.db, req.user.email);
-    const unlimited = !status.enforced;
-    return res.status(200).json({ plan: status.plan, limit: status.limit, used: status.used, remaining: status.remaining, unlimited, billingInterval: status.billingInterval, periodEnd: status.periodEnd, models: status.models });
+    const { data, email, enforced, ...access } = status;
+    return res.status(200).json(access);
+};
+
+const setAccessMode = (req, res) => {
+    const mode = req.body.mode;
+    if (!['user', 'developer'].includes(mode)) return res.status(400).json({ message: 'Выберите User или Developer.' });
+    const status = getCreditStatus(req.app.locals.db, req.user.email);
+    if (mode === 'developer' && !status.canUseDeveloper) return res.status(403).json({ message: 'Все модели доступны по подписке или для подтверждённого аккаунта разработчика.' });
+    req.app.locals.db.database.prepare('INSERT INTO account_access_modes (email,mode) VALUES (?,?) ON CONFLICT(email) DO UPDATE SET mode=excluded.mode').run(status.email, mode);
+    return getCredits(req, res);
 };
 
 const getChatHistory = (req, res) => {
@@ -675,7 +691,13 @@ const previewRouter = (req, res) => {
     const prompt = String(req.body.prompt || '').trim();
     const hasImage = Boolean(req.body.image || req.body.hasImage);
     if (!prompt && !hasImage) return res.status(400).json({ message: 'Prompt or image is required' });
-    return res.json(chooseSmartRoute(prompt, req.body.routerMode, hasImage));
+    const route = chooseSmartRoute(prompt, req.body.routerMode, hasImage);
+    const access = getCreditStatus(req.app.locals.db, req.user.email);
+    if (!access.models.includes('all') && !access.models.includes(route.model)) {
+        route.model = 'gemini';
+        route.reason = 'Smart Router выбрал Gemini из моделей, доступных в режиме User.';
+    }
+    return res.json(route);
 };
 
 const createChatResponse = async (req, res) => {
@@ -711,6 +733,13 @@ const createChatResponse = async (req, res) => {
     const latestPrompt = String(latestMessage?.content || '');
     const hasAttachedImage = normalizedInputMessages.some((m) => Boolean(m.image || m.imageUrl));
     const routeDecision = chooseSmartRoute(latestPrompt, routerMode, hasAttachedImage);
+    const creditStatus = getCreditStatus(req.app.locals.db, userEmail);
+    const modelAllowed = (slug) => creditStatus.models.includes('all') || creditStatus.models.includes(slug);
+    if (model !== 'smart' && !modelAllowed(model)) return res.status(403).json({ message: 'Эта модель доступна по подписке или в режиме Developer. Выберите одну из пяти моделей User.' });
+    if (model === 'smart' && !modelAllowed(routeDecision.model)) {
+        routeDecision.model = 'gemini';
+        routeDecision.reason = 'Smart Router выбрал Gemini из моделей, доступных в режиме User.';
+    }
     const routedModel = model === 'smart' ? routeDecision.model : model;
 
     // Prefer the shared OpenRouter connection for Claude when it is configured.
@@ -740,7 +769,6 @@ const createChatResponse = async (req, res) => {
         return res.status(400).json({ message: 'Unsupported AI model' });
     }
 
-    const creditStatus = getCreditStatus(req.app.locals.db, userEmail);
     if (creditStatus.enforced && creditStatus.used >= creditStatus.limit) {
         return res.status(429).json({ message: `Your ${creditStatus.plan} plan has reached its request limit. Choose a larger plan to continue.` });
     }
@@ -951,7 +979,7 @@ const createChatResponse = async (req, res) => {
             const gatewayFallbacks = (configuredFallbacks.length
                 ? configuredFallbacks
                 : ['gpt', 'gemini', 'mistral', 'deepseek', 'llama'])
-                .filter((candidate) => providerModels[candidate] && candidate !== routedModel);
+                .filter((candidate) => providerModels[candidate] && candidate !== routedModel && modelAllowed(candidate));
             for (const candidate of gatewayFallbacks) {
                 apiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                     method: 'POST',
@@ -997,7 +1025,7 @@ const createChatResponse = async (req, res) => {
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
         const freeTierModels = new Set(['gemini', 'cloudflare']);
-        res.write(`data: ${JSON.stringify({ unlimited: true, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:fallbackUsed ? providerModels[fallbackModel] : providerModels[routedModel], routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, knowledgeSources:knowledge.map(({id,name,excerpt,score})=>({id,name,excerpt,score})), costTier:freeTierModels.has(fallbackUsed ? fallbackModel : routedModel)?'free-allowance':'paid' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ unlimited: creditStatus.unlimited, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:fallbackUsed ? providerModels[fallbackModel] : providerModels[routedModel], routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, knowledgeSources:knowledge.map(({id,name,excerpt,score})=>({id,name,excerpt,score})), costTier:freeTierModels.has(fallbackUsed ? fallbackModel : routedModel)?'free-allowance':'paid' })}\n\n`);
         if (fallbackUsed) res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: fallbackModel })}\n\n`);
 
         if (isOpenAI) {
@@ -1188,58 +1216,7 @@ const analyzeVision = async (req, res) => {
     }
 };
 
-const generateImage = async (req, res) => {
-    const prompt = String(req.body.prompt || '').trim().slice(0, 4000);
-    const imageApiUrl = process.env.IMAGE_API_URL || 'https://api.openai.com/v1/images/generations';
-    const configuredImageKeys = [process.env.IMAGE_API_KEY, process.env.OPENAI_API_KEY, process.env.OPEN_AI_API_KEY, process.env.API_IMAGE_KEY]
-        .map((value) => String(value || '').trim())
-        .filter(Boolean);
-    const imageApiKey = process.env.IMAGE_API_URL
-        ? configuredImageKeys[0]
-        : configuredImageKeys.find((value) => /^sk-(?:proj-|svcacct-)?/i.test(value));
-    const cloudflareAccountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
-    const cloudflareImageKey = String(process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY || process.env.API_IMAGE_KEY || '').trim();
-    const useCloudflare = process.env.IMAGE_PROVIDER === 'cloudflare' || (!imageApiKey && cloudflareAccountId && cloudflareImageKey);
-    if (!imageApiKey && !useCloudflare) {
-        return res.status(503).json({ message: 'Configure OpenAI Images, or set IMAGE_PROVIDER=cloudflare with CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_KEY.' });
-    }
-    if (!prompt) return res.status(400).json({ message: 'An image prompt is required' });
-
-    try {
-        const response = await fetch(useCloudflare
-            ? `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cloudflareAccountId)}/ai/run/${process.env.CLOUDFLARE_IMAGE_MODEL || '@cf/black-forest-labs/flux-1-schnell'}`
-            : imageApiUrl, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${useCloudflare ? cloudflareImageKey : imageApiKey.trim()}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(useCloudflare ? { prompt: prompt.slice(0, 2048), steps: 4 } : {
-                model: process.env.IMAGE_MODEL || 'gpt-image-1',
-                prompt,
-                size: process.env.IMAGE_SIZE || '1024x1024',
-                n: 1,
-            }),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-            const safeMessage = response.status === 401
-                ? 'The image API key was rejected. Check that the OpenAI key is active and has API billing enabled.'
-                : String(data.error?.message || 'The image service could not create an image')
-                    .replace(/(?:sk|cf)[A-Za-z0-9_*-]{8,}/gi, '[API key hidden]');
-            return res.status(response.status === 401 ? 502 : response.status).json({ message: safeMessage });
-        }
-
-        const image = data.data?.[0];
-        const cloudflareBase64 = data.result?.image;
-        const imageUrl = cloudflareBase64 ? `data:image/jpeg;base64,${cloudflareBase64}` : image?.url || (image?.b64_json ? `data:image/png;base64,${image.b64_json}` : null);
-        if (!imageUrl) return res.status(502).json({ message: 'The image service returned no image' });
-        return res.status(200).json({ imageUrl, prompt });
-    } catch (error) {
-        console.error('[IMAGE API]', error.message);
-        return res.status(502).json({ message: 'Could not connect to the image service' });
-    }
-};
+const { generateImage } = require('../images');
 
 const workspaceTypes = new Set(['memory', 'project', 'document', 'prompt', 'assistant', 'agent', 'evaluation', 'workflow', 'meeting', 'prompt_version', 'marketplace_item', 'skill_session', 'team', 'presentation', 'website']);
 const cleanEmail = (value) => String(value || '').trim().toLowerCase();
@@ -1623,6 +1600,7 @@ module.exports = {
     deleteUser,
     deleteAccount,
     getCredits,
+    setAccessMode,
     getModelStatus,
     getAdminStats,
     getChatHistory,

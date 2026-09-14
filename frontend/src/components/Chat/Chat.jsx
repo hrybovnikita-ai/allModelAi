@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Highlight, themes } from 'prism-react-renderer';
+import { Highlight } from 'prism-react-renderer';
+import { Prism, codeTheme, languageAliases } from '../../lib/codeHighlight';
 import { dashboardModels } from '../../data/dashboardModels';
 import { apiFetch, checkChatResponse } from '../../lib/api';
 import SessionRecovery from './SessionRecovery';
@@ -24,7 +25,6 @@ const chatTextColors = [
 function CodeBlock({ language, code }) {
   const [copied, setCopied] = useState(false);
   const [wrapped, setWrapped] = useState(false);
-  const languageAliases = { js: 'javascript', jsx: 'jsx', ts: 'typescript', py: 'python', sh: 'bash', shell: 'bash', html: 'markup' };
   const prismLanguage = languageAliases[language?.toLowerCase()] || language?.toLowerCase() || 'text';
   const copyCode = async () => {
     await navigator.clipboard.writeText(code);
@@ -45,13 +45,12 @@ function CodeBlock({ language, code }) {
 
   return <section className={`response-code-block ${wrapped ? 'code-wrapped' : ''}`}>
     <header><span>{language || 'code'}</span><div><button type="button" onClick={() => setWrapped((value) => !value)} aria-label="Toggle line wrapping">{wrapped ? 'Scroll' : 'Wrap'}</button><button type="button" onClick={downloadCode} aria-label="Download code">Download</button><button type="button" onClick={copyCode} aria-label="Copy code">{copied ? 'Copied!' : 'Copy'}</button></div></header>
-    <Highlight theme={themes.vsDark} code={code} language={prismLanguage}>
+    <Highlight prism={Prism} theme={codeTheme} code={code} language={prismLanguage}>
       {({ className, style, tokens, getLineProps, getTokenProps }) => (
         <pre className={className} style={{ ...style, background: 'transparent' }}>
           <code>{tokens.map((line, lineIndex) => {
             const lineProps = getLineProps({ line });
             return <span {...lineProps} className={`${lineProps.className || ''} code-line`} key={lineIndex}>
-              <span className="code-line-number" aria-hidden="true">{lineIndex + 1}</span>
               <span className="code-line-content">{line.map((token, tokenIndex) => <span {...getTokenProps({ token })} key={tokenIndex} />)}</span>
             </span>;
           })}</code>
@@ -156,6 +155,7 @@ export default function Chat() {
   const [chatError, setChatError] = useState('');
   const [sessionExpired, setSessionExpired] = useState(false);
   const [creditStatus, setCreditStatus] = useState(null);
+  const [accessModeSaving, setAccessModeSaving] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
@@ -217,7 +217,32 @@ export default function Chat() {
     return modelStatus[statusKey] !== false;
   };
 
+  const modelAllowed = (slug) => slug === 'smart' || Boolean(creditStatus?.models?.includes('all') || creditStatus?.models?.includes(slug));
+  const changeAccessMode = async (mode) => {
+    if (isSending || accessModeSaving) return;
+    setAccessModeSaving(true);
+    setChatError('');
+    try {
+      const response = await apiFetch('/api/access-mode', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }),
+      });
+      const access = await response.json();
+      if (!response.ok) throw new Error(access.message || 'Could not change the access mode.');
+      setCreditStatus(access);
+      if (!access.models.includes('all') && !access.models.includes(selectedSlug) && selectedSlug !== 'smart') {
+        setSelectedSlug('gemini');
+        localStorage.setItem('allmodelai_selected_model', 'gemini');
+        navigate('/chat?model=gemini', { replace: true });
+      }
+      setModelMenuOpen(false);
+      setModelNotice(access.mode === 'developer' ? 'All models are available. API provider limits still apply.' : 'User: Gemini, Llama, DeepSeek, Mistral, and Qwen are available.');
+    } catch (error) {
+      setChatError(error.message);
+    } finally { setAccessModeSaving(false); }
+  };
+
   const chooseModel = (model) => {
+    if (!modelAllowed(model.slug)) { setChatError('This model is available with a subscription or in Developer mode.'); return; }
     const online = modelIsOnline(model.slug);
     setSelectedSlug(model.slug);
     localStorage.setItem('allmodelai_selected_model', model.slug);
@@ -509,7 +534,11 @@ export default function Chat() {
     if (!user?.email || isGuest) return;
     apiFetch(`/api/credits?email=${encodeURIComponent(user.email)}`)
       .then((response) => response.ok ? response.json() : null)
-      .then((status) => status && setCreditStatus(status))
+      .then((status) => {
+        if (!status) return;
+        setCreditStatus(status);
+        setSelectedSlug((current) => status.models.includes('all') || status.models.includes(current) || current === 'smart' ? current : 'gemini');
+      })
       .catch(() => setCreditStatus(null));
   }, [user?.email, isGuest]);
 
@@ -539,8 +568,9 @@ export default function Chat() {
     event?.preventDefault();
     const rawText = String(overrideText ?? prompt).trim();
     const currentAttachment = overrideAttachment ?? attachedImage;
-    const text = rawText || (currentAttachment ? 'Проанализируй этот скриншот: подробно опиши, что здесь отображено, и подскажи по шагам, куда нужно нажимать и что делать.' : '');
+    const text = rawText || (currentAttachment ? 'Analyze this screenshot: describe in detail what is shown here and give me step-by-step guidance on where to click and what to do.' : '');
     if (!text || isSending) return;
+    const generatingImage = selectedSkill === 'image' || (!currentAttachment && /^(?:нарисуй|сгенерируй\s+(?:изображение|картинку|фото)|создай\s+(?:изображение|картинку)|draw|generate\s+(?:an?\s+)?(?:image|picture|photo)|намалюй|згенеруй\s+зображення)/i.test(rawText));
     const userMessage = {
       role: 'user',
       text,
@@ -557,7 +587,7 @@ export default function Chat() {
     const controller = new AbortController();
     activeRequest.current = controller;
     const assistantIndex = nextMessages.length;
-    setMessages([...nextMessages, { role: 'assistant', text: selectedSkill === 'web' ? 'Searching the web…' : '', modelSlug: selectedSlug, webSearching:selectedSkill === 'web' }]);
+    setMessages([...nextMessages, { role: 'assistant', text: generatingImage ? 'Creating your image… This may take a couple of minutes.' : selectedSkill === 'web' ? 'Searching the web…' : '', modelSlug: selectedSlug, webSearching:selectedSkill === 'web' }]);
 
     try {
       if (isGuest) {
@@ -578,22 +608,40 @@ export default function Chat() {
         setSelectedSkill(null);
         return;
       }
-      if (selectedSkill === 'image') {
+      if (generatingImage) {
         const imageResponse = await apiFetch('/api/images', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: text }),
-          signal: controller.signal,
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: text }), signal: controller.signal,
         });
         await checkChatResponse(imageResponse);
         const imageData = await imageResponse.json().catch(() => ({}));
-        if (!imageResponse.ok) throw new Error(imageData.message || 'Could not create the image.');
-        setMessages((current) => current.map((message, index) => (
-          index === assistantIndex ? { ...message, text: 'Here is your generated image.', imageUrl: imageData.imageUrl } : message
-        )));
-        const gallery = JSON.parse(localStorage.getItem('allmodelai_image_gallery') || '[]');
-        localStorage.setItem('allmodelai_image_gallery', JSON.stringify([{ id: `${text.slice(0, 24)}-${imageData.imageUrl.slice(-16)}`, prompt: text, imageUrl: imageData.imageUrl }, ...gallery].slice(0, 40)));
-        setSelectedSkill(null);
+        if (!imageResponse.ok || !imageData.imageUrl) throw new Error(imageData.message || 'Could not create the image.');
+        const answer = { role: 'assistant', text: 'Done! Here is your image.', imageUrl: imageData.imageUrl };
+        const stillOpen = () => activeConversationIdRef.current === startedConversationId;
+        if (stillOpen()) setMessages([...nextMessages, answer]);
+        if (!temporaryChat) {
+          // The gallery is an optional device cache; storage limits must not discard a generated image.
+          try {
+            const cached = JSON.parse(localStorage.getItem('allmodelai_image_gallery') || '[]');
+            const gallery = Array.isArray(cached) ? cached : [];
+            localStorage.setItem('allmodelai_image_gallery', JSON.stringify([{ id: `${text.slice(0, 24)}-${imageData.imageUrl.slice(-16)}`, prompt: text, imageUrl: imageData.imageUrl }, ...gallery].slice(0, 5)));
+          } catch { /* The server history remains the durable copy. */ }
+          try {
+            const saved = await apiFetch(startedConversationId ? `/api/chat/history/${startedConversationId}` : '/api/chat/history', {
+              method: startedConversationId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: selectedSlug, messages: [...nextMessages, answer] }),
+            });
+            if (!saved.ok) throw new Error('save failed');
+            const conversation = await saved.json();
+            if (stillOpen() && !startedConversationId) {
+              activeConversationIdRef.current = conversation.id;
+              setActiveConversationId(conversation.id);
+            }
+            await refreshHistory();
+          } catch {
+            if (stillOpen() || !startedConversationId) setChatError('The image is ready, but saving history failed. Download the picture before closing the chat.');
+          }
+        }
         return;
       }
       let conversationId = activeConversationId;
@@ -645,7 +693,7 @@ export default function Chat() {
           await refreshHistory();
         }
         if (!responseBelongsToOpenChat()) {
-          setBackgroundNotification({ conversationId, title: `${selectedModel.name} ответил`, text: responseText.slice(0, 140) || 'Ответ готов.' });
+          setBackgroundNotification({ conversationId, title: `${selectedModel.name} replied`, text: responseText.slice(0, 140) || 'Your answer is ready.' });
         }
         if (voiceMode) speakText(responseText);
         return;
@@ -703,7 +751,7 @@ export default function Chat() {
       await refreshHistory();
       if (voiceMode) speakText(assistantText);
       if (!responseBelongsToOpenChat()) {
-        setBackgroundNotification({ conversationId, title: `${selectedModel.name} ответил`, text: assistantText.slice(0, 140) || 'Ответ готов.' });
+        setBackgroundNotification({ conversationId, title: `${selectedModel.name} replied`, text: assistantText.slice(0, 140) || 'Your answer is ready.' });
       }
       if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         new Notification(`${selectedModel.name} finished`, { body: assistantText.slice(0, 120) || 'Your answer is ready.' });
@@ -712,6 +760,7 @@ export default function Chat() {
       if (requestError.name === 'AbortError') {
         setMessages((current) => current.filter((message, index) => index !== assistantIndex || String(message.text || message.content || '').trim()));
       } else {
+        if (generatingImage && activeConversationIdRef.current === startedConversationId) setPrompt((current) => current || rawText);
         setSessionExpired(requestError.status === 401);
         const fallbackMessage = requestError.message === 'Failed to fetch'
           ? 'Could not connect to the server. Check your connection and try again.'
@@ -910,11 +959,18 @@ export default function Chat() {
         <header className="chat-header">
           <button className="sidebar-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open sidebar">☰</button>
           <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? 'Temporary chat' : activeProject ? activeProject.name : 'Chatting with'}</small><strong>{selectedModel.name}</strong></span><i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? 'Online' : 'API needed'}</i></div>
-          <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onBlur={(event) => { const root = event.currentTarget; window.setTimeout(() => { if (!root.contains(document.activeElement) && !root.matches(':hover')) setModelMenuOpen(false); }, 180); }}><span>Model</span><button type="button" className="model-select-trigger" onClick={() => setModelMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={modelMenuOpen}><span>{selectedModel.name} — {selectedModel.provider}</span><i>⌄</i></button>{modelMenuOpen && <div className="model-options" role="listbox" aria-label="Choose AI model">{dashboardModels.map((model) => { const online = modelIsOnline(model.slug); return <button type="button" role="option" aria-selected={selectedSlug === model.slug} aria-disabled={!online} className={`${selectedSlug === model.slug ? 'selected' : ''}${online ? '' : ' unavailable'}`} key={model.slug} onClick={() => chooseModel(model)}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {online ? 'Ready' : 'API needed'}</small></span>{selectedSlug === model.slug && <b>✓</b>}</button>; })}</div>}</div>
+          <div className="access-mode-control">
+            <div className="access-mode-switch" role="group" aria-label="Access mode">
+              <button type="button" aria-pressed={(creditStatus?.mode || 'user') === 'user'} disabled={isGuest || !creditStatus || isSending || accessModeSaving} onClick={() => changeAccessMode('user')}>User</button>
+              <button type="button" aria-pressed={creditStatus?.mode === 'developer'} disabled={isGuest || !creditStatus || isSending || accessModeSaving} onClick={() => changeAccessMode('developer')} title={creditStatus?.canUseDeveloper ? 'All models' : 'Subscription or developer status required'}>Developer {!creditStatus?.canUseDeveloper && '🔒'}</button>
+            </div>
+            <small>{accessModeSaving ? 'Saving…' : creditStatus?.mode === 'developer' ? 'All models' : '5 free models'}{creditStatus && !creditStatus.canUseDeveloper && <Link to="/pricing">Subscription ↗</Link>}</small>
+          </div>
+          <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onBlur={(event) => { const root = event.currentTarget; window.setTimeout(() => { if (!root.contains(document.activeElement) && !root.matches(':hover')) setModelMenuOpen(false); }, 180); }}><span>Model</span><button type="button" className="model-select-trigger" onClick={() => setModelMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={modelMenuOpen}><span>{selectedModel.name} — {selectedModel.provider}</span><i>⌄</i></button>{modelMenuOpen && <div className="model-options" role="listbox" aria-label="Choose AI model">{dashboardModels.map((model) => { const online = modelIsOnline(model.slug); const allowed = modelAllowed(model.slug); return <button type="button" role="option" aria-selected={selectedSlug === model.slug} aria-disabled={!allowed} disabled={!allowed} className={`${selectedSlug === model.slug ? 'selected' : ''}${allowed ? '' : ' unavailable'}`} key={model.slug} onClick={() => chooseModel(model)}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {!allowed ? '🔒 Subscription / Developer' : online ? 'Ready' : 'API needed'}</small></span>{selectedSlug === model.slug && <b>✓</b>}</button>; })}</div>}</div>
           <Link className="dashboard-link" to="/dashboard">Dashboard</Link>
         </header>
         {(creditStatus || (selectedSlug === 'smart' && routeInfo) || modelNotice || backgroundNotification) && <div className="chat-statuses">
-          {creditStatus && <div className="credit-status" role="status">{creditStatus.unlimited ? 'Plan access active' : `${creditStatus.remaining} credits remaining`}</div>}
+          {creditStatus && <div className="credit-status" role="status">{creditStatus.unlimited ? 'Developer · All models available' : 'User · 5 free models'}</div>}
           {selectedSlug === 'smart' && routeInfo && <div className="credit-status" role="status">Smart Router → {routeInfo.model}: {routeInfo.reason}{routeInfo.sources.length ? ` · ${routeInfo.sources.length} knowledge source(s)` : ''}</div>}
           {modelNotice && <div className="model-selection-notice" role="status"><span>{modelNotice}</span><button type="button" onClick={() => setModelNotice('')} aria-label="Dismiss model selection message">×</button></div>}
           {backgroundNotification && <div className="model-selection-notice chat-background-notification" role="status"><span><strong>{backgroundNotification.title}</strong><small>{backgroundNotification.text}</small></span><button type="button" onClick={async () => { const history = await apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`).then((response) => response.ok ? response.json() : []); const conversation = history.find((item) => item.id === backgroundNotification.conversationId); if (conversation) openConversation(conversation); setBackgroundNotification(null); }} aria-label="Open completed response">Open chat</button><button type="button" onClick={() => setBackgroundNotification(null)} aria-label="Dismiss notification">×</button></div>}
@@ -925,13 +981,13 @@ export default function Chat() {
           {messages.map((message, index) => {
             const messageModel = dashboardModels.find((model) => model.slug === message.modelSlug) || selectedModel;
             const text = message.content ?? message.text ?? '';
-            const messageImage = message.image || (message.role === 'user' ? message.imageUrl : null);
+            const messageImage = message.role === 'user' ? message.image || message.imageUrl : null;
             if (!text && !messageImage && message.role === 'assistant' && isSending && index === messages.length - 1) return null;
             const activelyStreaming = isStreamingResponse && isSending && index === messages.length - 1 && message.role === 'assistant';
             const editing = message.role === 'user' && editingMessageIndex === index;
             const liked = messageLikes[index];
             const feedback = messageFeedback[index];
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>Cancel</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : text && (message.role === 'assistant' ? <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.imageUrl && message.role !== 'user' && <img className="generated-image" src={message.imageUrl} alt={text || 'Generated image'} onClick={() => setPreviewModalImage(message.imageUrl)} />}{text && !activelyStreaming && !editing && <div className="message-actions">
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>Cancel</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : text && (message.role === 'assistant' ? <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.imageUrl && message.role !== 'user' && <div className="generated-image-result"><button type="button" className="generated-image-preview" onClick={() => setPreviewModalImage(message.imageUrl)} aria-label="Open image"><img className="generated-image" src={message.imageUrl} alt="Generated image" /></button><a href={message.imageUrl} download="allmodelai-image.png" target="_blank" rel="noreferrer">↓ Download image</a></div>}{text && !activelyStreaming && !editing && <div className="message-actions">
               {message.role === 'assistant' ? (
                 <>
                   <button type="button" data-tooltip="Copy" onClick={() => copyMessage(text)} aria-label="Copy response">⎘</button>
@@ -983,6 +1039,10 @@ export default function Chat() {
               <button type="button" disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))} onClick={() => { const last = [...messages].reverse().find((message) => message.role === 'assistant' && (message.text || message.content)); if (last) toggleFavorite(last.text || last.content, last.modelSlug); setComposerMenuOpen(false); }}><span>★</span> Save last answer</button>
             </div>}
             <div className="composer-box">
+              <div className="image-mode-switch" role="group" aria-label="Response mode">
+                <button type="button" disabled={isSending} aria-pressed={selectedSkill !== 'image'} onClick={() => setSelectedSkill(null)}>Chat</button>
+                <button type="button" disabled={isSending} aria-pressed={selectedSkill === 'image'} onClick={() => { setAttachedImage(null); chooseSkill('image'); }}>✦ Create image</button>
+              </div>
               {voicePanelOpen && <section className="voice-panel" aria-label="Voice mode settings">
                 <div><strong>Voice conversation</strong><button type="button" className={voiceMode ? 'voice-toggle active' : 'voice-toggle'} onClick={changeVoiceMode} aria-pressed={voiceMode}>{voiceMode ? 'On' : 'Off'}</button></div>
                 <p>Send speech automatically and read every AI response aloud.</p>
@@ -992,7 +1052,7 @@ export default function Chat() {
               </section>}
               {selectedSkill && <div className="selected-skill">
                 <span className={`selected-skill-icon ${selectedSkill}`} aria-hidden="true">{selectedSkill === 'image' ? '✦' : selectedSkill === 'web' ? '◎' : '▶'}</span>
-                <span><strong>{selectedSkill === 'image' ? 'Create image' : selectedSkill === 'web' ? 'Search the web' : 'Make a video'}</strong><small>{selectedSkill === 'image' ? 'Describe the image you want to create' : selectedSkill === 'web' ? 'Current information with sources' : 'Describe the video you want to create'}</small></span>
+                <span><strong>{selectedSkill === 'image' ? 'Create image' : selectedSkill === 'web' ? 'Search the web' : 'Make a video'}</strong><small>{selectedSkill === 'image' ? 'Write a description and press send'  : selectedSkill === 'web' ? 'Current information with sources' : 'Describe the video you want to create'}</small></span>
                 <button type="button" className="selected-skill-remove" onClick={() => setSelectedSkill(null)} aria-label="Remove selected skill" title="Remove skill">×</button>
               </div>}
               {attachedImage && (
@@ -1014,7 +1074,7 @@ export default function Chat() {
                 </div>
               )}
               <input ref={fileInput} className="chat-file-input" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.pdf,.txt,.md,.json,.csv,.js,.jsx,.ts,.tsx,.py,.html,.css" onChange={readFile} />
-              <textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); loadContextSuggestions(event.target.value); }} onPaste={handlePaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={isSending ? selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : attachedImage ? 'Ask anything about this screenshot (e.g. "Where should I click?") or press Send...' : selectedSkill === 'image' ? 'Example: a gold dragon flying over a fantasy city at night...' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : `Message ${selectedModel.name}... (paste screenshot with Ctrl+V)`} rows="1" aria-label="Chat message" />
+              <textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); loadContextSuggestions(event.target.value); }} onPaste={handlePaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={isSending ? selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : attachedImage ? 'Ask anything about this screenshot (e.g. "Where should I click?") or press Send...' : selectedSkill === 'image' ? 'For example: a golden dragon over a night city, realistic style…' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : `Message ${selectedModel.name}... (paste screenshot with Ctrl+V)`} rows="1" aria-label="Chat message" />
               {contextSuggestions.length > 0 && !isSending && !attachedImage && <div className="context-suggestions">{contextSuggestions.map((item) => <button key={item} type="button" onClick={() => { setPrompt(item); setContextSuggestions([]); document.querySelector('.chat-composer textarea')?.focus(); }}>{item}</button>)}</div>}
               <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label="Open tools" aria-expanded={composerMenuOpen}>＋</button><button type="button" className="composer-camera" onClick={() => fileInput.current?.click()} aria-label="Upload screenshot or image" title="Upload screenshot or image (or paste Ctrl+V)">📷</button></div><span>{selectedModel.name} · {isListening ? 'Listening…' : isSending ? 'Generating — you can keep typing' : attachedImage ? 'Screenshot ready to send' : 'Ready · replies in your language'}</span><div className="composer-actions"><button type="button" className={isListening ? 'voice-active' : ''} onClick={toggleVoiceInput} aria-label="Use microphone" title="Use microphone">●</button>{isSending ? <button className="stop-generation" type="button" onClick={stopGenerating} aria-label="Stop generating" title="Stop generating"><i /></button> : <button className="send-message" type="submit" disabled={!prompt.trim() && !attachedImage} aria-label="Send message">↑</button>}</div></div>
             </div>

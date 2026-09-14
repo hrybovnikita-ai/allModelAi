@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { LANGUAGES, translate, applyLanguage } from '../../lib/languages';
 import './Settings.css';
 
 export default function Settings() {
@@ -9,14 +10,40 @@ export default function Settings() {
   const savedProfile = JSON.parse(localStorage.getItem('allmodelai_profile') || '{}');
   const [profile, setProfile] = useState({ name: savedProfile.name || user?.name || '', avatar: savedProfile.avatar || '', language: savedProfile.language || 'English' });
   const [notice, setNotice] = useState('');
+  const [pendingLanguage, setPendingLanguage] = useState(null);
   if (!user) return <Navigate to="/" replace />;
+
+  const t = (key) => translate(key, applyLanguage(profile.language)?.code);
+
+  const changeLanguage = (event) => {
+    const language = event.target.value;
+    if (language === profile.language) return;
+    setPendingLanguage(language);
+  };
+
+  const confirmLanguage = () => {
+    const language = pendingLanguage;
+    setPendingLanguage(null);
+    if (!language) return;
+    const nextProfile = { ...profile, language };
+    setProfile(nextProfile);
+    localStorage.setItem('allmodelai_profile', JSON.stringify(nextProfile));
+    applyLanguage(language);
+    setNotice(`${t('notice')} (${language})`);
+  };
+
+  const cancelLanguage = () => {
+    // "No": keep the previous language — the select snaps back to the saved value.
+    setPendingLanguage(null);
+    setNotice('');
+  };
 
   const saveProfile = (event) => {
     event.preventDefault();
     sessionStorage.setItem('allmodelai_user', JSON.stringify({ ...user, name: profile.name.trim() || user.name }));
     localStorage.setItem('allmodelai_profile', JSON.stringify(profile));
-    document.documentElement.lang = profile.language === 'Русский' ? 'ru' : profile.language === 'Українська' ? 'uk' : 'en';
-    setNotice('Profile and language preferences saved.');
+    applyLanguage(profile.language);
+    setNotice(t('notice'));
   };
   const logout = async () => {
     if (!user.guest) await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
@@ -25,15 +52,27 @@ export default function Settings() {
   };
 
   return <main className="settings-page"><nav className="settings-nav"><Link to="/dashboard">← Dashboard</Link><strong>AllModelAI settings</strong><Link to="/chat">Open chat</Link></nav><section className="settings-shell">
-    <div className="settings-heading"><span>Account</span><h1>Your workspace profile</h1><p>Manage your avatar, identity, language, and account security.</p></div>
+    <div className="settings-heading"><span>{t('account')}</span><h1>{t('heading')}</h1><p>{t('subtitle')}</p></div>
     <form className="settings-card" onSubmit={saveProfile}><div className="settings-avatar">{profile.avatar ? <img src={profile.avatar} alt="Profile avatar" /> : (profile.name || user.email).slice(0, 2).toUpperCase()}</div><div className="settings-fields">
-      <label>Full name<input value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} /></label>
-      <label>Email address<input value={user.email} readOnly /></label>
-      <label>Avatar image URL<input value={profile.avatar} onChange={(event) => setProfile({ ...profile, avatar: event.target.value })} placeholder="https://example.com/avatar.jpg" /></label>
-      <label>Interface language<select value={profile.language} onChange={(event) => setProfile({ ...profile, language: event.target.value })}>{['English', 'Русский', 'Українська'].map((language) => <option key={language}>{language}</option>)}</select></label>
-      <button className="settings-save" type="submit">Save profile</button>
+      <label>{t('fullName')}<input value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} /></label>
+      <label>{t('email')}<input value={user.email} readOnly /></label>
+      <label>{t('avatar')}<input value={profile.avatar} onChange={(event) => setProfile({ ...profile, avatar: event.target.value })} placeholder="https://example.com/avatar.jpg" /></label>
+      <label>{t('language')}<select value={profile.language} onChange={changeLanguage}>{LANGUAGES.map((language) => <option key={language.name} value={language.name}>{language.native} ({language.name})</option>)}</select></label>
+      <button className="settings-save" type="submit">{t('save')}</button>
     </div></form>
-    <section className="settings-card settings-security"><div><span>Security</span><h2>Keep your account in your control.</h2><p>{user.guest ? 'Guest data stays only in this browser session.' : 'Your session uses a protected HttpOnly cookie. Password recovery is available anytime.'}</p></div><Link className="settings-security-link" to="/forgot-password">Change password</Link></section>
-    {notice && <p className="settings-notice" role="status">{notice}</p>}<button className="settings-logout" type="button" onClick={logout}>Sign out of AllModelAI</button>
-  </section></main>;
+    <section className="settings-card settings-security"><div><span>{t('security')}</span><h2>{t('securityHeading')}</h2></div><Link className="settings-security-link" to="/forgot-password">{t('changePassword')}</Link></section>
+    {notice && <p className="settings-notice" role="status">{notice}</p>}<button className="settings-logout" type="button" onClick={logout}>{t('logout')}</button>
+  </section>
+    {pendingLanguage && <div className="settings-modal-backdrop" onClick={cancelLanguage}>
+      <section className="settings-modal" role="alertdialog" aria-modal="true" aria-labelledby="language-confirm-title" onClick={(event) => event.stopPropagation()}>
+        <span className="settings-modal-icon">🌐</span>
+        <h2 id="language-confirm-title">{t('confirmTitle')}</h2>
+        <p className="settings-modal-text">{t('confirmText')}</p>
+        <div className="settings-modal-actions">
+          <button type="button" className="settings-modal-no" onClick={cancelLanguage}>{t('no')}</button>
+          <button type="button" className="settings-modal-yes" onClick={confirmLanguage}>{t('yes')}</button>
+        </div>
+      </section>
+    </div>}
+  </main>;
 }

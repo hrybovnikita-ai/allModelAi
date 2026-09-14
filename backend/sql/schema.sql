@@ -226,3 +226,8 @@ CREATE TABLE IF NOT EXISTS users (
             expires_at INTEGER NOT NULL,
             created_at TEXT NOT NULL
         );
+
+CREATE TABLE IF NOT EXISTS account_access_modes (
+    email TEXT PRIMARY KEY,
+    mode TEXT NOT NULL CHECK(mode IN ('user', 'developer'))
+);

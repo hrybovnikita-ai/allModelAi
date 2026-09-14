@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
+import { LANGUAGES, translate, applyLanguage, isRtlLanguage } from '../lib/languages';
 import './ChatSettings.css';
 
 const colors=[['Blue','#3b82f6'],['Yellow','#facc15'],['Purple','#a855f7'],['Lime','#a3e635'],['Orange','#f97316'],['Red','#ef4444'],['Red orange','#ff4500'],['Violet','#8b5cf6'],['Gray','#9ca3af'],['Green yellow','#adff2f']];
@@ -11,17 +12,40 @@ export default function ChatSettings(){
  const[theme,setTheme]=useState(initial.theme||'dark');
  const[color,setColor]=useState(!initial.textColor||initial.textColor.toLowerCase()==='#ffffff'?'#8b5cf6':initial.textColor);
  const[inputColor,setInputColor]=useState(initial.inputColor||'#262626');
+ const[lang,setLang]=useState(localStorage.getItem('allmodelai_language')||'English');
+ const[pendingLang,setPendingLang]=useState(null);
  useEffect(()=>{const current=JSON.parse(localStorage.getItem('allmodelai_appearance')||'{}');localStorage.setItem('allmodelai_appearance',JSON.stringify({...current,theme,textColor:color,inputColor}));document.documentElement.dataset.themePreference=theme;document.documentElement.dataset.theme=theme==='auto'?(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):theme;document.documentElement.style.setProperty('--user-text-color',color);document.documentElement.style.setProperty('--user-bubble-text',contrast(color));document.documentElement.style.setProperty('--composer-color',inputColor);document.documentElement.style.setProperty('--composer-text',contrast(inputColor));},[theme,color,inputColor]);
  const chooseTheme=value=>setTheme(value);
  const chooseColor=value=>setColor(value);
+ const currentCode=applyLanguage(lang).code;
+ const t=key=>translate(key,currentCode);
+ const rtl=isRtlLanguage(currentCode);
+ const confirmLanguage=()=>{
+  localStorage.setItem('allmodelai_language',pendingLang);
+  setLang(pendingLang);
+  setPendingLang(null);
+ };
  if(!user)return <Navigate to="/" replace/>;
  return <main className="chat-settings-page">
   <header><Link to="/chat" className="settings-page-brand"><span>AI</span>AllModelAI</Link><Link to="/chat" className="back-to-chat">← Back to chat</Link></header>
   <section className="settings-page-hero"><div><span className="settings-page-gear">⚙</span><div><p>PERSONAL CHAT</p><h1>Settings</h1><small>Make your AllModelAI chat feel like your own.</small></div></div><b>Appearance</b></section>
   <div className="settings-page-layout"><section className="settings-options">
+   <article><small>03 · LANGUAGE</small><h2>{t('language')}</h2><p>{t('confirmText')}</p><div className="page-color-grid language-grid">
+     {LANGUAGES.map(language=><button className={lang===language.name?'active':''} onClick={()=>setPendingLang(language.name)} key={language.name}><i className="language-icon">{language.code.slice(0,2).toUpperCase()}</i><span>{language.name} · {language.native}</span><b>{lang===language.name?'✓':''}</b></button>)}
+   </div></article>
    <article><small>INPUT FIELD</small><h2>Choose input color</h2><p>Change the background of the field where you type messages.</p><div className="page-color-grid">{[['Black','#090909'],['Graphite','#262626'],...colors].map(([name,value])=><button className={inputColor===value?'active':''} style={{'--choice':value}} onClick={()=>setInputColor(value)} key={`input-${name}`}><i/><span>{name}</span><b>{inputColor===value?'✓':''}</b></button>)}</div></article>
    <article><small>01 · THEME</small><h2>Choose your theme</h2><p>Change the workspace appearance while keeping the violet AllModelAI accents.</p><div className="page-theme-grid">{[['light','☀','Light','Bright and clean'],['dark','●','Dark','Deep black workspace'],['auto','◐','System','Match your device']].map(([value,icon,name,description])=><button className={theme===value?'active':''} onClick={()=>chooseTheme(value)} key={value}><i>{icon}</i><span><strong>{name}</strong><small>{description}</small></span><b>{theme===value?'✓':''}</b></button>)}</div></article>
    <article><small>02 · MESSAGE BUBBLE</small><h2>Choose your color</h2><p>Your selected color replaces the gray outgoing-message block.</p><div className="page-color-grid">{colors.map(([name,value])=><button className={color===value?'active':''} style={{'--choice':value}} onClick={()=>chooseColor(value)} key={name}><i/><span>{name}</span><b>{color===value?'✓':''}</b></button>)}</div></article>
   </section><aside className="settings-preview"><div><small>LIVE RESULT</small><h2>Your chat preview</h2><p>Changes are saved automatically.</p></div><section><div className="preview-ai"><i>AI</i><p>Hello, {user.name?.split(' ')[0]||'creator'}! What would you like to build today?</p></div><div className="preview-user"><p style={{backgroundColor:color,color:contrast(color)}}>Help me create a great new project</p></div><div className="preview-composer"><span>Message AllModelAI...</span><b>↑</b></div></section><footer><span><i style={{backgroundColor:color}}/>Selected</span><strong>{colors.find(([,value])=>value===color)?.[0]||'Custom'} · {theme}</strong></footer></aside></div>
- </main>;
-}
+   {pendingLang&&<div className="language-confirm-overlay" role="dialog" aria-modal="true">
+    <div className="language-confirm-modal">
+     <h3>{t('confirmTitle')}</h3>
+     <p>{t('confirmText')}</p>
+     <div className="language-confirm-actions">
+      <button className="confirm-yes" onClick={confirmLanguage}>{t('yes')}</button>
+      <button className="confirm-no" onClick={()=>setPendingLang(null)}>{t('no')}</button>
+     </div>
+    </div>
+   </div>}
+  </main>;
+ }

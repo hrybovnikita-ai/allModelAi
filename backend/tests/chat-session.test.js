@@ -20,10 +20,10 @@ test('an expired session can sign in again and retry the saved conversation', as
   const account = { name: 'Recovery User', email: 'recovery@example.com', password: 'RecoveryTest123!' };
   assert.equal((await client.post('/api/auth/register').send(account)).status, 201);
   const messages = [{ role: 'user', text: 'Hello again' }];
-  const saved = await client.post('/api/chat/history').send({ model: 'gpt', messages });
+  const saved = await client.post('/api/chat/history').send({ model: 'gemini', messages });
   assert.equal(saved.status, 201);
   app.locals.db.database.prepare('UPDATE auth_sessions SET expires_at = ?').run(0);
-  const payload = { model: 'gpt', conversationId: saved.body.id, messages };
+  const payload = { model: 'gemini', conversationId: saved.body.id, messages };
   assert.equal((await client.post('/api/chat').send(payload)).status, 401);
   assert.equal((await client.post('/api/auth/login').send(account)).status, 200);
   const originalFetch = global.fetch;

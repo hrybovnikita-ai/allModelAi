@@ -70,3 +70,13 @@ Secrets are stored only in backend/.env. The demo social account selection featu
 Authentication
 
 Sign in at `/login` or create an account at `/register`. Private workspace pages verify the server session before rendering and return you to the requested page after sign-in. Remember me keeps the HTTP-only session cookie for 30 days; otherwise the cookie lasts for the browser session, with an 8-hour server expiry. Sign out revokes the session without deleting the account. Passwordless accounts must use their original provider or the password recovery flow; public login and registration cannot assign a password to an existing account. The legacy ALLOW_ANY_PASSWORD bypass is no longer supported.
+
+Image generation
+
+In Chat, select “Создать изображение”, describe the picture, and send. Requests beginning with “Нарисуй” also trigger generation. Results can be enlarged, downloaded, and restored from conversation history (except temporary chats).
+
+The server uses IMAGE_API_KEY, OPENAI_API_KEY, or the legacy OPEN_AI_API_KEY. IMAGE_API_URL and IMAGE_MODEL support a configured compatible endpoint. For Cloudflare, set IMAGE_PROVIDER=cloudflare, CLOUDFLARE_ACCOUNT_ID, and CLOUDFLARE_API_KEY; the legacy CLAUDEFLARE_API_KEY spelling is supported. Keep all keys in backend/.env. A 429 response requires checking provider quota/balance or retrying later.
+
+User / Developer access
+
+The chat header switch stores the chosen mode on the server. User exposes five models without an AllModelAI subscription: Gemini, Llama, DeepSeek, Mistral, and Qwen. Smart Router and fallback stay within that list. Active paid subscriptions and accounts in DEVELOPER_EMAILS unlock Developer mode with all models and no application credit cap. Developer accounts default to Developer; selecting User previews the restricted experience. Canceled or expired subscriptions revert to User. External provider pricing, balances, rate limits and configured API keys still apply. Restart the backend after updating to apply the account_access_modes schema.

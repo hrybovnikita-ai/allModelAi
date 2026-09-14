@@ -17,6 +17,7 @@ const {
     deleteUser,
     deleteAccount,
     getCredits,
+    setAccessMode,
     getModelStatus,
     getAdminStats,
     getChatHistory,
@@ -64,6 +65,7 @@ router.post('/purchases', requireAuth, createPurchase);
 router.post('/payments/checkout', requireAuth, createCheckoutSession);
 router.get('/payments/session/:sessionId', requireAuth, verifyCheckoutSession);
 router.get('/credits', requireAuth, getCredits);
+router.patch('/access-mode', requireAuth, setAccessMode);
 router.get('/chat/history', requireAuth, getChatHistory);
 router.post('/chat/history', requireAuth, createChatHistory);
 router.patch('/chat/history/:id', requireAuth, renameChat);
