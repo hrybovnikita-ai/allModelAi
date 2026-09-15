@@ -1,23 +1,24 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { LANGUAGES, translate, applyLanguage } from '../../lib/languages';
+import { LANGUAGES } from '../../lib/languages';
+import { useLanguage } from '../../lib/useLanguage';
 import './Settings.css';
 
 export default function Settings() {
   const navigate = useNavigate();
+  const { language: selectedLanguage, setLanguage, t } = useLanguage();
   const saved = sessionStorage.getItem('allmodelai_user');
   const user = saved ? JSON.parse(saved) : null;
   const savedProfile = JSON.parse(localStorage.getItem('allmodelai_profile') || '{}');
-  const [profile, setProfile] = useState({ name: savedProfile.name || user?.name || '', avatar: savedProfile.avatar || '', language: savedProfile.language || 'English' });
+  const [profile, setProfile] = useState({ name: savedProfile.name || user?.name || '', avatar: savedProfile.avatar || '', language: selectedLanguage.name });
   const [notice, setNotice] = useState('');
   const [pendingLanguage, setPendingLanguage] = useState(null);
   if (!user) return <Navigate to="/" replace />;
 
-  const t = (key) => translate(key, applyLanguage(profile.language)?.code);
 
   const changeLanguage = (event) => {
     const language = event.target.value;
-    if (language === profile.language) return;
+    if (language === selectedLanguage.name) return;
     setPendingLanguage(language);
   };
 
@@ -28,8 +29,8 @@ export default function Settings() {
     const nextProfile = { ...profile, language };
     setProfile(nextProfile);
     localStorage.setItem('allmodelai_profile', JSON.stringify(nextProfile));
-    applyLanguage(language);
-    setNotice(`${t('notice')} (${language})`);
+    setLanguage(language);
+    setNotice('notice');
   };
 
   const cancelLanguage = () => {
@@ -41,9 +42,8 @@ export default function Settings() {
   const saveProfile = (event) => {
     event.preventDefault();
     sessionStorage.setItem('allmodelai_user', JSON.stringify({ ...user, name: profile.name.trim() || user.name }));
-    localStorage.setItem('allmodelai_profile', JSON.stringify(profile));
-    applyLanguage(profile.language);
-    setNotice(t('notice'));
+    localStorage.setItem('allmodelai_profile', JSON.stringify({ ...profile, language: selectedLanguage.name }));
+    setNotice('notice');
   };
   const logout = async () => {
     if (!user.guest) await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
@@ -51,17 +51,17 @@ export default function Settings() {
     navigate('/');
   };
 
-  return <main className="settings-page"><nav className="settings-nav"><Link to="/dashboard">← Dashboard</Link><strong>AllModelAI settings</strong><Link to="/chat">Open chat</Link></nav><section className="settings-shell">
+  return <main className="settings-page"><nav className="settings-nav"><Link to="/dashboard">← {t('Dashboard')}</Link><strong>AllModelAI ? {t('settings')}</strong><Link to="/chat">{t('Open chat')}</Link></nav><section className="settings-shell">
     <div className="settings-heading"><span>{t('account')}</span><h1>{t('heading')}</h1><p>{t('subtitle')}</p></div>
     <form className="settings-card" onSubmit={saveProfile}><div className="settings-avatar">{profile.avatar ? <img src={profile.avatar} alt="Profile avatar" /> : (profile.name || user.email).slice(0, 2).toUpperCase()}</div><div className="settings-fields">
       <label>{t('fullName')}<input value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} /></label>
       <label>{t('email')}<input value={user.email} readOnly /></label>
       <label>{t('avatar')}<input value={profile.avatar} onChange={(event) => setProfile({ ...profile, avatar: event.target.value })} placeholder="https://example.com/avatar.jpg" /></label>
-      <label>{t('language')}<select value={profile.language} onChange={changeLanguage}>{LANGUAGES.map((language) => <option key={language.name} value={language.name}>{language.native} ({language.name})</option>)}</select></label>
+      <label>{t('language')}<select value={selectedLanguage.name} onChange={changeLanguage}>{LANGUAGES.map((language) => <option key={language.name} value={language.name}>{language.native}</option>)}</select></label>
       <button className="settings-save" type="submit">{t('save')}</button>
     </div></form>
     <section className="settings-card settings-security"><div><span>{t('security')}</span><h2>{t('securityHeading')}</h2></div><Link className="settings-security-link" to="/forgot-password">{t('changePassword')}</Link></section>
-    {notice && <p className="settings-notice" role="status">{notice}</p>}<button className="settings-logout" type="button" onClick={logout}>{t('logout')}</button>
+    {notice && <p className="settings-notice" role="status">{t(notice)}</p>}<button className="settings-logout" type="button" onClick={logout}>{t('logout')}</button>
   </section>
     {pendingLanguage && <div className="settings-modal-backdrop" onClick={cancelLanguage}>
       <section className="settings-modal" role="alertdialog" aria-modal="true" aria-labelledby="language-confirm-title" onClick={(event) => event.stopPropagation()}>

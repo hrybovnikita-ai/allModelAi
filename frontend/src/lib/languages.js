@@ -1,3 +1,6 @@
+import { INTERFACE_STRINGS } from './interfaceStrings.js';
+import { CHAT_STRINGS } from './chatStrings.js';
+
 // Full interface language list for the Settings page.
 // Each entry: display name shown in the dropdown, BCP-47 code, and native label.
 export const LANGUAGES = [
@@ -530,14 +533,16 @@ const STRINGS = {
 
 const RTL_CODES = ["ar", "ar-EG"];
 
-export const translate = (key, code) =>
-  STRINGS[key]?.[code] || STRINGS[key]?.en || key;
+export const translate = (key, code, values = {}) => {
+  const text = CHAT_STRINGS[code]?.[key] || INTERFACE_STRINGS[code]?.[key] || STRINGS[key]?.[code] || INTERFACE_STRINGS.en[key] || STRINGS[key]?.en || key;
+  return text.replace(/\{(\w+)\}/g, (match, name) => String(values[name] ?? match));
+};
 
 export const isRtlLanguage = (code) => RTL_CODES.includes(code);
 
 // Applies the chosen language to the document and returns its metadata.
 export const applyLanguage = (name) => {
-  const language = LANGUAGES.find((item) => item.name === name) || LANGUAGES[0];
+  const language = LANGUAGES.find((item) => item.name === name || item.code === name) || LANGUAGES[0];
   document.documentElement.lang = language.code;
   document.documentElement.dir = isRtlLanguage(language.code) ? "rtl" : "ltr";
   return language;

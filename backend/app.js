@@ -17,6 +17,8 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 const app = express();
+require('./src/sessionToken').signingKey();
+app.locals.cache = require('./src/cache').createCache();
 app.locals.db = connectDatabase();
 const storedData = app.locals.db.read();
 if (storedData.users.length) {

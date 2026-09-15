@@ -11,7 +11,8 @@ const server = app.listen(PORT, HOST, () => {
 });
 
 const closeServer = () => {
-    server.close(() => {
+    server.close(async () => {
+        await app.locals.cache.close();
         database.close();
         process.exit(0);
     });

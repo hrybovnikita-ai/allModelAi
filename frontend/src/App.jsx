@@ -1,4 +1,6 @@
 import "./App.css";
+import { useLanguage } from "./lib/useLanguage";
+import RainbowExperience from "./components/RainbowExperience/RainbowExperience";
 import AuthPage from "./components/Login/AuthPage";
 import RequireAuth from "./components/Login/RequireAuth";
 import { useState } from "react";
@@ -121,6 +123,7 @@ function HomePage() {
           selectedModel={selectedModel}
           setSelectedModel={setSelectedModel}
         />
+        <RainbowExperience />
         <About />
         <Workflow />
         <Users />
@@ -133,6 +136,7 @@ function HomePage() {
 }
 
 export default function App() {
+  useLanguage();
   return (
     <><CommandPalette /><CookieConsent /><Routes>
       <Route path="/" element={<HomePage />} />

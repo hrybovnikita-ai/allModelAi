@@ -7,6 +7,10 @@ services:
       HOST: 0.0.0.0
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       DB_FILE: /app/backend/storage/database.sqlite
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
     ports: ["5050:5050"]
     volumes: ["allmodelai-data:/app/backend/storage"]
     restart: unless-stopped
@@ -16,5 +20,14 @@ services:
       timeout: 8s
       retries: 3
       start_period: 20s
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 volumes:
   allmodelai-data:

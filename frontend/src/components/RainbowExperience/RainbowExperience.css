@@ -1,0 +1,25 @@
+.rainbow-experience { margin: 3rem 0; color: #f8f7ff; }
+.rainbow-heading { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem; }
+.rainbow-eyebrow { color: #b8b2cc; font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; }
+.rainbow-heading h2 { font-size: clamp(1.7rem, 3vw, 2.6rem); line-height: 1.2; margin: .6rem 0; }
+.rainbow-heading h2 span { color: #c8b4ff; }
+.rainbow-heading button { border: 1px solid #75668e; border-radius: 999px; padding: .7rem 1rem; color: #eee8ff; background: #21182f; cursor: pointer; flex-shrink: 0; }
+.rainbow-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.rainbow-card { --pointer-x: 50%; --pointer-y: 50%; position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; padding: clamp(1.3rem, 2.4vw, 2.4rem); min-height: 310px; border: 1px solid transparent; border-radius: 24px; text-decoration: none; color: #fff; background: linear-gradient(#171123, #171123) padding-box, linear-gradient(120deg, #fc669c, #ffa65b, #eeed81, #57efcc, #73a5ff, #c477ff, #fc669c) border-box; background-size: 100% 100%, 300% 300%; animation: rainbow-flow 12s ease infinite; transition: transform .25s ease, box-shadow .25s ease; }
+.rainbow-card::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(circle at var(--pointer-x) var(--pointer-y), #b478ff35, transparent 65%); }
+.rainbow-card.spectrum { background-image: linear-gradient(135deg, #4e184b, #292050 55%, #0d4246), linear-gradient(120deg, #fc669c, #ffa65b, #eeed81, #57efcc, #73a5ff, #c477ff, #fc669c); }
+.rainbow-card.prism h3 { background: linear-gradient(110deg, #ffb6d6, #ffe0a4, #a5f6d8, #b8ceff, #e9b9ff); background-size: 250% 100%; background-clip: text; -webkit-background-clip: text; color: transparent; animation: rainbow-flow 10s ease infinite; }
+.rainbow-card:hover { transform: translateY(-6px); box-shadow: 0 15px 35px #9b63ff22; }
+.rainbow-card:focus-visible, .rainbow-heading button:focus-visible { outline: 3px solid #b9eaff; outline-offset: 5px; }
+.rainbow-number { color: #ddd0ee; font-size: .7rem; letter-spacing: .16em; }
+.rainbow-card h3 { position: relative; font-size: clamp(1.5rem, 2.4vw, 2rem); line-height: 1.2; margin: 3.5rem 0 1rem; max-width: 14ch; }
+.rainbow-card p { color: #dfd7eb; font-size: .95rem; line-height: 1.7; margin: 0 0 1.5rem; }
+.rainbow-action { display: flex; justify-content: space-between; align-items: center; margin-top: auto; font-weight: 600; font-size: .9rem; }
+.rainbow-orb { position: absolute; z-index: -1; top: -60px; right: -40px; width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f3ccff88, #9166ff44 45%, transparent 70%); animation: rainbow-float 8s ease-in-out infinite; }
+.rainbow-availability { color: #aaa1bc; font-size: .8rem; line-height: 1.6; margin-top: 1rem; }
+@keyframes rainbow-flow { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+@keyframes rainbow-float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-20px, 25px); } }
+.effects-paused *, .effects-paused *::after { animation-play-state: paused !important; transition: none !important; }
+.effects-paused .rainbow-card:hover { transform: none; }
+@media (max-width: 760px) { .rainbow-cards { grid-template-columns: 1fr; } .rainbow-heading { align-items: flex-start; flex-direction: column; } .rainbow-card { min-height: 270px; } }
+@media (prefers-reduced-motion: reduce) { .rainbow-experience *, .rainbow-experience *::after { animation: none !important; transition: none !important; } .rainbow-card:hover { transform: none; } }

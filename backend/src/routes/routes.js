@@ -38,6 +38,7 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { health, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
 
 const router = express.Router();
+const { cachePublicResponse } = require('../cache');
 
 router.post('/auth/register', registerUser);
 router.post('/auth/login', loginUser);
@@ -49,7 +50,7 @@ router.get('/auth/session', getSession);
 router.post('/auth/logout', logout);
 router.post('/auth/password-reset/request', requestPasswordReset);
 router.post('/auth/password-reset/confirm', confirmPasswordReset);
-router.get('/status/models', getModelStatus);
+router.get('/status/models', cachePublicResponse('allmodelai:public:model-status:v1'), getModelStatus);
 router.get('/health', health);
 router.get('/community/users', getCommunityUsers);
 router.get('/admin/stats', getAdminStats);

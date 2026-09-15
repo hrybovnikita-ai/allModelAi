@@ -12,3 +12,12 @@
 .language-confirm-actions .confirm-yes{background:#7c3aed;color:#fff}
 .language-confirm-actions .confirm-no{border-color:#393442;background:transparent;color:#c9c4d6}
 .language-confirm-actions button:hover{filter:brightness(1.15)}
+
+.page-theme-grid button,.page-color-grid button{text-align:start;min-width:0}
+.page-theme-grid button>span,.page-color-grid button>span{min-width:0;overflow-wrap:anywhere}
+.page-theme-grid button>b,.page-color-grid button>b{margin-left:0;margin-inline-start:auto}
+.page-color-grid button>i{flex-shrink:0}
+.language-grid{padding-right:0;padding-inline-end:6px}
+.settings-preview>footer{gap:12px;flex-wrap:wrap}
+.settings-page-hero h1{overflow-wrap:anywhere}
+.language-confirm-actions button:focus-visible,.language-grid button:focus-visible{outline:2px solid #b9a8ff;outline-offset:3px}

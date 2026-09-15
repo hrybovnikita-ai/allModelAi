@@ -1,4 +1,5 @@
 const { sessionCookieOptions } = require('../sessionCookie');
+const { createSessionToken, validSessionToken } = require('../sessionToken');
 const { publicAppOrigin } = require('../publicAccess');
 const crypto = require('node:crypto');
 const { promisify } = require('node:util');
@@ -54,8 +55,8 @@ const sendWelcomeEmail = async (user) => {
     return { sent: true, id: result.id };
 };
 const setSession = (req, res, user, remember = false) => {
-    const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + (remember ? sessionDuration : 1000 * 60 * 60 * 8);
+    const token = createSessionToken(user.id, expiresAt);
     req.app.locals.db.database.prepare('INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(hashToken(token), user.id, expiresAt);
     res.cookie(sessionCookie, token, { ...sessionCookieOptions(), ...(remember ? { maxAge: sessionDuration } : {}) });
 };
@@ -301,7 +302,7 @@ const googleCallback = async (req, res) => {
 
 const getSession = (req, res) => {
     const token = req.cookies?.[sessionCookie];
-    if (!token) return res.status(401).json({ message: 'No active session' });
+    if (!validSessionToken(token)) return res.status(401).json({ message: 'No active session' });
     const user = req.app.locals.db.database.prepare('SELECT users.id, users.name, users.email FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id WHERE token_hash = ? AND expires_at > ?').get(hashToken(token), Date.now());
     if (!user) return res.status(401).json({ message: 'Session expired' });
     return res.status(200).json({ user });

@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const { validSessionToken } = require('../sessionToken');
 
 const sessionCookie = 'allmodelai_session';
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
@@ -15,7 +16,7 @@ const requireAuth = (req, res, next) => {
         req.authType = 'api_key'; req.apiKeyId = key.id;
         return next();
     }
-    if (!token) return res.status(401).json({ message: 'Sign in or provide a Bearer API key' });
+    if (!validSessionToken(token)) return res.status(401).json({ message: 'Sign in or provide a Bearer API key' });
     const user = req.app.locals.db.database.prepare(`
         SELECT users.id, users.name, users.email
         FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id

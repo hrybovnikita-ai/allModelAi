@@ -80,3 +80,30 @@ The server uses IMAGE_API_KEY, OPENAI_API_KEY, or the legacy OPEN_AI_API_KEY. IM
 User / Developer access
 
 The chat header switch stores the chosen mode on the server. User exposes five models without an AllModelAI subscription: Gemini, Llama, DeepSeek, Mistral, and Qwen. Smart Router and fallback stay within that list. Active paid subscriptions and accounts in DEVELOPER_EMAILS unlock Developer mode with all models and no application credit cap. Developer accounts default to Developer; selecting User previews the restricted experience. Canceled or expired subscriptions revert to User. External provider pricing, balances, rate limits and configured API keys still apply. Restart the backend after updating to apply the account_access_modes schema.
+
+## Rainbow effects, JWT, and caching
+
+The homepage includes animated rainbow cards, gradient text, pointer spotlights,
+floating glows, and working links to models, chat, and prompts. Pause effects
+stops motion; operating-system reduced-motion preferences are respected.
+
+Set JWT_SECRET in backend/.env to a cryptographically random secret of at least
+32 bytes to enable signed JWT login cookies. Generate one locally with:
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+Restart the backend, then sign in again. No secret is shipped in the repository.
+Without JWT_SECRET, opaque sessions remain supported. Existing sessions remain
+valid until expiry or revocation. JWTs use HS256, issuer/audience validation,
+and the existing 8-hour/30-day expiry. Every request still checks the database,
+so logout and account deletion revoke access. Tokens stay in HTTP-only cookies.
+
+Set REDIS_URL to connect a shared Redis cache. Docker Compose includes an internal
+Redis service without exposing its port. For local development, supply your own
+Redis URL; without one the bounded in-memory fallback works automatically.
+Only public /api/status/models responses are cached, for 30 seconds, with
+X-Cache: HIT or MISS. Redis commands have a 250ms cache wait budget.
+The frontend caches this public response for 10 seconds and combines concurrent
+requests. Authentication, chats, payments, and personal data are never cached by
+these new caches. Provider configuration is not a real-time uptime guarantee.
+
+Library references: [JWT](https://github.com/auth0/node-jsonwebtoken) and
+[Redis](https://redis.io/docs/latest/develop/clients/nodejs/produsage/).
