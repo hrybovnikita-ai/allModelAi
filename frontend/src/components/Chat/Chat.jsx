@@ -184,6 +184,12 @@ export default function Chat() {
   const [projectMenuId, setProjectMenuId] = useState(null);
   const [arenaOpen, setArenaOpen] = useState(false);
   const [arenaTask, setArenaTask] = useState('');
+  const [variantCatalog, setVariantCatalog] = useState({});
+
+  const [chosenVersions, setChosenVersions] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('allmodelai_model_versions') || '{}') || {}; } catch { return {}; }
+  });
+  const selectedVersion = variantCatalog[selectedSlug]?.find((item) => item.id === chosenVersions[selectedSlug]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -243,7 +249,14 @@ export default function Chat() {
     } finally { setAccessModeSaving(false); }
   };
 
-  const chooseModel = (model) => {
+  const chooseModel = (model, version) => {
+
+    if (version) {
+      const next = { ...chosenVersions, [model.slug]: version.id };
+      setChosenVersions(next);
+      localStorage.setItem('allmodelai_model_versions', JSON.stringify(next));
+    }
+
     if (!modelAllowed(model.slug)) { setChatError('This model is available with a subscription or in Developer mode.'); return; }
     const online = modelIsOnline(model.slug);
     setSelectedSlug(model.slug);
@@ -252,7 +265,7 @@ export default function Chat() {
     setRouteInfo(null);
     setChatError('');
     setModelNotice(online
-      ? `${model.name} selected. Automatic fallback is ready if this provider is unavailable.`
+      ? `${model.name}${version ? ` · ${version.name}` : ''} selected.${version ? '' : ' Automatic routing is ready.'}`
       : `${model.name} selected. Configure OPENROUTER_API_KEY or this provider's key to receive an answer.`);
     setModelMenuOpen(false);
   };
@@ -260,7 +273,7 @@ export default function Chat() {
   useEffect(() => {
     apiFetch('/api/status/models')
       .then((response) => response.ok ? response.json() : null)
-      .then((data) => data?.models && setModelStatus(data.models))
+      .then((data) => { if (data?.models) setModelStatus(data.models); if (data?.variants) setVariantCatalog(data.variants); })
       .catch(() => {});
   }, []);
 
@@ -670,7 +683,7 @@ export default function Chat() {
       const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedSlug, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || localStorage.getItem('allmodelai_router_mode') || 'balanced', responsePrefs: JSON.parse(localStorage.getItem('allmodelai_response_prefs') || '{}'), systemInstructions: localStorage.getItem('allmodelai_system_instructions') || '', fallbackEnabled: true }),
+        body: JSON.stringify({ model: selectedSlug, variant: selectedVersion?.id, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || localStorage.getItem('allmodelai_router_mode') || 'balanced', responsePrefs: JSON.parse(localStorage.getItem('allmodelai_response_prefs') || '{}'), systemInstructions: localStorage.getItem('allmodelai_system_instructions') || '', fallbackEnabled: !selectedVersion }),
         signal: controller.signal,
       });
 
@@ -960,7 +973,7 @@ export default function Chat() {
         )}
         <header className="chat-header">
           <button className="sidebar-toggle" onClick={() => setSidebarOpen(true)} aria-label={t("Open sidebar")}>☰</button>
-          <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? t("Temporary chat") : activeProject ? activeProject.name : t("Chatting with")}</small><strong>{selectedModel.name}</strong></span><i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? t("Online") : t("API needed")}</i></div>
+          <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? t("Temporary chat") : activeProject ? activeProject.name : t("Chatting with")}</small><strong>{selectedModel.name}{selectedVersion ? ` · ${selectedVersion.name}` : ''}</strong></span><i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? t("Online") : t("API needed")}</i></div>
           <div className="access-mode-control">
             <div className="access-mode-switch" role="group" aria-label="Access mode">
               <button type="button" aria-pressed={(creditStatus?.mode || 'user') === 'user'} disabled={isGuest || !creditStatus || isSending || accessModeSaving} onClick={() => changeAccessMode('user')}>{t("User")}</button>
@@ -968,7 +981,27 @@ export default function Chat() {
             </div>
             <small>{accessModeSaving ? t("Saving\u2026") : creditStatus?.mode === 'developer' ? t("All models") : t("5 free models")}{creditStatus && !creditStatus.canUseDeveloper && <Link to="/pricing">Subscription ↗</Link>}</small>
           </div>
-          <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onBlur={(event) => { const root = event.currentTarget; window.setTimeout(() => { if (!root.contains(document.activeElement) && !root.matches(':hover')) setModelMenuOpen(false); }, 180); }}><span>{t("Model")}</span><button type="button" className="model-select-trigger" onClick={() => setModelMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={modelMenuOpen}><span>{selectedModel.name} — {selectedModel.provider}</span><i>⌄</i></button>{modelMenuOpen && <div className="model-options" role="listbox" aria-label={t("Choose AI model")}>{dashboardModels.map((model) => { const online = modelIsOnline(model.slug); const allowed = modelAllowed(model.slug); return <button type="button" role="option" aria-selected={selectedSlug === model.slug} aria-disabled={!allowed} disabled={!allowed} className={`${selectedSlug === model.slug ? t("selected") : ''}${allowed ? '' : ' unavailable'}`} key={model.slug} onClick={() => chooseModel(model)}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {!allowed ? '🔒 Subscription / Developer' : online ? t("Ready") : t("API needed")}</small></span>{selectedSlug === model.slug && <b>✓</b>}</button>; })}</div>}</div>
+          <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onKeyDown={(event) => { if (event.key === 'Escape') setModelMenuOpen(false); }} onBlur={(event) => { const root = event.currentTarget; window.setTimeout(() => { if (!root.contains(document.activeElement) && !root.matches(':hover')) setModelMenuOpen(false); }, 180); }}>
+            <span>{t("Model")}</span>
+            <button type="button" className="model-select-trigger" onClick={() => setModelMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={modelMenuOpen}>
+              <span>{selectedVersion ? `${selectedVersion.name}${selectedVersion.label ? ` ${selectedVersion.label}` : ''}` : `${selectedModel.name} — ${selectedModel.provider}`}</span><i>⌄</i>
+            </button>
+            {modelMenuOpen && <div className="model-options model-family-options" role="listbox" aria-label={t("Choose AI model")}>
+              {dashboardModels.map((model) => {
+                const allowed = modelAllowed(model.slug);
+                const online = modelIsOnline(model.slug);
+                if (model.slug === 'smart') return <button type="button" role="option" aria-selected={selectedSlug === 'smart'} className={selectedSlug === 'smart' ? 'selected' : ''} key={model.slug} onClick={() => chooseModel(model)}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {t("Ready")}</small></span>{selectedSlug === 'smart' && <b>✓</b>}</button>;
+                return <div className="model-family-group" role="group" aria-labelledby={`model-family-${model.slug}`} key={model.slug}>
+                  <div className="model-family-heading" id={`model-family-${model.slug}`}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {!allowed ? 'Subscription / Developer' : online ? t("Ready") : t("API needed")}</small></span></div>
+                  {(variantCatalog[model.slug] || []).map((version) => {
+                    const selected = selectedSlug === model.slug && selectedVersion?.id === version.id;
+                    return <button type="button" role="option" aria-selected={selected} disabled={!allowed} key={version.id} className={`model-family-version${selected ? ' selected' : ''}`} onClick={() => chooseModel(model, version)}><img src={model.image} alt="" /><span><strong>{version.name}{version.label ? ` ${version.label}` : ''}</strong>{version.description && <small>{version.description}</small>}</span><b>{selected ? '✓' : '›'}</b></button>;
+                  })}
+                  {!variantCatalog[model.slug]?.length && <p className="model-versions-note">Versions are unavailable. Reload the page to try again.</p>}
+                </div>;
+              })}
+            </div>}
+          </div>
           <Link className="dashboard-link" to="/dashboard">{t("Dashboard")}</Link>
         </header>
         {(creditStatus || (selectedSlug === 'smart' && routeInfo) || modelNotice || backgroundNotification) && <div className="chat-statuses">

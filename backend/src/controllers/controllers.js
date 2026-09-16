@@ -1,3 +1,4 @@
+const modelVariants = require('../data/modelVariants.json');
 const { sessionCookieOptions } = require('../sessionCookie');
 const { createSessionToken, validSessionToken } = require('../sessionToken');
 const { publicAppOrigin } = require('../publicAccess');
@@ -472,6 +473,7 @@ const getModelStatus = (_req, res) => {
     const xai = Boolean(process.env.XAI_API_KEY || process.env.GROK_API_KEY);
     return res.status(200).json({
         updatedAt: new Date().toISOString(),
+        variants: modelVariants,
         models: {
             gpt: openAI || gateway,
             gemini: Boolean(process.env.GEMINI_API_KEY || gateway),
@@ -703,7 +705,10 @@ const previewRouter = (req, res) => {
 
 const createChatResponse = async (req, res) => {
     const requestStartedAt = Date.now();
-    const { messages, model = 'gpt', conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {}, useKnowledge = true, systemInstructions = '', maxTokens, fallbackEnabled = true } = req.body;
+    const { messages, model = 'gpt', variant, conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {}, useKnowledge = true, systemInstructions = '', maxTokens, fallbackEnabled = true } = req.body;
+    const selectedVariant = variant == null ? null : modelVariants[model]?.find((item) => item.id === variant);
+    if (variant != null && !selectedVariant) return res.status(400).json({ message: 'Unknown version for the selected model.' });
+    const allowFallback = !selectedVariant && fallbackEnabled !== false;
     const userEmail = req.user.email;
     const providerModels = {
         gpt: 'openai/gpt-4o-mini',
@@ -720,10 +725,11 @@ const createChatResponse = async (req, res) => {
         cohere: 'cohere/command-a',
         cloudflare: process.env.CLOUDFLARE_MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     };
+    if (selectedVariant) providerModels[model] = selectedVariant.gateway;
     const configuredGrokModel = process.env.GROK_MODEL?.trim();
-    const grokModel = configuredGrokModel && !/grok-3-mini/i.test(configuredGrokModel)
+    const grokModel = selectedVariant?.gateway || (configuredGrokModel && !/grok-3-mini/i.test(configuredGrokModel)
         ? configuredGrokModel
-        : providerModels.grok;
+        : providerModels.grok);
     
     const normalizedInputMessages = normalizeMessages(messages);
     if (!Array.isArray(normalizedInputMessages) || normalizedInputMessages.length === 0) {
@@ -880,7 +886,7 @@ const createChatResponse = async (req, res) => {
     const standardInput = buildOpenAIMessages(normalizedInputMessages);
 
     try {
-        const directGeminiModel = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
+        const directGeminiModel = (routedModel === 'gemini' && selectedVariant?.direct) || process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
         const getGeminiUrl = (key) => `https://generativelanguage.googleapis.com/v1beta/models/${directGeminiModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key.trim())}`;
         const geminiBody = () => JSON.stringify({
             systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -888,7 +894,7 @@ const createChatResponse = async (req, res) => {
             generationConfig: { maxOutputTokens: outputTokenLimit },
         });
         const geminiUrl = getGeminiUrl(apiKey);
-        const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID || '')}/ai/run/${providerModels.cloudflare}`;
+        const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID || '')}/ai/run/${selectedVariant?.direct || providerModels.cloudflare}`;
         const directKimiUrl = 'https://api.moonshot.cn/v1/chat/completions';
         const directMistralUrl = 'https://api.mistral.ai/v1/chat/completions';
         const providerTimeoutMs = Math.min(Math.max(Number(process.env.AI_REQUEST_TIMEOUT_MS) || 45000, 5000), 120000);
@@ -912,41 +918,41 @@ const createChatResponse = async (req, res) => {
                 Authorization: `Bearer ${directMistralKey.trim()}`,
                 'Content-Type': 'application/json',
             } : isCloudflare ? {
-                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
-                max_tokens: Number(process.env.MAX_TOKENS) || 2048,
+                Authorization: `Bearer ${apiKey.trim()}`,
+                'Content-Type': 'application/json',
             } : {
                 Authorization: `Bearer ${apiKey.trim()}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(isOpenAI ? {
-                model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+                model: selectedVariant?.direct || process.env.OPENAI_MODEL || 'gpt-4o-mini',
                 stream: true,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : isXAI ? {
-                model: process.env.XAI_MODEL || 'grok-4-latest',
+                model: selectedVariant?.direct || process.env.XAI_MODEL || 'grok-4-latest',
                 stream: true,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : isClaude ? {
-                model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+                model: selectedVariant?.direct || process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
                 stream: true,
                 max_tokens: outputTokenLimit,
                 system: systemPrompt,
                 messages: buildClaudeMessages(normalizedInputMessages),
             } : isGemini ? JSON.parse(geminiBody()) : isKimi && directKimiKey ? {
-                model: process.env.KIMI_MODEL || 'kimi-k2-0711-preview',
+                model: selectedVariant?.direct || process.env.KIMI_MODEL || 'kimi-k2-0711-preview',
                 stream: true,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : isMistral ? {
-                model: process.env.MISTRAL_MODEL || 'mistral-small-latest',
+                model: selectedVariant?.direct || process.env.MISTRAL_MODEL || 'mistral-small-latest',
                 stream: true,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : {
-                model: routedModel === 'grok' ? grokModel : routedModel === 'cloudflare' ? providerModels.llama : providerModels[routedModel],
-                stream: true,
+                model: routedModel === 'grok' ? grokModel : routedModel === 'cloudflare' ? (selectedVariant?.gateway || providerModels.llama) : providerModels[routedModel],
+                stream: !isCloudflare,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             }),
@@ -955,7 +961,7 @@ const createChatResponse = async (req, res) => {
         let fallbackModel = usePreferredGemini ? 'gemini' : null;
         let upstreamError = null;
         // Prefer independently configured Gemini connection for failed non-Gemini provider
-        if (!apiResponse.ok && fallbackEnabled !== false && !isGemini && process.env.GEMINI_API_KEY?.trim()) {
+        if (!apiResponse.ok && allowFallback && !isGemini && process.env.GEMINI_API_KEY?.trim()) {
             upstreamError = await apiResponse.json().catch(() => ({}));
             apiKey = process.env.GEMINI_API_KEY.trim();
             isOpenAI = false;
@@ -971,7 +977,7 @@ const createChatResponse = async (req, res) => {
             if (!apiResponse.ok) upstreamError = null;
         }
         // Gateway fallback through OpenRouter
-        if (!apiResponse.ok && fallbackEnabled !== false && gatewayKey?.trim()) {
+        if (!apiResponse.ok && allowFallback && gatewayKey?.trim()) {
             upstreamError = await apiResponse.json().catch(() => ({}));
             const configuredFallbacks = String(process.env.OPENROUTER_FALLBACK_MODELS || '')
                 .split(',')
@@ -1026,22 +1032,17 @@ const createChatResponse = async (req, res) => {
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
         const freeTierModels = new Set(['gemini', 'cloudflare']);
-        res.write(`data: ${JSON.stringify({ unlimited: creditStatus.unlimited, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:fallbackUsed ? providerModels[fallbackModel] : providerModels[routedModel], routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, knowledgeSources:knowledge.map(({id,name,excerpt,score})=>({id,name,excerpt,score})), costTier:freeTierModels.has(fallbackUsed ? fallbackModel : routedModel)?'free-allowance':'paid' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ unlimited: creditStatus.unlimited, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:selectedVariant ? ((isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isCloudflare) ? selectedVariant.direct : selectedVariant.gateway) : fallbackUsed ? providerModels[fallbackModel] : providerModels[routedModel], routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, knowledgeSources:knowledge.map(({id,name,excerpt,score})=>({id,name,excerpt,score})), costTier:freeTierModels.has(fallbackUsed ? fallbackModel : routedModel)?'free-allowance':'paid' })}\n\n`);
         if (fallbackUsed) res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: fallbackModel })}\n\n`);
 
-        if (isOpenAI) {
-            const openAIData = await apiResponse.json();
-            assistantText = String(openAIData.output_text || openAIData.output?.flatMap((item) => item.content || []).map((item) => item.text || '').join('') || '');
-            if (!assistantText) throw new Error('OpenAI returned no response text');
-            res.write(`data: ${JSON.stringify({ text: assistantText, provider: 'OpenAI', model: openAIData.model || process.env.OPENAI_MODEL || 'gpt-4o-mini' })}\n\n`);
-        } else if (isCloudflare) {
+        if (isCloudflare) {
             const cloudflareData = await apiResponse.json();
             assistantText = String(cloudflareData.result?.response || '');
             if (!assistantText) throw new Error('Cloudflare returned no response text');
             res.write(`data: ${JSON.stringify({ text: assistantText, provider: 'Cloudflare', model: providerModels.cloudflare })}\n\n`);
         }
 
-        const reader = isOpenAI || isCloudflare ? null : apiResponse.body.getReader();
+        const reader = isCloudflare ? null : apiResponse.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
 

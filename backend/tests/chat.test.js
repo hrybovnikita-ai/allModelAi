@@ -7,6 +7,39 @@ const upstream=()=>{const encoder=new TextEncoder();return new Response(new Read
 describe('secure chat and knowledge API',()=>{
  before(async()=>{api=request.agent(app);await api.post('/api/auth/register').send({name:'Tester',email:'tester@example.com',password:'secret'});originalFetch=global.fetch;global.fetch=async()=>upstream()});
  after(()=>{global.fetch=originalFetch;app.locals.db.close()});
+ test('rejects versions from another family and Smart Router versions', async () => {
+   for (const model of ['gpt', 'smart']) {
+     const result = await api.post('/api/chat').send({model, variant:'flash', temporary:true, messages:[{role:'user',text:'hello'}]});
+     assert.equal(result.status, 400);
+   }
+ });
+ test('passes an exact version to the gateway and never silently falls back', async () => {
+   const calls = [];
+   global.fetch = async (url, options) => { calls.push(JSON.parse(options.body)); return upstream(); };
+   try {
+     const response = await api.post('/api/chat').send({model:'qwen', variant:'coder', temporary:true, messages:[{role:'user',text:'hello'}]});
+     assert.equal(response.status, 200);
+     assert.equal(calls[0].model, 'qwen/qwen3-coder');
+     global.fetch = async () => { calls.push({}); return new Response(JSON.stringify({error:{message:'Unavailable'}}), {status:429}); };
+     const failed = await api.post('/api/chat').send({model:'qwen', variant:'coder', fallbackEnabled:true, temporary:true, messages:[{role:'user',text:'hello'}]});
+     assert.equal(failed.status, 429);
+     assert.equal(calls.length, 2);
+   } finally { global.fetch = async () => upstream(); }
+ });
+ test('passes the selected Gemini version to the direct API', async () => {
+   const previous = process.env.GEMINI_API_KEY;
+   process.env.GEMINI_API_KEY = 'test-gemini';
+   let calledUrl;
+   global.fetch = async url => { calledUrl = String(url); return upstream(); };
+   try {
+     const response = await api.post('/api/chat').send({model:'gemini', variant:'3.1-pro', temporary:true, messages:[{role:'user',text:'hello'}]});
+     assert.equal(response.status, 200);
+     assert.match(calledUrl, /models\/gemini-3\.1-pro-preview:streamGenerateContent/);
+   } finally {
+     global.fetch = async () => upstream();
+     if (previous === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = previous;
+   }
+ });
  test('rejects anonymous private requests',async()=>{assert.equal((await request(app).get('/api/chat/history')).status,401);assert.equal((await request(app).post('/api/chat').send({messages:[{role:'user',text:'hello'}]})).status,401)});
  test('ignores a forged email and saves to the signed-in account',async()=>{const response=await api.post('/api/chat').send({model:'gpt',userEmail:'victim@example.com',messages:[{role:'user',text:'hello'}]});assert.equal(response.status,200);assert.match(response.text,/Secure answer/);const history=await api.get('/api/chat/history');assert.equal(history.body.length,1);assert.equal(history.body[0].email,'tester@example.com')});
  test('uses the Gemini key instead of sending a Kimi key to OpenRouter on fallback',async()=>{const previousKimi=process.env.KIMI_API_KEY,previousGemini=process.env.GEMINI_API_KEY;process.env.KIMI_API_KEY='kimi-test-key';process.env.GEMINI_API_KEY='gemini-test-key';const urls=[];global.fetch=async url=>{urls.push(String(url));if(urls.length===1)return new Response(JSON.stringify({error:{message:'Kimi key rejected'}}),{status:401,headers:{'Content-Type':'application/json'}});const encoder=new TextEncoder();return new Response(new ReadableStream({start(controller){controller.enqueue(encoder.encode(`data: ${JSON.stringify({candidates:[{content:{parts:[{text:'Gemini fallback answer'}]}}]})}\n\n`));controller.close()}}),{status:200})};try{const response=await api.post('/api/chat').send({model:'kimi',temporary:true,messages:[{role:'user',text:'hello'}]});assert.equal(response.status,200);assert.match(response.text,/Gemini fallback answer/);assert.equal(urls.length,2);assert.match(urls[0],/api\.moonshot\.cn/);assert.match(urls[1],/generativelanguage\.googleapis\.com/);assert.doesNotMatch(urls[1],/openrouter/)}finally{global.fetch=async()=>upstream();if(previousKimi===undefined)delete process.env.KIMI_API_KEY;else process.env.KIMI_API_KEY=previousKimi;if(previousGemini===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=previousGemini}});
