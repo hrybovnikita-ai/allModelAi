@@ -1,11 +1,10 @@
 import { useLanguage } from '../../lib/useLanguage';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate, useSearchParams, useOutletContext } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Highlight } from 'prism-react-renderer';
 import { Prism, codeTheme, languageAliases } from '../../lib/codeHighlight';
 import { dashboardModels } from '../../data/dashboardModels';
 import { apiFetch, checkChatResponse } from '../../lib/api';
-import { clearAllSessionData } from '../../lib/session';
 import SessionRecovery from './SessionRecovery';
 import './Chat.css';
 import './ChatApi.css';
@@ -29,7 +28,7 @@ function CodeBlock({ language, code }) {
   const [wrapped, setWrapped] = useState(false);
   const prismLanguage = languageAliases[language?.toLowerCase()] || language?.toLowerCase() || 'text';
   const copyCode = async () => {
-    if (!await copyToClipboard(code)) return;
+    await navigator.clipboard.writeText(code);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
   };
@@ -134,77 +133,6 @@ function MessageContent({ text, streaming }) {
   </div>;
 }
 
-
-async function copyToClipboard(text) {
-  try {
-    if (!globalThis.navigator?.clipboard?.writeText) throw new Error('Clipboard unavailable');
-    await globalThis.navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    // iOS can deny clipboard access; keep manual copying available.
-    globalThis.window?.prompt('Copy this text:', text);
-    return false;
-  }
-}
-
-function safeStorageGet(storageName, key, fallback = null) {
-  try {
-    const storage = globalThis[storageName];
-    if (!storage) return fallback;
-
-    const value = storage.getItem(key);
-    return value === null ? fallback : value;
-  } catch {
-    return fallback;
-  }
-}
-
-function safeStorageSet(storageName, key, value) {
-  try {
-    globalThis[storageName]?.setItem(key, value);
-  } catch {
-    // Safari may block storage.
-  }
-}
-
-function safeJSON(value, fallback) {
-  try {
-    const parsed = value ? JSON.parse(value) : fallback;
-    if (Array.isArray(fallback)) return Array.isArray(parsed) ? parsed : fallback;
-    if (fallback && typeof fallback === 'object') {
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : fallback;
-    }
-    return parsed ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-
-const fallbackModel = dashboardModels.find((model) => model.slug === 'gpt') || dashboardModels[0];
-function validModelSlug(slug) {
-  return dashboardModels.some((model) => model.slug === slug) ? slug : fallbackModel.slug;
-}
-
-function subscribeVoices(synthesis, onVoices) {
-  if (!synthesis || typeof synthesis.getVoices !== 'function') return undefined;
-  const loadVoices = () => {
-    try { onVoices(Array.from(synthesis.getVoices() || [])); } catch { onVoices([]); }
-  };
-  loadVoices();
-  if (typeof synthesis.addEventListener === 'function' && typeof synthesis.removeEventListener === 'function') {
-    synthesis.addEventListener('voiceschanged', loadVoices);
-    return () => synthesis.removeEventListener('voiceschanged', loadVoices);
-  }
-  const previous = synthesis.onvoiceschanged;
-  const handler = (event) => {
-    try { if (typeof previous === 'function') previous.call(synthesis, event); }
-    finally { loadVoices(); }
-  };
-  synthesis.onvoiceschanged = handler;
-  return () => { if (synthesis.onvoiceschanged === handler) synthesis.onvoiceschanged = previous; };
-}
-
 export default function Chat() {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -216,13 +144,12 @@ export default function Chat() {
   const activeRequest = useRef(null);
   const speechRecognition = useRef(null);
   const voiceTranscript = useRef('');
-  const { user } = useOutletContext();
+  const savedUser = sessionStorage.getItem('allmodelai_user');
+  const user = savedUser ? JSON.parse(savedUser) : null;
   const isGuest = user?.guest === true;
   const [selectedSlug, setSelectedSlug] = useState(() => {
-    const requested =
-      searchParams.get('model') ||
-      safeStorageGet('localStorage', 'allmodelai_selected_model', 'gpt');
-    return validModelSlug(requested);
+    const requested = searchParams.get('model') || localStorage.getItem('allmodelai_selected_model') || 'gpt';
+    return dashboardModels.some((model) => model.slug === requested) ? requested : 'gpt';
   });
   const [prompt, setPrompt] = useState(location.state?.starterPrompt || '');
   const [isSending, setIsSending] = useState(false);
@@ -234,26 +161,16 @@ export default function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
-  const [chatMeta] = useState(() =>
-    safeJSON(safeStorageGet('localStorage', 'allmodelai_chat_meta'), {})
-  );
+  const [chatMeta] = useState(() => JSON.parse(localStorage.getItem('allmodelai_chat_meta') || '{}'));
   const [historyQuery, setHistoryQuery] = useState('');
   const [messageRatings, setMessageRatings] = useState({});
-  const [messageLikes, setMessageLikes] = useState(() =>
-    safeJSON(safeStorageGet('localStorage', 'allmodelai_message_likes'), {})
-  );
-
-  const [messageFeedback, setMessageFeedback] = useState(() =>
-    safeJSON(safeStorageGet('localStorage', 'allmodelai_message_feedback'), {})
-  );
-
+  const [messageLikes, setMessageLikes] = useState(() => JSON.parse(localStorage.getItem('allmodelai_message_likes') || '{}'));
+  const [messageFeedback, setMessageFeedback] = useState(() => JSON.parse(localStorage.getItem('allmodelai_message_feedback') || '{}'));
   const [backgroundNotification, setBackgroundNotification] = useState(null);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [feedbackMessageIndex, setFeedbackMessageIndex] = useState(null);
   const [feedbackText, setFeedbackText] = useState('');
-  const [favorites, setFavorites] = useState(() =>
-    safeJSON(safeStorageGet('localStorage', 'allmodelai_favorites'), []).filter((item) => item && typeof item.text === 'string')
-  );
+  const [favorites, setFavorites] = useState(() => JSON.parse(localStorage.getItem('allmodelai_favorites') || '[]'));
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [chatMenuId, setChatMenuId] = useState(null);
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
@@ -262,9 +179,7 @@ export default function Chat() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [temporaryChat, setTemporaryChat] = useState(false);
-  const [projects, setProjects] = useState(() =>
-    safeJSON(safeStorageGet('localStorage', 'allmodelai_projects'), []).filter((item) => item && typeof item.name === 'string')
-  );
+  const [projects, setProjects] = useState(() => JSON.parse(localStorage.getItem('allmodelai_projects') || '[]'));
   const [activeProject, setActiveProject] = useState(null);
   const [projectMenuId, setProjectMenuId] = useState(null);
   const [arenaOpen, setArenaOpen] = useState(false);
@@ -272,36 +187,33 @@ export default function Chat() {
   const [variantCatalog, setVariantCatalog] = useState({});
 
   const [chosenVersions, setChosenVersions] = useState(() => {
-    return safeJSON(safeStorageGet('localStorage', 'allmodelai_model_versions'), {});
+    try { return JSON.parse(localStorage.getItem('allmodelai_model_versions') || '{}') || {}; } catch { return {}; }
   });
   const selectedVersion = variantCatalog[selectedSlug]?.find((item) => item.id === chosenVersions[selectedSlug]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(() => safeStorageGet('localStorage', 'allmodelai_voice_mode') === 'true');
+  const [voiceMode, setVoiceMode] = useState(() => localStorage.getItem('allmodelai_voice_mode') === 'true');
   const [voicePanelOpen, setVoicePanelOpen] = useState(false);
-  const [speechLanguage, setSpeechLanguage] = useState(() => safeStorageGet('localStorage', 'allmodelai_voice_language') || globalThis.navigator?.language || 'en-US');
+  const [speechLanguage, setSpeechLanguage] = useState(() => localStorage.getItem('allmodelai_voice_language') || navigator.language || 'en-US');
   const [availableVoices, setAvailableVoices] = useState([]);
-  const [selectedVoice, setSelectedVoice] = useState(() => safeStorageGet('localStorage', 'allmodelai_voice_name') || '');
+  const [selectedVoice, setSelectedVoice] = useState(() => localStorage.getItem('allmodelai_voice_name') || '');
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [editDraft, setEditDraft] = useState('');
   const [routeInfo, setRouteInfo] = useState(null);
   const [modelStatus, setModelStatus] = useState({});
   const [modelNotice, setModelNotice] = useState('');
-  const [themePreference] = useState(() => {
-    const preference = safeJSON(safeStorageGet('localStorage', 'allmodelai_appearance'), {}).theme;
-    return ['dark', 'light', 'auto'].includes(preference) ? preference : 'dark';
-  });
+  const [themePreference] = useState(() => JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}').theme || t("dark"));
   const [textColor] = useState(() => {
-    const savedColor = safeJSON(safeStorageGet('localStorage', 'allmodelai_appearance'), {}).textColor;
-    return typeof savedColor !== 'string' || !savedColor || savedColor.toLowerCase() === '#ffffff' ? '#8b5cf6' : savedColor;
+    const savedColor = JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}').textColor;
+    return !savedColor || savedColor.toLowerCase() === '#ffffff' ? '#8b5cf6' : savedColor;
   });
   const [attachedImage, setAttachedImage] = useState(null);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [previewModalImage, setPreviewModalImage] = useState(null);
   const [contextSuggestions, setContextSuggestions] = useState([]);
   const activeConversationIdRef = useRef(null);
-  const selectedModel = dashboardModels.find((model) => model.slug === selectedSlug) || fallbackModel;
+  const selectedModel = dashboardModels.find((model) => model.slug === selectedSlug);
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
@@ -327,7 +239,7 @@ export default function Chat() {
       setCreditStatus(access);
       if (!access.models.includes('all') && !access.models.includes(selectedSlug) && selectedSlug !== 'smart') {
         setSelectedSlug('gemini');
-        safeStorageSet('localStorage', 'allmodelai_selected_model', 'gemini');
+        localStorage.setItem('allmodelai_selected_model', 'gemini');
         navigate('/chat?model=gemini', { replace: true });
       }
       setModelMenuOpen(false);
@@ -342,13 +254,13 @@ export default function Chat() {
     if (version) {
       const next = { ...chosenVersions, [model.slug]: version.id };
       setChosenVersions(next);
-      safeStorageSet('localStorage', 'allmodelai_model_versions', JSON.stringify(next));
+      localStorage.setItem('allmodelai_model_versions', JSON.stringify(next));
     }
 
     if (!modelAllowed(model.slug)) { setChatError('This model is available with a subscription or in Developer mode.'); return; }
     const online = modelIsOnline(model.slug);
     setSelectedSlug(model.slug);
-    safeStorageSet('localStorage', 'allmodelai_selected_model', model.slug);
+    localStorage.setItem('allmodelai_selected_model', model.slug);
     navigate(`/chat?model=${encodeURIComponent(model.slug)}`, { replace: true });
     setRouteInfo(null);
     setChatError('');
@@ -367,21 +279,27 @@ export default function Chat() {
 
   useEffect(() => {
     document.documentElement.dataset.themePreference = themePreference;
-    document.documentElement.dataset.theme = themePreference === 'auto'
-      ? (window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+    document.documentElement.dataset.theme = themePreference === t("auto")
+      ? (window.matchMedia('(prefers-color-scheme: light)').matches ? t("light") : t("dark"))
       : themePreference;
   }, [themePreference]);
 
-  useEffect(() => subscribeVoices(globalThis.speechSynthesis, setAvailableVoices), []);
+  useEffect(() => {
+    if (!window.speechSynthesis) return undefined;
+    const loadVoices = () => setAvailableVoices(window.speechSynthesis.getVoices());
+    loadVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+  }, []);
 
   useEffect(() => () => {
     speechRecognition.current?.stop();
-    globalThis.speechSynthesis?.cancel?.();
+    window.speechSynthesis?.cancel();
   }, []);
 
   const speakText = (text) => {
-    if (!globalThis.speechSynthesis?.speak || !globalThis.SpeechSynthesisUtterance) { setChatError('Speech playback is not supported in this browser.'); return; }
-    globalThis.speechSynthesis.cancel?.();
+    if (!window.speechSynthesis) { setChatError('Speech playback is not supported in this browser.'); return; }
+    window.speechSynthesis.cancel();
     const cleanText = String(text || '')
       .replace(/```[\s\S]*?```/g, ' Code block omitted. ')
       .replace(/https?:\/\/\S+/g, ' link ')
@@ -389,7 +307,7 @@ export default function Chat() {
       .replace(/\s+/g, ' ')
       .trim();
     if (!cleanText) return;
-    const utterance = new globalThis.SpeechSynthesisUtterance(cleanText);
+    const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.lang = speechLanguage;
     const voice = availableVoices.find((item) => item.name === selectedVoice)
       || availableVoices.find((item) => item.lang.toLowerCase().startsWith(speechLanguage.split('-')[0].toLowerCase()));
@@ -401,13 +319,13 @@ export default function Chat() {
   };
 
   const stopSpeaking = () => {
-    globalThis.speechSynthesis?.cancel?.();
+    window.speechSynthesis?.cancel();
     setIsSpeaking(false);
   };
 
   const changeVoiceMode = () => {
     setVoiceMode((enabled) => {
-      safeStorageSet('localStorage', 'allmodelai_voice_mode', String(!enabled));
+      localStorage.setItem('allmodelai_voice_mode', String(!enabled));
       if (enabled) stopSpeaking();
       return !enabled;
     });
@@ -471,7 +389,7 @@ export default function Chat() {
     return String(firstUserMessage?.content ?? firstUserMessage?.text ?? 'Saved conversation').replace(/\s+/g, ' ').trim().slice(0, 54);
   };
   const visibleHistory = chatHistory
-    .filter((conversation) => `${conversation.title} ${conversationPreview(conversation)} ${(conversation.messages || []).map((message) => message.text || message.content || '').join(' ')} ${(Array.isArray(chatMeta[conversation.id]?.tags) ? chatMeta[conversation.id].tags : []).join(' ')}`.toLowerCase().includes(historyQuery.toLowerCase()))
+    .filter((conversation) => `${conversation.title} ${conversationPreview(conversation)} ${(conversation.messages || []).map((message) => message.text || message.content || '').join(' ')} ${(chatMeta[conversation.id]?.tags || []).join(' ')}`.toLowerCase().includes(historyQuery.toLowerCase()))
     .sort((first, second) => Number(Boolean(chatMeta[second.id]?.pinned)) - Number(Boolean(chatMeta[first.id]?.pinned)));
   const handleImageUpload = (file) => {
     if (!file) return;
@@ -553,24 +471,13 @@ export default function Chat() {
     }
   };
 
-  const copyMessage = (text) => copyToClipboard(text);
-  const shareMessage = async (text) => {
-    try {
-      if (!activeConversationId) { await copyMessage(text); return; }
-      const response = await apiFetch(`/api/chat/history/${activeConversationId}/share`, { method: 'POST' });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Could not create sharing link');
-      const url = new URL(data.url, window.location.origin);
-      if (await copyToClipboard(`${window.location.origin}${url.pathname}`)) {
-        setChatError('Read-only link copied to clipboard.');
-      }
-    } catch (error) { setChatError(error.message || 'Could not share this message.'); }
-  };
+  const copyMessage = async (text) => { await navigator.clipboard.writeText(text); };
+  const shareMessage = async (text) => { if(!activeConversationId){await copyMessage(text);return;} const response=await apiFetch(`/api/chat/history/${activeConversationId}/share`,{method:'POST'});const data=await response.json();if(!response.ok){setChatError(data.message||'Could not create sharing link');return;}await navigator.clipboard.writeText(`${location.origin}${new URL(data.url).pathname}`);setChatError('Read-only link copied to clipboard.'); };
   const rateMessage = (index, rating) => setMessageRatings((ratings) => ({ ...ratings, [index]: rating }));
   const likeMessage = (index) => {
     setMessageLikes((likes) => {
       const next = { ...likes, [index]: !likes[index] };
-      safeStorageSet('localStorage', 'allmodelai_message_likes', JSON.stringify(next));
+      localStorage.setItem('allmodelai_message_likes', JSON.stringify(next));
       return next;
     });
   };
@@ -581,7 +488,7 @@ export default function Chat() {
     if (!text) { setFeedbackModalOpen(false); return; }
     setMessageFeedback((feedback) => {
       const next = { ...feedback, [feedbackMessageIndex]: text };
-      safeStorageSet('localStorage', 'allmodelai_message_feedback', JSON.stringify(next));
+      localStorage.setItem('allmodelai_message_feedback', JSON.stringify(next));
       return next;
     });
     setFeedbackModalOpen(false);
@@ -593,15 +500,15 @@ export default function Chat() {
       const next = existing
         ? current.filter((item) => item.text !== text)
         : [{ id: Date.now().toString(), text, modelSlug, createdAt: new Date().toISOString() }, ...current].slice(0, 30);
-      safeStorageSet('localStorage', 'allmodelai_favorites', JSON.stringify(next));
+      localStorage.setItem('allmodelai_favorites', JSON.stringify(next));
       return next;
     });
   };
   const editSystemInstructions = () => {
-    const current = safeStorageGet('localStorage', 'allmodelai_system_instructions') || '';
+    const current = localStorage.getItem('allmodelai_system_instructions') || '';
     const value = window.prompt('How should AI behave in every chat?', current);
     if (value === null) return;
-    safeStorageSet('localStorage', 'allmodelai_system_instructions', value.trim().slice(0, 2000));
+    localStorage.setItem('allmodelai_system_instructions', value.trim().slice(0, 2000));
   };
   const branchCurrentConversation = async () => {
     if (!activeConversationId || !messages.length) return;
@@ -612,14 +519,7 @@ export default function Chat() {
     openConversation(branch);
   };
   const backupWorkspace = () => {
-    const local = {};
-    try {
-      const storage = globalThis.localStorage;
-      for (let index = 0; index < (storage?.length || 0); index += 1) {
-        const key = storage.key(index);
-        if (key?.startsWith('allmodelai_')) local[key] = safeStorageGet('localStorage', key);
-      }
-    } catch { /* Chat history can still be exported when Safari blocks storage. */ }
+    const local = {}; for (let index = 0; index < localStorage.length; index += 1) { const key = localStorage.key(index); if (key?.startsWith('allmodelai_')) local[key] = localStorage.getItem(key); }
     const content = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), conversations: chatHistory, local }, null, 2);
     const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([content], { type: 'application/json' })); link.download = 'allmodelai-backup.json'; link.click(); URL.revokeObjectURL(link.href);
   };
@@ -642,11 +542,7 @@ export default function Chat() {
   useEffect(() => {
     const container = messagesContainer.current;
     if (!container) return;
-    if (typeof container.scrollTo === 'function') {
-      container.scrollTo({ top: container.scrollHeight, behavior: isSending ? 'smooth' : 'auto' });
-    } else {
-      container.scrollTop = container.scrollHeight;
-    }
+    container.scrollTo({ top: container.scrollHeight, behavior: isSending ? 'smooth' : t("auto") });
   }, [messages, isSending]);
 
   useEffect(() => {
@@ -670,7 +566,7 @@ export default function Chat() {
         if (history[0]?.messages?.length) {
           setActiveConversationId(history[0].id);
           setMessages(history[0].messages);
-          setSelectedSlug(validModelSlug(history[0].model));
+          setSelectedSlug(history[0].model || 'gpt');
         }
       })
       .catch(() => {});
@@ -741,9 +637,9 @@ export default function Chat() {
         if (!temporaryChat) {
           // The gallery is an optional device cache; storage limits must not discard a generated image.
           try {
-            const cached = safeJSON(safeStorageGet('localStorage', 'allmodelai_image_gallery'), []);
+            const cached = JSON.parse(localStorage.getItem('allmodelai_image_gallery') || '[]');
             const gallery = Array.isArray(cached) ? cached : [];
-            safeStorageSet('localStorage', 'allmodelai_image_gallery', JSON.stringify([{ id: `${text.slice(0, 24)}-${imageData.imageUrl.slice(-16)}`, prompt: text, imageUrl: imageData.imageUrl }, ...gallery].slice(0, 5)));
+            localStorage.setItem('allmodelai_image_gallery', JSON.stringify([{ id: `${text.slice(0, 24)}-${imageData.imageUrl.slice(-16)}`, prompt: text, imageUrl: imageData.imageUrl }, ...gallery].slice(0, 5)));
           } catch { /* The server history remains the durable copy. */ }
           try {
             const saved = await apiFetch(startedConversationId ? `/api/chat/history/${startedConversationId}` : '/api/chat/history', {
@@ -787,7 +683,7 @@ export default function Chat() {
       const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedSlug, variant: selectedVersion?.id, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced', responsePrefs: safeJSON(safeStorageGet('localStorage', 'allmodelai_response_prefs'), {}), systemInstructions: safeStorageGet('localStorage', 'allmodelai_system_instructions') || '', fallbackEnabled: !selectedVersion }),
+        body: JSON.stringify({ model: selectedSlug, variant: selectedVersion?.id, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || localStorage.getItem('allmodelai_router_mode') || 'balanced', responsePrefs: JSON.parse(localStorage.getItem('allmodelai_response_prefs') || '{}'), systemInstructions: localStorage.getItem('allmodelai_system_instructions') || '', fallbackEnabled: !selectedVersion }),
         signal: controller.signal,
       });
 
@@ -934,7 +830,7 @@ export default function Chat() {
     setActiveConversationId(conversation.id);
     activeConversationIdRef.current = conversation.id;
     setMessages(conversation.messages || []);
-    setSelectedSlug(validModelSlug(conversation.model));
+    setSelectedSlug(conversation.model || 'gpt');
     setPrompt('');
     setChatError('');
     setChatMenuId(null);
@@ -980,8 +876,8 @@ export default function Chat() {
     const name = window.prompt('Project name (example: Website launch, Study plan, Marketing)')?.trim();
     if (!name) return;
     const nextProjects = [...projects, { id: Date.now().toString(), name }];
-    setProjects(nextProjects); setActiveProject(nextProjects[nextProjects.length - 1]); setTemporaryChat(false);
-    safeStorageSet('localStorage', 'allmodelai_projects', JSON.stringify(nextProjects)); newChat();
+    setProjects(nextProjects); setActiveProject(nextProjects.at(-1)); setTemporaryChat(false);
+    localStorage.setItem('allmodelai_projects', JSON.stringify(nextProjects)); newChat();
   };
   const renameProject = (project) => {
     const name = window.prompt('Rename project', project.name)?.trim();
@@ -989,14 +885,14 @@ export default function Chat() {
     const nextProjects = projects.map((item) => item.id === project.id ? { ...item, name } : item);
     setProjects(nextProjects);
     if (activeProject?.id === project.id) setActiveProject({ ...project, name });
-    safeStorageSet('localStorage', 'allmodelai_projects', JSON.stringify(nextProjects));
+    localStorage.setItem('allmodelai_projects', JSON.stringify(nextProjects));
     setProjectMenuId(null);
   };
   const deleteProject = (project) => {
     if (!window.confirm(`Delete project "${project.name}"?`)) return;
     const nextProjects = projects.filter((item) => item.id !== project.id);
     setProjects(nextProjects);
-    safeStorageSet('localStorage', 'allmodelai_projects', JSON.stringify(nextProjects));
+    localStorage.setItem('allmodelai_projects', JSON.stringify(nextProjects));
     if (activeProject?.id === project.id) { setActiveProject(null); newChat(); }
     setProjectMenuId(null);
   };
@@ -1015,7 +911,7 @@ export default function Chat() {
       const response = await apiFetch('/api/auth/account', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || 'Could not delete your account.');
-      clearAllSessionData();
+      sessionStorage.removeItem('allmodelai_user');
       navigate('/');
     } catch (error) {
       setDeleteError(error.message);
@@ -1054,7 +950,7 @@ export default function Chat() {
           {chatHistory.length === 0 && <small className="chat-history-empty">{t("Your saved chats will appear here.")}</small>}
           {chatHistory.length > 0 && visibleHistory.length === 0 && <small className="chat-history-empty">{t("No matching conversations.")}</small>}
           {visibleHistory.map((conversation) => <div className={`chat-history-item ${activeConversationId === conversation.id ? 'active' : ''}`} key={conversation.id}>
-            <button className="chat-history-open" onClick={() => openConversation(conversation)}><span>{chatMeta[conversation.id]?.pinned ? '★' : '◇'}</span><span><strong>{conversation.title || conversationPreview(conversation)}</strong><small>{conversationPreview(conversation)}</small>{Array.isArray(chatMeta[conversation.id]?.tags) && chatMeta[conversation.id].tags.length > 0 && <small className="chat-tags">{chatMeta[conversation.id].tags.map((tag) => `#${tag}`).join(' ')}</small>}<em>Saved · {conversation.model}</em></span></button>
+            <button className="chat-history-open" onClick={() => openConversation(conversation)}><span>{chatMeta[conversation.id]?.pinned ? '★' : '◇'}</span><span><strong>{conversation.title || conversationPreview(conversation)}</strong><small>{conversationPreview(conversation)}</small>{chatMeta[conversation.id]?.tags?.length > 0 && <small className="chat-tags">{chatMeta[conversation.id].tags.map((tag) => `#${tag}`).join(' ')}</small>}<em>Saved · {conversation.model}</em></span></button>
             <button type="button" aria-expanded={chatMenuId === conversation.id} className="chat-history-more" onClick={() => setChatMenuId((id) => id === conversation.id ? null : conversation.id)} aria-label={`Options for ${conversation.title}`}>•••</button>
             {chatMenuId === conversation.id && <div className="chat-history-menu"><button type="button" onClick={() => renameConversation(conversation)}>{t("Edit")}</button><button type="button" className="danger" onClick={() => deleteConversation(conversation)}>{t("Delete")}</button></div>}
           </div>)}
@@ -1185,8 +1081,8 @@ export default function Chat() {
               {voicePanelOpen && <section className="voice-panel" aria-label="Voice mode settings">
                 <div><strong>Voice conversation</strong><button type="button" className={voiceMode ? 'voice-toggle active' : 'voice-toggle'} onClick={changeVoiceMode} aria-pressed={voiceMode}>{voiceMode ? 'On' : 'Off'}</button></div>
                 <p>Send speech automatically and read every AI response aloud.</p>
-                <label>Language<select value={speechLanguage} onChange={(event) => { setSpeechLanguage(event.target.value); safeStorageSet('localStorage', 'allmodelai_voice_language', event.target.value); }}><option value="en-US">English</option><option value="uk-UA">Українська</option><option value="ru-RU">Русский</option><option value="de-DE">Deutsch</option><option value="pl-PL">Polski</option><option value="es-ES">Español</option><option value="fr-FR">Français</option></select></label>
-                <label>Voice<select value={selectedVoice} onChange={(event) => { setSelectedVoice(event.target.value); safeStorageSet('localStorage', 'allmodelai_voice_name', event.target.value); }}><option value="">Automatic</option>{availableVoices.map((voice) => <option value={voice.name} key={`${voice.name}-${voice.lang}`}>{voice.name} ({voice.lang})</option>)}</select></label>
+                <label>Language<select value={speechLanguage} onChange={(event) => { setSpeechLanguage(event.target.value); localStorage.setItem('allmodelai_voice_language', event.target.value); }}><option value="en-US">English</option><option value="uk-UA">Українська</option><option value="ru-RU">Русский</option><option value="de-DE">Deutsch</option><option value="pl-PL">Polski</option><option value="es-ES">Español</option><option value="fr-FR">Français</option></select></label>
+                <label>Voice<select value={selectedVoice} onChange={(event) => { setSelectedVoice(event.target.value); localStorage.setItem('allmodelai_voice_name', event.target.value); }}><option value="">Automatic</option>{availableVoices.map((voice) => <option value={voice.name} key={`${voice.name}-${voice.lang}`}>{voice.name} ({voice.lang})</option>)}</select></label>
                 {isSpeaking && <button type="button" className="stop-speaking" onClick={stopSpeaking}>Stop speaking</button>}
               </section>}
               {selectedSkill && <div className="selected-skill">

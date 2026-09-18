@@ -437,7 +437,7 @@ const deleteAccount = (req, res) => {
 };
 
 const subscriptionPlans = {
-    free: { name: 'User', amount: 0, interval: 'month', limit: 5000, models: ['gemini', 'llama', 'deepseek', 'mistral', 'qwen'] },
+    free: { name: 'User', amount: 0, interval: 'month', limit: 5000, models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'mistral', 'qwen', 'cloudflare'] },
     week: { name: 'Weekly', amount: 599, interval: 'week', limit: 500, models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'cloudflare'] },
     common: { name: 'Pro Monthly', amount: 1900, interval: 'month', limit: 3000, models: ['smart', 'gemini', 'gpt', 'claude', 'llama', 'grok', 'copilot', 'perplexity', 'kimi', 'deepseek', 'mistral', 'qwen', 'cohere', 'cloudflare'] },
     plus: { name: 'Power Monthly', amount: 4900, interval: 'month', limit: 12000, models: ['all'] },
