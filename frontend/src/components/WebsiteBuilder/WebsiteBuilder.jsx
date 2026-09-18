@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
-import { apiFetch } from '../../lib/api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, Navigate, useOutletContext } from 'react-router-dom';
+import { apiFetch, checkChatResponse } from '../../lib/api';
+import { extractApplication, readGenerationStream } from '../../lib/appGeneration';
+import ImageGenerator from '../ImageGenerator/ImageGenerator';
 import './WebsiteBuilder.css';
 
 const starterFiles = {
@@ -10,56 +12,35 @@ const starterFiles = {
 };
 
 const readSavedFiles = () => {
-  try { return JSON.parse(localStorage.getItem('allmodelai_website_files')) || starterFiles; }
+  try { const saved = JSON.parse(localStorage.getItem('allmodelai_website_files')); return saved && ['html', 'css', 'js'].every(key => typeof saved[key] === 'string') ? saved : starterFiles; }
   catch { return starterFiles; }
 };
 
-const extractBlock = (text, names) => {
-  for (const name of names) {
-    const match = text.match(new RegExp('```' + name + '\\s*([\\s\\S]*?)```', 'i'));
-    if (match) return match[1].trim();
-  }
-  return '';
-};
-
-const readStream = async (response) => {
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let text = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-    const events = buffer.replaceAll('\r\n', '\n').split('\n\n');
-    buffer = events.pop() || '';
-    for (const event of events) {
-      const line = event.split('\n').find((item) => item.startsWith('data: '));
-      if (!line || line.slice(6) === '[DONE]') continue;
-      const data = JSON.parse(line.slice(6));
-      if (data.text) text += data.text;
-    }
-    if (done) return text;
-  }
-};
-
 export default function WebsiteBuilder() {
-  const savedUser = sessionStorage.getItem('allmodelai_user');
-  const user = savedUser ? JSON.parse(savedUser) : null;
+  const { user } = useOutletContext() || {};
   const [files, setFiles] = useState(readSavedFiles);
   const [activeFile, setActiveFile] = useState('html');
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
+  const [imageOpen, setImageOpen] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('Saved locally');
+  const request = useRef(null);
+  useEffect(() => () => request.current?.abort(), []);
+  const saveFiles = (next) => {
+    setFiles(next);
+    try { localStorage.setItem('allmodelai_website_files', JSON.stringify(next)); setSaveStatus('Saved locally'); }
+    catch { setSaveStatus('Not saved — download your app'); }
+  };
   const [error, setError] = useState('');
   const [previewKey, setPreviewKey] = useState(0);
   const [viewport, setViewport] = useState('desktop');
 
-  const preview = useMemo(() => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${files.css}</style></head><body>${files.html}<script>${files.js}</script></body></html>`, [files]);
+  const preview = useMemo(() => `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; script-src &#39;unsafe-inline&#39;; style-src &#39;unsafe-inline&#39;; img-src data: blob:; connect-src &#39;none&#39;; form-action &#39;none&#39;; base-uri &#39;none&#39;"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${files.css}</style></head><body>${files.html}<script>${files.js}</script></body></html>`, [files]);
   if (!user) return <Navigate to="/" replace />;
 
   const updateFile = (value) => {
     const next = { ...files, [activeFile]: value };
-    setFiles(next);
-    localStorage.setItem('allmodelai_website_files', JSON.stringify(next));
+    saveFiles(next);
   };
 
   const generateWebsite = async () => {
@@ -67,20 +48,16 @@ export default function WebsiteBuilder() {
     setBusy(true);
     setError('');
     try {
-      const instruction = `Build a polished, responsive website for this request: ${prompt}\n\nReturn exactly three complete fenced code blocks in this order: html, css, javascript. The HTML must contain body content only, CSS must be plain CSS, and JavaScript must be browser JavaScript. Do not use external frameworks. Make the interface functional and accessible.`;
-      const response = await apiFetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'gpt', temporary: true, maxTokens: 3072, messages: [{ role: 'user', text: instruction }] }) });
-      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.message || 'Website generation failed.'); }
-      const answer = await readStream(response);
-      const next = {
-        html: extractBlock(answer, ['html']) || files.html,
-        css: extractBlock(answer, ['css']) || files.css,
-        js: extractBlock(answer, ['javascript', 'js']) || files.js,
-      };
-      setFiles(next);
-      localStorage.setItem('allmodelai_website_files', JSON.stringify(next));
+      const controller = new AbortController();
+      request.current = controller;
+      const response = await apiFetch('/api/apps/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }), signal: controller.signal });
+      await checkChatResponse(response);
+      const answer = await readGenerationStream(response);
+      const next = extractApplication(answer);
+      saveFiles(next);
       setPreviewKey((key) => key + 1);
     } catch (requestError) {
-      setError(requestError.message || 'Could not generate the website.');
+      if (requestError.name !== 'AbortError') setError(requestError.message || 'Could not generate the application.');
     } finally {
       setBusy(false);
     }
@@ -89,21 +66,23 @@ export default function WebsiteBuilder() {
   const download = () => {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([preview], { type: 'text/html' }));
-    link.download = 'allmodelai-website.html';
+    link.download = 'allmodelai-app.html';
     link.click();
-    URL.revokeObjectURL(link.href);
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   };
 
   return <main className="website-builder">
     <header className="builder-header">
       <Link to="/dashboard" className="builder-brand"><span>AI</span>AllModelAI</Link>
-      <div className="builder-title"><strong>Website Builder</strong><small>Saved locally</small></div>
-      <nav><Link to="/chat">Chat</Link><Link to="/studio">Studio</Link><button type="button" onClick={download}>Download</button></nav>
+      <div className="builder-title"><strong>App Builder</strong><small>{saveStatus}</small></div>
+      <nav><button type="button" onClick={() => setImageOpen(true)}>✦ Create image</button><Link to="/chat">Chat</Link><Link to="/studio">Studio</Link><button type="button" onClick={download}>Download</button></nav>
     </header>
 
     <section className="builder-prompt">
-      <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Describe the website you want to build..." rows="2" />
-      <button type="button" disabled={!prompt.trim() || busy} onClick={generateWebsite}>{busy ? 'Building...' : 'Build with AI'}</button>
+      <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Опиши приложение: список задач, калькулятор, викторина…" aria-label="Application description" maxLength={4000} disabled={busy} rows="2" />
+      <button type="button" disabled={!prompt.trim() || busy} onClick={generateWebsite}>{busy ? 'Создаём приложение…' : 'Create app'}</button>
+      <small className="builder-help">Интерактивное браузерное приложение · Предпросмотр · Редактор · Скачать HTML</small>
+      {busy && <p role="status">ИИ пишет код приложения…</p>}
       {error && <p role="alert">{error}</p>}
     </section>
 
@@ -113,7 +92,7 @@ export default function WebsiteBuilder() {
           {['html', 'css', 'js'].map((file) => <button type="button" role="tab" aria-selected={activeFile === file} className={activeFile === file ? 'active' : ''} onClick={() => setActiveFile(file)} key={file}><i />{file === 'js' ? 'JavaScript' : file.toUpperCase()}</button>)}
         </div>
         <div className="editor-filebar"><span>{activeFile === 'js' ? 'script.js' : activeFile === 'css' ? 'styles.css' : 'index.html'}</span><small>{files[activeFile].split('\n').length} lines</small></div>
-        <textarea className="code-editor" value={files[activeFile]} onChange={(event) => updateFile(event.target.value)} spellCheck="false" aria-label={`${activeFile} code`} />
+        <textarea className="code-editor" disabled={busy} value={files[activeFile]} onChange={(event) => updateFile(event.target.value)} spellCheck="false" aria-label={`${activeFile} code`} />
       </section>
 
       <section className="builder-preview">
@@ -121,5 +100,6 @@ export default function WebsiteBuilder() {
         <div className={`preview-stage ${viewport}`}><iframe key={previewKey} title="Generated website preview" sandbox="allow-scripts" srcDoc={preview} /></div>
       </section>
     </div>
+    {imageOpen && <ImageGenerator onClose={() => setImageOpen(false)} />}
   </main>;
 }

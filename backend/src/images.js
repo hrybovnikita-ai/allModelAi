@@ -1,6 +1,6 @@
 const generateImage = async (req, res) => {
     const prompt = typeof req.body.prompt === 'string' ? req.body.prompt.trim() : '';
-    if (!prompt || prompt.length > 4000) return res.status(400).json({ message: 'Опишите изображение: от 1 до 4000 символов.' });
+    if (!prompt || prompt.length > 4000) return res.status(400).json({ message: 'Describe your image using 1 to 4000 characters.' });
     const keys = [process.env.IMAGE_API_KEY, process.env.OPENAI_API_KEY, process.env.OPEN_AI_API_KEY, process.env.API_IMAGE_KEY]
         .map(value => String(value || '').trim()).filter(Boolean);
     const apiKey = process.env.IMAGE_API_URL ? keys[0] : keys.find(value => /^sk-/i.test(value) && !/^sk-or-/i.test(value));
@@ -9,8 +9,8 @@ const generateImage = async (req, res) => {
     const cloudflare = process.env.IMAGE_PROVIDER === 'cloudflare' || (!apiKey && account && cloudflareKey);
     if (cloudflare ? !account || !cloudflareKey : !apiKey) {
         return res.status(503).json({ message: cloudflare
-            ? 'Для Cloudflare укажите CLOUDFLARE_ACCOUNT_ID и CLOUDFLARE_API_KEY на сервере.'
-            : 'Добавьте IMAGE_API_KEY для генерации или настройте Cloudflare на сервере.' });
+            ? 'Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_KEY on the server to use Cloudflare.'
+            : 'Set IMAGE_API_KEY or configure Cloudflare on the server to generate images.' });
     }
     try {
         const response = await fetch(cloudflare
@@ -26,23 +26,23 @@ const generateImage = async (req, res) => {
         const data = await response.json().catch(() => null);
         if (!response.ok || data?.success === false) {
             const message = response.status === 401 || response.status === 403
-                ? 'Сервис отклонил ключ генерации. Проверьте ключ и доступ к модели в настройках сервиса.'
+                ? 'The image service rejected the API key. Check the key and model access in your provider settings.'
                 : response.status === 429
-                    ? 'Лимит сервиса генерации исчерпан. Проверьте баланс или повторите позже.'
-                    : 'Сервис не смог создать изображение. Попробуйте изменить описание или повторить позже.';
+                    ? 'The image generation limit has been reached. Check your balance or try again later.'
+                    : 'The service could not generate an image. Try changing your description or try again later.';
             return res.status(response.status === 429 ? 429 : 502).json({ message });
         }
         const image = data?.data?.[0];
         const base64 = cloudflare ? data?.result?.image : image?.b64_json;
         const imageUrl = base64 ? `data:image/${cloudflare ? 'jpeg' : 'png'};base64,${base64}` : image?.url;
         if (typeof imageUrl !== 'string' || !/^(https:\/\/|data:image\/(png|jpeg|webp);base64,)/.test(imageUrl)) {
-            return res.status(502).json({ message: 'Сервис не вернул изображение. Попробуйте ещё раз.' });
+            return res.status(502).json({ message: 'The service did not return an image. Please try again.' });
         }
         return res.json({ imageUrl, prompt });
     } catch (error) {
         return res.status(error.name === 'TimeoutError' ? 504 : 502).json({ message: error.name === 'TimeoutError'
-            ? 'Генерация заняла слишком много времени. Попробуйте ещё раз.'
-            : 'Не удалось подключиться к сервису генерации изображений.' });
+            ? 'Image generation took too long. Please try again.'
+            : 'Could not connect to the image generation service.' });
     }
 };
 module.exports = { generateImage };

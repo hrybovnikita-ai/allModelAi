@@ -47,7 +47,7 @@ function renderChat(path = '/chat') {
 }
 function assertChat(html) {
   assert.match(html, /class="chat-page"/);
-  assert.match(html, /class="chat-composer"/);
+  assert.match(html, /class="chat-composer(?:\s[^"]*)?"/);
   assert.match(html, /aria-label="Chat message"/);
 }
 const deny = () => { throw new Error('Safari storage denied'); };
@@ -130,4 +130,15 @@ test('unavailable speech and failed voice discovery do not throw', () => {
   const cleanup = chat.subscribeVoices({ getVoices: deny }, value => { voices = value; });
   assert.deepEqual(voices, []);
   cleanup();
+});
+
+test('App Builder uses the verified session when browser storage is unavailable', async t => {
+  globals(t, { localStorage: { get: deny }, sessionStorage: { get: deny } });
+  const builder = await server.ssrLoadModule('/src/components/WebsiteBuilder/WebsiteBuilder.jsx');
+  const html = renderToString(h(MemoryRouter, { initialEntries: ['/app-builder'] }, h(Routes, null,
+    h(Route, { element: h(Outlet, { context: { user: { name: 'Builder', email: 'builder@example.com' } } }) },
+      h(Route, { path: '/app-builder', element: h(builder.default) })))));
+  assert.match(html, /Create app/);
+  assert.match(html, /Create image/);
+  assert.match(html, /sandbox="allow-scripts"/);
 });

@@ -35,6 +35,7 @@ const {
     getSharedPromptTemplates, rateSharedPromptTemplate, chatSuggestions, recordArenaVote, getArenaLeaderboard, improvePrompt,
 } = require('../controllers/controllers');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { prepareAppGeneration } = require('../appGeneration');
 const { health, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
 
 const router = express.Router();
@@ -58,6 +59,7 @@ router.get('/share/:token', getSharedConversation);
 
 router.delete('/auth/account', requireAuth, deleteAccount);
 router.post('/chat', requireAuth, createChatResponse);
+router.post('/apps/generate', requireAuth, prepareAppGeneration, createChatResponse);
 router.post('/chat/improve-prompt', requireAuth, improvePrompt);
 router.post('/vision/analyze', requireAuth, analyzeVision);
 router.post('/router/preview', requireAuth, previewRouter);

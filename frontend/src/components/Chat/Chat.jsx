@@ -1,3 +1,4 @@
+import ImageGenerator from '../ImageGenerator/ImageGenerator';
 import { useLanguage } from '../../lib/useLanguage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams, useOutletContext } from 'react-router-dom';
@@ -226,6 +227,7 @@ export default function Chat() {
   });
   const [prompt, setPrompt] = useState(location.state?.starterPrompt || '');
   const [isSending, setIsSending] = useState(false);
+  const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
   const [isStreamingResponse, setIsStreamingResponse] = useState(false);
   const [chatError, setChatError] = useState('');
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -1060,7 +1062,8 @@ export default function Chat() {
           </div>)}
           </div>
         </div>
-        <nav className="sidebar-links" aria-label={t("Chat navigation")}><Link to="/dashboard">⌂ <span>{t("Dashboard")}</span></Link><Link to="/ai-platform">34 <span>{t("AI Platform")}</span></Link><Link to="/website-builder">&lt;/&gt; <span>{t("Website Builder")}</span></Link><Link to="/studio">✦ <span>{t("Workspace Studio")}</span></Link><Link to="/control-center">⌘ <span>{t("Control Center")}</span></Link><Link to="/models/gpt">▦ <span>{t("Model library")}</span></Link></nav>
+        {imageGeneratorOpen && <ImageGenerator initialPrompt={prompt} onClose={() => setImageGeneratorOpen(false)} />}
+        <nav className="sidebar-links" aria-label={t("Chat navigation")}><Link to="/dashboard">⌂ <span>{t("Dashboard")}</span></Link><Link to="/ai-platform">34 <span>{t("AI Platform")}</span></Link><Link to="/app-builder">&lt;/&gt; <span>App Builder</span></Link><Link to="/studio">✦ <span>{t("Workspace Studio")}</span></Link><Link to="/control-center">⌘ <span>{t("Control Center")}</span></Link><Link to="/models/gpt">▦ <span>{t("Model library")}</span></Link></nav>
         <section className="sidebar-theme-settings collapsed" aria-label={t("Theme settings")}><button type="button" className="chat-settings-trigger" onClick={()=>navigate('/chat/settings')}><span className="settings-gear" aria-hidden="true">⚙</span><span><strong>{t("Settings")}</strong><small>{themePreference} · {chatTextColors.find(([,color])=>color===textColor)?.[0]||'Custom'} message</small></span><b>›</b></button></section>
         <div className="chat-profile"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><div><strong>{user.name || t("User")}</strong><small>{user.email}</small></div><button onClick={() => setDeleteModalOpen(true)} aria-label={t("Sign out")} title={t("Sign out")}>↗</button></div>
       </aside>
@@ -1180,7 +1183,7 @@ export default function Chat() {
             <div className="composer-box">
               <div className="image-mode-switch" role="group" aria-label="Response mode">
                 <button type="button" disabled={isSending} aria-pressed={selectedSkill !== 'image'} onClick={() => setSelectedSkill(null)}>Chat</button>
-                <button type="button" disabled={isSending} aria-pressed={selectedSkill === 'image'} onClick={() => { setAttachedImage(null); chooseSkill('image'); }}>✦ Create image</button>
+                <button type="button" disabled={isSending} aria-pressed={selectedSkill === 'image'} onClick={() => setImageGeneratorOpen(true)}>✦ Create image</button>
               </div>
               {voicePanelOpen && <section className="voice-panel" aria-label="Voice mode settings">
                 <div><strong>Voice conversation</strong><button type="button" className={voiceMode ? 'voice-toggle active' : 'voice-toggle'} onClick={changeVoiceMode} aria-pressed={voiceMode}>{voiceMode ? 'On' : 'Off'}</button></div>

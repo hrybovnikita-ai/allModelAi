@@ -173,6 +173,7 @@ export default function App() {
       <Route path="/ai-tools" element={<AIToolsLab />} />
       <Route path="/creator-tools" element={<CreatorLab />} />
       <Route path="/website-builder" element={<WebsiteBuilder />} />
+      <Route path="/app-builder" element={<WebsiteBuilder />} />
       <Route path="/ai-platform" element={<AIPlatform />} />
       <Route path="/innovation-lab" element={<InnovationLab />} />
       <Route path="/expansion-hub" element={<ExpansionHub />} />
