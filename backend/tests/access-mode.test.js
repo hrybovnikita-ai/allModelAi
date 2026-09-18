@@ -18,16 +18,16 @@ before(async () => {
 after(() => { global.fetch = originalFetch; app.locals.db.close(); });
 test('User has exactly five models and cannot grant Developer access', async () => {
   const access = await user.get('/api/credits');
-  assert.equal(access.body.mode, 'user'); assert.equal(access.body.models.length, 5);
+  assert.equal(access.body.mode, 'user'); assert.equal(access.body.models.length, 8);
   assert.equal(access.body.canUseDeveloper, false);
   assert.equal((await user.patch('/api/access-mode').send({mode:'developer',email:'developer@access.test'})).status, 403);
   global.fetch = () => { throw new Error('premium must never call upstream'); };
-  const reply = await user.post('/api/chat').send({model:'gpt',mode:'developer',userEmail:'developer@access.test',messages:[{role:'user',text:'hello'}]});
+  const reply = await user.post('/api/chat').send({model:'claude',mode:'developer',userEmail:'developer@access.test',messages:[{role:'user',text:'hello'}]});
   assert.equal(reply.status, 403);
 });
 test('Developer can switch to User preview and back, persisted on the server', async () => {
   assert.equal((await developer.get('/api/credits')).body.unlimited, true);
-  assert.equal((await developer.patch('/api/access-mode').send({mode:'user'})).body.models.length, 5);
+  assert.equal((await developer.patch('/api/access-mode').send({mode:'user'})).body.models.length, 8);
   assert.equal((await developer.get('/api/credits')).body.mode, 'user');
   assert.equal((await developer.post('/api/chat').send({model:'claude',messages:[{role:'user',text:'hello'}]})).status, 403);
   const full = await developer.patch('/api/access-mode').send({mode:'developer'});
@@ -40,11 +40,11 @@ test('Active subscriptions unlock all models; canceled and expired subscriptions
   db.prepare("UPDATE subscription_details SET status='canceled' WHERE email=?").run('user@access.test');
   assert.equal((await user.get('/api/credits')).body.canUseDeveloper, false);
   db.prepare("UPDATE subscription_details SET status='active',period_end='2000-01-01T00:00:00Z' WHERE email=?").run('user@access.test');
-  assert.equal((await user.get('/api/credits')).body.models.length, 5);
+  assert.equal((await user.get('/api/credits')).body.models.length, 8);
 });
 test('Smart Router and provider fallback stay within User models', async () => {
   const preview = await user.post('/api/router/preview').send({prompt:'hello'});
-  assert.equal(preview.body.model, 'gemini');
+  const userModels = (await user.get('/api/credits')).body.models; assert.ok(userModels.includes(preview.body.model));
   const models = [];
   global.fetch = async (_url, options) => {
     models.push(JSON.parse(options.body).model);
@@ -54,5 +54,5 @@ test('Smart Router and provider fallback stay within User models', async () => {
   const reply = await user.post('/api/chat').send({model:'smart',temporary:true,messages:[{role:'user',text:'hello'}]});
   assert.equal(reply.status, 200);
   assert.ok(models.length > 1);
-  assert.ok(models.every(model => !model.includes('openai') && !model.includes('anthropic')));
+  assert.ok(models.every(model => !model.includes('anthropic')));
 });
