@@ -3,8 +3,8 @@ import { useLanguage } from "./lib/useLanguage";
 import RainbowExperience from "./components/RainbowExperience/RainbowExperience";
 import AuthPage from "./components/Login/AuthPage";
 import RequireAuth from "./components/Login/RequireAuth";
-import { useState } from "react";
-import { Route, Routes } from "react-router-dom";
+import { useLayoutEffect, useState } from "react";
+import { Route, Routes, useLocation } from "react-router-dom";
 import claudeLogo from "./assets/claude.png";
 import geminiLogo from "./assets/gemini.png";
 import gptLogo from "./assets/gpt.png";
@@ -137,6 +137,10 @@ function HomePage() {
 
 export default function App() {
   useLanguage();
+  const { pathname } = useLocation();
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [pathname]);
   return (
     <><CommandPalette /><CookieConsent /><Routes>
       <Route path="/" element={<HomePage />} />

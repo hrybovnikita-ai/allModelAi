@@ -1,5 +1,6 @@
+import { clearAllSessionData } from '../../lib/session';
 import { useEffect, useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import { dashboardModels as models } from '../../data/dashboardModels';
 import './Dashboard.css';
 import './DashboardEnhancements.css';
@@ -12,10 +13,7 @@ const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M con
 export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
-  const storage = typeof localStorage !== 'undefined' ? localStorage : sessionStorage;
-  const saved = storage.getItem('allmodelai_user');
-  const [user, setUser] = useState(saved ? JSON.parse(saved) : null);
-  const [checkingSession, setCheckingSession] = useState(!user);
+  const { user } = useOutletContext();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -23,18 +21,9 @@ export default function Dashboard() {
   const [analytics, setAnalytics] = useState(null);
   const [recentProjects, setRecentProjects] = useState([]);
 
-  useEffect(() => {
-    if (user) return undefined;
-    fetch('/api/auth/session', { credentials: 'include' })
-      .then((response) => response.ok ? response.json() : null)
-      .then((data) => { if (data?.user) { setUser(data.user); sessionStorage.setItem('allmodelai_user', JSON.stringify(data.user)); } })
-      .finally(() => setCheckingSession(false));
-  }, [user]);
   useEffect(() => { if (user?.email) fetch(`/api/credits?email=${encodeURIComponent(user.email)}`).then((response) => response.ok ? response.json() : null).then((data) => data && setCreditStatus(data)).catch(() => {}); }, [user?.email]);
   useEffect(() => { if (!user?.email) return; Promise.all([fetch(`/api/analytics?email=${encodeURIComponent(user.email)}`).then(r => r.ok ? r.json() : null), fetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`).then(r => r.ok ? r.json() : [])]).then(([stats, projects]) => { setAnalytics(stats); setRecentProjects(projects.slice(0, 3)); }).catch(() => {}); }, [user?.email]);
 
-  if (checkingSession) return <main className="dashboard-page"><p>Restoring your workspace...</p></main>;
-  if (!user) return <Navigate to="/" replace />;
 
   const deleteAccount = async () => {
     setIsDeleting(true);
@@ -43,7 +32,7 @@ export default function Dashboard() {
       const response = await fetch('/api/auth/account', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || 'Could not delete your account.');
-      sessionStorage.removeItem('allmodelai_user');
+      clearAllSessionData();
       navigate('/');
     } catch (error) {
       setDeleteError(error.message);
@@ -57,7 +46,7 @@ export default function Dashboard() {
       <nav className="dashboard-nav" aria-label="Workspace navigation">
         <Link to="/" className="dashboard-brand"><span>AI</span>AllModelAI</Link>
         <div className="dashboard-nav-links"><Link to="/chat">Chat</Link><Link to="/builder-25">Developer Toolkit</Link><Link to="/next-20">Workspace Tools</Link><Link to="/next-25">AI Workflows</Link><Link to="/next-9">Research & Learning</Link><Link to="/next-10">Model Toolkit</Link><Link to="/ai-platform">AI Platform</Link><Link to="/website-builder">Website Builder</Link><Link to="/arena">Arena</Link><Link to="/explore">Models</Link><Link to="/studio">Studio</Link><Link to="/ai-tools">Power Lab</Link><Link to="/creator-tools">Creator Lab</Link><Link to="/features">Features</Link><Link to="/control-center">Control</Link></div>
-        <div className="dashboard-user"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><Link to="/settings"><small>{user.name || user.email}</small></Link><button onClick={async () => { try { const response = await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); if (!response.ok) throw new Error('Could not sign out. Try again.'); sessionStorage.removeItem('allmodelai_user'); navigate('/login', { replace: true }); } catch (error) { setDeleteError(error.message); } }}>Sign out</button><button onClick={() => setDeleteModalOpen(true)}>Delete account</button></div>
+        <div className="dashboard-user"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><Link to="/settings"><small>{user.name || user.email}</small></Link><button onClick={async () => { try { const response = await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); if (!response.ok) throw new Error('Could not sign out. Try again.'); clearAllSessionData(); navigate('/login', { replace: true }); } catch (error) { setDeleteError(error.message); } }}>Sign out</button><button onClick={() => setDeleteModalOpen(true)}>Delete account</button></div>
       </nav>
       {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user.email}</div>}
       {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}
@@ -73,7 +62,7 @@ export default function Dashboard() {
         <div className="dashboard-orbit" aria-hidden="true"><span>AI</span></div>
       </section>
       {creditStatus && <section className="dashboard-usage"><div><span>Usage this month</span><strong>{creditStatus.plan} plan · {creditStatus.remaining} requests left</strong></div><div className="usage-track"><i style={{ width: `${Math.min((creditStatus.used / creditStatus.limit) * 100, 100)}%` }} /></div><Link to="/checkout?plan=pro">Upgrade plan</Link></section>}
-      <section className="personal-overview"><div className="overview-heading"><div><p className="dashboard-eyebrow">Your week</p><h2>Workspace overview</h2></div><Link to="/studio">Open analytics →</Link></div><div className="overview-grid"><article><small>CONVERSATIONS</small><strong>{analytics?.conversations ?? '—'}</strong><span>Saved in your workspace</span></article><article><small>MESSAGES</small><strong>{analytics?.messages ?? '—'}</strong><span>Across every AI model</span></article><article><small>ESTIMATED TOKENS</small><strong>{analytics ? analytics.estimatedTokens.toLocaleString() : '—'}</strong><span>Processed in conversations</span></article><article className="continue-card"><small>QUICK START</small><strong>Continue creating</strong><div><Link to="/chat?model=smart">Smart chat</Link><Link to="/arena">AI Arena</Link></div></article></div><div className="recent-projects"><div><h3>Recent projects</h3><Link to="/studio">View all</Link></div>{recentProjects.length ? recentProjects.map(project => <Link to="/studio" key={project.id}><span>▦</span><div><strong>{project.name}</strong><small>{project.content?.slice(0, 70) || 'Ready for your next task'}</small></div><b>→</b></Link>) : <div className="projects-empty"><span>✦</span><p>No projects yet. Turn your next idea into a focused workspace.</p><Link to="/studio">Create project</Link></div>}</div></section>
+      <section className="personal-overview"><div className="overview-heading"><div><p className="dashboard-eyebrow">Your week</p><h2>Workspace overview</h2></div><Link to="/studio">Open analytics →</Link></div><div className="overview-grid"><article><small>CONVERSATIONS</small><strong>{analytics?.conversations ?? '—'}</strong><span>Saved in your workspace</span></article><article><small>MESSAGES</small><strong>{analytics?.messages ?? '—'}</strong><span>Across every AI model</span></article><article><small>ESTIMATED TOKENS</small><strong>{analytics ? (analytics.estimatedTokens ?? 0).toLocaleString() : '—'}</strong><span>Processed in conversations</span></article><article className="continue-card"><small>QUICK START</small><strong>Continue creating</strong><div><Link to="/chat?model=smart">Smart chat</Link><Link to="/arena">AI Arena</Link></div></article></div><div className="recent-projects"><div><h3>Recent projects</h3><Link to="/studio">View all</Link></div>{recentProjects.length ? recentProjects.map(project => <Link to="/studio" key={project.id}><span>▦</span><div><strong>{project.name}</strong><small>{project.content?.slice(0, 70) || 'Ready for your next task'}</small></div><b>→</b></Link>) : <div className="projects-empty"><span>✦</span><p>No projects yet. Turn your next idea into a focused workspace.</p><Link to="/studio">Create project</Link></div>}</div></section>
       <section className="dashboard-feature-cards" aria-label="Workspace highlights">
         <article className="dashboard-feature-card dashboard-feature-card-skills">
           <span className="feature-card-icon">✦</span>

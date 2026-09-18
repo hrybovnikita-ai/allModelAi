@@ -8,17 +8,12 @@ const cacheDuration = 5 * 60 * 1000;
  * All operations sync both storages to keep legacy code working.
  */
 function getStorage() {
-  const local =
-    typeof globalThis !== 'undefined' &&
-    typeof globalThis.localStorage !== 'undefined'
-      ? globalThis.localStorage
-      : null;
-
-  const session =
-    typeof globalThis !== 'undefined' &&
-    typeof globalThis.sessionStorage !== 'undefined'
-      ? globalThis.sessionStorage
-      : null;
+  // Safari may throw while accessing the storage property itself.
+  const access = (name) => {
+    try { return globalThis[name] || null; } catch { return null; }
+  };
+  const local = access('localStorage');
+  const session = access('sessionStorage');
 
   const primary = local || session;
   const fallback = primary === local ? session : local;
@@ -81,7 +76,7 @@ export function rememberSession(user) {
   const saved = JSON.stringify(user);
   const storage = getStorage();
   storage.setItem('allmodelai_user', saved);
-  verifiedSession = { user, saved, expiresAt: Date.now() + cacheDuration };
+  verifiedSession = { user, saved: storage.getItem('allmodelai_user'), expiresAt: Date.now() + cacheDuration };
   return user;
 }
 
@@ -118,6 +113,7 @@ export async function restoreSession() {
  * Clears session data from both localStorage and sessionStorage.
  */
 export function clearAllSessionData() {
+  verifiedSession = null;
   const storage = getStorage();
   storage.removeItem('allmodelai_user');
 }

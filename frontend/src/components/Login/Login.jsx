@@ -39,7 +39,8 @@ export default function Login({ mode, onClose, onModeChange, returnTo = "/dashbo
       payload.rememberMe = payload.rememberMe === 'on';
       const response = await axios.post(endpoint, payload, { withCredentials: true });
       rememberSession(response.data.user);
-      onClose();
+      // Dismiss the mobile keyboard before showing the main workspace.
+      document.activeElement?.blur();
       navigate(returnTo, { replace: true, state: { ...returnState, user: response.data.user, welcomeEmail: response.data.welcomeEmail } });
     } catch (requestError) {
       if (requestError.response?.data?.code === 'PASSWORD_SETUP_REQUIRED') {
