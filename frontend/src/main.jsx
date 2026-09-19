@@ -4,7 +4,11 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.jsx'
 
-const savedAppearance = JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}')
+function readAppearance() {
+  try { return JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}') || {} }
+  catch { return {} }
+}
+const savedAppearance = readAppearance()
 const savedMessageColor = !savedAppearance.textColor || savedAppearance.textColor.toLowerCase() === '#ffffff' ? '#8b5cf6' : savedAppearance.textColor
 const colorValue = savedMessageColor.replace('#', '')
 const colorChannels = [0, 2, 4].map(index => Number.parseInt(colorValue.slice(index, index + 2), 16))
@@ -17,7 +21,7 @@ document.documentElement.style.setProperty('--composer-color', savedInputColor)
 document.documentElement.style.setProperty('--composer-text', (inputChannels[0] * 299 + inputChannels[1] * 587 + inputChannels[2] * 114) / 1000 > 155 ? '#111111' : '#ffffff')
 const systemTheme = window.matchMedia('(prefers-color-scheme: light)')
 const applyTheme = () => {
-  const preference = JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}').theme || 'dark'
+  const preference = readAppearance().theme || 'dark'
   document.documentElement.dataset.themePreference = preference
   document.documentElement.dataset.theme = preference === 'auto' ? (systemTheme.matches ? 'light' : 'dark') : preference
 }

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { useOutletContext, Link, Navigate } from 'react-router-dom';
 import './ProductionCenter.css';
 const tabs=[['overview','Overview'],['jobs','Background Jobs'],['search','Global Search'],['notifications','Notifications'],['usage','Usage & Budgets'],['webhooks','Webhooks'],['security','Security & Privacy'],['deployment','Deployment']];
 async function api(url,options={}){const response=await fetch(url,{credentials:'include',...options});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||'Request failed');return data;}
 const post=(url,body)=>api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 export default function ProductionCenter(){
- const saved=sessionStorage.getItem('allmodelai_user'),user=saved?JSON.parse(saved):null;
+ const { user } = useOutletContext();
  const[active,setActive]=useState('overview'),[health,setHealth]=useState(null),[jobs,setJobs]=useState([]),[notifications,setNotifications]=useState([]),[usage,setUsage]=useState(null),[audit,setAudit]=useState([]),[webhooks,setWebhooks]=useState([]),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const[query,setQuery]=useState(''),[results,setResults]=useState([]),[jobType,setJobType]=useState('research'),[jobInput,setJobInput]=useState(''),[hook,setHook]=useState({name:'',url:''}),[hookSecret,setHookSecret]=useState('');
  const load=()=>{api('/api/health').then(setHealth).catch(e=>setError(e.message));if(active==='jobs')api('/api/jobs').then(setJobs).catch(e=>setError(e.message));if(active==='notifications')api('/api/notifications').then(setNotifications).catch(e=>setError(e.message));if(active==='usage')api('/api/usage/report').then(setUsage).catch(e=>setError(e.message));if(active==='webhooks')api('/api/webhooks').then(setWebhooks).catch(e=>setError(e.message));if(active==='security')api('/api/audit').then(setAudit).catch(e=>setError(e.message));};

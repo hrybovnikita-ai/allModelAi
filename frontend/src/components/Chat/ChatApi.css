@@ -422,3 +422,108 @@ html[data-theme="light"] .model-family-heading{color:#172033}
 html[data-theme="light"] .model-family-group{border-color:#d8dbe2}
 html[data-theme="light"] .model-options button.model-family-version{background:#f6f7fb;border-color:#d8dbe2}
 html[data-theme="light"] .model-options button.model-family-version:hover,html[data-theme="light"] .model-options button.model-family-version.selected{background:#ede9fe;border-color:#8b5cf6}
+/* Quick prompt buttons below the composer */
+.quick-prompts, .composer-quick-texts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding: 0 4px; }
+.quick-prompts button, .composer-quick-texts button {
+  padding: 7px 13px; border: 1px solid #303d53; border-radius: 999px;
+  background: #151e2d; color: #cbd5e1; font: inherit; font-size: .68rem;
+  cursor: pointer; transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.quick-prompts button:hover, .composer-quick-texts button:hover { background: #202d43; color: #fff; border-color: #4c5b76; }
+html[data-theme="light"] .quick-prompts button, html[data-theme="light"] .composer-quick-texts button { border-color: #d4d8e0; background: #f4f5f7; color: #333; }
+html[data-theme="light"] .quick-prompts button:hover, html[data-theme="light"] .composer-quick-texts button:hover { background: #e6e9ef; color: #111; }
+
+/* ---------- Subscribe flow ---------- */
+
+.subscribe-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.subscribe-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+
+.subscribe-modal { max-width: 560px; width: 100%; }
+
+.subscribe-plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 14px 0; }
+
+.subscribe-plan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  background: rgba(139, 92, 246, 0.06);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.subscribe-plan:hover { border-color: #8b5cf6; background: rgba(139, 92, 246, 0.12); }
+.subscribe-plan.popular { border-color: #8b5cf6; }
+.subscribe-plan strong { font-size: 15px; }
+.subscribe-plan em { font-style: normal; color: #a855f7; font-weight: 700; }
+.subscribe-plan ul { list-style: none; padding: 0; margin: 0; font-size: 12px; opacity: 0.85; display: grid; gap: 3px; }
+.subscribe-plan-icon { font-size: 20px; }
+
+.subscribe-popular-badge {
+  position: absolute;
+  top: -10px;
+  right: 10px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #8b5cf6;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-style: normal;
+}
+
+.subscribe-form { display: grid; gap: 10px; margin: 14px 0; }
+.subscribe-form input {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 17, 26, 0.6);
+  color: inherit;
+  font: inherit;
+}
+.subscribe-form input:focus { outline: none; border-color: #8b5cf6; }
+.subscribe-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.subscribe-dev-note {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(139, 92, 246, 0.12);
+  color: #c4b5fd;
+  font-size: 13px;
+}
+
+.subscribe-error { color: #f87171; font-size: 13px; margin: 0; }
+
+.subscribe-confirm {
+  padding: 11px 16px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+.subscribe-confirm:disabled { opacity: 0.6; cursor: wait; }
+
+@media (max-width: 640px) { .subscribe-plans { grid-template-columns: 1fr; } }

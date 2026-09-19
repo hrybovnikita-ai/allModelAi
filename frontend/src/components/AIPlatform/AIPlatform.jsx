@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import './AIPlatform.css';
 
 const modules = [
@@ -40,8 +40,7 @@ const modules = [
 ];
 
 export default function AIPlatform() {
-  const saved = sessionStorage.getItem('allmodelai_user');
-  const user = saved ? JSON.parse(saved) : null;
+  const { user } = useOutletContext();
   const navigate = useNavigate();
   const [active, setActive] = useState('agent');
   const [query, setQuery] = useState('');

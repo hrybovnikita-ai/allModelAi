@@ -12,6 +12,12 @@ import './Chat.css';
 import './ChatApi.css';
 import AccountDeleteModal from '../AccountDeleteModal';
 
+const quickPrompts = [
+  'Write a short story about a time traveler.',
+  'Summarize the main benefits of daily exercise.',
+  'Help me plan a budget for a trip to Europe.',
+];
+
 const suggestions = [
   { icon: '✦', title: 'Create an idea', prompt: 'Give me three original product ideas for students.' },
   { icon: '</>', title: 'Explain code', prompt: 'Explain React useEffect with a simple example.' },
@@ -272,6 +278,57 @@ export default function Chat() {
   const [arenaOpen, setArenaOpen] = useState(false);
   const [arenaTask, setArenaTask] = useState('');
   const [variantCatalog, setVariantCatalog] = useState({});
+  const [subscribeModalOpen, setSubscribeModalOpen] = useState(false);
+  const [subscribePlan, setSubscribePlan] = useState(null);
+  const [subscribeForm, setSubscribeForm] = useState({ cardNumber: '', holder: '', email: '', city: '', birthDate: '', expiry: '', cvc: '' });
+  const [subscribeBusy, setSubscribeBusy] = useState(false);
+  const [subscribeError, setSubscribeError] = useState('');
+
+  const subscriptionPlans = [
+    { id: 'starter', icon: '🌱', name: t('Starter'), price: '$5', period: t('per month'), features: [t('Basic models included'), t('Standard response speed'), t('Email support')] },
+    { id: 'pro', icon: '🚀', name: t('Pro'), price: '$15', period: t('per month'), popular: true, features: [t('All AI models included'), t('Priority response speed'), t('Image generation'), t('Priority support')] },
+    { id: 'unlimited', icon: '♾️', name: t('Unlimited'), price: '$30', period: t('per month'), features: [t('All AI models included'), t('Maximum response speed'), t('Unlimited image generation'), t('24/7 support')] },
+  ];
+
+  const openSubscribe = () => {
+    setSubscribeError('');
+    setSubscribePlan(null);
+    setSubscribeForm({ cardNumber: '', holder: '', email: user.email || '', city: '', birthDate: '', expiry: '', cvc: '' });
+    setSubscribeModalOpen(true);
+  };
+
+  const updateSubscribeForm = (field, value) => setSubscribeForm((form) => ({ ...form, [field]: value }));
+
+  const submitSubscription = async () => {
+    if (subscribeBusy) return;
+    setSubscribeError('');
+    if (subscribeForm.cardNumber.replace(/\D/g, '').length < 12 || !subscribeForm.holder.trim() || !subscribeForm.email.trim()) {
+      setSubscribeError(t('Please fill in the payment details.'));
+      return;
+    }
+    setSubscribeBusy(true);
+    try {
+      if (creditStatus?.canUseDeveloper) {
+        // Developer mode: fake payment. Nothing is sent to the backend, no money is charged.
+        setCreditStatus((current) => ({ ...(current || {}), mode: 'developer', models: ['all'], unlimited: true }));
+      } else {
+        const response = await apiFetch('/api/subscribe', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan: subscribePlan?.id, ...subscribeForm }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || t('Could not complete the subscription.'));
+        setCreditStatus(data);
+      }
+      setSubscribeModalOpen(false);
+      setModelNotice(t('Subscription activated! All models are now available.'));
+      setSubscribeForm({ cardNumber: '', holder: '', email: '', city: '', birthDate: '', expiry: '', cvc: '' });
+    } catch (error) {
+      setSubscribeError(error.message);
+    } finally {
+      setSubscribeBusy(false);
+    }
+  };
 
   const [chosenVersions, setChosenVersions] = useState(() => {
     return safeJSON(safeStorageGet('localStorage', 'allmodelai_model_versions'), {});
@@ -882,7 +939,7 @@ export default function Chat() {
         setMessages((current) => current.filter((message, index) => index !== assistantIndex || String(message.text || message.content || '').trim()));
       } else {
         if (generatingImage && activeConversationIdRef.current === startedConversationId) setPrompt((current) => current || rawText);
-        setSessionExpired(requestError.status === 401);
+        setSessionExpired(requestError.sessionExpired === true);
         const fallbackMessage = requestError.message === 'Failed to fetch'
           ? 'Could not connect to the server. Check your connection and try again.'
           : (requestError.message || 'Could not connect to the AI server.');
@@ -1099,7 +1156,7 @@ export default function Chat() {
                 const online = modelIsOnline(model.slug);
                 if (model.slug === 'smart') return <button type="button" role="option" aria-selected={selectedSlug === 'smart'} className={selectedSlug === 'smart' ? 'selected' : ''} key={model.slug} onClick={() => chooseModel(model)}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {t("Ready")}</small></span>{selectedSlug === 'smart' && <b>✓</b>}</button>;
                 return <div className="model-family-group" role="group" aria-labelledby={`model-family-${model.slug}`} key={model.slug}>
-                  <div className="model-family-heading" id={`model-family-${model.slug}`}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {!allowed ? 'Subscription / Developer' : online ? t("Ready") : t("API needed")}</small></span></div>
+                  <div className="model-family-heading" id={`model-family-${model.slug}`}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {!allowed ? 'Subscription / Developer' : online ? t("Ready") : t("API needed")}</small></span>{!allowed && <button type="button" className="subscribe-btn" onClick={(event) => { event.stopPropagation(); setModelMenuOpen(false); openSubscribe(); }}><span>🔒</span> {t('Subscribe')}</button>}</div>
                   {(variantCatalog[model.slug] || []).map((version) => {
                     const selected = selectedSlug === model.slug && selectedVersion?.id === version.id;
                     return <button type="button" role="option" aria-selected={selected} disabled={!allowed} key={version.id} className={`model-family-version${selected ? ' selected' : ''}`} onClick={() => chooseModel(model, version)}><img src={model.image} alt="" /><span><strong>{version.name}{version.label ? ` ${version.label}` : ''}</strong>{version.description && <small>{version.description}</small>}</span><b>{selected ? '✓' : '›'}</b></button>;
@@ -1119,7 +1176,7 @@ export default function Chat() {
         </div>}
 
         <div className="chat-messages" ref={messagesContainer}>
-          {messages.length === 0 && <div className="chat-empty"><div className="model-orb"><img src={selectedModel.image} alt={`${selectedModel.name} logo`} /></div><p className="chat-eyebrow">{selectedModel.provider} · {selectedModel.name}</p><h1>{t("What can I help you create?")}</h1><p className="chat-subtitle">{t("Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.")}</p><div className="prompt-suggestions">{suggestions.map((item) => <button key={item.title} onClick={() => chooseSuggestion(item.prompt)}><span>{item.icon}</span><strong>{item.title}</strong><small>{item.prompt}</small></button>)}</div></div>}
+          {messages.length === 0 && <div className="chat-empty"><div className="model-orb"><img src={selectedModel.image} alt={`${selectedModel.name} logo`} /></div><p className="chat-eyebrow">{selectedModel.provider} · {selectedModel.name}</p><h1>{t("What can I help you create?")}</h1><p className="chat-subtitle">{t("Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.")}</p><div className="prompt-suggestions">{suggestions.map((item) => <button key={item.title} onClick={() => chooseSuggestion(item.prompt)}><span>{item.icon}</span><strong>{t(item.title)}</strong><small>{t(item.prompt)}</small></button>)}</div></div>}
           {messages.map((message, index) => {
             const messageModel = dashboardModels.find((model) => model.slug === message.modelSlug) || selectedModel;
             const text = message.content ?? message.text ?? '';
@@ -1222,6 +1279,11 @@ export default function Chat() {
             </div>
           </div>
           <p>{selectedModel.name} can make mistakes. Check important information.</p>
+          <div className="composer-quick-texts">
+            <button type="button" onClick={() => chooseSuggestion(t('Write a short story about a time traveler.'))}>{t('Write a short story about a time traveler.')}</button>
+            <button type="button" onClick={() => chooseSuggestion(t('Summarize the main benefits of daily exercise.'))}>{t('Summarize the main benefits of daily exercise.')}</button>
+            <button type="button" onClick={() => chooseSuggestion(t('Help me plan a budget for a trip to Europe.'))}>{t('Help me plan a budget for a trip to Europe.')}</button>
+          </div>
         </form>
       </section>
       {previewModalImage && (
@@ -1237,6 +1299,39 @@ export default function Chat() {
       )}
       {deleteModalOpen && <AccountDeleteModal onCancel={() => { setDeleteModalOpen(false); setDeleteError(''); }} onConfirm={deleteAccount} isDeleting={isDeleting} error={deleteError} />}
       {arenaOpen && <div className="feature-modal-backdrop" onClick={() => setArenaOpen(false)}><section className="feature-modal" onClick={(event) => event.stopPropagation()}><span className="feature-modal-icon">⚔</span><small>AI ARENA</small><h2>Compare the best models</h2><p>Describe the exact task you want the models to compare.</p><textarea autoFocus value={arenaTask} onChange={(event) => setArenaTask(event.target.value)} placeholder="Example: Build a launch plan for my new fitness app" rows="3" /><div className="arena-models"><span>GPT</span><span>Claude</span><span>Gemini</span><span>Grok</span></div><button disabled={!arenaTask.trim()} onClick={launchArena}>Create comparison prompt</button><button className="modal-cancel" onClick={() => setArenaOpen(false)}>{t("Cancel")}</button></section></div>}
+      {subscribeModalOpen && <div className="feature-modal-backdrop" onClick={() => setSubscribeModalOpen(false)}><section className="feature-modal subscribe-modal" onClick={(event) => event.stopPropagation()}>
+        <span className="feature-modal-icon">💎</span><small>{t('SUBSCRIPTION')}</small>
+        {!subscribePlan ? <>
+          <h2>{t('Choose your subscription plan')}</h2>
+          <div className="subscribe-plans">
+            {subscriptionPlans.map((plan) => <button type="button" key={plan.id} className={`subscribe-plan ${plan.popular ? 'popular' : ''}`} onClick={() => setSubscribePlan(plan)}>
+              <span className="subscribe-plan-icon">{plan.icon}</span>
+              <strong>{plan.name}</strong>
+              <em>{plan.price} / {plan.period}</em>
+              <ul>{plan.features.map((feature) => <li key={feature}>✓ {feature}</li>)}</ul>
+              {plan.popular && <b className="subscribe-popular-badge">{t('Most popular')}</b>}
+            </button>)}
+          </div>
+        </> : <>
+          <h2>{subscribePlan.name} — {subscribePlan.price} / {subscribePlan.period}</h2>
+          {creditStatus?.canUseDeveloper && <p className="subscribe-dev-note">🧪 {t('Developer mode: this is a test payment. No real money will be charged.')}</p>}
+          <div className="subscribe-form">
+            <input type="text" inputMode="numeric" placeholder={t('Card number (0000 0000 0000 0000)')} value={subscribeForm.cardNumber} onChange={(event) => updateSubscribeForm('cardNumber', event.target.value)} />
+            <input type="text" placeholder={t('Cardholder name')} value={subscribeForm.holder} onChange={(event) => updateSubscribeForm('holder', event.target.value)} />
+            <input type="email" placeholder={t('Email')} value={subscribeForm.email} onChange={(event) => updateSubscribeForm('email', event.target.value)} />
+            <input type="text" placeholder={t('City')} value={subscribeForm.city} onChange={(event) => updateSubscribeForm('city', event.target.value)} />
+            <input type="text" placeholder={t('Date of birth (day and month)')} value={subscribeForm.birthDate} onChange={(event) => updateSubscribeForm('birthDate', event.target.value)} />
+            <div className="subscribe-form-row">
+              <input type="text" inputMode="numeric" placeholder={t('MM / YY')} value={subscribeForm.expiry} onChange={(event) => updateSubscribeForm('expiry', event.target.value)} />
+              <input type="text" inputMode="numeric" placeholder={t('CVC')} value={subscribeForm.cvc} onChange={(event) => updateSubscribeForm('cvc', event.target.value)} />
+            </div>
+          </div>
+          {subscribeError && <p className="subscribe-error" role="alert">{subscribeError}</p>}
+          <button disabled={subscribeBusy} className="subscribe-confirm" onClick={submitSubscription}>{subscribeBusy ? t('Processing…') : `${t('Subscribe')} · ${subscribePlan.price}`}</button>
+          <button className="modal-cancel" onClick={() => setSubscribePlan(null)}>← {t('Back to plans')}</button>
+        </>}
+        <button className="modal-cancel" onClick={() => setSubscribeModalOpen(false)}>{t('Cancel')}</button>
+      </section></div>}
       {feedbackModalOpen && <div className="feature-modal-backdrop" onClick={() => setFeedbackModalOpen(false)}><section className="feature-modal" onClick={(event) => event.stopPropagation()}><span className="feature-modal-icon">💬</span><small>FEEDBACK</small><h2>Tell us what this response did well</h2><p>Your feedback helps improve the model.</p><textarea autoFocus value={feedbackText} onChange={(event) => setFeedbackText(event.target.value)} placeholder="Example: very clear explanation, great code example" rows="4" /><div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:12}}><button className="modal-cancel" onClick={() => setFeedbackModalOpen(false)}>{t("Cancel")}</button><button disabled={!feedbackText.trim()} onClick={submitFeedback}>Send feedback</button></div></section></div>}
     </main>
   );

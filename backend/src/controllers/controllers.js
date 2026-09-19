@@ -55,7 +55,7 @@ const sendWelcomeEmail = async (user) => {
     const result = await response.json();
     return { sent: true, id: result.id };
 };
-const setSession = (req, res, user, remember = false) => {
+const setSession = (req, res, user, remember = true) => {
     const expiresAt = Date.now() + (remember ? sessionDuration : 1000 * 60 * 60 * 8);
     const token = createSessionToken(user.id, expiresAt);
     req.app.locals.db.database.prepare('INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(hashToken(token), user.id, expiresAt);
@@ -158,7 +158,7 @@ const registerUser = async (req, res) => {
 
     users.push(newUser);
     saveUsers(req.app.locals.db);
-    setSession(req, res, newUser, req.body.rememberMe === true || req.body.rememberMe === 'true');
+    setSession(req, res, newUser, req.body.rememberMe !== false && req.body.rememberMe !== 'false');
     let welcomeEmail = { sent: false, reason: 'not_configured' };
     try {
         welcomeEmail = await sendWelcomeEmail(newUser);
@@ -201,7 +201,7 @@ const loginUser = async (req, res) => {
         };
         users.push(user);
         saveUsers(req.app.locals.db);
-        setSession(req, res, user, req.body.rememberMe === true || req.body.rememberMe === 'true');
+        setSession(req, res, user, req.body.rememberMe !== false && req.body.rememberMe !== 'false');
         return res.status(200).json({
             message: 'Signed in successfully',
             user: publicUser(user),
@@ -215,19 +215,13 @@ const loginUser = async (req, res) => {
 
     const passwordMatches = await verifyPassword(password, user.passwordHash);
     if (!passwordMatches) {
-        if (name && typeof name === 'string' && user.name.trim().toLowerCase() === name.trim().toLowerCase()) {
-            // User confirmed with correct name - update password and log in
-            user.passwordHash = await hashPassword(password);
-            saveUsers(req.app.locals.db);
-        } else {
-            return res.status(401).json({ message: 'Incorrect name, email or password' });
-        }
+        return res.status(401).json({ message: 'Incorrect name, email or password' });
     } else if (name && typeof name === 'string' && name.trim() && user.name !== name.trim()) {
         user.name = name.trim();
         saveUsers(req.app.locals.db);
     }
 
-    setSession(req, res, user, req.body.rememberMe === true || req.body.rememberMe === 'true');
+    setSession(req, res, user, req.body.rememberMe !== false && req.body.rememberMe !== 'false');
 
     return res.status(200).json({
         message: 'Signed in successfully',

@@ -8,7 +8,7 @@ const sessionCookieOptions = () => {
         sameSite: 'lax',
         path: '/',
         secure: configuredSecure === undefined
-            ? process.env.NODE_ENV === 'production'
+            ? process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL)
             : configuredSecure === 'true',
     };
 };

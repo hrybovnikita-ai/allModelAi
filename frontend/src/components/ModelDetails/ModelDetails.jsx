@@ -15,11 +15,9 @@ const versionNames = {
 export default function ModelDetails() {
   const { slug } = useParams();
   const [searchParams] = useSearchParams();
-  const savedUser = sessionStorage.getItem('allmodelai_user');
   const model = dashboardModels.find((item) => item.slug === slug);
   const [copied, setCopied] = useState('');
 
-  if (!savedUser) return <Navigate to="/" replace />;
   if (!model) return <Navigate to="/dashboard" replace />;
 
   const selectedVersion = versionNames[searchParams.get('version')];

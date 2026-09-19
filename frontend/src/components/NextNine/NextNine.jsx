@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import '../NextTen/NextTen.css';
 
 const ideas = [
@@ -15,8 +15,7 @@ const ideas = [
 ];
 
 export default function NextNine(){
-  const saved=sessionStorage.getItem('allmodelai_user');
-  const user=saved?JSON.parse(saved):null;
+  const { user } = useOutletContext();
   const navigate=useNavigate();
   const[active,setActive]=useState('research');
   const[input,setInput]=useState('');

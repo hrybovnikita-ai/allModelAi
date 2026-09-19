@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import './ProductSuite.css';
 
 const features = [
@@ -28,8 +28,7 @@ const features = [
 
 export default function ProductSuite() {
   const navigate = useNavigate();
-  const saved = sessionStorage.getItem('allmodelai_user');
-  const user = saved ? JSON.parse(saved) : null;
+  const { user } = useOutletContext();
   const [category, setCategory] = useState('All');
   const [query, setQuery] = useState('');
   const categories = ['All', ...new Set(features.map((feature) => feature[2]))];

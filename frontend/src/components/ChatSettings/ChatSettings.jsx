@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { useOutletContext, Link, Navigate } from 'react-router-dom';
 import { LANGUAGES } from '../../lib/languages';
 import { useLanguage } from '../../lib/useLanguage';
 import LanguageDialog from '../LanguageDialog/LanguageDialog';
@@ -11,7 +11,7 @@ const contrast = (hex) => {
   return (channels[0]*299+channels[1]*587+channels[2]*114)/1000 > 155 ? '#111111' : '#ffffff';
 };
 export default function ChatSettings() {
-  const saved = sessionStorage.getItem('allmodelai_user'), user = saved ? JSON.parse(saved) : null;
+  const { user } = useOutletContext();
   const initial = JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}');
   const [theme,setTheme] = useState(initial.theme || 'dark');
   const [color,setColor] = useState(!initial.textColor || initial.textColor.toLowerCase() === '#ffffff' ? '#8b5cf6' : initial.textColor);

@@ -69,7 +69,7 @@ Secrets are stored only in backend/.env. The demo social account selection featu
 
 Authentication
 
-Sign in at `/login` or create an account at `/register`. Private workspace pages verify the server session before rendering and return you to the requested page after sign-in. Remember me keeps the HTTP-only session cookie for 30 days; otherwise the cookie lasts for the browser session, with an 8-hour server expiry. Sign out revokes the session without deleting the account. Passwordless accounts must use their original provider or the password recovery flow; public login and registration cannot assign a password to an existing account. The legacy ALLOW_ANY_PASSWORD bypass is no longer supported.
+Sign in at `/login` or create an account at `/register`. Private workspace pages verify the server session before rendering and return you to the requested page after sign-in. Remember me is enabled by default and keeps the HTTP-only session cookie for 30 days, including browser restarts. Explicitly turning it off uses a browser-session cookie with an 8-hour server expiry. Login and registration verify the cookie before navigation; browser storage is only a profile cache. Sign out revokes the session without deleting the account. Passwordless accounts must use their original provider or the password recovery flow; public login and registration cannot assign a password to an existing account. The legacy ALLOW_ANY_PASSWORD bypass is no longer supported.
 
 Image generation
 

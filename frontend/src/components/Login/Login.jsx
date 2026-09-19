@@ -1,10 +1,29 @@
-import { rememberSession } from '../../lib/session';
-import { useState } from 'react';
+import { confirmSession, restoreSession } from '../../lib/session';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './Login.css';
 
-export default function Login({ mode, onClose, onModeChange, returnTo = "/dashboard", returnState }) {
+export default function Login(props) {
+  const navigate = useNavigate();
+  const { returnTo = '/dashboard', returnState } = props;
+  const [status, setStatus] = useState('loading');
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    restoreSession({ force: true }).then((user) => {
+      if (!active) return;
+      if (user) navigate(returnTo, { replace: true, state: returnState });
+      else setStatus('anonymous');
+    }).catch(() => { if (active) setStatus('error'); });
+    return () => { active = false; };
+  }, [attempt, navigate, returnTo, returnState]);
+  if (status === 'loading') return <div className="login-backdrop"><section className="login-modal" role="status">Checking your session...</section></div>;
+  if (status === 'error') return <div className="login-backdrop"><section className="login-modal"><p role="alert">Could not verify your session. Please retry.</p><button onClick={() => { setStatus('loading'); setAttempt((value) => value + 1); }}>Retry</button><button onClick={props.onClose}>Close</button></section></div>;
+  return <LoginForm {...props} />;
+}
+
+function LoginForm({ mode, onClose, onModeChange, returnTo = "/dashboard", returnState }) {
   const signingUp = mode === 'signup';
   const navigate = useNavigate();
   const [error, setError] = useState('');
@@ -38,16 +57,16 @@ export default function Login({ mode, onClose, onModeChange, returnTo = "/dashbo
       const endpoint = signingUp ? '/api/auth/register' : '/api/auth/login';
       payload.rememberMe = payload.rememberMe === 'on';
       const response = await axios.post(endpoint, payload, { withCredentials: true });
-      rememberSession(response.data.user);
+      const user = await confirmSession(response.data.user);
       // Dismiss the mobile keyboard before showing the main workspace.
       document.activeElement?.blur();
-      navigate(returnTo, { replace: true, state: { ...returnState, user: response.data.user, welcomeEmail: response.data.welcomeEmail } });
+      navigate(returnTo, { replace: true, state: { ...returnState, user, welcomeEmail: response.data.welcomeEmail } });
     } catch (requestError) {
       if (requestError.response?.data?.code === 'PASSWORD_SETUP_REQUIRED') {
         onModeChange('signup');
         setError('This existing account has no password yet. Enter your name, repeat the password, and press Create account.');
       } else {
-        setError(requestError.response?.data?.message || 'Could not connect to the backend. Please try again.');
+        setError(requestError.response?.data?.message || requestError.message || 'Could not connect to the backend. Please try again.');
       }
     } finally {
       setSubmitting(false);
@@ -73,7 +92,7 @@ export default function Login({ mode, onClose, onModeChange, returnTo = "/dashbo
           <label><span>Email</span><input name="email" type="email" placeholder="you@example.com" autoComplete="email" required /></label>
           <label><span>Password</span><span className="password-field"><input name="password" type={passwordVisible ? 'text' : 'password'} placeholder={signingUp ? 'Choose any password' : 'Your password'} autoComplete={signingUp ? 'new-password' : 'current-password'} required /><button type="button" className="password-toggle" onClick={() => setPasswordVisible((visible) => !visible)} aria-label={passwordVisible ? 'Hide password' : 'Show password'} aria-pressed={passwordVisible} title={passwordVisible ? 'Hide password' : 'Show password'}>{passwordVisible ? '◉' : '◎'}</button></span></label>
           {signingUp && <label><span>Confirm password</span><span className="password-field"><input name="confirmPassword" type={confirmPasswordVisible ? 'text' : 'password'} placeholder="Repeat your password" autoComplete="new-password" required /><button type="button" className="password-toggle" onClick={() => setConfirmPasswordVisible((visible) => !visible)} aria-label={confirmPasswordVisible ? 'Hide password' : 'Show password'} aria-pressed={confirmPasswordVisible} title={confirmPasswordVisible ? 'Hide password' : 'Show password'}>{confirmPasswordVisible ? '◉' : '◎'}</button></span></label>}
-          <label><span><input name="rememberMe" type="checkbox" /> Remember me</span></label>
+          <label><span><input name="rememberMe" type="checkbox" defaultChecked /> Remember me</span></label>
           {!signingUp && <a className="login-forgot" href="/forgot-password">Forgot password?</a>}
           {error && <p className="login-error" role="alert">{error}</p>}
           <button className="login-submit" type="submit" disabled={submitting}>

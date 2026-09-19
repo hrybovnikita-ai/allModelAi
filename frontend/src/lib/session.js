@@ -1,5 +1,6 @@
 let verifiedSession = null;
 let pendingSession = null;
+let sessionGeneration = 0;
 const cacheDuration = 5 * 60 * 1000;
 
 /**
@@ -80,19 +81,18 @@ export function rememberSession(user) {
   return user;
 }
 
-export async function restoreSession() {
+export async function restoreSession({ force = false } = {}) {
   const storage = getStorage();
   const saved = storage.getItem('allmodelai_user');
-  if (verifiedSession?.saved === saved && verifiedSession.expiresAt > Date.now()) {
+  if (!force && verifiedSession?.saved === saved && verifiedSession.expiresAt > Date.now()) {
     return verifiedSession.user;
   }
-  if (pendingSession) return pendingSession;
-  const initialSession = verifiedSession;
-  pendingSession = (async () => {
+  if (pendingSession?.generation === sessionGeneration) return pendingSession.promise;
+  const generation = sessionGeneration;
+  const request = { generation };
+  request.promise = (async () => {
     const response = await fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' });
-    if (verifiedSession !== initialSession || storage.getItem('allmodelai_user') !== saved) {
-      return verifiedSession?.saved === storage.getItem('allmodelai_user') ? verifiedSession.user : null;
-    }
+    if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
     if (response.status === 401) {
       verifiedSession = null;
       storage.removeItem('allmodelai_user');
@@ -100,19 +100,33 @@ export async function restoreSession() {
     }
     if (!response.ok) throw new Error('Could not verify your session. Please try again.');
     const data = await response.json();
+    if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
     return rememberSession(data.user);
   })();
+  pendingSession = request;
   try {
-    return await pendingSession;
+    return await request.promise;
   } finally {
-    pendingSession = null;
+    if (pendingSession === request) pendingSession = null;
   }
+}
+
+// Verify that the browser accepted the HttpOnly cookie before opening the app.
+export async function confirmSession(user) {
+  clearAllSessionData();
+  const verified = await restoreSession({ force: true });
+  if (!verified || verified.email.toLowerCase() !== user?.email?.toLowerCase()) {
+    clearAllSessionData();
+    throw new Error('Your sign-in could not be verified. Please retry.');
+  }
+  return verified;
 }
 
 /**
  * Clears session data from both localStorage and sessionStorage.
  */
 export function clearAllSessionData() {
+  sessionGeneration++;
   verifiedSession = null;
   const storage = getStorage();
   storage.removeItem('allmodelai_user');

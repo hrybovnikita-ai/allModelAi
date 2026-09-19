@@ -28,6 +28,9 @@ const readLegacyData = (filePath) => {
 };
 
 const connectDatabase = () => {
+    if (process.env.VERCEL) {
+        throw new Error('Vercel cannot persist SQLite sessions. Configure PERSISTENT_BACKEND_ORIGIN.');
+    }
     if (connection) {
         return connection;
     }
@@ -35,13 +38,9 @@ const connectDatabase = () => {
     // Local development:
     // backend/storage/database.sqlite
     //
-    // Vercel:
-    // /tmp/database.sqlite
     const configuredPath = process.env.DB_FILE
         ? path.resolve(__dirname, '..', process.env.DB_FILE)
-        : process.env.VERCEL
-            ? '/tmp/database.sqlite'
-            : path.join(
+        : path.join(
                 __dirname,
                 '..',
                 'storage',
@@ -55,7 +54,6 @@ const connectDatabase = () => {
         ? `${configuredPath}.sqlite`
         : configuredPath;
 
-    // /tmp already exists on Vercel.
     // Locally this creates backend/storage if necessary.
     const databaseDirectory = path.dirname(filePath);
 
@@ -76,9 +74,7 @@ const connectDatabase = () => {
         ? configuredPath
         : process.env.DB_FILE
             ? null
-            : process.env.VERCEL
-                ? null
-                : defaultLegacyPath;
+            : defaultLegacyPath;
 
     const legacyData = legacyPath
         ? readLegacyData(legacyPath)

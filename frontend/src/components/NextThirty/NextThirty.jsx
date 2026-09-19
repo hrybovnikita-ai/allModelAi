@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import '../NextTen/NextTen.css';
 import '../NextTwentyFive/NextTwentyFive.css';
 
@@ -41,8 +41,7 @@ const features = [
 const categories = ['All', ...new Set(features.map((feature) => feature[2]))];
 
 export default function NextThirty() {
-  const saved = sessionStorage.getItem('allmodelai_user');
-  const user = saved ? JSON.parse(saved) : null;
+  const { user } = useOutletContext();
   const navigate = useNavigate();
   const [active, setActive] = useState(features[0][0]);
   const [category, setCategory] = useState('All');

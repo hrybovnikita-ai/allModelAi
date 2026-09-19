@@ -1,4 +1,4 @@
-import { rememberSession } from '../../lib/session';
+import { confirmSession } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
@@ -18,7 +18,7 @@ export default function SocialAuth() {
 
   useEffect(() => {
     let active = true;
-    axios.get(`/api/auth/${providerKey}/accounts`)
+    axios.get(`/api/auth/${providerKey}/accounts`, { withCredentials: true })
       .then(({ data }) => active && setAccounts(data.accounts))
       .catch((requestError) => active && setError(requestError.response?.data?.message || 'This provider is unavailable.'))
       .finally(() => active && setLoading(false));
@@ -32,7 +32,7 @@ export default function SocialAuth() {
     setError('');
     try {
       const { data } = await axios.post('/api/auth/social', { provider: providerKey, accountId: selectedAccount.id }, { withCredentials: true });
-      rememberSession(data.user);
+      await confirmSession(data.user);
       navigate('/dashboard', { state: { user: data.user }, replace: true });
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Could not complete sign in.');

@@ -28,6 +28,7 @@ export default function Users() {
 
         const response = await axios.get('/api/community/users', {
           signal: controller.signal,
+          withCredentials: true,
         });
 
         setUsers(Array.isArray(response.data) ? response.data : []);

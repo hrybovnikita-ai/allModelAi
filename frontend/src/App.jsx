@@ -151,13 +151,13 @@ export default function App() {
       <Route path="/terms" element={<InfoPage type="terms" />} />
       <Route path="/refunds" element={<InfoPage type="refund" />} />
       <Route path="/cookies" element={<InfoPage type="cookies" />} />
-      <Route path="/models/:slug" element={<ModelDetails />} />
       <Route path="/explore" element={<ModelExplorer />} />
       <Route path="/shared/:token" element={<SharedConversation />} />
-      <Route path="/prompts" element={<PromptGallery />} />
       <Route path="/login" element={<AuthPage mode="signin" />} />
       <Route path="/register" element={<AuthPage mode="signup" />} />
       <Route element={<RequireAuth />}>
+      <Route path="/models/:slug" element={<ModelDetails />} />
+      <Route path="/prompts" element={<PromptGallery />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/admin" element={<Admin />} />

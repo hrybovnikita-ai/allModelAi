@@ -1,5 +1,6 @@
+import { apiFetch } from '../../lib/api';
 import { useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import './NextTen.css';
 
 const features = [
@@ -23,8 +24,7 @@ const roles = [
 ];
 
 export default function NextTen() {
-  const saved = sessionStorage.getItem('allmodelai_user');
-  const user = saved ? JSON.parse(saved) : null;
+  const { user } = useOutletContext();
   const navigate = useNavigate();
   const [active, setActive] = useState('arena');
   const [goal, setGoal] = useState('');
@@ -50,7 +50,7 @@ export default function NextTen() {
     setChecking(true);
     setQuality(null);
     try {
-      const response = await fetch('/api/quality/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: answer }) });
+      const response = await apiFetch('/api/quality/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: answer }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Verification failed');
       setQuality(data);

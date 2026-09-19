@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { clearAllSessionData } from '../../lib/session';
+import { apiFetch } from '../../lib/api';
+import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import { LANGUAGES } from '../../lib/languages';
 import { useLanguage } from '../../lib/useLanguage';
 import './Settings.css';
@@ -7,8 +9,7 @@ import './Settings.css';
 export default function Settings() {
   const navigate = useNavigate();
   const { language: selectedLanguage, setLanguage, t } = useLanguage();
-  const saved = sessionStorage.getItem('allmodelai_user');
-  const user = saved ? JSON.parse(saved) : null;
+  const { user } = useOutletContext();
   const savedProfile = JSON.parse(localStorage.getItem('allmodelai_profile') || '{}');
   const [profile, setProfile] = useState({ name: savedProfile.name || user?.name || '', avatar: savedProfile.avatar || '', language: selectedLanguage.name });
   const [notice, setNotice] = useState('');
@@ -41,14 +42,18 @@ export default function Settings() {
 
   const saveProfile = (event) => {
     event.preventDefault();
-    sessionStorage.setItem('allmodelai_user', JSON.stringify({ ...user, name: profile.name.trim() || user.name }));
     localStorage.setItem('allmodelai_profile', JSON.stringify({ ...profile, language: selectedLanguage.name }));
     setNotice('notice');
   };
   const logout = async () => {
-    if (!user.guest) await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-    sessionStorage.removeItem('allmodelai_user');
-    navigate('/');
+    try {
+      const response = await apiFetch('/api/auth/logout', { method: 'POST' });
+      if (!response.ok) throw new Error('Could not sign out. Please retry.');
+      clearAllSessionData();
+      navigate('/login', { replace: true });
+    } catch (error) {
+      setNotice(error.message);
+    }
   };
 
   return <main className="settings-page"><nav className="settings-nav"><Link to="/dashboard">← {t('Dashboard')}</Link><strong>AllModelAI ? {t('settings')}</strong><Link to="/chat">{t('Open chat')}</Link></nav><section className="settings-shell">

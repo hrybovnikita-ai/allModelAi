@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import './SkillsHub.css';
 
 const skills=[
@@ -30,7 +30,7 @@ const skills=[
 async function api(url,options={}){const response=await fetch(url,{credentials:'include',...options});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||'Request failed');return data;}
 
 export default function SkillsHub(){
- const saved=sessionStorage.getItem('allmodelai_user'),user=saved?JSON.parse(saved):null,navigate=useNavigate();
+ const { user } = useOutletContext(),navigate=useNavigate();
  const[activeId,setActiveId]=useState('data'),[values,setValues]=useState({}),[history,setHistory]=useState([]),[error,setError]=useState(''),[loading,setLoading]=useState(false);
  const active=useMemo(()=>skills.find(skill=>skill.id===activeId),[activeId]);
  useEffect(()=>{if(user?.email)api('/api/workspace?type=skill_session').then(setHistory).catch(()=>setHistory([]));},[user?.email]);

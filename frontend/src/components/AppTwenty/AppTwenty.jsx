@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import '../NextTen/NextTen.css';
 import '../NextTwentyFive/NextTwentyFive.css';
 
@@ -27,7 +27,7 @@ const items=[
 ];
 const categories=['All',...new Set(items.map(item=>item[2]))];
 export default function AppTwenty(){
- const saved=sessionStorage.getItem('allmodelai_user'),user=saved?JSON.parse(saved):null,navigate=useNavigate();
+ const { user } = useOutletContext(),navigate=useNavigate();
  const [active,setActive]=useState('install'),[query,setQuery]=useState(''),[category,setCategory]=useState('All'),[notice,setNotice]=useState('');
  const visible=useMemo(()=>items.filter(item=>(category==='All'||item[2]===category)&&`${item[1]} ${item[2]} ${item[3]}`.toLowerCase().includes(query.toLowerCase())),[query,category]);
  const selected=items.find(item=>item[0]===active)||items[0];

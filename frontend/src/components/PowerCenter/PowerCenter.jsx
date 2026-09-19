@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import './PowerCenter.css';
 
 const modules = [
@@ -17,8 +17,7 @@ const modules = [
 
 export default function PowerCenter(){
   const navigate=useNavigate();
-  const saved=sessionStorage.getItem('allmodelai_user');
-  const user=saved?JSON.parse(saved):null;
+  const { user } = useOutletContext();
   const [query,setQuery]=useState('');
   const [active,setActive]=useState('council');
   const visible=useMemo(()=>modules.filter(item=>`${item[1]} ${item[2]} ${item[3]}`.toLowerCase().includes(query.toLowerCase())),[query]);

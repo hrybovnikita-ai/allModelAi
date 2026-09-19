@@ -1,5 +1,6 @@
+import { apiFetch } from '../../lib/api';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import '../NextTen/NextTen.css';
 import '../NextTwentyFive/NextTwentyFive.css';
 
@@ -23,8 +24,7 @@ const ideas = [
 const categories = ['All', ...new Set(ideas.map((idea) => idea[2]))];
 
 export default function NextTwelve() {
-  const saved = sessionStorage.getItem('allmodelai_user');
-  const user = saved ? JSON.parse(saved) : null;
+  const { user } = useOutletContext();
   const navigate = useNavigate();
   const [active, setActive] = useState(ideas[0][0]);
   const [category, setCategory] = useState('All');
@@ -37,7 +37,7 @@ export default function NextTwelve() {
 
   useEffect(() => {
     if (active !== 'health') return;
-    fetch('/api/status/models').then(async (response) => {
+    apiFetch('/api/status/models').then(async (response) => {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || 'Could not check providers.');
       setModelStatus(data);

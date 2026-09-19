@@ -1,3 +1,4 @@
+import { apiFetch } from '../../lib/api';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import './Admin.css';
@@ -8,7 +9,7 @@ export default function Admin() {
   const [error, setError] = useState('');
   const loadStats = async (event) => {
     event.preventDefault();
-    const response = await fetch('/api/admin/stats', { headers: { 'x-admin-key': key } });
+    const response = await apiFetch('/api/admin/stats', { headers: { 'x-admin-key': key } });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) { setError(data.message || 'Could not load admin statistics.'); setStats(null); return; }
     setError(''); setStats(data);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useOutletContext } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 import './PromptGallery.css';
 
@@ -8,8 +8,7 @@ export default function PromptGallery() {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const savedUser = sessionStorage.getItem('allmodelai_user');
-  const user = savedUser ? JSON.parse(savedUser) : null;
+  const { user } = useOutletContext();
 
   useEffect(() => {
     if (!user?.email) return;

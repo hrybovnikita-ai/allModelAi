@@ -27,6 +27,12 @@ export const CHAT_STRINGS = {
     "Workspace Studio": "Рабочая студия",
     "Control Center": "Центр управления",
     "Model library": "Библиотека моделей",
+    "Create an idea": "Придумай идею",
+    "Give me three original product ideas for students.": "Предложи три оригинальные идеи продуктов для студентов.",
+    "Explain code": "Объясни код",
+    "Explain React useEffect with a simple example.": "Объясни React useEffect на простом примере.",
+    "Compare models": "Сравни модели",
+    "Compare Claude, Gemini, GPT, and Llama.": "Сравни Claude, Gemini, GPT и Llama.",
     "What can I help you create?": "Что вы хотите создать?",
     "Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.": "Задайте вопрос, загрузите снимок экрана (Ctrl+V) или выберите одну из идей.",
     "User": "Пользователь",
@@ -61,7 +67,10 @@ export const CHAT_STRINGS = {
     "Saved": "Сохранено",
     "New chat": "Новый чат",
     "Checking your session...": "Проверка сеанса...",
-    "Could not connect. Please try again.": "Не удалось подключиться. Попробуйте ещё раз."
+    "Could not connect. Please try again.": "Не удалось подключиться. Попробуйте ещё раз.",
+    "Write a short story about a time traveler.": "Напиши короткую историю о путешественнике во времени.",
+    "Summarize the main benefits of daily exercise.": "Перечисли главные преимущества ежедневных упражнений.",
+    "Help me plan a budget for a trip to Europe.": "Помоги составить бюджет для поездки в Европу."
   },
   "uk": {
     "Change input and message colors": "Кольори поля введення та повідомлень",
@@ -90,6 +99,12 @@ export const CHAT_STRINGS = {
     "Workspace Studio": "Робоча студія",
     "Control Center": "Центр керування",
     "Model library": "Бібліотека моделей",
+    "Create an idea": "Придумай ідею",
+    "Give me three original product ideas for students.": "Запропонуй три оригінальні ідеї продуктів для студентів.",
+    "Explain code": "Поясни код",
+    "Explain React useEffect with a simple example.": "Поясни React useEffect на простому прикладі.",
+    "Compare models": "Порівняй моделі",
+    "Compare Claude, Gemini, GPT, and Llama.": "Порівняй Claude, Gemini, GPT і Llama.",
     "What can I help you create?": "Що ви хочете створити?",
     "Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.": "Поставте запитання, завантажте знімок екрана (Ctrl+V) або виберіть одну з ідей.",
     "User": "Користувач",
@@ -124,7 +139,10 @@ export const CHAT_STRINGS = {
     "Saved": "Збережено",
     "New chat": "Новий чат",
     "Checking your session...": "Перевірка сеансу...",
-    "Could not connect. Please try again.": "Не вдалося підключитися. Спробуйте ще раз."
+    "Could not connect. Please try again.": "Не вдалося підключитися. Спробуйте ще раз.",
+    "Write a short story about a time traveler.": "Напиши коротку історію про мандрівника в часі.",
+    "Summarize the main benefits of daily exercise.": "Перелічи головні переваги щоденних вправ.",
+    "Help me plan a budget for a trip to Europe.": "Допоможи скласти бюджет для подорожі до Європи."
   },
   "fr": {
     "Change input and message colors": "Couleurs de saisie et des messages",
@@ -153,6 +171,12 @@ export const CHAT_STRINGS = {
     "Workspace Studio": "Studio de travail",
     "Control Center": "Centre de contrôle",
     "Model library": "Bibliothèque de modèles",
+    "Create an idea": "Créer une idée",
+    "Give me three original product ideas for students.": "Propose trois idées de produits originales pour les étudiants.",
+    "Explain code": "Expliquer le code",
+    "Explain React useEffect with a simple example.": "Explique React useEffect avec un exemple simple.",
+    "Compare models": "Comparer les modèles",
+    "Compare Claude, Gemini, GPT, and Llama.": "Compare Claude, Gemini, GPT et Llama.",
     "What can I help you create?": "Que souhaitez-vous créer ?",
     "Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.": "Posez une question, ajoutez une capture d’écran (Ctrl+V) ou choisissez une idée.",
     "User": "Utilisateur",
@@ -187,7 +211,10 @@ export const CHAT_STRINGS = {
     "Saved": "Enregistré",
     "New chat": "Nouveau chat",
     "Checking your session...": "Vérification de votre session...",
-    "Could not connect. Please try again.": "Connexion impossible. Veuillez réessayer."
+    "Could not connect. Please try again.": "Connexion impossible. Veuillez réessayer.",
+    "Write a short story about a time traveler.": "Écris une courte histoire sur un voyageur temporel.",
+    "Summarize the main benefits of daily exercise.": "Résume les principaux bienfaits de l’exercice quotidien.",
+    "Help me plan a budget for a trip to Europe.": "Aide-moi à établir un budget pour un voyage en Europe."
   },
   "en": {
     "Change input and message colors": "Change input and message colors",
@@ -216,6 +243,12 @@ export const CHAT_STRINGS = {
     "Workspace Studio": "Workspace Studio",
     "Control Center": "Control Center",
     "Model library": "Model library",
+    "Create an idea": "Create an idea",
+    "Give me three original product ideas for students.": "Give me three original product ideas for students.",
+    "Explain code": "Explain code",
+    "Explain React useEffect with a simple example.": "Explain React useEffect with a simple example.",
+    "Compare models": "Compare models",
+    "Compare Claude, Gemini, GPT, and Llama.": "Compare Claude, Gemini, GPT, and Llama.",
     "What can I help you create?": "What can I help you create?",
     "Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.": "Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.",
     "User": "User",
@@ -250,6 +283,9 @@ export const CHAT_STRINGS = {
     "Saved": "Saved",
     "New chat": "New chat",
     "Checking your session...": "Checking your session...",
-    "Could not connect. Please try again.": "Could not connect. Please try again."
+    "Could not connect. Please try again.": "Could not connect. Please try again.",
+    "Write a short story about a time traveler.": "Write a short story about a time traveler.",
+    "Summarize the main benefits of daily exercise.": "Summarize the main benefits of daily exercise.",
+    "Help me plan a budget for a trip to Europe.": "Help me plan a budget for a trip to Europe."
   }
 };

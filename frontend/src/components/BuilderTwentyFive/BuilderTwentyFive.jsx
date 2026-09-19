@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import '../NextTen/NextTen.css';
 import '../NextTwentyFive/NextTwentyFive.css';
 
@@ -33,7 +33,7 @@ const tools=[
 const groups=['All',...new Set(tools.map(item=>item[2]))];
 
 export default function BuilderTwentyFive(){
- const saved=sessionStorage.getItem('allmodelai_user'),user=saved?JSON.parse(saved):null,navigate=useNavigate();
+ const { user } = useOutletContext(),navigate=useNavigate();
  const[active,setActive]=useState('artifacts'),[group,setGroup]=useState('All'),[query,setQuery]=useState(''),[input,setInput]=useState('');
  const visible=useMemo(()=>tools.filter(item=>(group==='All'||item[2]===group)&&`${item[1]} ${item[2]} ${item[3]}`.toLowerCase().includes(query.toLowerCase())),[group,query]);
  const selected=tools.find(item=>item[0]===active)||tools[0],acceptsInput=Boolean(selected[5]);

@@ -1,4 +1,4 @@
-import { rememberSession } from '../../lib/session';
+import { confirmSession } from '../../lib/session';
 import { useState } from 'react';
 import { apiFetch } from '../../lib/api';
 
@@ -23,7 +23,7 @@ export default function SessionRecovery({ user, onSuccess }) {
       if (data.user?.email?.toLowerCase() !== user.email.toLowerCase()) {
         throw new Error('Please sign in with the account that owns this conversation.');
       }
-      rememberSession(data.user);
+      await confirmSession(data.user);
       form.reset();
       onSuccess();
     } catch (requestError) {

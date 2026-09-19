@@ -1,12 +1,4 @@
-const express = require('express');
-const cookieParser = require('cookie-parser');
-const routes = require('./src/routes/routes');
-const { stripeWebhook } = require('./src/controllers/controllers');
-const { connectDatabase } = require('./src/db');
-const { configurePublicAccess } = require('./src/publicAccess');
-const users = require('./src/data/data');
-const path = require('path');
-const fs = require('fs');
+const path = require('node:path');
 
 if (process.env.NODE_ENV !== 'test') {
     try {
@@ -16,76 +8,7 @@ if (process.env.NODE_ENV !== 'test') {
     }
 }
 
-const app = express();
-require('./src/sessionToken').signingKey();
-app.locals.cache = require('./src/cache').createCache();
-app.locals.db = connectDatabase();
-const storedData = app.locals.db.read();
-if (storedData.users.length) {
-    const seedPasswords = new Map(users.map((user) => [user.email.toLowerCase(), user.passwordHash]));
-    let passwordsAdded = false;
-    const mergedUsers = storedData.users.map((user) => {
-        if (user.passwordHash) return user;
-        const passwordHash = seedPasswords.get(user.email.toLowerCase());
-        if (!passwordHash) return user;
-        passwordsAdded = true;
-        return { ...user, passwordHash };
-    });
-    users.splice(0, users.length, ...mergedUsers);
-    if (passwordsAdded) {
-        storedData.users = users;
-        app.locals.db.write(storedData);
-    }
-} else {
-    storedData.users = users;
-    app.locals.db.write(storedData);
-}
-
-configurePublicAccess(app);
-app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use(cookieParser());
-const requestCounts = new Map();
-app.use('/api', (req, res, next) => {
-    if (process.env.NODE_ENV !== 'production') return next();
-    const bucket = req.path === '/chat' ? 'chat' : 'api';
-    const key = `${req.ip || 'unknown'}:${bucket}`;
-    const now = Date.now();
-    const windowStart = now - 60 * 1000;
-    const timestamps = (requestCounts.get(key) || []).filter((time) => time > windowStart);
-    const limit = req.path === '/chat' ? 60 : 300;
-    if (timestamps.length >= limit) {
-        res.setHeader('Retry-After', '60');
-        return res.status(429).json({ message: 'This account is sending requests too quickly. Wait a moment, then retry your message.' });
-    }
-    timestamps.push(now);
-    requestCounts.set(key, timestamps);
-    return next();
-});
-
-app.use('/api', (req, res, next) => {
-    res.setHeader('Cache-Control', 'no-store');
-    next();
-});
-app.use('/api', routes);
-
-// In production the backend serves the built React app, so Vite/VS Code is not required.
-const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
-if (fs.existsSync(frontendDist)) {
-    app.use(express.static(frontendDist));
-    app.get('/{*splat}', (req, res, next) => {
-        if (req.path.startsWith('/api/')) return next();
-        return res.sendFile(path.join(frontendDist, 'index.html'));
-    });
-} else {
-    app.get('/', (req, res) => {
-        res.status(200).json({ message: 'AllModelAI API is running' });
-    });
-}
-
-app.use((req, res) => {
-    res.status(404).json({ message: 'Route not found' });
-});
-
-module.exports = app;
+// Vercel instances cannot own persistent SQLite users, sessions or conversations.
+module.exports = process.env.VERCEL
+    ? require('./src/vercelProxy').createVercelProxy()
+    : require('./localApp');

@@ -1,5 +1,46 @@
 # AllModelAI production foundation
 
+## Session persistence on Vercel
+
+The checked-in `vercel.json` routes frontend and `/api` through the same public
+origin. Keep those rewrites: browsers must use relative `/api` URLs, including
+Google's callback URL. No cross-site cookie or browser-visible backend URL is needed.
+
+Vercel cannot host the application's persistent SQLite database. Its backend
+service now proxies `/api` to `PERSISTENT_BACKEND_ORIGIN` instead of creating
+per-instance `/tmp/database.sqlite` files. Without that setting it returns 503,
+not a misleading 401 or a newly initialized empty database.
+
+1. Run the backend on persistent hosting using the existing `render.yaml`, or a
+   single server with a mounted persistent disk and `DB_FILE` on that disk.
+   Do not run multiple independent SQLite instances or set `VERCEL` on this host.
+2. Set `PERSISTENT_BACKEND_ORIGIN` in Vercel to that backend's HTTPS origin,
+   with no path (for example `https://your-backend.onrender.com`). This is a
+   server-only setting. Never point it at the frontend or another Vercel proxy.
+3. On the persistent backend set `NODE_ENV=production`, `COOKIE_SECURE=true`,
+   and `PUBLIC_URL` and `FRONTEND_ORIGIN` to the actual frontend HTTPS origin.
+   Keep any existing `JWT_SECRET` stable across restarts. Rotating it invalidates
+   JWT sessions. Opaque sessions work without a JWT secret and remain revocable.
+4. For Google OAuth set `GOOGLE_REDIRECT_URI` to
+   `https://your-frontend.example/api/auth/google/callback` in both the backend
+   and Google Console. Do not use the separate backend host for that callback.
+5. Redeploy both services. Verify register/login, `/api/auth/session`, refresh,
+   chat and logout through the public frontend origin on mobile and desktop.
+
+Cookies remain host-only, `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`.
+The browser sees one HTTPS origin even when Vercel proxies to a different host,
+which avoids third-party-cookie restrictions in Safari. Express trusts one proxy;
+CORS allows configured origins and the public forwarded host with credentials,
+never a wildcard. API responses are not cached by the proxy or service worker.
+
+Previously lost temporary databases cannot be recovered from cookies. Migrate
+any existing durable SQLite file (including users and conversations) to the
+persistent disk before switching traffic. Production setup requires the real
+hosting URLs; `http://localhost:5173` is only the local Vite development server.
+
+References: https://vercel.com/kb/guide/is-sqlite-supported-in-vercel and
+https://vercel.com/docs/routing/rewrites.
+
 ## Implemented in this repository
 
 - Bearer API-key authentication with SHA-256 hashes, one-time secret display, expiry, request budgets, usage counters, and revocation.

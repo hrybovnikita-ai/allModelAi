@@ -40,11 +40,16 @@ test('an expired session can sign in again and retry the saved conversation', as
 
 test('chat response errors preserve the status and successful streams remain readable', async () => {
   const { checkChatResponse } = await import('../../frontend/src/lib/api.js');
+  const originalFetch = global.fetch;
+  global.fetch = async () => new Response('{}', { status: 401 });
+  try {
   await assert.rejects(checkChatResponse(new Response('{}', { status: 401 })), (error) => {
     assert.equal(error.status, 401);
+    assert.equal(error.sessionExpired, true);
     assert.match(error.message, /conversation is still open/);
     return true;
   });
+  } finally { global.fetch = originalFetch; }
   await assert.rejects(checkChatResponse(new Response(JSON.stringify({ message: 'Provider unavailable' }), { status: 502 })), (error) => {
     assert.equal(error.status, 502);
     assert.equal(error.message, 'Provider unavailable');

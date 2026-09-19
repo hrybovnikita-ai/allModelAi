@@ -25,7 +25,9 @@ test('register, restore session, logout, and login with normalized email', async
   assert.equal((await agent.get('/api/auth/session')).status, 401);
   const login = await agent.post('/api/auth/login').send({ email: ' AUTH@example.com ', password: 'A secure password' });
   assert.equal(login.status, 200);
-  assert.doesNotMatch(login.headers['set-cookie'][0], /Max-Age=/i);
+  assert.match(login.headers['set-cookie'][0], /Max-Age=2592000/i);
+  const temporary = await agent.post('/api/auth/login').send({ email: 'auth@example.com', password: 'A secure password', rememberMe: false });
+  assert.doesNotMatch(temporary.headers['set-cookie'][0], /Max-Age=/i);
 });
 
 test('wrong passwords cannot bypass authentication, even with the legacy flag', async () => {
@@ -92,5 +94,4 @@ test('login with new credentials auto-registers user and saves to SQL database',
   const concurrentIndex = users.findIndex((u) => u.email === 'concurrent@example.com');
   if (concurrentIndex !== -1) users.splice(concurrentIndex, 1);
 });
-
 

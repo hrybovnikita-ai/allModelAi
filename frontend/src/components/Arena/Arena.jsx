@@ -1,5 +1,6 @@
+import { apiFetch } from '../../lib/api';
 import { useState, useEffect } from 'react';
-import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { dashboardModels } from '../../data/dashboardModels';
 import './Arena.css';
 
@@ -7,7 +8,7 @@ const candidates = ['gpt', 'claude', 'gemini', 'cloudflare'];
 
 async function ask(model, prompt, email) {
   const started = performance.now();
-  const response = await fetch('/api/chat', {
+  const response = await apiFetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -45,8 +46,7 @@ async function ask(model, prompt, email) {
 
 export default function Arena() {
   const location = useLocation();
-  const saved = sessionStorage.getItem('allmodelai_user');
-  const user = saved ? JSON.parse(saved) : null;
+  const { user } = useOutletContext();
   const [params] = useSearchParams();
   const initial = params.get('models');
 
@@ -90,7 +90,7 @@ export default function Arena() {
     setLeaderboardLoading(true);
     setLeaderboardError('');
     try {
-      const res = await fetch('/api/arena/leaderboard');
+      const res = await apiFetch('/api/arena/leaderboard');
       if (!res.ok) throw new Error('Failed to fetch leaderboard');
       const data = await res.json();
       setLeaderboard(data);
@@ -184,7 +184,7 @@ export default function Arena() {
     setRevealed(true);
 
     try {
-      await fetch('/api/arena/vote', {
+      await apiFetch('/api/arena/vote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

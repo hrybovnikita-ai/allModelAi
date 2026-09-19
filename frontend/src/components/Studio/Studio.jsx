@@ -1,5 +1,6 @@
+import { apiFetch } from '../../lib/api';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import './Studio.css';
 import './StudioFeatures.css';
 
@@ -35,7 +36,7 @@ const promptTemplates = [
 ];
 
 async function askTeamModel(model, prompt, email) {
-  const response = await fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model, messages:[{role:'user',text:prompt}], userEmail:email, temporary:true, routerMode:'economy' }) });
+  const response = await apiFetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model, messages:[{role:'user',text:prompt}], userEmail:email, temporary:true, routerMode:'economy' }) });
   if (!response.ok) { const data=await response.json().catch(()=>({})); throw new Error(data.message||`${model} is unavailable`); }
   const reader=response.body.getReader(); const decoder=new TextDecoder(); let buffer=''; let answer='';
   while (true) { const {done,value}=await reader.read(); buffer+=decoder.decode(value||new Uint8Array(),{stream:!done}); const events=buffer.replaceAll('\r\n','\n').split('\n\n'); buffer=events.pop()||''; for(const event of events){const line=event.split('\n').find(row=>row.startsWith('data: '));if(!line||line.slice(6)==='[DONE]')continue;const data=JSON.parse(line.slice(6));if(data.text)answer+=data.text;} if(done)break; }
@@ -45,8 +46,7 @@ async function askTeamModel(model, prompt, email) {
 export default function Studio() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const saved = sessionStorage.getItem('allmodelai_user');
-  const user = saved ? JSON.parse(saved) : null;
+  const { user } = useOutletContext();
   const requestedTool = searchParams.get('tool');
   const [active, setActive] = useState(features.some(([key]) => key === requestedTool) ? requestedTool : 'router');
   const [items, setItems] = useState([]);
@@ -74,22 +74,22 @@ export default function Studio() {
 
   useEffect(() => {
     if (!user?.email) return;
-    if (dataType) fetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=${dataType}`).then(r => r.json()).then(setItems).catch(() => setItems([]));
-    if (active === 'analytics') fetch(`/api/analytics?email=${encodeURIComponent(user.email)}`).then(r => r.json()).then(setAnalytics).catch(() => setAnalytics(null));
-    if (active === 'team') fetch('/api/teams').then(r => r.ok?r.json():[]).then(setTeams).catch(()=>setTeams([]));
+    if (dataType) apiFetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=${dataType}`).then(r => r.json()).then(setItems).catch(() => setItems([]));
+    if (active === 'analytics') apiFetch(`/api/analytics?email=${encodeURIComponent(user.email)}`).then(r => r.json()).then(setAnalytics).catch(() => setAnalytics(null));
+    if (active === 'team') apiFetch('/api/teams').then(r => r.ok?r.json():[]).then(setTeams).catch(()=>setTeams([]));
     if (active === 'gallery') setGallery(JSON.parse(localStorage.getItem('allmodelai_image_gallery') || '[]'));
   }, [active, dataType, user?.email]);
   if (!user) return <Navigate to="/" replace />;
 
   const openChat = (prompt, model = 'smart') => navigate(`/chat?model=${model}`, { state:{ starterPrompt:prompt, routerMode } });
-  const addItem = async (event) => { event.preventDefault(); if (!form.name.trim()) return; const response = await fetch('/api/workspace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:user.email,type:dataType,...form})}); if(response.ok){const created=await response.json();setItems(current=>[created,...current]);} setForm({name:'',content:'',instructions:''}); };
-  const removeItem = async (item) => { const response=await fetch(`/api/workspace/${item.id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:user.email})}); if(response.ok)setItems(current=>current.filter(entry=>entry.id!==item.id)); };
+  const addItem = async (event) => { event.preventDefault(); if (!form.name.trim()) return; const response = await apiFetch('/api/workspace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:user.email,type:dataType,...form})}); if(response.ok){const created=await response.json();setItems(current=>[created,...current]);} setForm({name:'',content:'',instructions:''}); };
+  const removeItem = async (item) => { const response=await apiFetch(`/api/workspace/${item.id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:user.email})}); if(response.ok)setItems(current=>current.filter(entry=>entry.id!==item.id)); };
   const importDocument = async (event) => { const file=event.target.files?.[0]; if(!file)return; const supported=/\.(txt|md|csv|json|js|jsx|ts|tsx|py|html|css)$/i.test(file.name); if(!supported){setForm({...form,name:file.name,content:'Paste extracted text here. Direct PDF/DOCX extraction will be added on the server.'});return;} const content=(await file.text()).slice(0,50000);setForm({...form,name:file.name,content}); };
   const runChain = async () => { if(!chainTask.trim()||teamRunning)return; setTeamRunning(true);setTeamResult([]);try{const draft=await askTeamModel('deepseek',`Create a strong first draft. Answer in the task language:\n\n${chainTask}`,user.email);setTeamResult([{model:'DeepSeek',role:'Draft',text:draft}]);const review=await askTeamModel('gemini',`Critically review this draft and give concrete corrections.\n\nTASK:\n${chainTask}\n\nDRAFT:\n${draft}`,user.email);setTeamResult(current=>[...current,{model:'Gemini',role:'Review',text:review}]);const final=await askTeamModel('llama',`Create the final polished answer using the draft and review. Return only the final result in the task language.\n\nTASK:\n${chainTask}\n\nDRAFT:\n${draft}\n\nREVIEW:\n${review}`,user.email);setTeamResult(current=>[...current,{model:'Llama',role:'Final',text:final}]);}catch(error){setTeamResult(current=>[...current,{model:'System',role:'Stopped',text:error.message}]);}finally{setTeamRunning(false);} };
-  const previewRoute=async()=>{if(!routePrompt.trim())return;const response=await fetch('/api/router/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:routePrompt,routerMode})});setRouteDecision(await response.json())};
-  const searchKnowledge=async()=>{if(!knowledgeQuery.trim())return;const response=await fetch('/api/knowledge/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:knowledgeQuery})});const data=await response.json();setKnowledgeResults(data.results||[])};
-  const createTeam=async(event)=>{event.preventDefault();if(!teamName.trim())return;const response=await fetch('/api/teams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:teamName})});if(response.ok){const team=await response.json();setTeams(current=>[team,...current]);setTeamName('')}};
-  const invite=async(team)=>{if(!memberEmail.trim())return;const response=await fetch(`/api/teams/${team.id}/members`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:memberEmail,role:'editor'})});if(response.ok){const updated=await response.json();setTeams(current=>current.map(item=>item.id===team.id?updated:item));setMemberEmail('')}};
+  const previewRoute=async()=>{if(!routePrompt.trim())return;const response=await apiFetch('/api/router/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:routePrompt,routerMode})});setRouteDecision(await response.json())};
+  const searchKnowledge=async()=>{if(!knowledgeQuery.trim())return;const response=await apiFetch('/api/knowledge/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:knowledgeQuery})});const data=await response.json();setKnowledgeResults(data.results||[])};
+  const createTeam=async(event)=>{event.preventDefault();if(!teamName.trim())return;const response=await apiFetch('/api/teams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:teamName})});if(response.ok){const team=await response.json();setTeams(current=>[team,...current]);setTeamName('')}};
+  const invite=async(team)=>{if(!memberEmail.trim())return;const response=await apiFetch(`/api/teams/${team.id}/members`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:memberEmail,role:'editor'})});if(response.ok){const updated=await response.json();setTeams(current=>current.map(item=>item.id===team.id?updated:item));setMemberEmail('')}};
   const loadTranslationFile=async(event)=>{const file=event.target.files?.[0];if(!file)return;if(file.size>1024*1024){window.alert('File must be smaller than 1 MB.');return;}const supported=/\.(txt|md|csv|json|html|css|js|jsx|ts|tsx)$/i.test(file.name);if(!supported){window.alert('Use a text, Markdown, CSV, JSON, HTML, CSS, or code file.');return;}const text=(await file.text()).slice(0,50000);setTranslation(current=>({...current,name:file.name,text}));};
   const translateDocument=()=>{if(!translation.text.trim())return;openChat(`Translate the following document into ${translation.language}. Preserve headings, lists, code blocks, tables, and the original structure. Return only the translated document.\n\nFILE: ${translation.name || 'document'}\n\n${translation.text}`,'smart');};
   const downloadCode=()=>{const link=document.createElement('a');link.href=URL.createObjectURL(new Blob([previewCode],{type:'text/html'}));link.download='allmodelai-project.html';link.click();URL.revokeObjectURL(link.href);};

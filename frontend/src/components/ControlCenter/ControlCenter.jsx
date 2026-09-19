@@ -1,5 +1,6 @@
+import { apiFetch } from '../../lib/api';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { useOutletContext, Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import './ControlCenter.css';
 
 const modules=[
@@ -16,15 +17,15 @@ const assistantGallery=[['Code Architect','Review, debug, and design reliable so
 const textColors=[['Blue','#3b82f6'],['Yellow','#facc15'],['Purple','#a855f7'],['Lime','#a3e635'],['Orange','#f97316'],['Red','#ef4444'],['Red orange','#ff4500'],['Violet','#8b5cf6'],['Gray','#9ca3af'],['Green yellow','#adff2f']];
 
 export default function ControlCenter(){
-  const navigate=useNavigate(); const[searchParams]=useSearchParams(); const requestedFeature=searchParams.get('feature'); const saved=sessionStorage.getItem('allmodelai_user'); const user=saved?JSON.parse(saved):null;
+  const navigate=useNavigate(); const[searchParams]=useSearchParams(); const requestedFeature=searchParams.get('feature'); const { user } = useOutletContext();
   const [active,setActive]=useState(modules.some(([key])=>key===requestedFeature)?requestedFeature:'status'); const [statuses,setStatuses]=useState({}); const [checking,setChecking]=useState(true);
   const [prefs,setPrefs]=useState(()=>JSON.parse(localStorage.getItem('allmodelai_response_prefs')||'{"length":"balanced","tone":"clear","creativity":"balanced","format":"auto"}'));
   const [appearance,setAppearance]=useState(()=>{const savedAppearance=JSON.parse(localStorage.getItem('allmodelai_appearance')||'{"accent":"violet","text":"medium","density":"comfortable","textColor":"#8b5cf6","theme":"dark"}');return{...savedAppearance,textColor:!savedAppearance.textColor||savedAppearance.textColor.toLowerCase()==='#ffffff'?'#8b5cf6':savedAppearance.textColor}});
   const [files,setFiles]=useState([]); const [history,setHistory]=useState([]); const [query,setQuery]=useState(''); const [notifications,setNotifications]=useState(Notification.permission==='granted');
   const [artifact,setArtifact]=useState({a:24,b:18,type:'sum'});
-  useEffect(()=>{if(user?.email)fetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`).then(r=>r.ok?r.json():[]).then(setHistory)},[user?.email]);
-  const checkModels=()=>{setChecking(true);fetch('/api/status/models').then(r=>r.json()).then(data=>setStatuses(data.models||{})).finally(()=>setChecking(false))};
-  useEffect(()=>{fetch('/api/status/models').then(r=>r.json()).then(data=>setStatuses(data.models||{})).finally(()=>setChecking(false))},[]);
+  useEffect(()=>{if(user?.email)apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`).then(r=>r.ok?r.json():[]).then(setHistory)},[user?.email]);
+  const checkModels=()=>{setChecking(true);apiFetch('/api/status/models').then(r=>r.json()).then(data=>setStatuses(data.models||{})).finally(()=>setChecking(false))};
+  useEffect(()=>{apiFetch('/api/status/models').then(r=>r.json()).then(data=>setStatuses(data.models||{})).finally(()=>setChecking(false))},[]);
   useEffect(()=>{localStorage.setItem('allmodelai_response_prefs',JSON.stringify(prefs))},[prefs]);
   useEffect(()=>{localStorage.setItem('allmodelai_appearance',JSON.stringify(appearance));document.documentElement.dataset.accent=appearance.accent;document.documentElement.style.fontSize=appearance.text==='large'?'19px':appearance.text==='small'?'15px':'';document.documentElement.style.setProperty('--user-text-color',appearance.textColor||'#ffffff');document.documentElement.dataset.themePreference=appearance.theme||'dark';document.documentElement.dataset.theme=(appearance.theme||'dark')==='auto'?(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):(appearance.theme||'dark')},[appearance]);
   const filtered=useMemo(()=>history.filter(chat=>`${chat.title} ${chat.model} ${chat.messages?.map(m=>m.content||m.text).join(' ')}`.toLowerCase().includes(query.toLowerCase())),[history,query]);
