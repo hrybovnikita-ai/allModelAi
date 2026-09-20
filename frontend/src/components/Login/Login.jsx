@@ -1,25 +1,12 @@
-import { confirmSession, restoreSession } from '../../lib/session';
-import { useEffect, useState } from 'react';
+import { confirmSession } from '../../lib/session';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './Login.css';
 
 export default function Login(props) {
-  const navigate = useNavigate();
-  const { returnTo = '/dashboard', returnState } = props;
-  const [status, setStatus] = useState('loading');
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    let active = true;
-    restoreSession({ force: true }).then((user) => {
-      if (!active) return;
-      if (user) navigate(returnTo, { replace: true, state: returnState });
-      else setStatus('anonymous');
-    }).catch(() => { if (active) setStatus('error'); });
-    return () => { active = false; };
-  }, [attempt, navigate, returnTo, returnState]);
-  if (status === 'loading') return <div className="login-backdrop"><section className="login-modal" role="status">Checking your session...</section></div>;
-  if (status === 'error') return <div className="login-backdrop"><section className="login-modal"><p role="alert">Could not verify your session. Please retry.</p><button onClick={() => { setStatus('loading'); setAttempt((value) => value + 1); }}>Retry</button><button onClick={props.onClose}>Close</button></section></div>;
+  // Explicit account actions always show the form, even with an existing session.
+  // Navigate only after the submitted credentials have been verified.
   return <LoginForm {...props} />;
 }
 

@@ -142,3 +142,26 @@ test('App Builder uses the verified session when browser storage is unavailable'
   assert.match(html, /Create image/);
   assert.match(html, /sandbox="allow-scripts"/);
 });
+
+
+test('Chat includes the file creation mode', () => {
+  assert.match(renderChat(), />Create file<\/button>/);
+});
+
+test('file card opens a named file and the viewer renders code as text', async () => {
+  const { default: GeneratedFile, FileCard } = await server.ssrLoadModule('/src/components/GeneratedFile/GeneratedFile.jsx');
+  const { parseGeneratedFile } = await import('../src/lib/generatedFiles.js');
+  const payload = JSON.stringify({ type: 'allmodelai-file', name: 'index.html', title: 'My requested page', content: '<script>alert("test")</script>\n<h1>Hello</h1>' });
+  const file = parseGeneratedFile(payload);
+  const card = renderToString(h(MemoryRouter, null, h(FileCard, { file, conversationId: 'saved-chat' })));
+  assert.match(card, new RegExp(`/files/saved-chat/${file.id}`));
+  assert.match(card, /index.html/);
+  assert.match(card, /My requested page/);
+  const page = renderToString(h(MemoryRouter, { initialEntries: [{ pathname: `/files/temporary/${file.id}`, state: { file: payload } }] }, h(Routes, null,
+    h(Route, { path: '/files/:conversationId/:fileId', element: h(GeneratedFile) }))));
+  assert.match(page, /My requested page/);
+  assert.match(page, /Download file/);
+  assert.match(page, /&lt;script&gt;/);
+  assert.doesNotMatch(page, /<script>/);
+  assert.match(page, /Temporary file/);
+});

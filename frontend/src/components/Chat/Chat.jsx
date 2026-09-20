@@ -1,3 +1,6 @@
+import { parseGeneratedFile } from '../../lib/generatedFiles';
+import { FileCard } from '../GeneratedFile/GeneratedFile';
+import { createVoiceInput } from '../../lib/voiceInput';
 import ImageGenerator from '../ImageGenerator/ImageGenerator';
 import { useLanguage } from '../../lib/useLanguage';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -222,7 +225,6 @@ export default function Chat() {
   const fileInput = useRef(null);
   const activeRequest = useRef(null);
   const speechRecognition = useRef(null);
-  const voiceTranscript = useRef('');
   const { user } = useOutletContext();
   const isGuest = user?.guest === true;
   const [selectedSlug, setSelectedSlug] = useState(() => {
@@ -335,7 +337,8 @@ export default function Chat() {
   });
   const selectedVersion = variantCatalog[selectedSlug]?.find((item) => item.id === chosenVersions[selectedSlug]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [isListening, setIsListening] = useState(false);
+  const [voiceInputState, setVoiceInputState] = useState('idle');
+  const isListening = voiceInputState === 'listening';
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceMode, setVoiceMode] = useState(() => safeStorageGet('localStorage', 'allmodelai_voice_mode') === 'true');
   const [voicePanelOpen, setVoicePanelOpen] = useState(false);
@@ -434,7 +437,7 @@ export default function Chat() {
   useEffect(() => subscribeVoices(globalThis.speechSynthesis, setAvailableVoices), []);
 
   useEffect(() => () => {
-    speechRecognition.current?.stop();
+    speechRecognition.current?.cancel();
     globalThis.speechSynthesis?.cancel?.();
   }, []);
 
@@ -473,38 +476,23 @@ export default function Chat() {
   };
 
   const toggleVoiceInput = () => {
-    if (isListening) { speechRecognition.current?.stop(); return; }
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognition) { setChatError('Voice input is not supported in this browser.'); return; }
-    const recognition = new Recognition();
-    speechRecognition.current = recognition;
-    voiceTranscript.current = '';
-    recognition.lang = speechLanguage;
-    recognition.interimResults = true;
-    recognition.continuous = false;
-    recognition.onstart = () => { setIsListening(true); setChatError(''); };
-    recognition.onresult = (event) => {
-      const transcript = Array.from(event.results).map((result) => result[0].transcript).join('');
-      voiceTranscript.current = transcript;
-      setPrompt(transcript);
-    };
-    recognition.onerror = (event) => {
-      const voiceErrors = {
-        'not-allowed': 'Microphone access is blocked. Allow microphone access from the lock icon in the address bar, then try again.',
-        'service-not-allowed': 'Voice recognition is blocked by your browser settings.',
-        'audio-capture': 'No microphone was found. Connect a microphone and check your Windows sound settings.',
-        'no-speech': 'No speech was detected. Try again and speak after Listening appears.',
-        'network': 'Voice recognition could not reach the speech service. Check your internet connection.',
-      };
-      setChatError(voiceErrors[event.error] || 'Voice recognition stopped unexpectedly. Please try again.');
-    };
-    recognition.onend = () => {
-      setIsListening(false);
-      speechRecognition.current = null;
-      const transcript = voiceTranscript.current.trim();
-      if (voiceMode && transcript) window.setTimeout(() => sendMessage(null, transcript), 100);
-    };
-    recognition.start();
+    if (speechRecognition.current) { speechRecognition.current.stop(); return; }
+    stopSpeaking();
+    setChatError('');
+    const draft = prompt.trimEnd();
+    const combine = (text) => [draft, text].filter(Boolean).join(' ');
+    const controller = createVoiceInput({
+      language: speechLanguage,
+      onState: (state) => {
+        setVoiceInputState(state);
+        if (state === 'idle') speechRecognition.current = null;
+      },
+      onText: (text) => setPrompt(combine(text)),
+      onError: setChatError,
+      onComplete: (text) => { if (voiceMode && !isSending) sendMessage(null, combine(text)); },
+    });
+    speechRecognition.current = controller;
+    controller.start();
   };
 
   const refreshHistory = () => apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
@@ -726,10 +714,13 @@ export default function Chat() {
       .then((response) => response.ok ? response.json() : [])
       .then((history) => {
         setChatHistory(history);
-        if (history[0]?.messages?.length) {
-          setActiveConversationId(history[0].id);
-          setMessages(history[0].messages);
-          setSelectedSlug(validModelSlug(history[0].model));
+        const requestedId = new URLSearchParams(window.location.search).get('conversation');
+        const conversation = history.find(item => item.id === requestedId) || history[0];
+        if (conversation?.messages?.length) {
+          activeConversationIdRef.current = conversation.id;
+          setActiveConversationId(conversation.id);
+          setMessages(conversation.messages);
+          setSelectedSlug(validModelSlug(conversation.model));
         }
       })
       .catch(() => {});
@@ -748,7 +739,8 @@ export default function Chat() {
     const currentAttachment = overrideAttachment ?? attachedImage;
     const text = rawText || (currentAttachment ? 'Analyze this screenshot: describe in detail what is shown here and give me step-by-step guidance on where to click and what to do.' : '');
     if (!text || isSending) return;
-    const generatingImage = selectedSkill === 'image' || (!currentAttachment && /^(?:нарисуй|сгенерируй\s+(?:изображение|картинку|фото)|создай\s+(?:изображение|картинку)|draw|generate\s+(?:an?\s+)?(?:image|picture|photo)|намалюй|згенеруй\s+зображення)/i.test(rawText));
+    const generatingFile = selectedSkill === 'file';
+    const generatingImage = !generatingFile && (selectedSkill === 'image' || (!currentAttachment && /^(?:нарисуй|сгенерируй\s+(?:изображение|картинку|фото)|создай\s+(?:изображение|картинку)|draw|generate\s+(?:an?\s+)?(?:image|picture|photo)|намалюй|згенеруй\s+зображення)/i.test(rawText)));
     const userMessage = {
       role: 'user',
       text,
@@ -765,7 +757,7 @@ export default function Chat() {
     const controller = new AbortController();
     activeRequest.current = controller;
     const assistantIndex = nextMessages.length;
-    setMessages([...nextMessages, { role: 'assistant', text: generatingImage ? 'Creating your image… This may take a couple of minutes.' : selectedSkill === 'web' ? 'Searching the web…' : '', modelSlug: selectedSlug, webSearching:selectedSkill === 'web' }]);
+    setMessages([...nextMessages, { role: 'assistant', text: generatingImage ? 'Creating your image… This may take a couple of minutes.' : selectedSkill === 'web' ? 'Searching the web…' : '', modelSlug: selectedSlug, generatingFile, webSearching:selectedSkill === 'web' }]);
 
     try {
       if (isGuest) {
@@ -846,7 +838,7 @@ export default function Chat() {
       const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedSlug, variant: selectedVersion?.id, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced', responsePrefs: safeJSON(safeStorageGet('localStorage', 'allmodelai_response_prefs'), {}), systemInstructions: safeStorageGet('localStorage', 'allmodelai_system_instructions') || '', fallbackEnabled: !selectedVersion }),
+        body: JSON.stringify({ responseMode: generatingFile ? 'file' : 'chat', maxTokens: generatingFile ? 4096 : undefined, model: selectedSlug, variant: selectedVersion?.id, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced', responsePrefs: safeJSON(safeStorageGet('localStorage', 'allmodelai_response_prefs'), {}), systemInstructions: safeStorageGet('localStorage', 'allmodelai_system_instructions') || '', fallbackEnabled: !selectedVersion }),
         signal: controller.signal,
       });
 
@@ -857,6 +849,7 @@ export default function Chat() {
       if (response.headers.get('content-type')?.includes('application/json')) {
         const responseData = await response.json();
         const responseText = responseData.message || '';
+        if (generatingFile && !parseGeneratedFile(responseText)) setChatError('The model did not return a complete file. Retry in Create file mode or request a smaller file.');
         if (responseBelongsToOpenChat()) {
           setMessages((current) => current.map((message, index) => (
             index === assistantIndex ? { ...message, text: responseText } : message
@@ -873,7 +866,7 @@ export default function Chat() {
         if (!responseBelongsToOpenChat()) {
           setBackgroundNotification({ conversationId, title: `${selectedModel.name} replied`, text: responseText.slice(0, 140) || 'Your answer is ready.' });
         }
-        if (voiceMode) speakText(responseText);
+        if (voiceMode && !generatingFile) speakText(responseText);
         return;
       }
 
@@ -919,6 +912,7 @@ export default function Chat() {
 
         if (done) break;
       }
+      if (generatingFile && !parseGeneratedFile(assistantText)) setChatError('The model did not return a complete file. Retry in Create file mode or request a smaller file.');
       if (conversationId) {
         await apiFetch(`/api/chat/history/${conversationId}`, {
           method: 'PATCH',
@@ -927,7 +921,7 @@ export default function Chat() {
         });
       }
       await refreshHistory();
-      if (voiceMode) speakText(assistantText);
+      if (voiceMode && !generatingFile) speakText(assistantText);
       if (!responseBelongsToOpenChat()) {
         setBackgroundNotification({ conversationId, title: `${selectedModel.name} replied`, text: assistantText.slice(0, 140) || 'Your answer is ready.' });
       }
@@ -1180,16 +1174,18 @@ export default function Chat() {
           {messages.map((message, index) => {
             const messageModel = dashboardModels.find((model) => model.slug === message.modelSlug) || selectedModel;
             const text = message.content ?? message.text ?? '';
+            const generatedFile = message.role === 'assistant' ? parseGeneratedFile(text) : null;
+            const filePending = message.generatingFile && isSending && index === messages.length - 1;
             const messageImage = message.role === 'user' ? message.image || message.imageUrl : null;
             if (!text && !messageImage && message.role === 'assistant' && isSending && index === messages.length - 1) return null;
             const activelyStreaming = isStreamingResponse && isSending && index === messages.length - 1 && message.role === 'assistant';
             const editing = message.role === 'user' && editingMessageIndex === index;
             const liked = messageLikes[index];
             const feedback = messageFeedback[index];
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : text && (message.role === 'assistant' ? <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.imageUrl && message.role !== 'user' && <div className="generated-image-result"><button type="button" className="generated-image-preview" onClick={() => setPreviewModalImage(message.imageUrl)} aria-label="Open image"><img className="generated-image" src={message.imageUrl} alt="Generated image" /></button><a href={message.imageUrl} download="allmodelai-image.png" target="_blank" rel="noreferrer">↓ Download image</a></div>}{text && !activelyStreaming && !editing && <div className="message-actions">
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.imageUrl && message.role !== 'user' && <div className="generated-image-result"><button type="button" className="generated-image-preview" onClick={() => setPreviewModalImage(message.imageUrl)} aria-label="Open image"><img className="generated-image" src={message.imageUrl} alt="Generated image" /></button><a href={message.imageUrl} download="allmodelai-image.png" target="_blank" rel="noreferrer">↓ Download image</a></div>}{text && !activelyStreaming && !editing && <div className="message-actions">
               {message.role === 'assistant' ? (
                 <>
-                  <button type="button" data-tooltip={t("Copy")} onClick={() => copyMessage(text)} aria-label="Copy response">⎘</button>
+                  <button type="button" data-tooltip={t("Copy")} onClick={() => copyMessage(generatedFile?.content || text)} aria-label="Copy response">⎘</button>
                   <button type="button" data-tooltip={liked ? 'Liked' : 'Like'} className={liked ? 'selected-like' : ''} onClick={() => likeMessage(index)} aria-label="Like response">👍</button>
                   <button type="button" data-tooltip={t("Feedback")} onClick={() => openFeedback(index)} aria-label="Leave feedback">💬</button>
                   <button type="button" data-tooltip="Good response" className={messageRatings[index] === 'up' ? t("selected") : ''} onClick={() => rateMessage(index, 'up')} aria-label="Good response">♧</button>
@@ -1231,6 +1227,7 @@ export default function Chat() {
               <button type="button" onClick={() => { setComposerMenuOpen(false); fileInput.current?.click(); }}><span>📷</span> Send screenshot / photo (Ctrl+V)</button>
               <button type="button" onClick={() => { setComposerMenuOpen(false); fileInput.current?.click(); }}><span>⌕</span> Attach files &amp; documents</button>
               <button type="button" onClick={() => chooseSkill('image')}><span>✦</span> Create image (generation)</button>
+              <button type="button" onClick={() => chooseSkill('file')}><span>{'</>'}</span> Create file</button>
               <button type="button" onClick={() => chooseSkill('video')}><span>▶</span> Make video</button>
               <button type="button" onClick={() => chooseSkill('web')}><span>◎</span> Search web</button>
               <button type="button" disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))} onClick={() => { setComposerMenuOpen(false); sendMessage(null, 'Continue the previous answer from exactly where it stopped. Do not repeat completed content.'); }}><span>→</span> Continue last answer</button>
@@ -1239,8 +1236,9 @@ export default function Chat() {
             </div>}
             <div className="composer-box">
               <div className="image-mode-switch" role="group" aria-label="Response mode">
-                <button type="button" disabled={isSending} aria-pressed={selectedSkill !== 'image'} onClick={() => setSelectedSkill(null)}>Chat</button>
+                <button type="button" disabled={isSending} aria-pressed={!selectedSkill} onClick={() => setSelectedSkill(null)}>Chat</button>
                 <button type="button" disabled={isSending} aria-pressed={selectedSkill === 'image'} onClick={() => setImageGeneratorOpen(true)}>✦ Create image</button>
+                <button type="button" disabled={isSending} aria-pressed={selectedSkill === 'file'} onClick={() => chooseSkill('file')}>Create file</button>
               </div>
               {voicePanelOpen && <section className="voice-panel" aria-label="Voice mode settings">
                 <div><strong>Voice conversation</strong><button type="button" className={voiceMode ? 'voice-toggle active' : 'voice-toggle'} onClick={changeVoiceMode} aria-pressed={voiceMode}>{voiceMode ? 'On' : 'Off'}</button></div>
@@ -1251,7 +1249,7 @@ export default function Chat() {
               </section>}
               {selectedSkill && <div className="selected-skill">
                 <span className={`selected-skill-icon ${selectedSkill}`} aria-hidden="true">{selectedSkill === 'image' ? '✦' : selectedSkill === 'web' ? '◎' : '▶'}</span>
-                <span><strong>{selectedSkill === 'image' ? 'Create image' : selectedSkill === 'web' ? 'Search the web' : 'Make a video'}</strong><small>{selectedSkill === 'image' ? 'Write a description and press send'  : selectedSkill === 'web' ? 'Current information with sources' : 'Describe the video you want to create'}</small></span>
+                <span><strong>{selectedSkill === 'file' ? 'Create file' : selectedSkill === 'image' ? 'Create image' : selectedSkill === 'web' ? 'Search the web' : 'Make a video'}</strong><small>{selectedSkill === 'file' ? 'Describe a text or code file. Open, copy and download the result.' : selectedSkill === 'image' ? 'Write a description and press send'  : selectedSkill === 'web' ? 'Current information with sources' : 'Describe the video you want to create'}</small></span>
                 <button type="button" className="selected-skill-remove" onClick={() => setSelectedSkill(null)} aria-label="Remove selected skill" title="Remove skill">×</button>
               </div>}
               {attachedImage && (
@@ -1273,9 +1271,9 @@ export default function Chat() {
                 </div>
               )}
               <input ref={fileInput} className="chat-file-input" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.pdf,.txt,.md,.json,.csv,.js,.jsx,.ts,.tsx,.py,.html,.css" onChange={readFile} />
-              <textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); loadContextSuggestions(event.target.value); }} onPaste={handlePaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={isSending ? selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : attachedImage ? 'Ask anything about this screenshot (e.g. "Where should I click?") or press Send...' : selectedSkill === 'image' ? 'For example: a golden dragon over a night city, realistic style…' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : t('messagePlaceholder').replace('AllModelAI', selectedModel.name)} rows="1" aria-label={t("Chat message")} />
+              <textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); loadContextSuggestions(event.target.value); }} onPaste={handlePaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={selectedSkill === 'file' && !isSending ? 'For example: create a Python script, an HTML page, or a project plan in Markdown...' : isSending ? selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : attachedImage ? 'Ask anything about this screenshot (e.g. "Where should I click?") or press Send...' : selectedSkill === 'image' ? 'For example: a golden dragon over a night city, realistic style…' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : t('messagePlaceholder').replace('AllModelAI', selectedModel.name)} rows="1" aria-label={t("Chat message")} />
               {contextSuggestions.length > 0 && !isSending && !attachedImage && <div className="context-suggestions">{contextSuggestions.map((item) => <button key={item} type="button" onClick={() => { setPrompt(item); setContextSuggestions([]); document.querySelector('.chat-composer textarea')?.focus(); }}>{item}</button>)}</div>}
-              <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label={t("Open tools")} aria-expanded={composerMenuOpen}>＋</button><button type="button" className="composer-camera" onClick={() => fileInput.current?.click()} aria-label={t("Upload screenshot or image")} title="Upload screenshot or image (or paste Ctrl+V)">📷</button></div><span>{selectedModel.name} · {isListening ? t("Listening\u2026") : isSending ? t("Generating \u2014 you can keep typing") : attachedImage ? t("Screenshot ready to send") : t("Ready \u00b7 replies in your language")}</span><div className="composer-actions"><button type="button" className={isListening ? 'voice-active' : ''} onClick={toggleVoiceInput} aria-label={t("Use microphone")} title={t("Use microphone")}>●</button>{isSending ? <button className="stop-generation" type="button" onClick={stopGenerating} aria-label={t("Stop generating")} title={t("Stop generating")}><i /></button> : <button className="send-message" type="submit" disabled={!prompt.trim() && !attachedImage} aria-label={t("Send message")}>↑</button>}</div></div>
+              <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label={t("Open tools")} aria-expanded={composerMenuOpen}>＋</button><button type="button" className="composer-camera" onClick={() => fileInput.current?.click()} aria-label={t("Upload screenshot or image")} title="Upload screenshot or image (or paste Ctrl+V)">📷</button></div><span>{selectedModel.name} · {voiceInputState === 'requesting' ? 'Allow microphone access...' : isListening ? t("Listening\u2026") : isSending ? t("Generating \u2014 you can keep typing") : attachedImage ? t("Screenshot ready to send") : t("Ready \u00b7 replies in your language")}</span><div className="composer-actions"><button type="button" className={voiceInputState !== 'idle' ? 'voice-active' : ''} onClick={toggleVoiceInput} aria-pressed={voiceInputState !== 'idle'} aria-label={voiceInputState !== 'idle' ? 'Stop microphone' : t("Use microphone")} title={voiceInputState !== 'idle' ? 'Stop microphone' : t("Use microphone")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></button>{isSending ? <button className="stop-generation" type="button" onClick={stopGenerating} aria-label={t("Stop generating")} title={t("Stop generating")}><i /></button> : <button className="send-message" type="submit" disabled={!prompt.trim() && !attachedImage} aria-label={t("Send message")}>↑</button>}</div></div>
             </div>
           </div>
           <p>{selectedModel.name} can make mistakes. Check important information.</p>

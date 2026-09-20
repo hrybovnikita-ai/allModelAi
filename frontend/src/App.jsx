@@ -1,3 +1,4 @@
+import GeneratedFile from './components/GeneratedFile/GeneratedFile';
 import "./App.css";
 import { useLanguage } from "./lib/useLanguage";
 import RainbowExperience from "./components/RainbowExperience/RainbowExperience";
@@ -169,6 +170,7 @@ export default function App() {
       <Route path="/admin" element={<Admin />} />
       <Route path="/checkout" element={<Checkout />} />
       <Route path="/chat" element={<Chat />} />
+      <Route path="/files/:conversationId/:fileId" element={<GeneratedFile />} />
       <Route path="/model-comparison" element={<ModelComparison />} />
       <Route path="/usage-analytics" element={<UsageAnalytics />} />
       <Route path="/studio" element={<Studio />} />
