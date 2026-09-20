@@ -12,11 +12,11 @@ import './Chat.css';
 import './ChatApi.css';
 import AccountDeleteModal from '../AccountDeleteModal';
 
-const quickPrompts = [
-  'Write a short story about a time traveler.',
-  'Summarize the main benefits of daily exercise.',
-  'Help me plan a budget for a trip to Europe.',
-];
+// const quickPrompts = [
+// 'Write a short story about a time traveler.',
+//  'Summarize the main benefits of daily exercise.',
+//  'Help me plan a budget for a trip to Europe.',
+// ];
 
 const suggestions = [
   { icon: '✦', title: 'Create an idea', prompt: 'Give me three original product ideas for students.' },
