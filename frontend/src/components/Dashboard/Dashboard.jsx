@@ -9,6 +9,7 @@ import './DashboardNav.css';
 import './DashboardFeatureCards.css';
 import AccountDeleteModal from '../AccountDeleteModal';
 import DashboardResources from './DashboardResources';
+import EverydayCards from '../EverydayAI/EverydayCards';
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
 
 export default function Dashboard() {
@@ -64,6 +65,7 @@ export default function Dashboard() {
       </section>
       {creditStatus && <section className="dashboard-usage"><div><span>Usage this month</span><strong>{creditStatus.plan} plan · {creditStatus.remaining} requests left</strong></div><div className="usage-track"><i style={{ width: `${Math.min((creditStatus.used / creditStatus.limit) * 100, 100)}%` }} /></div><Link to="/checkout?plan=pro">Upgrade plan</Link></section>}
       <section className="personal-overview"><div className="overview-heading"><div><p className="dashboard-eyebrow">Your week</p><h2>Workspace overview</h2></div><Link to="/studio">Open analytics →</Link></div><div className="overview-grid"><article><small>CONVERSATIONS</small><strong>{analytics?.conversations ?? '—'}</strong><span>Saved in your workspace</span></article><article><small>MESSAGES</small><strong>{analytics?.messages ?? '—'}</strong><span>Across every AI model</span></article><article><small>ESTIMATED TOKENS</small><strong>{analytics ? (analytics.estimatedTokens ?? 0).toLocaleString() : '—'}</strong><span>Processed in conversations</span></article><article className="continue-card"><small>QUICK START</small><strong>Continue creating</strong><div><Link to="/chat?model=smart">Smart chat</Link><Link to="/arena">AI Arena</Link></div></article></div><div className="recent-projects"><div><h3>Recent projects</h3><Link to="/studio">View all</Link></div>{recentProjects.length ? recentProjects.map(project => <Link to="/studio" key={project.id}><span>▦</span><div><strong>{project.name}</strong><small>{project.content?.slice(0, 70) || 'Ready for your next task'}</small></div><b>→</b></Link>) : <div className="projects-empty"><span>✦</span><p>No projects yet. Turn your next idea into a focused workspace.</p><Link to="/studio">Create project</Link></div>}</div></section>
+      <EverydayCards />
       <section className="dashboard-feature-cards" aria-label="Workspace highlights">
         <article className="dashboard-feature-card dashboard-feature-card-skills">
           <span className="feature-card-icon">✦</span>

@@ -60,6 +60,9 @@ import CookieConsent from "./components/CookieConsent/CookieConsent";
 import ModelComparison from "./components/ModelComparison/ModelComparison";
 import UsageAnalytics from "./components/UsageAnalytics/UsageAnalytics";
 
+import EverydayAI from "./components/EverydayAI/EverydayAI";
+import EverydayCards from "./components/EverydayAI/EverydayCards";
+
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");
 
@@ -124,6 +127,7 @@ function HomePage() {
           setSelectedModel={setSelectedModel}
         />
         <RainbowExperience />
+        <EverydayCards />
         <About />
         <Workflow />
         <Users />
@@ -159,6 +163,8 @@ export default function App() {
       <Route path="/models/:slug" element={<ModelDetails />} />
       <Route path="/prompts" element={<PromptGallery />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/everyday-ai" element={<EverydayAI />} />
+      <Route path="/everyday-ai/:tool" element={<EverydayAI />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="/checkout" element={<Checkout />} />

@@ -1214,7 +1214,7 @@ const analyzeVision = async (req, res) => {
 
 const { generateImage } = require('../images');
 
-const workspaceTypes = new Set(['memory', 'project', 'document', 'prompt', 'assistant', 'agent', 'evaluation', 'workflow', 'meeting', 'prompt_version', 'marketplace_item', 'skill_session', 'team', 'presentation', 'website']);
+const workspaceTypes = new Set(['memory', 'project', 'document', 'prompt', 'assistant', 'agent', 'evaluation', 'workflow', 'meeting', 'prompt_version', 'marketplace_item', 'skill_session', 'team', 'presentation', 'website', 'saved_answer', 'writing']);
 const cleanEmail = (value) => String(value || '').trim().toLowerCase();
 const parseWorkspaceItem = (row) => ({ id: row.id, type: row.type, ...JSON.parse(row.data), createdAt: row.created_at, updatedAt: row.updated_at });
 

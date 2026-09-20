@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './CommandPalette.css';
 
 const commands = [
+  ['Everyday AI', 'Compare answers, documents, projects, learning, voice, saved answers, writing and automation', '/everyday-ai', '8'],
   ['12 Reliability Tools','Provider setup, health checks, privacy, and smart retry','/next-12','12'],
   ['15 New Ideas','Daily planning, quality control, teamwork, learning, and export','/next-15','15'],
   ['30 New Features','Compare, verify, organize, automate, create, and measure','/next-30','30'],
