@@ -95,3 +95,39 @@ test('login with new credentials auto-registers user and saves to SQL database',
   if (concurrentIndex !== -1) users.splice(concurrentIndex, 1);
 });
 
+
+test('stalled welcome email does not prevent registration or session restoration', async () => {
+  const previousFetch = global.fetch;
+  const previousKey = process.env.RESEND_API_KEY;
+  const previousFrom = process.env.EMAIL_FROM;
+  process.env.RESEND_API_KEY = 'test-email-key';
+  process.env.EMAIL_FROM = 'welcome@example.com';
+  let aborted = false;
+  global.fetch = async (url, options) => {
+    assert.equal(url, 'https://api.resend.com/emails');
+    assert.ok(options.signal);
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => {
+        aborted = true;
+        reject(options.signal.reason);
+      }, { once: true });
+    });
+  };
+  try {
+    const client = request.agent(app);
+    const response = await client.post('/api/auth/register')
+      .send({ name: 'Any Name', email: 'welcome-timeout@example.com', password: 'x' })
+      .timeout({ response: 6000 });
+    assert.equal(response.status, 201);
+    assert.equal(aborted, true);
+    assert.equal(response.body.welcomeEmail.reason, 'delivery_failed');
+    assert.equal((await client.get('/api/auth/session')).body.user.email, 'welcome-timeout@example.com');
+    assert.equal((await client.get('/api/chat/history')).status, 200);
+  } finally {
+    global.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = previousKey;
+    if (previousFrom === undefined) delete process.env.EMAIL_FROM;
+    else process.env.EMAIL_FROM = previousFrom;
+  }
+});

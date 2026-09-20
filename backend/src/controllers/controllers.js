@@ -34,6 +34,8 @@ const sendWelcomeEmail = async (user) => {
 
     const safeName = escapeHtml(user.name);
     const response = await fetch('https://api.resend.com/emails', {
+        // Bound email delivery so registration can still return its session cookie.
+        signal: AbortSignal.timeout(3000),
         method: 'POST',
         headers: {
             Authorization: `Bearer ${apiKey}`,

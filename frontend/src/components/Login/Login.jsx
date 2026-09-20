@@ -10,7 +10,7 @@ export default function Login(props) {
   return <LoginForm {...props} />;
 }
 
-function LoginForm({ mode, onClose, onModeChange, returnTo = "/dashboard", returnState }) {
+function LoginForm({ mode, onClose, onModeChange, returnTo = "/chat", returnState }) {
   const signingUp = mode === 'signup';
   const navigate = useNavigate();
   const [error, setError] = useState('');
