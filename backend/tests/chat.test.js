@@ -60,4 +60,54 @@ describe('secure chat and knowledge API',()=>{
  test('authenticates API requests with a budgeted Bearer key',async()=>{const created=await api.post('/api/developer/keys').send({name:'Automation',requestLimit:10});const response=await request(app).get('/api/search?q=Aurora').set('Authorization',`Bearer ${created.body.secret}`);assert.equal(response.status,200);assert.equal(response.body.results[0].name,'Launch plan');await api.delete(`/api/developer/keys/${created.body.id}`)});
  test('queues persistent background work and exports private data',async()=>{const job=await api.post('/api/jobs').send({type:'research',payload:{objective:'Aurora launch'}});assert.equal(job.status,202);assert.equal(job.body.status,'queued');const jobs=await api.get('/api/jobs');assert.equal(jobs.body[0].id,job.body.id);const exported=await api.get('/api/privacy/export');assert.equal(exported.status,200);assert.equal(exported.body.user.email,'tester@example.com');assert.ok(Array.isArray(exported.body.workspace))});
  test('publishes a deployment health check',async()=>{const response=await request(app).get('/api/health');assert.equal(response.status,200);assert.equal(response.body.checks.database,true)});
+
+ test('Smart Router recovers from a provider timeout through the gateway', async () => {
+   const previous = process.env.GEMINI_API_KEY;
+   process.env.GEMINI_API_KEY = 'test-gemini';
+   const calls = [];
+   global.fetch = async (url, options) => {
+     calls.push({url:String(url), signal:options.signal});
+     if (calls.length === 1) throw new DOMException('Timed out', 'TimeoutError');
+     return upstream();
+   };
+   try {
+     const response = await api.post('/api/chat').send({model:'smart', routerMode:'economy', temporary:true, messages:[{role:'user',text:'hello'}]});
+     assert.equal(response.status,200);
+     assert.match(response.text,/Secure answer/);
+     assert.match(response.text,/"fallback":true/);
+     assert.match(calls[0].url,/googleapis/);
+     assert.match(calls[1].url,/openrouter/);
+     assert.notEqual(calls[0].signal,calls[1].signal);
+   } finally {
+     global.fetch = async () => upstream();
+     if (previous === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY=previous;
+   }
+ });
+ test('network failures in fallback attempts continue to the next gateway model', async () => {
+   const previous = process.env.GEMINI_API_KEY;
+   process.env.GEMINI_API_KEY = 'test-gemini';
+   let calls=0;
+   global.fetch = async () => { calls++; if(calls<=3) throw new TypeError('fetch failed'); return upstream(); };
+   try {
+     const response=await api.post('/api/chat').send({model:'gpt',temporary:true,messages:[{role:'user',text:'hello'}]});
+     assert.equal(response.status,200);
+     assert.match(response.text,/Secure answer/);
+     assert.equal(calls,4);
+   } finally {
+     global.fetch=async()=>upstream();
+     if(previous===undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY=previous;
+   }
+ });
+ test('timeouts respect exact model selection and disabled fallback', async () => {
+   for(const selection of [{model:'qwen',variant:'coder'},{model:'smart',fallbackEnabled:false}]) {
+     let calls=0;
+     global.fetch=async()=>{calls++;throw new DOMException('Timed out','TimeoutError')};
+     try {
+       const response=await api.post('/api/chat').send({...selection,temporary:true,messages:[{role:'user',text:'hello'}]});
+       assert.equal(response.status,504);
+       assert.equal(calls,1);
+       assert.match(response.body.message,/too long/);
+     } finally {global.fetch=async()=>upstream()}
+   }
+ });
 });

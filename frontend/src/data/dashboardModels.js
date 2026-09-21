@@ -1,7 +1,7 @@
 import claudeLogo from '../assets/claude.png';
 import geminiLogo from '../assets/gemini.png';
 import gptLogo from '../assets/gpt.png';
-import llamaLogo from '../assets/llama.png';
+import cloudflareLogo from '../assets/cloudflare.png';
 import metaLogo from '../assets/meta.svg';
 import copilotLogo from '../assets/copilot.png';
 import perplexityLogo from '../assets/perplexity.png';
@@ -29,7 +29,7 @@ export const dashboardModels = [
   { slug: 'mistral', name: 'Mistral', provider: 'Mistral AI', image: mistralLogo, tier:'economy', priceLabel:'Low cost', note: 'Compact and capable intelligence', description: 'Mistral offers efficient models for fast, capable general-purpose and technical tasks.', strengths: ['Efficiency', 'Technical work', 'Multilingual output'], ...exampleCode('mistral', 'Create a technical summary') },
   { slug: 'qwen', name: 'Qwen', provider: 'Alibaba Cloud', image: qwenLogo, tier:'economy', priceLabel:'Low cost', note: 'Multilingual open models', description: 'Qwen is a capable open model family for multilingual reasoning, coding, and structured tasks.', strengths: ['Multilingual work', 'Coding', 'Open models'], ...exampleCode('qwen', 'Translate and improve this proposal') },
   { slug: 'cohere', name: 'Command', provider: 'Cohere', image: gptLogo, note: 'Business-ready language tools', description: 'Command models are designed for useful enterprise writing, retrieval, and grounded generation.', strengths: ['Enterprise writing', 'Grounded output', 'Summarization'], ...exampleCode('cohere', 'Summarize these meeting notes') },
-  { slug: 'cloudflare', name: 'Cloudflare AI', provider: 'Cloudflare Workers AI', image: llamaLogo, tier:'free', priceLabel:'Free allowance', note: 'Fast inference on Cloudflare edge', description: 'Cloudflare Workers AI runs open models through Cloudflare infrastructure and is connected directly through the AllModelAI backend.', strengths: ['Edge inference', 'Open models', 'Direct backend connection'], ...exampleCode('cloudflare', 'Explain edge computing simply') },
+  { slug: 'cloudflare', name: 'Cloudflare AI', provider: 'Cloudflare Workers AI', image: cloudflareLogo, tier:'free', priceLabel:'Free allowance', note: 'Fast inference on Cloudflare edge', description: 'Cloudflare Workers AI runs open models through Cloudflare infrastructure and is connected directly through the AllModelAI backend.', strengths: ['Edge inference', 'Open models', 'Direct backend connection'], ...exampleCode('cloudflare', 'Explain edge computing simply') },
 ];
 
 export const freeModelSlugs = dashboardModels.filter((model) => model.tier === 'free').map((model) => model.slug);

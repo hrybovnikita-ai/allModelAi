@@ -107,3 +107,11 @@ these new caches. Provider configuration is not a real-time uptime guarantee.
 
 Library references: [JWT](https://github.com/auth0/node-jsonwebtoken) and
 [Redis](https://redis.io/docs/latest/develop/clients/nodejs/produsage/).
+
+## Provider connection checks
+
+Run `npm --prefix backend run providers:check` from the project directory. This loads `backend/.env` independently of the working directory and checks provider authentication without generating content or printing secrets. A successful check does not prove generation quota or access to every model.
+
+For Kimi, set `KIMI_BASE_URL=https://api.moonshot.ai/v1` for international keys; the legacy default is `https://api.moonshot.cn/v1`. These regions use separate keys. See https://forum.moonshot.ai/t/mcp-use-for-kimi-k2-when-used-through-the-moonshot-api/90. Set `GROK_PROVIDER=openrouter` to route Grok through `OPENROUTER_API_KEY` (or legacy `API_KEY`) while retaining the direct xAI key. Restart the backend after changing `.env`.
+
+Set `KIMI_PROVIDER=openrouter` to use the configured OpenRouter key for Kimi while retaining the Moonshot key. Exact selections remain exact: K2 uses `moonshotai/kimi-k2` and K2.5 uses `moonshotai/kimi-k2.5`. OpenRouter billing applies to these requests.

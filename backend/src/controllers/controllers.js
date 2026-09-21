@@ -750,12 +750,12 @@ const createChatResponse = async (req, res) => {
     const gatewayKey = process.env.OPENROUTER_API_KEY || process.env.API_KEY;
     const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
     const xaiKey = (process.env.XAI_API_KEY || process.env.GROK_API_KEY)?.trim();
-    const directKimiKey = process.env.KIMI_API_KEY?.trim();
+    const directKimiKey = process.env.KIMI_PROVIDER === 'openrouter' ? undefined : process.env.KIMI_API_KEY?.trim();
     const directMistralKey = process.env.MISTRAL_API_KEY?.trim();
     const preferGemini = process.env.PREFER_GEMINI === 'true' && Boolean(process.env.GEMINI_API_KEY?.trim());
     const usePreferredGemini = preferGemini && model === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
     let isOpenAI = Boolean(openAIKey && !usePreferredGemini && (routedModel === 'gpt' || routedModel === 'copilot'));
-    let isXAI = routedModel === 'grok' && Boolean(xaiKey);
+    let isXAI = routedModel === 'grok' && Boolean(xaiKey) && process.env.GROK_PROVIDER !== 'openrouter';
     let isClaude = routedModel === 'claude' && !gatewayKey?.trim();
     let isGemini = (routedModel === 'gemini' || usePreferredGemini) && Boolean(process.env.GEMINI_API_KEY?.trim());
     let isKimi = routedModel === 'kimi' && Boolean(directKimiKey || gatewayKey);
@@ -893,11 +893,25 @@ const createChatResponse = async (req, res) => {
         });
         const geminiUrl = getGeminiUrl(apiKey);
         const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID || '')}/ai/run/${selectedVariant?.direct || providerModels.cloudflare}`;
-        const directKimiUrl = 'https://api.moonshot.cn/v1/chat/completions';
+        const directKimiUrl = (process.env.KIMI_BASE_URL || 'https://api.moonshot.cn/v1').trim().replace(/\/+$/, '') + '/chat/completions';
         const directMistralUrl = 'https://api.mistral.ai/v1/chat/completions';
         const providerTimeoutMs = Math.min(Math.max(Number(process.env.AI_REQUEST_TIMEOUT_MS) || 45000, 5000), 120000);
         const requestSignal = () => AbortSignal.timeout(providerTimeoutMs);
-        let apiResponse = await fetch(isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
+        // Network errors must enter the same fallback chain as HTTP failures.
+        const fetchProvider = async (url, options) => {
+            try {
+                return await fetch(url, options);
+            } catch (error) {
+                const timedOut = options.signal?.aborted || error.name === 'TimeoutError' || /timed?\s*out/i.test(error.message);
+                return new Response(JSON.stringify({ error: { message: timedOut
+                    ? 'The AI provider took too long to respond. Try again or choose another configured model.'
+                    : 'Could not connect to the AI service. Try again or choose another configured model.' } }), {
+                    status: timedOut ? 504 : 502,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+        };
+        let apiResponse = await fetchProvider(isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             signal: requestSignal(),
             headers: isOpenAI || isXAI ? {
@@ -963,8 +977,13 @@ const createChatResponse = async (req, res) => {
             upstreamError = await apiResponse.json().catch(() => ({}));
             apiKey = process.env.GEMINI_API_KEY.trim();
             isOpenAI = false;
+            isXAI = false;
+            isClaude = false;
+            isKimi = false;
+            isMistral = false;
+            isCloudflare = false;
             isGemini = true;
-            apiResponse = await fetch(getGeminiUrl(apiKey), {
+            apiResponse = await fetchProvider(getGeminiUrl(apiKey), {
                 method: 'POST',
                 signal: requestSignal(),
                 headers: { 'Content-Type': 'application/json' },
@@ -986,7 +1005,7 @@ const createChatResponse = async (req, res) => {
                 : ['gpt', 'gemini', 'mistral', 'deepseek', 'llama'])
                 .filter((candidate) => providerModels[candidate] && candidate !== routedModel && modelAllowed(candidate));
             for (const candidate of gatewayFallbacks) {
-                apiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                apiResponse = await fetchProvider('https://openrouter.ai/api/v1/chat/completions', {
                     method: 'POST',
                     signal: requestSignal(),
                     headers: { Authorization: `Bearer ${gatewayKey.trim()}`, 'Content-Type': 'application/json' },
@@ -1015,12 +1034,16 @@ const createChatResponse = async (req, res) => {
         }
         if (!apiResponse.ok) {
             const data = upstreamError || await apiResponse.json().catch(() => ({}));
-            console.error(`[${isOpenAI ? 'OPENAI' : isXAI ? 'XAI' : isClaude ? 'CLAUDE' : isGemini ? 'GEMINI' : isMistral ? 'MISTRAL' : isCloudflare ? 'CLOUDFLARE' : 'OPENROUTER'} API]`, apiResponse.status, data.error?.message || data.errors?.[0]?.message || data.error);
-            return res.status(apiResponse.status === 401 ? 502 : apiResponse.status).json({
-                message: apiResponse.status === 401
-                    ? `The server API key was rejected by ${isOpenAI ? 'OpenAI' : isXAI ? 'xAI' : isClaude ? 'Anthropic' : isGemini ? 'Google Gemini' : isMistral ? 'Mistral AI' : isCloudflare ? 'Cloudflare' : 'OpenRouter'}`
-                    : (data.error?.message || data.errors?.[0]?.message || 'The AI service could not answer'),
-            });
+            const detail = String(data.error?.message || data.errors?.[0]?.message || '');
+            const billingError = /insufficient.*(balance|credit|quota)|balance.*insufficient|exceeded.*quota|quota.*exceeded|recharge|billing/i.test(detail);
+            const message = billingError || apiResponse.status === 402
+                ? 'The selected AI service has insufficient balance or quota. Check its billing or configure another connection for this model.'
+                : apiResponse.status === 429 ? 'The selected AI service is rate limited. Wait a moment and retry.'
+                : apiResponse.status === 401 || apiResponse.status === 403 ? 'The selected AI service rejected the server credentials or model access.'
+                : apiResponse.status === 504 ? 'The AI provider took too long to respond. Try again or choose another configured model.'
+                : 'The selected AI service could not answer. Retry or check the model configuration.';
+            console.error('[AI API]', apiResponse.status, billingError ? 'billing_or_quota' : 'upstream_error');
+            return res.status(apiResponse.status === 401 ? 502 : apiResponse.status).json({ message });
         }
 
         res.status(200);
