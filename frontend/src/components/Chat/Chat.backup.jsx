@@ -279,8 +279,8 @@ export default function Chat() {
 
   useEffect(() => {
     document.documentElement.dataset.themePreference = themePreference;
-    document.documentElement.dataset.theme = themePreference === t("auto")
-      ? (window.matchMedia('(prefers-color-scheme: light)').matches ? t("light") : t("dark"))
+    document.documentElement.dataset.theme = themePreference === 'auto'
+      ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
       : themePreference;
   }, [themePreference]);
 
@@ -542,7 +542,7 @@ export default function Chat() {
   useEffect(() => {
     const container = messagesContainer.current;
     if (!container) return;
-    container.scrollTo({ top: container.scrollHeight, behavior: isSending ? 'smooth' : t("auto") });
+    container.scrollTo({ top: container.scrollHeight, behavior: isSending ? 'smooth' : 'auto' });
   }, [messages, isSending]);
 
   useEffect(() => {

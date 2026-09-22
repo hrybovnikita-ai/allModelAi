@@ -8,7 +8,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
 let server, lib, EverydayAI;
 before(async () => {
-  server = await createServer({ root: fileURLToPath(new URL('../', import.meta.url)), server: { middlewareMode: true, watch: null, hmr: false }, appType: 'custom' });
+  server = await createServer({ root: fileURLToPath(new URL('../', import.meta.url)), server: { middlewareMode: true, watch: null, hmr: false, ws: false }, appType: 'custom' });
   lib = await server.ssrLoadModule('/src/lib/everydayAI.js');
   EverydayAI = (await server.ssrLoadModule('/src/components/EverydayAI/EverydayAI.jsx')).default;
 });

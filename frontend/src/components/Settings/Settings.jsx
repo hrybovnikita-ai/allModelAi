@@ -1,3 +1,4 @@
+import SocialConnections from './SocialConnections';
 import { useState } from 'react';
 import { clearAllSessionData } from '../../lib/session';
 import { apiFetch } from '../../lib/api';
@@ -11,7 +12,7 @@ export default function Settings() {
   const { language: selectedLanguage, setLanguage, t } = useLanguage();
   const { user } = useOutletContext();
   const savedProfile = JSON.parse(localStorage.getItem('allmodelai_profile') || '{}');
-  const [profile, setProfile] = useState({ name: savedProfile.name || user?.name || '', avatar: savedProfile.avatar || '', language: selectedLanguage.name });
+  const [profile, setProfile] = useState({ name: savedProfile.name || user?.name || '', avatar: savedProfile.avatar || user?.avatar || '', language: selectedLanguage.name });
   const [notice, setNotice] = useState('');
   const [pendingLanguage, setPendingLanguage] = useState(null);
   if (!user) return <Navigate to="/" replace />;
@@ -66,6 +67,7 @@ export default function Settings() {
       <button className="settings-save" type="submit">{t('save')}</button>
     </div></form>
     <section className="settings-card settings-security"><div><span>{t('security')}</span><h2>{t('securityHeading')}</h2></div><Link className="settings-security-link" to="/forgot-password">{t('changePassword')}</Link></section>
+    <SocialConnections />
     {notice && <p className="settings-notice" role="status">{t(notice)}</p>}<button className="settings-logout" type="button" onClick={logout}>{t('logout')}</button>
   </section>
     {pendingLanguage && <div className="settings-modal-backdrop" onClick={cancelLanguage}>

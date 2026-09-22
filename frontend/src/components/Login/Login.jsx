@@ -1,30 +1,38 @@
 import { confirmSession } from '../../lib/session';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { socialSignIn } from '../../lib/socialSignIn';
+import { socialError } from '../../lib/socialSession';
 import axios from 'axios';
 import './Login.css';
 
 export default function Login(props) {
-  // Explicit account actions always show the form, even with an existing session.
-  // Navigate only after the submitted credentials have been verified.
   return <LoginForm {...props} />;
 }
 
 function LoginForm({ mode, onClose, onModeChange, returnTo = "/chat", returnState }) {
   const signingUp = mode === 'signup';
   const navigate = useNavigate();
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
 
-  const handleSocialSignIn = (provider) => {
-    onClose();
-    if (provider === 'Google') {
-      window.location.assign('/api/auth/google');
-      return;
+ 
+const handleSocialSignIn = async (provider) => {
+    if (submitting) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const user = await socialSignIn(provider, { rememberMe });
+      document.activeElement?.blur();
+      navigate('/dashboard', { replace: true, state: { user } });
+    } catch (requestError) {
+      setError(socialError(requestError));
+    } finally {
+      setSubmitting(false);
     }
-    navigate(`/auth/${provider.toLowerCase()}`);
   };
 
   const handleSubmit = async (event) => {
@@ -45,13 +53,11 @@ function LoginForm({ mode, onClose, onModeChange, returnTo = "/chat", returnStat
       payload.rememberMe = payload.rememberMe === 'on';
       const response = await axios.post(endpoint, payload, { withCredentials: true });
       const user = await confirmSession(response.data.user);
-      // Dismiss the mobile keyboard before showing the main workspace.
       document.activeElement?.blur();
       navigate(returnTo, { replace: true, state: { ...returnState, user, welcomeEmail: response.data.welcomeEmail } });
     } catch (requestError) {
       if (requestError.response?.data?.code === 'PASSWORD_SETUP_REQUIRED') {
-        onModeChange('signup');
-        setError('This existing account has no password yet. Enter your name, repeat the password, and press Create account.');
+        setError('Use your original sign-in provider or the password recovery flow for this account.');
       } else {
         setError(requestError.response?.data?.message || requestError.message || 'Could not connect to the backend. Please try again.');
       }
@@ -79,7 +85,7 @@ function LoginForm({ mode, onClose, onModeChange, returnTo = "/chat", returnStat
           <label><span>Email</span><input name="email" type="email" placeholder="you@example.com" autoComplete="email" required /></label>
           <label><span>Password</span><span className="password-field"><input name="password" type={passwordVisible ? 'text' : 'password'} placeholder={signingUp ? 'Choose any password' : 'Your password'} autoComplete={signingUp ? 'new-password' : 'current-password'} required /><button type="button" className="password-toggle" onClick={() => setPasswordVisible((visible) => !visible)} aria-label={passwordVisible ? 'Hide password' : 'Show password'} aria-pressed={passwordVisible} title={passwordVisible ? 'Hide password' : 'Show password'}>{passwordVisible ? '◉' : '◎'}</button></span></label>
           {signingUp && <label><span>Confirm password</span><span className="password-field"><input name="confirmPassword" type={confirmPasswordVisible ? 'text' : 'password'} placeholder="Repeat your password" autoComplete="new-password" required /><button type="button" className="password-toggle" onClick={() => setConfirmPasswordVisible((visible) => !visible)} aria-label={confirmPasswordVisible ? 'Hide password' : 'Show password'} aria-pressed={confirmPasswordVisible} title={confirmPasswordVisible ? 'Hide password' : 'Show password'}>{confirmPasswordVisible ? '◉' : '◎'}</button></span></label>}
-          <label><span><input name="rememberMe" type="checkbox" defaultChecked /> Remember me</span></label>
+          <label><span><input name="rememberMe" type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} /> Remember me</span></label>
           {!signingUp && <a className="login-forgot" href="/forgot-password">Forgot password?</a>}
           {error && <p className="login-error" role="alert">{error}</p>}
           <button className="login-submit" type="submit" disabled={submitting}>
@@ -93,7 +99,7 @@ function LoginForm({ mode, onClose, onModeChange, returnTo = "/chat", returnStat
 
         <p className="social-title">Or continue with</p>
         <div className="login-socials">
-          {['Google', 'Apple', 'Facebook'].map((provider) => <button type="button" key={provider} onClick={() => handleSocialSignIn(provider)}><img src={provider === 'Google' ? 'https://cdn.simpleicons.org/google' : provider === 'Apple' ? 'https://cdn.simpleicons.org/apple/ffffff' : 'https://cdn.simpleicons.org/facebook/1877F2'} alt="" />{provider}</button>)}
+          {['Google', 'Apple', 'Facebook'].map((provider) => <button type="button" key={provider} disabled={submitting} onClick={() => handleSocialSignIn(provider)}><img src={provider === 'Google' ? 'https://cdn.simpleicons.org/google' : provider === 'Apple' ? 'https://cdn.simpleicons.org/apple/ffffff' : 'https://cdn.simpleicons.org/facebook/1877F2'} alt="" />{provider}</button>)}
         </div>
       </section>
     </div>

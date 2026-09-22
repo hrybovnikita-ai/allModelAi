@@ -231,3 +231,19 @@ CREATE TABLE IF NOT EXISTS account_access_modes (
     email TEXT PRIMARY KEY,
     mode TEXT NOT NULL CHECK(mode IN ('user', 'developer'))
 );
+
+-- Additive social authentication tables; existing accounts and sessions remain intact.
+CREATE TABLE IF NOT EXISTS social_identities (
+    provider TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (provider, subject),
+    UNIQUE (user_id, provider)
+);
+CREATE TABLE IF NOT EXISTS social_auth_challenges (
+    state_hash TEXT PRIMARY KEY,
+    intent TEXT NOT NULL,
+    session_hash TEXT,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL
+);

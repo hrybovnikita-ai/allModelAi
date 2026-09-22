@@ -39,6 +39,10 @@ const { prepareAppGeneration } = require('../appGeneration');
 const { health, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
 
 const router = express.Router();
+const socialAuth = require('../socialAuth');
+router.post('/auth/firebase/challenge', socialAuth.browserRequest, socialAuth.challenge);
+router.post('/auth/firebase', socialAuth.browserRequest, socialAuth.exchange);
+router.get('/auth/connections', socialAuth.connections);
 const { cachePublicResponse } = require('../cache');
 
 router.post('/auth/register', registerUser);

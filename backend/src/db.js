@@ -98,6 +98,26 @@ const connectDatabase = () => {
         )
     );
 
+    // Additive Firebase authentication table; existing accounts,
+    // sessions and conversations are not touched.
+    database.exec(
+        `
+        CREATE TABLE IF NOT EXISTS auth_identities (
+            provider TEXT NOT NULL,
+            provider_uid TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (provider, provider_uid),
+            FOREIGN KEY (user_id)
+                REFERENCES users(id)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS auth_identities_user_id
+        ON auth_identities(user_id);
+        `
+    );
+
     const apiKeyColumns = database
         .prepare(
             'PRAGMA table_info(developer_api_keys)'
@@ -163,6 +183,10 @@ const connectDatabase = () => {
         database.exec(
             "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"
         );
+    }
+
+    if (!productionUserColumns.some(column => column.name === 'avatar_url')) {
+        database.exec('ALTER TABLE users ADD COLUMN avatar_url TEXT');
     }
 
     const userColumns = database

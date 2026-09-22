@@ -11,7 +11,7 @@ let chat;
 before(async () => {
   server = await createServer({
     root: fileURLToPath(new URL('../', import.meta.url)),
-    server: { middlewareMode: true, watch: null },
+    server: { middlewareMode: true, watch: null, hmr: false, ws: false },
     appType: 'custom',
     plugins: [{
       name: 'chat-test-internals',

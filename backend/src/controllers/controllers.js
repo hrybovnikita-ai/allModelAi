@@ -2,6 +2,7 @@ const modelVariants = require('../data/modelVariants.json');
 const { sessionCookieOptions } = require('../sessionCookie');
 const { createSessionToken, validSessionToken } = require('../sessionToken');
 const { publicAppOrigin } = require('../publicAccess');
+const frontendOrigin = (req) => publicAppOrigin(req);
 const crypto = require('node:crypto');
 const { promisify } = require('node:util');
 const Stripe = require('stripe');
@@ -146,20 +147,19 @@ const registerUser = async (req, res) => {
         return res.status(400).json({ message: 'Enter a valid email address' });
     }
     const passwordHash = await hashPassword(password);
-    const existingUser = users.find((user) => user.email.toLowerCase() === normalizedEmail);
-    if (existingUser) {
-        return res.status(409).json({ message: 'An account with this email already exists' });
+    const db = req.app.locals.db.database;
+    let newUser;
+    try {
+        newUser = db.transaction(() => {
+            if (users.some(user => user.email.toLowerCase() === normalizedEmail) || db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(normalizedEmail)) return null;
+            const id = Number(db.prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)').run(name.trim(), normalizedEmail, passwordHash).lastInsertRowid);
+            return { id, name: name.trim(), email: normalizedEmail, passwordHash };
+        }).immediate();
+    } catch (error) {
+        if (!error.code?.startsWith('SQLITE_CONSTRAINT')) throw error;
     }
-
-    const newUser = {
-        id: users.length ? Math.max(...users.map((user) => Number(user.id) || 0)) + 1 : 1,
-        name: name.trim(),
-        email: normalizedEmail,
-        passwordHash,
-    };
-
+    if (!newUser) return res.status(409).json({ message: 'An account with this email already exists' });
     users.push(newUser);
-    saveUsers(req.app.locals.db);
     setSession(req, res, newUser, req.body.rememberMe !== false && req.body.rememberMe !== 'false');
     let welcomeEmail = { sent: false, reason: 'not_configured' };
     try {
@@ -189,20 +189,23 @@ const loginUser = async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
     const safeName = (name && typeof name === 'string' && name.trim()) ? name.trim() : normalizedEmail.split('@')[0];
 
-    let user = users.find((item) => item.email.toLowerCase() === normalizedEmail);
+    const db = req.app.locals.db.database;
+    let user = db.prepare('SELECT id, name, email, password_hash AS passwordHash FROM users WHERE lower(email) = ?').get(normalizedEmail) || users.find((item) => item.email.toLowerCase() === normalizedEmail);
 
     if (!user) {
-        // Auto-register new user directly into SQL database and in-memory list
-        const newId = users.length ? Math.max(...users.map((u) => Number(u.id) || 0)) + 1 : 1;
         const passwordHash = await hashPassword(password);
-        user = {
-            id: newId,
-            name: safeName,
-            email: normalizedEmail,
-            passwordHash,
-        };
+        // Recheck after asynchronous hashing: a social or password request may have created it.
+        try {
+            user = db.transaction(() => {
+                if (db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(normalizedEmail)) return null;
+                const id = Number(db.prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)').run(safeName, normalizedEmail, passwordHash).lastInsertRowid);
+                return { id, name: safeName, email: normalizedEmail, passwordHash };
+            }).immediate();
+        } catch (error) {
+            if (!error.code?.startsWith('SQLITE_CONSTRAINT')) throw error;
+        }
+        if (!user) return res.status(409).json({ message: 'This account was just created. Sign in again using its original method.' });
         users.push(user);
-        saveUsers(req.app.locals.db);
         setSession(req, res, user, req.body.rememberMe !== false && req.body.rememberMe !== 'false');
         return res.status(200).json({
             message: 'Signed in successfully',
@@ -220,7 +223,9 @@ const loginUser = async (req, res) => {
         return res.status(401).json({ message: 'Incorrect name, email or password' });
     } else if (name && typeof name === 'string' && name.trim() && user.name !== name.trim()) {
         user.name = name.trim();
-        saveUsers(req.app.locals.db);
+        db.prepare('UPDATE users SET name = ? WHERE id = ?').run(user.name, user.id);
+        const cached = users.find(item => item.id === user.id);
+        if (cached) cached.name = user.name;
     }
 
     setSession(req, res, user, req.body.rememberMe !== false && req.body.rememberMe !== 'false');
@@ -234,7 +239,7 @@ const loginUser = async (req, res) => {
 const providerNames = { google: 'Google', apple: 'Apple', facebook: 'Facebook' };
 
 const getSocialAccounts = (req, res) => {
-    if (process.env.ENABLE_DEMO_SOCIAL_AUTH !== 'true') return res.status(404).json({ message: 'Demo social accounts are disabled. Use Google OAuth.' });
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL || process.env.ENABLE_DEMO_SOCIAL_AUTH !== 'true') return res.status(404).json({ message: 'Demo social accounts are disabled. Use Google OAuth.' });
     const provider = String(req.params.provider || '').toLowerCase();
     if (!providerNames[provider]) return res.status(400).json({ message: 'Unsupported sign-in provider' });
     const accounts = users.slice(0, provider === 'google' ? 3 : 1).map((user) => ({
@@ -247,7 +252,7 @@ const getSocialAccounts = (req, res) => {
 };
 
 const socialLogin = (req, res) => {
-    if (process.env.ENABLE_DEMO_SOCIAL_AUTH !== 'true') return res.status(404).json({ message: 'Demo social sign-in is disabled. Use Google OAuth.' });
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL || process.env.ENABLE_DEMO_SOCIAL_AUTH !== 'true') return res.status(404).json({ message: 'Demo social sign-in is disabled. Use Google OAuth.' });
     const provider = String(req.body.provider || '').toLowerCase();
     const accountId = String(req.body.accountId || '');
     if (!providerNames[provider] || !accountId.startsWith(`${provider}-`)) return res.status(400).json({ message: 'A valid provider account is required' });
@@ -258,49 +263,15 @@ const socialLogin = (req, res) => {
     return res.status(200).json({ message: `Signed in with ${providerNames[provider]}`, user });
 };
 
-const googleRedirectUri = (req) => process.env.GOOGLE_REDIRECT_URI || `${process.env.BACKEND_ORIGIN || publicAppOrigin(req)}/api/auth/google/callback`;
-const frontendOrigin = (req) => publicAppOrigin(req);
-
-const startGoogleAuth = (req, res) => {
-    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-        return res.status(503).send('Google sign-in is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to backend/.env.');
-    }
-    const state = crypto.randomBytes(24).toString('hex');
-    res.cookie('allmodelai_oauth_state', state, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 10 * 60 * 1000 });
-    const query = new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID, redirect_uri: googleRedirectUri(req), response_type: 'code', scope: 'openid email profile', state, prompt: 'select_account' });
-    return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${query}`);
-};
-
-const googleCallback = async (req, res) => {
-    const expectedState = req.cookies?.allmodelai_oauth_state;
-    res.clearCookie('allmodelai_oauth_state', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' });
-    if (!req.query.code || !expectedState || req.query.state !== expectedState) return res.status(400).send('Google sign-in could not be verified. Please try again.');
-    try {
-        const tokenResponse = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code: req.query.code, client_id: process.env.GOOGLE_CLIENT_ID, client_secret: process.env.GOOGLE_CLIENT_SECRET, redirect_uri: googleRedirectUri(req), grant_type: 'authorization_code' }) });
-        const tokens = await tokenResponse.json();
-        if (!tokenResponse.ok || !tokens.access_token) throw new Error('Google token exchange failed');
-        const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
-        const profile = await profileResponse.json();
-        if (!profileResponse.ok || !profile.email || profile.email_verified === false) throw new Error('Google profile verification failed');
-        const normalizedEmail = profile.email.trim().toLowerCase();
-        let user = users.find((item) => item.email.toLowerCase() === normalizedEmail);
-        if (!user) {
-            user = { id: users.length ? Math.max(...users.map((item) => item.id)) + 1 : 1, name: profile.name || normalizedEmail.split('@')[0], email: normalizedEmail };
-            users.push(user);
-            saveUsers(req.app.locals.db);
-        }
-        setSession(req, res, user, true);
-        return res.redirect(`${frontendOrigin(req)}/dashboard`);
-    } catch (error) {
-        console.error('[AUTH GOOGLE ERROR]', error.message);
-        return res.redirect(`${frontendOrigin(req)}/?authError=google`);
-    }
-};
+// The Firebase flow is the single provider authentication implementation.
+// Retire the old email-merging callback instead of leaving an account-takeover path.
+const startGoogleAuth = (req, res) => res.redirect('/login');
+const googleCallback = (req, res) => res.status(410).send('This sign-in callback has been retired. Return to /login and use Continue with Google.');
 
 const getSession = (req, res) => {
     const token = req.cookies?.[sessionCookie];
     if (!validSessionToken(token)) return res.status(401).json({ message: 'No active session' });
-    const user = req.app.locals.db.database.prepare('SELECT users.id, users.name, users.email FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id WHERE token_hash = ? AND expires_at > ?').get(hashToken(token), Date.now());
+    const user = req.app.locals.db.database.prepare('SELECT users.id, users.name, users.email, users.avatar_url AS avatar FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id WHERE token_hash = ? AND expires_at > ?').get(hashToken(token), Date.now());
     if (!user) return res.status(401).json({ message: 'Session expired' });
     return res.status(200).json({ user });
 };
@@ -1606,6 +1577,7 @@ const improvePrompt = async (req, res) => {
 };
 
 module.exports = {
+    setSession,
     registerUser,
     loginUser,
     getSocialAccounts,
