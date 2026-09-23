@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 import './PythonAILab.css';
 
@@ -13,9 +13,7 @@ const SAMPLE_PROMPTS = [
 ];
 
 export default function PythonAILab() {
-  const navigate = useNavigate();
   const [status, setStatus] = useState(null);
-  const [loadingStatus, setLoadingStatus] = useState(true);
   const [training, setTraining] = useState(false);
   const [epochs, setEpochs] = useState(40);
   const [lr, setLr] = useState(0.005);
@@ -31,7 +29,7 @@ export default function PythonAILab() {
   const pollIntervalRef = useRef(null);
   const logsEndRef = useRef(null);
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await apiFetch('/api/ai-python/status');
       if (res.ok) {
@@ -41,25 +39,35 @@ export default function PythonAILab() {
       }
     } catch (e) {
       console.warn('Failed to fetch PyTorch AI status:', e);
-    } finally {
-      setLoadingStatus(false);
     }
-  };
-
-  useEffect(() => {
-    fetchStatus();
-    pollIntervalRef.current = setInterval(fetchStatus, 2000);
-    return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    };
   }, []);
 
   useEffect(() => {
-    if (training) {
-      const fastInterval = setInterval(fetchStatus, 800);
-      return () => clearInterval(fastInterval);
-    }
-  }, [training]);
+    const initialTimer = setTimeout(() => {
+      void fetchStatus();
+    }, 0);
+
+    pollIntervalRef.current = setInterval(() => {
+      void fetchStatus();
+    }, 2000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [fetchStatus]);
+
+  useEffect(() => {
+    if (!training) return undefined;
+
+    const fastInterval = setInterval(() => {
+      void fetchStatus();
+    }, 800);
+
+    return () => clearInterval(fastInterval);
+  }, [training, fetchStatus]);
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -78,7 +86,7 @@ export default function PythonAILab() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Training failed to initiate');
       setSuccessMsg(`AI Learning session started: ${epochs} epochs.`);
-      fetchStatus();
+      void fetchStatus();
     } catch (err) {
       setErrorMsg(err.message);
       setTraining(false);
@@ -91,7 +99,7 @@ export default function PythonAILab() {
       const res = await apiFetch('/api/ai-python/reset', { method: 'POST' });
       if (res.ok) {
         setSuccessMsg('PyTorch model weights reset successfully.');
-        fetchStatus();
+        void fetchStatus();
       }
     } catch (err) {
       setErrorMsg(err.message);
