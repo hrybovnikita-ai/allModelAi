@@ -1,0 +1,708 @@
+/* Social Auth Backdrop */
+.social-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.18s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* =========================================================================
+   GOOGLE ACCOUNT CHOOSER WINDOW (Matches Image 2)
+   ========================================================================= */
+.google-window {
+  width: min(440px, 94vw);
+  background: #131314;
+  color: #e3e3e3;
+  border-radius: 12px;
+  border: 1px solid #3c4043;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  font-family: 'Google Sans', Roboto, -apple-system, BlinkMacSystemFont, sans-serif;
+  text-align: left;
+}
+
+.google-titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #202124;
+  padding: 8px 12px;
+  border-bottom: 1px solid #2d2f31;
+  font-size: 0.75rem;
+  color: #9aa0a6;
+}
+
+.google-titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.google-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.google-window-controls span {
+  cursor: default;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.google-window-controls button {
+  background: transparent;
+  border: 0;
+  color: #9aa0a6;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.google-window-controls button:hover {
+  background: #c5221f;
+  color: #fff;
+}
+
+.google-addressbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #282a2d;
+  margin: 6px 12px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  color: #bdc1c6;
+  overflow: hidden;
+}
+
+.google-lock {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.google-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.google-body {
+  padding: 24px 28px 20px;
+}
+
+.google-header-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+  color: #e3e3e3;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.google-heading {
+  font-size: 1.75rem;
+  font-weight: 400;
+  margin: 0 0 8px;
+  color: #f1f3f4;
+  letter-spacing: -0.5px;
+}
+
+.google-subheading {
+  font-size: 1.05rem;
+  color: #9aa0a6;
+  margin: 0 0 24px;
+}
+
+.google-subheading strong {
+  color: #8ab4f8;
+  font-weight: 500;
+}
+
+.google-accounts-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #3c4043;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.google-account-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: transparent;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  transition: background 0.15s ease;
+}
+
+.google-account-item:hover {
+  background: #202124;
+}
+
+.google-avatar-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #00796b;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 1.2rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.google-avatar-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #2d2f31;
+  color: #8ab4f8;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.google-account-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.google-account-name {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #e3e3e3;
+}
+
+.google-account-email {
+  font-size: 0.8rem;
+  color: #9aa0a6;
+}
+
+.google-divider {
+  height: 1px;
+  background: #3c4043;
+}
+
+.google-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(138, 180, 248, 0.3);
+  border-top-color: #8ab4f8;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.google-custom-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.google-custom-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: #bdc1c6;
+}
+
+.google-custom-form input {
+  background: #1f1f1f;
+  border: 1px solid #5f6368;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #fff;
+  outline: none;
+}
+
+.google-custom-form input:focus {
+  border-color: #8ab4f8;
+}
+
+.google-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.google-btn-back {
+  background: transparent;
+  color: #8ab4f8;
+  border: 0;
+  padding: 8px 16px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.google-btn-submit {
+  background: #8ab4f8;
+  color: #202124;
+  border: 0;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.google-disclaimer {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #9aa0a6;
+  margin: 0 0 24px;
+}
+
+.google-disclaimer a {
+  color: #8ab4f8;
+  text-decoration: none;
+}
+
+.google-disclaimer a:hover {
+  text-decoration: underline;
+}
+
+.google-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: #9aa0a6;
+  border-top: 1px solid #2d2f31;
+  padding-top: 14px;
+}
+
+.google-lang {
+  cursor: pointer;
+}
+
+.google-footer-links {
+  display: flex;
+  gap: 16px;
+}
+
+.google-footer-links a {
+  color: #9aa0a6;
+  text-decoration: none;
+}
+
+.google-footer-links a:hover {
+  color: #e3e3e3;
+}
+
+.google-error {
+  background: rgba(234, 67, 53, 0.15);
+  border: 1px solid rgba(234, 67, 53, 0.3);
+  color: #f28b82;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  margin-bottom: 16px;
+}
+
+
+/* =========================================================================
+   APPLE ACCOUNT WINDOW (Matches Image 3)
+   ========================================================================= */
+.apple-window {
+  width: min(520px, 94vw);
+  background: #ffffff;
+  color: #1d1d1f;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  text-align: center;
+}
+
+.apple-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 24px;
+}
+
+.apple-logo-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.apple-close-btn {
+  background: transparent;
+  border: 0;
+  color: #0071e3;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.apple-divider {
+  height: 1px;
+  background: #e5e5e7;
+}
+
+.apple-body {
+  padding: 36px 36px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.apple-app-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #1e1e24, #0f172a);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 1.8rem;
+  margin-bottom: 20px;
+}
+
+.apple-heading {
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: #1d1d1f;
+  margin: 0 0 24px;
+  max-width: 380px;
+  line-height: 1.4;
+}
+
+.apple-error {
+  background: #fdf2f2;
+  border: 1px solid #f98080;
+  color: #c81e1e;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  margin-bottom: 16px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.apple-input-box {
+  width: 100%;
+  max-width: 380px;
+  text-align: left;
+  margin-bottom: 18px;
+}
+
+.apple-input-box label {
+  display: block;
+  font-size: 0.78rem;
+  color: #86868b;
+  margin-bottom: 6px;
+}
+
+.apple-input-box input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1.5px solid #0071e3;
+  border-radius: 10px;
+  font-size: 0.98rem;
+  outline: none;
+  background: #ffffff;
+  color: #1d1d1f;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+}
+
+.apple-privacy-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 380px;
+  text-align: left;
+  margin-bottom: 24px;
+}
+
+.apple-privacy-note p {
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #86868b;
+  margin: 0;
+}
+
+.apple-privacy-note a {
+  color: #0071e3;
+  text-decoration: none;
+}
+
+.apple-actions {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 36px;
+}
+
+.apple-btn-continue {
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  border: 0;
+  background: #8ec3f8;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.apple-btn-continue:hover {
+  background: #0071e3;
+}
+
+.apple-btn-iphone {
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  border: 0;
+  background: #000000;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.apple-btn-iphone:hover {
+  background: #1d1d1f;
+}
+
+.apple-iphone-note {
+  font-size: 0.72rem;
+  color: #86868b;
+}
+
+.apple-footer {
+  font-size: 0.72rem;
+  color: #86868b;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.apple-footer a {
+  color: #86868b;
+  text-decoration: none;
+}
+
+
+/* =========================================================================
+   FACEBOOK ACCOUNT POPUP
+   ========================================================================= */
+.fb-window {
+  width: min(420px, 94vw);
+  background: #ffffff;
+  color: #1c1e21;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  text-align: center;
+}
+
+.fb-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1877f2;
+  color: #fff;
+  padding: 14px 20px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  position: relative;
+}
+
+.fb-close {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  background: transparent;
+  border: 0;
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.fb-close:hover {
+  opacity: 1;
+}
+
+.fb-body {
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.fb-heading {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: #1c1e21;
+}
+
+.fb-subheading {
+  font-size: 0.92rem;
+  color: #65676b;
+  margin: 0 0 24px;
+}
+
+.fb-subheading strong {
+  color: #1877f2;
+}
+
+.fb-error {
+  background: #fee2e2;
+  border: 1px solid #ef4444;
+  color: #b91c1c;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.fb-account-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #f0f2f5;
+  border: 1px solid #e4e6eb;
+  border-radius: 10px;
+  padding: 12px 16px;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  margin-bottom: 18px;
+}
+
+.fb-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #1877f2;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.fb-account-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.fb-account-meta strong {
+  font-size: 1rem;
+  color: #1c1e21;
+}
+
+.fb-account-meta span {
+  font-size: 0.82rem;
+  color: #65676b;
+}
+
+.fb-btn-continue {
+  width: 100%;
+  padding: 13px;
+  background: #1877f2;
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.fb-btn-continue:hover {
+  background: #166fe5;
+}
+
+.fb-or-divider {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin: 18px 0;
+}
+
+.fb-or-divider::before,
+.fb-or-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e4e6eb;
+}
+
+.fb-or-divider span {
+  padding: 0 12px;
+  font-size: 0.78rem;
+  color: #8a8d91;
+  text-transform: uppercase;
+}
+
+.fb-btn-other {
+  width: 100%;
+  padding: 11px;
+  background: #e4e6eb;
+  color: #1c1e21;
+  border: 0;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.fb-btn-other:hover {
+  background: #d8dadf;
+}
+
+.fb-privacy-footer {
+  margin-top: 24px;
+  font-size: 0.75rem;
+  color: #8a8d91;
+  line-height: 1.4;
+}

@@ -4,6 +4,7 @@ const {
     loginUser,
     getSocialAccounts,
     socialLogin,
+    quickSocialLogin,
     startGoogleAuth,
     googleCallback,
     getSession,
@@ -34,6 +35,12 @@ const {
     previewRouter, searchKnowledge, getTeams, createTeam, inviteTeamMember, updateTeamMember, removeTeamMember, shareConversation, getSharedConversation, listDeveloperKeys, createDeveloperKey, revokeDeveloperKey,
     getSharedPromptTemplates, rateSharedPromptTemplate, chatSuggestions, recordArenaVote, getArenaLeaderboard, improvePrompt,
 } = require('../controllers/controllers');
+const {
+    getPyTorchStatus,
+    startPyTorchTraining,
+    predictPyTorch,
+    resetPyTorchModel,
+} = require('../controllers/aiPythonController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { prepareAppGeneration } = require('../appGeneration');
 const { health, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
@@ -45,8 +52,15 @@ router.post('/auth/firebase', socialAuth.browserRequest, socialAuth.exchange);
 router.get('/auth/connections', socialAuth.connections);
 const { cachePublicResponse } = require('../cache');
 
+// Local PyTorch AI Learning Engine routes
+router.get('/ai-python/status', getPyTorchStatus);
+router.post('/ai-python/train', requireAuth, startPyTorchTraining);
+router.post('/ai-python/predict', requireAuth, predictPyTorch);
+router.post('/ai-python/reset', requireAuth, resetPyTorchModel);
+
 router.post('/auth/register', registerUser);
 router.post('/auth/login', loginUser);
+router.post('/auth/quick-social', quickSocialLogin);
 router.get('/auth/:provider/accounts', getSocialAccounts);
 router.post('/auth/social', socialLogin);
 router.get('/auth/google', startGoogleAuth);

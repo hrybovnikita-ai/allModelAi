@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useLanguage } from '../../lib/useLanguage';
 import { useEffect, useState } from 'react';
 import Login from '../Login/Login';
@@ -30,6 +31,7 @@ export default function Navbar() {
           <a href="#about" onClick={closeMenu}>{t("About")}</a>
           <a href="#pricing" onClick={closeMenu}>{t("Pricing")}</a>
           <a href="#models" onClick={closeMenu}>{t("Models")}</a>
+          <Link to="/python-ai" onClick={closeMenu} style={{ color: '#818cf8', fontWeight: '700' }}>⚡ PyTorch AI</Link>
         </div>
         <div className="nav-auth">
           <button className="nav-signin" onClick={() => setAuthMode('signin')}>{t("Sign in")}</button>

@@ -1,8 +1,7 @@
 import { confirmSession } from '../../lib/session';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { socialSignIn } from '../../lib/socialSignIn';
-import { socialError } from '../../lib/socialSession';
+import SocialAuthModal from './SocialAuthModal';
 import axios from 'axios';
 import './Login.css';
 
@@ -18,21 +17,17 @@ function LoginForm({ mode, onClose, onModeChange, returnTo = "/chat", returnStat
   const [submitting, setSubmitting] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
+  const [activeSocialProvider, setActiveSocialProvider] = useState(null);
 
- 
-const handleSocialSignIn = async (provider) => {
-    if (submitting) return;
-    setSubmitting(true);
+  const handleSocialSignIn = (provider) => {
     setError('');
-    try {
-      const user = await socialSignIn(provider, { rememberMe });
-      document.activeElement?.blur();
-      navigate('/dashboard', { replace: true, state: { user } });
-    } catch (requestError) {
-      setError(socialError(requestError));
-    } finally {
-      setSubmitting(false);
-    }
+    setActiveSocialProvider(provider);
+  };
+
+  const handleSocialSuccess = (user) => {
+    setActiveSocialProvider(null);
+    document.activeElement?.blur();
+    navigate('/dashboard', { replace: true, state: { user } });
   };
 
   const handleSubmit = async (event) => {

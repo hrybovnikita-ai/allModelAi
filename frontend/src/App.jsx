@@ -63,6 +63,7 @@ import UsageAnalytics from "./components/UsageAnalytics/UsageAnalytics";
 
 import EverydayAI from "./components/EverydayAI/EverydayAI";
 import EverydayCards from "./components/EverydayAI/EverydayCards";
+import PythonAILab from "./components/PythonAILab/PythonAILab";
 
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");
@@ -157,6 +158,8 @@ export default function App() {
       <Route path="/refunds" element={<InfoPage type="refund" />} />
       <Route path="/cookies" element={<InfoPage type="cookies" />} />
       <Route path="/explore" element={<ModelExplorer />} />
+      <Route path="/python-ai" element={<PythonAILab />} />
+      <Route path="/ai-python" element={<PythonAILab />} />
       <Route path="/shared/:token" element={<SharedConversation />} />
       <Route path="/login" element={<AuthPage mode="signin" />} />
       <Route path="/register" element={<AuthPage mode="signup" />} />
