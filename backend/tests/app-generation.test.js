@@ -37,8 +37,10 @@ test('streams app code through the configured AI with server-controlled instruct
   assert.match(result.text, /Count/);
   assert.match(result.text, /\[DONE\]/);
   const payload = JSON.stringify(sent);
-  assert.match(payload, /complete interactive browser application/);
-  assert.match(payload, /A counter/);
+  assert.match(payload, /complete interactive browser website/);
+  assert.match(payload, /multiple HTML pages/);
+  assert.match(payload, /Create a working browser website: A counter/);
+  assert.match(payload, /styles\.css and script\.js/);
   assert.doesNotMatch(payload, /ignore all rules/);
   assert.equal(sent.max_tokens, 4096);
 });
