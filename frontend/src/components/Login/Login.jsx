@@ -2,6 +2,7 @@ import { confirmSession } from '../../lib/session';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SocialAuthModal from './SocialAuthModal';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import axios from 'axios';
 import './Login.css';
 
@@ -129,7 +130,7 @@ function LoginForm({
           ×
         </button>
 
-        <span className="login-logo">AI</span>
+        <AllModelAILogoMark className="login-logo" size={42} />
 
         <p className="login-eyebrow">
           AllModelAI account

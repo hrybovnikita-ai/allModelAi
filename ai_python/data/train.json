@@ -1,0 +1,202 @@
+[
+  {
+    "text": "hello there",
+    "label": "greeting"
+  },
+  {
+    "text": "hi how are you",
+    "label": "greeting"
+  },
+  {
+    "text": "hey assistant",
+    "label": "greeting"
+  },
+  {
+    "text": "good morning",
+    "label": "greeting"
+  },
+  {
+    "text": "good evening",
+    "label": "greeting"
+  },
+  {
+    "text": "hi ai",
+    "label": "greeting"
+  },
+  {
+    "text": "hello allmodelai",
+    "label": "greeting"
+  },
+  {
+    "text": "welcome back",
+    "label": "greeting"
+  },
+  {
+    "text": "salutations",
+    "label": "greeting"
+  },
+  {
+    "text": "hey",
+    "label": "greeting"
+  },
+  {
+    "text": "how does ai learn",
+    "label": "ai_learning"
+  },
+  {
+    "text": "what is machine learning",
+    "label": "ai_learning"
+  },
+  {
+    "text": "explain neural network training",
+    "label": "ai_learning"
+  },
+  {
+    "text": "how does backpropagation work",
+    "label": "ai_learning"
+  },
+  {
+    "text": "what is gradient descent",
+    "label": "ai_learning"
+  },
+  {
+    "text": "tell me about epochs and loss function",
+    "label": "ai_learning"
+  },
+  {
+    "text": "how do weights update in pytorch",
+    "label": "ai_learning"
+  },
+  {
+    "text": "explain deep learning model training",
+    "label": "ai_learning"
+  },
+  {
+    "text": "what is learning rate and optimizer",
+    "label": "ai_learning"
+  },
+  {
+    "text": "how does reinforcement learning train an agent",
+    "label": "ai_learning"
+  },
+  {
+    "text": "help me write python code",
+    "label": "coding_help"
+  },
+  {
+    "text": "debug this javascript function",
+    "label": "coding_help"
+  },
+  {
+    "text": "how to create a react component",
+    "label": "coding_help"
+  },
+  {
+    "text": "how do i write a pytorch module",
+    "label": "coding_help"
+  },
+  {
+    "text": "fix syntax error in my script",
+    "label": "coding_help"
+  },
+  {
+    "text": "write an express route in node js",
+    "label": "coding_help"
+  },
+  {
+    "text": "how to implement forward pass in nn.Module",
+    "label": "coding_help"
+  },
+  {
+    "text": "build an api in fastapi",
+    "label": "coding_help"
+  },
+  {
+    "text": "coding algorithm and data structure",
+    "label": "coding_help"
+  },
+  {
+    "text": "explain math behind neural networks",
+    "label": "math_logic"
+  },
+  {
+    "text": "calculate derivative and matrix multiplication",
+    "label": "math_logic"
+  },
+  {
+    "text": "what is linear algebra in ai",
+    "label": "math_logic"
+  },
+  {
+    "text": "explain relu and softmax functions",
+    "label": "math_logic"
+  },
+  {
+    "text": "what is cross entropy loss formula",
+    "label": "math_logic"
+  },
+  {
+    "text": "calculate probability distribution",
+    "label": "math_logic"
+  },
+  {
+    "text": "solve logic puzzle and equations",
+    "label": "math_logic"
+  },
+  {
+    "text": "write a poem about artificial intelligence",
+    "label": "creative_writing"
+  },
+  {
+    "text": "tell me a story about a futuristic world",
+    "label": "creative_writing"
+  },
+  {
+    "text": "creative brainstorming for a sci fi novel",
+    "label": "creative_writing"
+  },
+  {
+    "text": "write an inspiring narrative about technology",
+    "label": "creative_writing"
+  },
+  {
+    "text": "what device are you running on",
+    "label": "system_info"
+  },
+  {
+    "text": "what is your pytorch version",
+    "label": "system_info"
+  },
+  {
+    "text": "system specifications and hardware",
+    "label": "system_info"
+  },
+  {
+    "text": "status of current ai model",
+    "label": "system_info"
+  },
+  {
+    "text": "show active backend and device",
+    "label": "system_info"
+  },
+  {
+    "text": "what is allmodelai",
+    "label": "knowledge"
+  },
+  {
+    "text": "how does this platform work",
+    "label": "knowledge"
+  },
+  {
+    "text": "tell me about local model inference",
+    "label": "knowledge"
+  },
+  {
+    "text": "why run models locally instead of cloud",
+    "label": "knowledge"
+  },
+  {
+    "text": "explain the allmodelai architecture",
+    "label": "knowledge"
+  }
+]

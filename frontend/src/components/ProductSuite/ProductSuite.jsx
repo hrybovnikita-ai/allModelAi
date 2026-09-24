@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import './ProductSuite.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 const features = [
   ['guest', 'Guest mode', 'Workspace', 'Try the chat instantly without creating an account or saving private history.', '/chat', '00', 'Live'],
@@ -37,7 +38,7 @@ export default function ProductSuite() {
   if (!user) return <Navigate to="/" replace />;
 
   return <main className="suite-page">
-    <header className="suite-header"><Link to="/dashboard" className="suite-brand"><span>AI</span>AllModelAI</Link><nav><Link to="/chat">Chat</Link><Link to="/studio">Studio</Link><Link to="/dashboard">Dashboard</Link></nav></header>
+    <header className="suite-header"><Link to="/dashboard" className="suite-brand"><AllModelAILogoMark />AllModelAI</Link><nav><Link to="/chat">Chat</Link><Link to="/studio">Studio</Link><Link to="/dashboard">Dashboard</Link></nav></header>
     <section className="suite-hero"><div><p>COMPLETE AI WORKSPACE</p><h1>One application.<br/><span>21 powerful tools.</span></h1><small>Guest access, files, voice, model comparison, images, analytics, profiles, exports, and administration in one workspace.</small></div><div className="suite-score"><strong>21</strong><span>connected modules</span><i><b/></i><small>Product workspace ready</small></div></section>
     <section className="suite-toolbar"><div>{categories.map((item) => <button key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{item}</button>)}</div><label><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find a feature..." /></label></section>
     <section className="suite-grid">{visible.map(([key, title, group, description, route, number, status]) => <article key={key}><div><i>{number}</i><span>{status}</span></div><small>{group}</small><h2>{title}</h2><p>{description}</p><button onClick={() => navigate(route)}>Open module <b>→</b></button></article>)}</section>

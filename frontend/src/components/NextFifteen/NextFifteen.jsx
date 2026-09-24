@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import '../NextTen/NextTen.css';
 import '../NextTwentyFive/NextTwentyFive.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 const prompt = (role, output) => `Act as ${role}. Ask only essential questions, state assumptions, and produce ${output}.\n\nUSER INPUT:\n`;
 
@@ -44,7 +45,7 @@ export default function NextFifteen() {
   };
 
   return <main className="next-ten-page next-25-page">
-    <header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><b>AI</b>AllModelAI</Link><nav><Link to="/next-30">30 Features</Link><Link to="/chat">Chat</Link><Link to="/dashboard">Dashboard</Link></nav></header>
+    <header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><AllModelAILogoMark />AllModelAI</Link><nav><Link to="/next-30">30 Features</Link><Link to="/chat">Chat</Link><Link to="/dashboard">Dashboard</Link></nav></header>
     <section className="next-ten-hero"><div><p>ALLMODEL AI · 15 NEW IDEAS</p><h1>Know more.<br/><span>Work with confidence.</span></h1><small>Fifteen connected tools for daily planning, quality control, team knowledge, automation, learning, and export.</small></div><strong>15</strong></section>
     <section className="next-25-toolbar"><label><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search 15 new ideas..." aria-label="Search new ideas" /></label><div>{categories.map((value) => <button type="button" className={category === value ? 'active' : ''} onClick={() => setCategory(value)} key={value}>{value}</button>)}</div></section>
     <section className="next-ten-shell next-25-shell"><aside>{visible.map((idea) => <button type="button" className={active === idea[0] ? 'active' : ''} onClick={() => { setActive(idea[0]); setInput(''); }} key={idea[0]}><i>{String(ideas.indexOf(idea) + 1).padStart(2, '0')}</i><span>✦</span><div><strong>{idea[1]}</strong><small>{idea[2]}</small></div></button>)}</aside>

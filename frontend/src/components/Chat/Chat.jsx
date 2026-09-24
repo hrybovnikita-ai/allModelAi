@@ -9,11 +9,14 @@ import { Highlight } from 'prism-react-renderer';
 import { Prism, codeTheme, languageAliases } from '../../lib/codeHighlight';
 import { dashboardModels } from '../../data/dashboardModels';
 import { apiFetch, checkChatResponse } from '../../lib/api';
+import { logger, timingElapsed, timingNow } from '../../lib/logger';
 import { clearAllSessionData } from '../../lib/session';
 import SessionRecovery from './SessionRecovery';
+import WebSources, { WebSearchStatus } from './WebSources';
 import './Chat.css';
 import './ChatApi.css';
 import AccountDeleteModal from '../AccountDeleteModal';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 // const quickPrompts = [
 // 'Write a short story about a time traveler.',
@@ -323,7 +326,7 @@ export default function Chat() {
         setCreditStatus(data);
       }
       setSubscribeModalOpen(false);
-      setModelNotice(t('Subscription activated! All models are now available.'));
+      logger.success('Subscription activated — all models available');
       setSubscribeForm({ cardNumber: '', holder: '', email: '', city: '', birthDate: '', expiry: '', cvc: '' });
     } catch (error) {
       setSubscribeError(error.message);
@@ -347,9 +350,7 @@ export default function Chat() {
   const [selectedVoice, setSelectedVoice] = useState(() => safeStorageGet('localStorage', 'allmodelai_voice_name') || '');
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [editDraft, setEditDraft] = useState('');
-  const [routeInfo, setRouteInfo] = useState(null);
   const [modelStatus, setModelStatus] = useState({});
-  const [modelNotice, setModelNotice] = useState('');
   const [themePreference] = useState(() => {
     const preference = safeJSON(safeStorageGet('localStorage', 'allmodelai_appearance'), {}).theme;
     return ['dark', 'light', 'auto'].includes(preference) ? preference : 'dark';
@@ -393,7 +394,11 @@ export default function Chat() {
         navigate('/chat?model=gemini', { replace: true });
       }
       setModelMenuOpen(false);
-      setModelNotice(access.mode === 'developer' ? 'All models are available. API provider limits still apply.' : 'User: Gemini, Llama, DeepSeek, Mistral, and Qwen are available.');
+      logger.router('Access mode changed', {
+        mode: access.mode,
+        unlimited: access.unlimited,
+        models: access.models?.length,
+      });
     } catch (error) {
       setChatError(error.message);
     } finally { setAccessModeSaving(false); }
@@ -412,11 +417,19 @@ export default function Chat() {
     setSelectedSlug(model.slug);
     safeStorageSet('localStorage', 'allmodelai_selected_model', model.slug);
     navigate(`/chat?model=${encodeURIComponent(model.slug)}`, { replace: true });
-    setRouteInfo(null);
+    if (model.slug === 'smart') {
+      logger.action('Smart Router selected');
+      logger.router('Chat mode selected', { provider: 'Smart Router' });
+    } else {
+      logger.action('Chat mode selected', { model: model.slug, version: version?.id });
+      logger.router('Provider selected', { model: model.name, slug: model.slug, version: version?.name });
+    }
     setChatError('');
-    setModelNotice(online
-      ? `${model.name}${version ? ` · ${version.name}` : ''} selected.${version ? '' : ' Automatic routing is ready.'}`
-      : `${model.name} selected. Configure OPENROUTER_API_KEY or this provider's key to receive an answer.`);
+    logger.router('Model selection updated', {
+      model: model.slug,
+      version: version?.id,
+      online,
+    });
     setModelMenuOpen(false);
   };
 
@@ -477,6 +490,7 @@ export default function Chat() {
 
   const toggleVoiceInput = () => {
     if (speechRecognition.current) { speechRecognition.current.stop(); return; }
+    logger.action('Microphone activated', { language: speechLanguage });
     stopSpeaking();
     setChatError('');
     const draft = prompt.trimEnd();
@@ -539,6 +553,7 @@ export default function Chat() {
         size: `${(file.size / 1024).toFixed(0)} KB`,
         type: file.type,
       });
+      logger.action('Attachment selected', { name: file.name || 'screenshot.png', type: file.type, sizeKb: Math.round(file.size / 1024) });
       setChatError('');
     };
     reader.onerror = () => {
@@ -557,6 +572,7 @@ export default function Chat() {
     }
     if (file.size > 25 * 1024 * 1024) { setChatError('Files must be smaller than 25 MB.'); event.target.value = ''; return; }
     const textLike = /^(text\/|application\/(json|xml|javascript|csv))/.test(file.type) || /\.(txt|md|csv|json|js|jsx|ts|tsx|py|html|css)$/i.test(file.name);
+    logger.action('Attachment selected', { name: file.name, type: file.type || 'unknown', sizeKb: Math.round(file.size / 1024), textLike });
     const content = textLike ? (await file.text()).slice(0, 12000) : `[Attached ${file.type || 'file'}: ${file.name}, ${(file.size / 1024).toFixed(1)} KB. Analyze it using available multimodal/file capabilities.]`;
     setPrompt((current) => `${current}${current ? '\n\n' : ''}[${file.name}]\n${content}`);
     event.target.value = '';
@@ -649,6 +665,7 @@ export default function Chat() {
     const value = window.prompt('How should AI behave in every chat?', current);
     if (value === null) return;
     safeStorageSet('localStorage', 'allmodelai_system_instructions', value.trim().slice(0, 2000));
+    logger.action('AI instructions updated', { length: value.trim().length });
   };
   const branchCurrentConversation = async () => {
     if (!activeConversationId || !messages.length) return;
@@ -669,6 +686,7 @@ export default function Chat() {
     } catch { /* Chat history can still be exported when Safari blocks storage. */ }
     const content = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), conversations: chatHistory, local }, null, 2);
     const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([content], { type: 'application/json' })); link.download = 'allmodelai-backup.json'; link.click(); URL.revokeObjectURL(link.href);
+    logger.action('Backup workspace', { conversations: chatHistory.length });
   };
   const retryMessage = (index) => {
     const previousUserMessage = messages.slice(0, index).reverse().find((message) => message.role === 'user');
@@ -684,6 +702,7 @@ export default function Chat() {
   const exportConversation = () => {
     const content = messages.map((message) => `${message.role === 'user' ? 'You' : selectedModel.name}:\n${message.content ?? message.text ?? ''}`).join('\n\n');
     const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' })); link.download = `${conversationPreview({ messages }) || 'allmodelai-chat'}.txt`; link.click(); URL.revokeObjectURL(link.href);
+    logger.action('Export chat', { messages: messages.length, model: selectedSlug });
   };
 
   useEffect(() => {
@@ -759,6 +778,19 @@ export default function Chat() {
     const assistantIndex = nextMessages.length;
     setMessages([...nextMessages, { role: 'assistant', text: generatingImage ? 'Creating your image… This may take a couple of minutes.' : selectedSkill === 'web' ? 'Searching the web…' : '', modelSlug: selectedSlug, generatingFile, webSearching:selectedSkill === 'web' }]);
 
+    const requestStartedAt = timingNow();
+    logger.chat('Message submitted', {
+      model: selectedSlug,
+      skill: selectedSkill || 'chat',
+      webSearch: selectedSkill === 'web',
+      hasAttachment: Boolean(currentAttachment?.url),
+      promptLength: text.length,
+      temporaryChat,
+    });
+    if (selectedSlug === 'smart') {
+      logger.router('Processing request', { webSearch: selectedSkill === 'web' });
+    }
+
     try {
       if (isGuest) {
         const guestReply = `Guest preview: I received “${text.slice(0, 240)}”. Sign up or sign in to connect live AI models, save history, upload documents, generate images, and use the Arena.`;
@@ -767,18 +799,171 @@ export default function Chat() {
         setSelectedSkill(null);
         return;
       }
+      let webSearchViaChat = false;
       if (selectedSkill === 'web') {
-        const researchResponse = await apiFetch('/api/research', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:text}), signal:controller.signal });
+        let assistantText = '';
+        let webSources = [];
+        let webSearchComplete = false;
+        setIsStreamingResponse(false);
+        setMessages((current) => current.map((message, index) => (
+          index === assistantIndex
+            ? { ...message, text: '', webSearching: true, webSearchStatus: 'searching' }
+            : message
+        )));
+
+        const webSearchQueryPreview = text.length > 120 ? `${text.slice(0, 120)}…` : text;
+        const loggedWebStages = new Set();
+        const logWebStage = (stage, meta) => {
+          if (loggedWebStages.has(stage)) return;
+          loggedWebStages.add(stage);
+          logger.search(stage, meta);
+        };
+        logger.group(`🌐 AllModelAI Web Search · ${webSearchQueryPreview}`, () => {
+          logWebStage('Search enabled');
+          logger.search('Query', { query: webSearchQueryPreview });
+          logWebStage('Request started');
+        });
+
+        const researchResponse = await apiFetch('/api/research/answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: text,
+            model: selectedSlug === 'smart' ? 'gemini' : selectedSlug,
+          }),
+          signal: controller.signal,
+        });
+
+        if (researchResponse.status === 404) {
+          webSearchViaChat = true;
+          logger.search('Dedicated route unavailable — falling back to chat web search');
+          setMessages((current) => current.map((message, index) => (
+            index === assistantIndex
+              ? { ...message, webSearchStatus: 'searching' }
+              : message
+          )));
+        } else {
         await checkChatResponse(researchResponse);
-        const researchData = await researchResponse.json().catch(() => ({}));
-        if (!researchResponse.ok) throw new Error(researchData.message || 'Could not search the web.');
-        const sourceList=(researchData.sources||[]).map((source,index)=>`[${index+1}] ${source.title}\n${source.excerpt}\n${source.url}`).join('\n\n');
-        const answer=`Web search completed for: “${text}”\n\n${sourceList||'No relevant sources were found.'}`;
-        setMessages((current)=>current.map((message,index)=>index===assistantIndex?{...message,text:answer,webSearching:false,webSources:researchData.sources||[]}:message));
+
+        if (researchResponse.headers.get('content-type')?.includes('application/json')) {
+          const errorData = await researchResponse.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Could not search the web.');
+        }
+
+        const reader = researchResponse.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+          const events = buffer.replaceAll('\r\n', '\n').split('\n\n');
+          buffer = events.pop() || '';
+
+          for (const eventData of events) {
+            const dataLine = eventData.split('\n').find((line) => line.startsWith('data: '));
+            if (!dataLine || dataLine.slice(6) === '[DONE]') continue;
+            const event = JSON.parse(dataLine.slice(6));
+            if (event.error) throw new Error(event.error);
+            if (event.webSearchStatus) {
+              const status = event.webSearchStatus;
+              if (status === 'searching') logWebStage('Request started');
+              if (status === 'results' && event.count != null) logWebStage(`Results received: ${event.count}`, { count: event.count });
+              if (status === 'filtered' && event.count != null) logWebStage(`Sources filtered: ${event.count}`, { count: event.count });
+              if (status === 'synthesizing') logWebStage('Sending sources to AI');
+              setMessages((current) => current.map((message, index) => (
+                index === assistantIndex
+                  ? {
+                    ...message,
+                    webSearchStatus: event.webSearchStatus,
+                    webSearchCount: event.count ?? message.webSearchCount,
+                  }
+                  : message
+              )));
+            }
+            if (event.text) {
+              assistantText += event.text;
+              setIsStreamingResponse(true);
+              setMessages((current) => current.map((message, index) => (
+                index === assistantIndex
+                  ? { ...message, text: (message.text || '') + event.text, webSearching: false }
+                  : message
+              )));
+            }
+            if (event.webSources) {
+              webSources = event.webSources;
+              logWebStage(`Results received: ${event.webSources.length}`, { count: event.webSources.length });
+            }
+            if (event.webSearchComplete) {
+              webSearchComplete = true;
+              logWebStage('Search completed');
+            }
+          }
+          if (done) break;
+        }
+
+        setMessages((current) => current.map((message, index) => (
+          index === assistantIndex
+            ? {
+              ...message,
+              text: assistantText || message.text,
+              webSearching: false,
+              webSearchStatus: null,
+              webSources,
+              webSearchComplete,
+            }
+            : message
+        )));
+
+        if (!temporaryChat) {
+          let conversationId = activeConversationId;
+          if (!conversationId) {
+            const historyResponse = await apiFetch('/api/chat/history', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: user.email, model: selectedSlug, messages: nextMessages }),
+            });
+            if (historyResponse.ok) {
+              const conversation = await historyResponse.json();
+              conversationId = conversation.id;
+              if (activeConversationIdRef.current === startedConversationId) {
+                activeConversationIdRef.current = conversation.id;
+                setActiveConversationId(conversation.id);
+              }
+              setChatHistory((history) => [conversation, ...history]);
+            }
+          }
+          if (conversationId) {
+            await apiFetch(`/api/chat/history/${conversationId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: user.email,
+                messages: [...nextMessages, {
+                  role: 'assistant',
+                  text: assistantText,
+                  modelSlug: selectedSlug,
+                  webSources,
+                  webSearchComplete,
+                }],
+              }),
+            });
+            await refreshHistory();
+          }
+        }
+
         setSelectedSkill(null);
+        if (voiceMode && assistantText) speakText(assistantText);
+        logger.searchSuccess('Search completed', { sources: webSources.length });
+        logger.success('Assistant response completed', {
+          mode: 'web-search',
+          durationMs: timingElapsed(requestStartedAt),
+        });
         return;
+        }
       }
       if (generatingImage) {
+        logger.action('Generate image', { promptLength: text.length });
         const imageResponse = await apiFetch('/api/images', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: text }), signal: controller.signal,
@@ -812,6 +997,7 @@ export default function Chat() {
             if (stillOpen() || !startedConversationId) setChatError('The image is ready, but saving history failed. Download the picture before closing the chat.');
           }
         }
+        logger.success('Assistant response completed', { mode: 'image', durationMs: timingElapsed(requestStartedAt) });
         return;
       }
       let conversationId = activeConversationId;
@@ -835,10 +1021,18 @@ export default function Chat() {
 
       const responseBelongsToOpenChat = () => activeConversationIdRef.current === (conversationId || startedConversationId);
 
+      const webSearchFlag = webSearchViaChat || selectedSkill === 'web' ? true : selectedSlug === 'smart' ? 'auto' : false;
+      if (webSearchViaChat) {
+        logger.search('Request started via chat fallback', { query: text.length > 120 ? `${text.slice(0, 120)}…` : text });
+      }
+      if (selectedSlug === 'smart') {
+        logger.router('Sending request', { webSearch: webSearchFlag, responseMode: generatingFile ? 'file' : 'chat' });
+      }
+
       const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ responseMode: generatingFile ? 'file' : 'chat', maxTokens: generatingFile ? 4096 : undefined, model: selectedSlug, variant: selectedVersion?.id, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced', responsePrefs: safeJSON(safeStorageGet('localStorage', 'allmodelai_response_prefs'), {}), systemInstructions: safeStorageGet('localStorage', 'allmodelai_system_instructions') || '', fallbackEnabled: !selectedVersion }),
+        body: JSON.stringify({ responseMode: generatingFile ? 'file' : 'chat', maxTokens: generatingFile ? 4096 : undefined, model: selectedSlug, variant: selectedVersion?.id, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, webSearch: webSearchFlag, routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced', responsePrefs: safeJSON(safeStorageGet('localStorage', 'allmodelai_response_prefs'), {}), systemInstructions: safeStorageGet('localStorage', 'allmodelai_system_instructions') || '', fallbackEnabled: !selectedVersion }),
         signal: controller.signal,
       });
 
@@ -874,6 +1068,9 @@ export default function Chat() {
       const decoder = new TextDecoder();
       let buffer = '';
       let assistantText = '';
+      let webSourcesForMessage = [];
+      let routerGroupOpened = false;
+      let fallbackProvider = null;
       const enqueueReveal = (text) => {
         setIsStreamingResponse(true);
         if (responseBelongsToOpenChat()) {
@@ -898,26 +1095,71 @@ export default function Chat() {
           }
           if (event.unlimited) setCreditStatus((current) => ({ ...current, ...event, unlimited: true }));
           if (event.routedModel) {
-            setRouteInfo({model:event.routedModel,reason:event.routeReason,sources:event.knowledgeSources||[]});
-            if (selectedSlug !== 'smart' && event.actualModelId) setModelNotice(`${selectedModel.name} is answering with ${event.actualModelId}.`);
+            if (selectedSlug !== 'smart' && event.actualModelId) {
+              logger.router('Alternate model answering', { selected: selectedModel.name, actual: event.actualModelId });
+            }
+            if (selectedSlug === 'smart' && !routerGroupOpened) {
+              routerGroupOpened = true;
+              logger.group('🤖 AllModelAI Smart Router', () => {
+                if (event.routeReason) logger.router('Intent detected', { intent: String(event.routeReason).slice(0, 80) });
+                logger.router('Preferred provider', { provider: event.routedModel });
+                if (event.actualModelId) logger.router('Model selected', { model: event.actualModelId });
+                if (Array.isArray(event.knowledgeSources) && event.knowledgeSources.length) {
+                  logger.router('Knowledge sources attached', { count: event.knowledgeSources.length });
+                }
+                if (webSearchFlag === true || webSearchFlag === 'auto') {
+                  logger.router('Web Search required', { enabled: webSearchFlag === true ? true : 'auto' });
+                }
+              });
+            } else if (selectedSlug === 'smart') {
+              logger.router('Preferred provider', { provider: event.routedModel });
+            }
           }
-          if (event.fallback) setModelNotice(`${event.requestedModel} was unavailable, so AllModelAI continued with ${event.actualModel}.`);
+          if (event.fallback) {
+            fallbackProvider = event.actualModel;
+            logger.router(`${event.requestedModel} unavailable`);
+            logger.router('Trying fallback', { provider: event.actualModel });
+          }
           if (event.error) throw new Error(event.error);
+          if (event.webSources?.length) {
+            webSourcesForMessage = event.webSources;
+            logger.search(`Results received: ${event.webSources.length}`, { count: event.webSources.length });
+            setMessages((current) => current.map((message, index) => (
+              index === assistantIndex
+                ? { ...message, webSources: event.webSources, webSearchComplete: event.webSearchComplete ?? true }
+                : message
+            )));
+          }
           const partialText = event.text;
           if (partialText) {
             assistantText += partialText;
+            if (webSearchViaChat) {
+              setMessages((current) => current.map((message, index) => (
+                index === assistantIndex
+                  ? { ...message, webSearching: false, webSearchStatus: null }
+                  : message
+              )));
+            }
             enqueueReveal(partialText);
           }
         }
 
         if (done) break;
       }
+      if (webSearchViaChat || selectedSkill === 'web') {
+        setSelectedSkill(null);
+        setMessages((current) => current.map((message, index) => (
+          index === assistantIndex
+            ? { ...message, webSearching: false, webSearchStatus: null }
+            : message
+        )));
+      }
       if (generatingFile && !parseGeneratedFile(assistantText)) setChatError('The model did not return a complete file. Retry in Create file mode or request a smaller file.');
       if (conversationId) {
         await apiFetch(`/api/chat/history/${conversationId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: user.email, messages: [...nextMessages, { role: 'assistant', text: assistantText, modelSlug: selectedSlug }] }),
+          body: JSON.stringify({ email: user.email, messages: [...nextMessages, { role: 'assistant', text: assistantText, modelSlug: selectedSlug, ...(webSourcesForMessage.length ? { webSources: webSourcesForMessage, webSearchComplete: true } : {}) }] }),
         });
       }
       await refreshHistory();
@@ -928,17 +1170,37 @@ export default function Chat() {
       if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         new Notification(`${selectedModel.name} finished`, { body: assistantText.slice(0, 120) || 'Your answer is ready.' });
       }
+      if (fallbackProvider) logger.router(`${fallbackProvider} succeeded`);
+      if (selectedSlug === 'smart') logger.router('Response completed');
+      logger.success('Assistant response completed', {
+        mode: generatingFile ? 'file' : 'chat',
+        durationMs: timingElapsed(requestStartedAt),
+        chars: assistantText.length,
+      });
     } catch (requestError) {
       if (requestError.name === 'AbortError') {
         setMessages((current) => current.filter((message, index) => index !== assistantIndex || String(message.text || message.content || '').trim()));
       } else {
         if (generatingImage && activeConversationIdRef.current === startedConversationId) setPrompt((current) => current || rawText);
         setSessionExpired(requestError.sessionExpired === true);
-        const fallbackMessage = requestError.message === 'Failed to fetch'
-          ? 'Could not connect to the server. Check your connection and try again.'
-          : (requestError.message || 'Could not connect to the AI server.');
-        setChatError(fallbackMessage);
-        setMessages((current) => current.filter((_, index) => index !== assistantIndex));
+        const wasWebSearch = messages[assistantIndex]?.webSearching || messages[assistantIndex]?.webSearchStatus;
+        const fallbackMessage = wasWebSearch
+          ? 'Web search is temporarily unavailable. I can still answer using the AI model\'s existing knowledge.'
+          : requestError.message === 'Failed to fetch'
+            ? 'Could not connect to the server. Check your connection and try again.'
+            : (requestError.message || 'Could not connect to the AI server.');
+        if (wasWebSearch) {
+          logger.searchError('Search failed', { message: requestError.message, name: requestError.name });
+          setMessages((current) => current.map((message, index) => (
+            index === assistantIndex
+              ? { ...message, text: fallbackMessage, webSearching: false, webSearchStatus: null, webSearchComplete: false }
+              : message
+          )));
+          setSelectedSkill(null);
+        } else {
+          setChatError(fallbackMessage);
+          setMessages((current) => current.filter((_, index) => index !== assistantIndex));
+        }
       }
     } finally {
       if (activeRequest.current === controller) activeRequest.current = null;
@@ -971,14 +1233,45 @@ export default function Chat() {
   };
 
   const chooseSuggestion = (text) => {
+    logger.action('Suggestion prompt clicked', { length: String(text).length });
     setPrompt(text);
     document.querySelector('.chat-composer textarea')?.focus();
   };
 
+  const toggleWebSearch = () => {
+    if (selectedSkill === 'web') {
+      logger.search('Search disabled');
+      setSelectedSkill(null);
+      return;
+    }
+    chooseSkill('web');
+  };
+
   const chooseSkill = (skill) => {
+    const labels = {
+      image: 'Create image selected',
+      file: 'Create file selected',
+      video: 'Make video selected',
+      web: 'Web Search enabled',
+    };
+    logger.action(labels[skill] || 'Chat mode selected', { skill });
+    if (skill === 'web') logger.search('Search enabled');
     setSelectedSkill(skill);
     setComposerMenuOpen(false);
     document.querySelector('.chat-composer textarea')?.focus();
+  };
+
+  const goTo = (path, label) => {
+    logger.action(`Open: ${label}`, { path });
+    navigate(path);
+  };
+
+  const openSmartRouter = () => {
+    logger.action('Smart Router selected');
+    setSelectedSlug('smart');
+    setTemporaryChat(false);
+    setActiveProject(null);
+    newChat();
   };
 
   const openConversation = (conversation) => {
@@ -1027,11 +1320,12 @@ export default function Chat() {
     setChatMenuId(null);
   };
 
-  const newChat = () => { setTemporaryChat(false); setActiveConversationId(null); activeConversationIdRef.current = null; setMessages([]); setPrompt(''); setSelectedSkill(null); setChatError(''); setSidebarOpen(false); };
-  const startTemporaryChat = () => { newChat(); setTemporaryChat(true); setActiveProject(null); };
+  const newChat = () => { logger.action('New conversation'); setTemporaryChat(false); setActiveConversationId(null); activeConversationIdRef.current = null; setMessages([]); setPrompt(''); setSelectedSkill(null); setChatError(''); setSidebarOpen(false); };
+  const startTemporaryChat = () => { logger.action('Temporary chat'); newChat(); setTemporaryChat(true); setActiveProject(null); };
   const createProject = () => {
     const name = window.prompt('Project name (example: Website launch, Study plan, Marketing)')?.trim();
     if (!name) return;
+    logger.action('New project', { name });
     const nextProjects = [...projects, { id: Date.now().toString(), name }];
     setProjects(nextProjects); setActiveProject(nextProjects[nextProjects.length - 1]); setTemporaryChat(false);
     safeStorageSet('localStorage', 'allmodelai_projects', JSON.stringify(nextProjects)); newChat();
@@ -1082,18 +1376,18 @@ export default function Chat() {
       <button className={`sidebar-backdrop ${sidebarOpen ? 'visible' : ''}`} aria-label={t("Close sidebar")} onClick={() => setSidebarOpen(false)} />
       <aside className={`chat-sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-top">
-          <Link to="/dashboard" className="chat-brand"><span>AI</span><strong>AllModelAI</strong></Link>
+          <Link to="/dashboard" className="chat-brand"><AllModelAILogoMark /><strong>AllModelAI</strong></Link>
           <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label={t("Close sidebar")}>×</button>
         </div>
         <button className="new-chat" onClick={newChat}><span>＋</span> {t("New conversation")}</button>
         <div className="workspace-tools">
-          <button className="settings-quick-access" onClick={() => navigate('/chat/settings')}><span>⚙</span><span><strong>{t("Chat settings")}</strong><small>{t("Change input and message colors")}</small></span><b>›</b></button>
+          <button className="settings-quick-access" onClick={() => goTo('/chat/settings', 'Chat settings')}><span>⚙</span><span><strong>{t("Chat settings")}</strong><small>{t("Change input and message colors")}</small></span><b>›</b></button>
           <button className={temporaryChat ? 'active' : ''} onClick={startTemporaryChat}><span>◌</span><span><strong>{t("Temporary chat")}</strong><small>{t("Not saved to history")}</small></span></button>
           <button onClick={createProject}><span>▣</span><span><strong>{t("New project")}</strong><small>{t("Organize chats by goal")}</small></span></button>
-          <button onClick={() => navigate('/arena')}><span>⚔</span><span><strong>{t("AI Arena")}</strong><small>{t("Compare answers side by side")}</small></span></button>
-          <button className={selectedSlug === 'smart' ? 'active' : ''} onClick={() => { setSelectedSlug('smart'); setTemporaryChat(false); setActiveProject(null); newChat(); }}><span>✦</span><span><strong>{t("Smart Router")}</strong><small>{t("Choose the best AI automatically")}</small></span></button>
+          <button onClick={() => goTo('/arena', 'AI Arena')}><span>⚔</span><span><strong>{t("AI Arena")}</strong><small>{t("Compare answers side by side")}</small></span></button>
+          <button className={selectedSlug === 'smart' ? 'active' : ''} onClick={openSmartRouter}><span>✦</span><span><strong>{t("Smart Router")}</strong><small>{t("Choose the best AI automatically")}</small></span></button>
           <button onClick={() => chooseSkill('image')}><span>◈</span><span><strong>{t("Generate image")}</strong><small>{t("Create an image from text")}</small></span></button>
-          <button onClick={() => navigate('/studio?tool=prompt')}><span>▤</span><span><strong>{t("Prompt library")}</strong><small>{t("Ready-to-use templates")}</small></span></button>
+          <button onClick={() => goTo('/studio?tool=prompt', 'Prompt library')}><span>▤</span><span><strong>{t("Prompt library")}</strong><small>{t("Ready-to-use templates")}</small></span></button>
           <button disabled={!messages.length} onClick={exportConversation}><span>↓</span><span><strong>{t("Export chat")}</strong><small>{t("Download this conversation")}</small></span></button>
           <button onClick={editSystemInstructions}><span>⚙</span><span><strong>{t("AI instructions")}</strong><small>{t("Set language, style, and behavior")}</small></span></button>
           <button onClick={backupWorkspace}><span>⬡</span><span><strong>{t("Backup workspace")}</strong><small>{t("Download chats and settings")}</small></span></button>
@@ -1114,8 +1408,8 @@ export default function Chat() {
           </div>
         </div>
         {imageGeneratorOpen && <ImageGenerator initialPrompt={prompt} onClose={() => setImageGeneratorOpen(false)} />}
-        <nav className="sidebar-links" aria-label={t("Chat navigation")}><Link to="/dashboard">⌂ <span>{t("Dashboard")}</span></Link><Link to="/ai-platform">34 <span>{t("AI Platform")}</span></Link><Link to="/app-builder">&lt;/&gt; <span>App Builder</span></Link><Link to="/studio">✦ <span>{t("Workspace Studio")}</span></Link><Link to="/control-center">⌘ <span>{t("Control Center")}</span></Link><Link to="/models/gpt">▦ <span>{t("Model library")}</span></Link></nav>
-        <section className="sidebar-theme-settings collapsed" aria-label={t("Theme settings")}><button type="button" className="chat-settings-trigger" onClick={()=>navigate('/chat/settings')}><span className="settings-gear" aria-hidden="true">⚙</span><span><strong>{t("Settings")}</strong><small>{themePreference} · {chatTextColors.find(([,color])=>color===textColor)?.[0]||'Custom'} message</small></span><b>›</b></button></section>
+        <nav className="sidebar-links" aria-label={t("Chat navigation")}><Link to="/dashboard" onClick={() => logger.action('Open: Dashboard', { path: '/dashboard' })}>⌂ <span>{t("Dashboard")}</span></Link><Link to="/ai-platform" onClick={() => logger.action('Open: AI Platform', { path: '/ai-platform' })}>34 <span>{t("AI Platform")}</span></Link><Link to="/app-builder" onClick={() => logger.action('Open: App Builder', { path: '/app-builder' })}>&lt;/&gt; <span>App Builder</span></Link><Link to="/studio" onClick={() => logger.action('Open: Workspace Studio', { path: '/studio' })}>✦ <span>{t("Workspace Studio")}</span></Link><Link to="/control-center" onClick={() => logger.action('Open: Control Center', { path: '/control-center' })}>⌘ <span>{t("Control Center")}</span></Link><Link to="/models/gpt" onClick={() => logger.action('Open: Model library', { path: '/models/gpt' })}>▦ <span>{t("Model library")}</span></Link></nav>
+        <section className="sidebar-theme-settings collapsed" aria-label={t("Theme settings")}><button type="button" className="chat-settings-trigger" onClick={() => goTo('/chat/settings', 'Settings')}><span className="settings-gear" aria-hidden="true">⚙</span><span><strong>{t("Settings")}</strong><small>{themePreference} · {chatTextColors.find(([,color])=>color===textColor)?.[0]||'Custom'} message</small></span><b>›</b></button></section>
         <div className="chat-profile"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><div><strong>{user.name || t("User")}</strong><small>{user.email}</small></div><button onClick={() => setDeleteModalOpen(true)} aria-label={t("Sign out")} title={t("Sign out")}>↗</button></div>
       </aside>
 
@@ -1162,11 +1456,8 @@ export default function Chat() {
           </div>
           <Link className="dashboard-link" to="/dashboard">{t("Dashboard")}</Link>
         </header>
-        {(creditStatus || (selectedSlug === 'smart' && routeInfo) || modelNotice || backgroundNotification) && <div className="chat-statuses">
-          {creditStatus && <div className={creditStatus.unlimited ? 'credit-status credit-status-developer' : 'credit-status'} role="status">{creditStatus.unlimited ? 'Developer · All models available' : 'User · 5 free models'}</div>}
-          {selectedSlug === 'smart' && routeInfo && <div className="credit-status" role="status">Smart Router → {routeInfo.model}: {routeInfo.reason}{routeInfo.sources.length ? ` · ${routeInfo.sources.length} knowledge source(s)` : ''}</div>}
-          {modelNotice && <div className="model-selection-notice" role="status"><span>{modelNotice}</span><button type="button" onClick={() => setModelNotice('')} aria-label="Dismiss model selection message">×</button></div>}
-          {backgroundNotification && <div className="model-selection-notice chat-background-notification" role="status"><span><strong>{backgroundNotification.title}</strong><small>{backgroundNotification.text}</small></span><button type="button" onClick={async () => { const history = await apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`).then((response) => response.ok ? response.json() : []); const conversation = history.find((item) => item.id === backgroundNotification.conversationId); if (conversation) openConversation(conversation); setBackgroundNotification(null); }} aria-label="Open completed response">{t("Open chat")}</button><button type="button" onClick={() => setBackgroundNotification(null)} aria-label="Dismiss notification">×</button></div>}
+        {backgroundNotification && <div className="chat-statuses">
+          <div className="model-selection-notice chat-background-notification" role="status"><span><strong>{backgroundNotification.title}</strong><small>{backgroundNotification.text}</small></span><button type="button" onClick={async () => { const history = await apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`).then((response) => response.ok ? response.json() : []); const conversation = history.find((item) => item.id === backgroundNotification.conversationId); if (conversation) openConversation(conversation); setBackgroundNotification(null); }} aria-label="Open completed response">{t("Open chat")}</button><button type="button" onClick={() => setBackgroundNotification(null)} aria-label="Dismiss notification">×</button></div>
         </div>}
 
         <div className="chat-messages" ref={messagesContainer}>
@@ -1182,7 +1473,7 @@ export default function Chat() {
             const editing = message.role === 'user' && editingMessageIndex === index;
             const liked = messageLikes[index];
             const feedback = messageFeedback[index];
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.imageUrl && message.role !== 'user' && <div className="generated-image-result"><button type="button" className="generated-image-preview" onClick={() => setPreviewModalImage(message.imageUrl)} aria-label="Open image"><img className="generated-image" src={message.imageUrl} alt="Generated image" /></button><a href={message.imageUrl} download="allmodelai-image.png" target="_blank" rel="noreferrer">↓ Download image</a></div>}{text && !activelyStreaming && !editing && <div className="message-actions">
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} />}{message.imageUrl && message.role !== 'user' && <div className="generated-image-result"><button type="button" className="generated-image-preview" onClick={() => setPreviewModalImage(message.imageUrl)} aria-label="Open image"><img className="generated-image" src={message.imageUrl} alt="Generated image" /></button><a href={message.imageUrl} download="allmodelai-image.png" target="_blank" rel="noreferrer">↓ Download image</a></div>}{text && !activelyStreaming && !editing && <div className="message-actions">
               {message.role === 'assistant' ? (
                 <>
                   <button type="button" data-tooltip={t("Copy")} onClick={() => copyMessage(generatedFile?.content || text)} aria-label="Copy response">⎘</button>
@@ -1205,7 +1496,7 @@ export default function Chat() {
             </div>
            </article>
             })}
-          {isSending && !isStreamingResponse && <article className="chat-message assistant thinking-message"><span className="thinking-avatar" aria-hidden="true"><i /></span><div><small>{selectedModel.name}</small><p className="typing-indicator"><b>Thinking<span className="thinking-dots"><i /><i /><i /></span></b></p></div></article>}
+          {isSending && !isStreamingResponse && !messages.some((message) => message.webSearching || message.webSearchStatus) && <article className="chat-message assistant thinking-message"><span className="thinking-avatar" aria-hidden="true"><i /></span><div><small>{selectedModel.name}</small><p className="typing-indicator"><b>Thinking<span className="thinking-dots"><i /><i /><i /></span></b></p></div></article>}
           {chatError && <div className="chat-api-error" role="alert"><span>{chatError}</span><div>{/(microphone|speech|voice recognition)/i.test(chatError) ? <><button type="button" onClick={() => { setChatError(''); toggleVoiceInput(); }}>Try microphone again</button><button type="button" onClick={() => setChatError('')}>Dismiss</button></> : !sessionExpired && <button type="button" disabled={isSending} onClick={() => {
             const lastUserIndex = messages.findLastIndex((message) => message.role === 'user');
             if (lastUserIndex >= 0) {
@@ -1221,6 +1512,11 @@ export default function Chat() {
         </div>
 
         <form className={`chat-composer ${messages.length === 0 ? 'welcome-composer' : 'conversation-composer'}`} onSubmit={sendMessage}>
+          <div className="composer-quick-texts">
+            <button type="button" onClick={() => chooseSuggestion(t('Write a short story about a time traveler.'))}>{t('Write a short story about a time traveler.')}</button>
+            <button type="button" onClick={() => chooseSuggestion(t('Summarize the main benefits of daily exercise.'))}>{t('Summarize the main benefits of daily exercise.')}</button>
+            <button type="button" onClick={() => chooseSuggestion(t('Help me plan a budget for a trip to Europe.'))}>{t('Help me plan a budget for a trip to Europe.')}</button>
+          </div>
           <div className="composer-shell">
             {composerMenuOpen && <div className="composer-menu">
               <button type="button" onClick={() => { setComposerMenuOpen(false); setVoicePanelOpen((open) => !open); }}><span>♫</span> Voice mode</button>
@@ -1229,7 +1525,7 @@ export default function Chat() {
               <button type="button" onClick={() => chooseSkill('image')}><span>✦</span> Create image (generation)</button>
               <button type="button" onClick={() => chooseSkill('file')}><span>{'</>'}</span> Create file</button>
               <button type="button" onClick={() => chooseSkill('video')}><span>▶</span> Make video</button>
-              <button type="button" onClick={() => chooseSkill('web')}><span>◎</span> Search web</button>
+              <button type="button" onClick={() => chooseSkill('web')}><span>🌐</span> Search the web</button>
               <button type="button" disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))} onClick={() => { setComposerMenuOpen(false); sendMessage(null, 'Continue the previous answer from exactly where it stopped. Do not repeat completed content.'); }}><span>→</span> Continue last answer</button>
               <button type="button" disabled={!activeConversationId || !messages.length} onClick={() => { setComposerMenuOpen(false); branchCurrentConversation(); }}><span>⑂</span> Branch conversation</button>
               <button type="button" disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))} onClick={() => { const last = [...messages].reverse().find((message) => message.role === 'assistant' && (message.text || message.content)); if (last) toggleFavorite(last.text || last.content, last.modelSlug); setComposerMenuOpen(false); }}><span>★</span> Save last answer</button>
@@ -1248,7 +1544,7 @@ export default function Chat() {
                 {isSpeaking && <button type="button" className="stop-speaking" onClick={stopSpeaking}>Stop speaking</button>}
               </section>}
               {selectedSkill && <div className="selected-skill">
-                <span className={`selected-skill-icon ${selectedSkill}`} aria-hidden="true">{selectedSkill === 'image' ? '✦' : selectedSkill === 'web' ? '◎' : '▶'}</span>
+                <span className={`selected-skill-icon ${selectedSkill}`} aria-hidden="true">{selectedSkill === 'image' ? '✦' : selectedSkill === 'web' ? '🌐' : '▶'}</span>
                 <span><strong>{selectedSkill === 'file' ? 'Create file' : selectedSkill === 'image' ? 'Create image' : selectedSkill === 'web' ? 'Search the web' : 'Make a video'}</strong><small>{selectedSkill === 'file' ? 'Describe a text or code file. Open, copy and download the result.' : selectedSkill === 'image' ? 'Write a description and press send'  : selectedSkill === 'web' ? 'Current information with sources' : 'Describe the video you want to create'}</small></span>
                 <button type="button" className="selected-skill-remove" onClick={() => setSelectedSkill(null)} aria-label="Remove selected skill" title="Remove skill">×</button>
               </div>}
@@ -1273,15 +1569,10 @@ export default function Chat() {
               <input ref={fileInput} className="chat-file-input" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.pdf,.txt,.md,.json,.csv,.js,.jsx,.ts,.tsx,.py,.html,.css" onChange={readFile} />
               <textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); loadContextSuggestions(event.target.value); }} onPaste={handlePaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={selectedSkill === 'file' && !isSending ? 'For example: create a Python script, an HTML page, or a project plan in Markdown...' : isSending ? selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : attachedImage ? 'Ask anything about this screenshot (e.g. "Where should I click?") or press Send...' : selectedSkill === 'image' ? 'For example: a golden dragon over a night city, realistic style…' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : t('messagePlaceholder').replace('AllModelAI', selectedModel.name)} rows="1" aria-label={t("Chat message")} />
               {contextSuggestions.length > 0 && !isSending && !attachedImage && <div className="context-suggestions">{contextSuggestions.map((item) => <button key={item} type="button" onClick={() => { setPrompt(item); setContextSuggestions([]); document.querySelector('.chat-composer textarea')?.focus(); }}>{item}</button>)}</div>}
-              <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label={t("Open tools")} aria-expanded={composerMenuOpen}>＋</button><button type="button" className="composer-camera" onClick={() => fileInput.current?.click()} aria-label={t("Upload screenshot or image")} title="Upload screenshot or image (or paste Ctrl+V)">📷</button></div><span>{selectedModel.name} · {voiceInputState === 'requesting' ? 'Allow microphone access...' : isListening ? t("Listening\u2026") : isSending ? t("Generating \u2014 you can keep typing") : attachedImage ? t("Screenshot ready to send") : t("Ready \u00b7 replies in your language")}</span><div className="composer-actions"><button type="button" className={voiceInputState !== 'idle' ? 'voice-active' : ''} onClick={toggleVoiceInput} aria-pressed={voiceInputState !== 'idle'} aria-label={voiceInputState !== 'idle' ? 'Stop microphone' : t("Use microphone")} title={voiceInputState !== 'idle' ? 'Stop microphone' : t("Use microphone")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></button>{isSending ? <button className="stop-generation" type="button" onClick={stopGenerating} aria-label={t("Stop generating")} title={t("Stop generating")}><i /></button> : <button className="send-message" type="submit" disabled={!prompt.trim() && !attachedImage} aria-label={t("Send message")}>↑</button>}</div></div>
+              <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label={t("Open tools")} aria-expanded={composerMenuOpen}>＋</button><button type="button" className={`composer-web-toggle ${selectedSkill === 'web' ? 'active' : ''}`} onClick={toggleWebSearch} aria-pressed={selectedSkill === 'web'} aria-label="Search the web" title="Search the web for current information"><span className="globe-icon">🌐</span></button><button type="button" className="composer-camera" onClick={() => fileInput.current?.click()} aria-label={t("Upload screenshot or image")} title="Upload screenshot or image (or paste Ctrl+V)">📷</button></div><span>{selectedSkill === 'web' ? '🌐 Web search enabled' : `${selectedModel.name} · ${voiceInputState === 'requesting' ? 'Allow microphone access...' : isListening ? t("Listening\u2026") : isSending ? t("Generating \u2014 you can keep typing") : attachedImage ? t("Screenshot ready to send") : t("Ready \u00b7 replies in your language")}`}</span><div className="composer-actions"><button type="button" className={voiceInputState !== 'idle' ? 'voice-active' : ''} onClick={toggleVoiceInput} aria-pressed={voiceInputState !== 'idle'} aria-label={voiceInputState !== 'idle' ? 'Stop microphone' : t("Use microphone")} title={voiceInputState !== 'idle' ? 'Stop microphone' : t("Use microphone")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></button>{isSending ? <button className="stop-generation" type="button" onClick={stopGenerating} aria-label={t("Stop generating")} title={t("Stop generating")}><i /></button> : <button className="send-message" type="submit" disabled={!prompt.trim() && !attachedImage} aria-label={t("Send message")}>↑</button>}</div></div>
             </div>
           </div>
           <p>{selectedModel.name} can make mistakes. Check important information.</p>
-          <div className="composer-quick-texts">
-            <button type="button" onClick={() => chooseSuggestion(t('Write a short story about a time traveler.'))}>{t('Write a short story about a time traveler.')}</button>
-            <button type="button" onClick={() => chooseSuggestion(t('Summarize the main benefits of daily exercise.'))}>{t('Summarize the main benefits of daily exercise.')}</button>
-            <button type="button" onClick={() => chooseSuggestion(t('Help me plan a budget for a trip to Europe.'))}>{t('Help me plan a budget for a trip to Europe.')}</button>
-          </div>
         </form>
       </section>
       {previewModalImage && (

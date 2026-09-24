@@ -1,16 +1,42 @@
+import { CSS_FILE, DEFAULT_PAGE, JS_FILE, normalizeProject } from './websiteProject.js';
+
+function assignBlock(files, tag, content) {
+  const label = tag.trim().toLowerCase();
+  if (label === 'html' || label === DEFAULT_PAGE) {
+    files[DEFAULT_PAGE] = content;
+    return;
+  }
+  if (label === 'css' || label === CSS_FILE) {
+    files[CSS_FILE] = content;
+    return;
+  }
+  if (label === 'javascript' || label === 'js' || label === JS_FILE) {
+    files[JS_FILE] = content;
+    return;
+  }
+  if (/^[a-z0-9][a-z0-9.-]*\.html$/.test(label)) {
+    files[label] = content;
+  }
+}
+
 export function extractApplication(text) {
-  const block = (names) => {
-    for (const name of names) {
-      const match = text.match(new RegExp('```' + name + '\\s*\\n([\\s\\S]*?)```', 'i'));
-      if (match) return match[1].trim();
-    }
-    return null;
-  };
-  const files = { html: block(['html']), css: block(['css']), js: block(['javascript', 'js']) };
-  if (!files.html || files.css === null || files.js === null) {
+  const files = {};
+  const pattern = /```([^\n`]+)\s*\n([\s\S]*?)```/gi;
+  let match = pattern.exec(text);
+  while (match) {
+    assignBlock(files, match[1], match[2].trim());
+    match = pattern.exec(text);
+  }
+
+  const htmlPages = Object.keys(files).filter((name) => name.endsWith('.html'));
+  const hasCss = Object.prototype.hasOwnProperty.call(files, CSS_FILE);
+  const hasJs = Object.prototype.hasOwnProperty.call(files, JS_FILE);
+
+  if (!htmlPages.length || !hasCss || !hasJs) {
     throw new Error('The AI returned incomplete files. Try a smaller application or generate again. Your previous files are unchanged.');
   }
-  return files;
+
+  return normalizeProject(files);
 }
 
 export async function readGenerationStream(response) {

@@ -1,0 +1,50 @@
+.allmodelai-logo-mark {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: block;
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  padding: 0;
+}
+
+.allmodelai-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.allmodelai-logo-text {
+  font: inherit;
+  color: inherit;
+}
+
+.login-logo.allmodelai-logo-mark {
+  width: 42px;
+  height: 42px;
+}
+
+.dashboard-orbit .allmodelai-logo-mark {
+  width: 36px;
+  height: 36px;
+}
+
+.chat-brand .allmodelai-logo-mark,
+.dashboard-brand .allmodelai-logo-mark,
+.builder-brand .allmodelai-logo-mark,
+[class*='-brand'] .allmodelai-logo-mark,
+.next-ten-brand .allmodelai-logo-mark,
+.tools-lab header a .allmodelai-logo-mark,
+.explorer-brand .allmodelai-logo-mark,
+.checkout-brand .allmodelai-logo-mark {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  color: inherit !important;
+  font-size: inherit !important;
+  place-items: unset !important;
+  display: block !important;
+}

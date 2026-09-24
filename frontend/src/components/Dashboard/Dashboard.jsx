@@ -9,6 +9,7 @@ import './DashboardNav.css';
 import './DashboardFeatureCards.css';
 import AccountDeleteModal from '../AccountDeleteModal';
 import DashboardResources from './DashboardResources';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import EverydayCards from '../EverydayAI/EverydayCards';
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
 
@@ -46,7 +47,7 @@ export default function Dashboard() {
   return (
     <main className="dashboard-page">
       <nav className="dashboard-nav" aria-label="Workspace navigation">
-        <Link to="/" className="dashboard-brand"><span>AI</span>AllModelAI</Link>
+        <Link to="/" className="dashboard-brand"><AllModelAILogoMark />AllModelAI</Link>
         <div className="dashboard-nav-links"><Link to="/chat">Chat</Link><Link to="/builder-25">Developer Toolkit</Link><Link to="/next-20">Workspace Tools</Link><Link to="/next-25">AI Workflows</Link><Link to="/next-9">Research & Learning</Link><Link to="/next-10">Model Toolkit</Link><Link to="/ai-platform">AI Platform</Link><Link to="/website-builder">Website Builder</Link><Link to="/arena">Arena</Link><Link to="/explore">Models</Link><Link to="/studio">Studio</Link><Link to="/ai-tools">Power Lab</Link><Link to="/creator-tools">Creator Lab</Link><Link to="/features">Features</Link><Link to="/control-center">Control</Link></div>
         <div className="dashboard-user"><span>{user.avatar ? <img src={user.avatar} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : user.name?.charAt(0) || user.email.charAt(0)}</span><Link to="/settings"><small>{user.name || user.email}</small></Link><button onClick={async () => { try { const response = await apiFetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); if (!response.ok) throw new Error('Could not sign out. Try again.'); clearAllSessionData(); navigate('/login', { replace: true }); } catch (error) { setDeleteError(error.message); } }}>Sign out</button><button onClick={() => setDeleteModalOpen(true)}>Delete account</button></div>
       </nav>
@@ -61,7 +62,7 @@ export default function Dashboard() {
           <div className="dashboard-actions"><Link to="/next-12">Explore 12 reliability tools</Link></div>
         <div className="dashboard-actions"><Link to="/next-15">Explore Next 15</Link><Link to="/next-30">Explore Next 30</Link><Link to="/app-20">Explore App 20</Link><Link to="/next-20">Open Workspace Tools</Link><Link to="/power-center">Open Power Center</Link><Link to="/builder-25">Open Developer Toolkit</Link><Link to="/next-25">Explore AI Workflows</Link><Link to="/next-9">Research & Learning</Link><Link to="/next-10">Open Model Toolkit</Link><Link to="/production">Production Center</Link><Link to="/skills-hub">Skills Hub</Link><Link to="/expansion-hub">Expansion Hub</Link></div>
         </div>
-        <div className="dashboard-orbit" aria-hidden="true"><span>AI</span></div>
+        <div className="dashboard-orbit" aria-hidden="true"><AllModelAILogoMark /></div>
       </section>
       {creditStatus && <section className="dashboard-usage"><div><span>Usage this month</span><strong>{creditStatus.plan} plan · {creditStatus.remaining} requests left</strong></div><div className="usage-track"><i style={{ width: `${Math.min((creditStatus.used / creditStatus.limit) * 100, 100)}%` }} /></div><Link to="/checkout?plan=pro">Upgrade plan</Link></section>}
       <section className="personal-overview"><div className="overview-heading"><div><p className="dashboard-eyebrow">Your week</p><h2>Workspace overview</h2></div><Link to="/studio">Open analytics →</Link></div><div className="overview-grid"><article><small>CONVERSATIONS</small><strong>{analytics?.conversations ?? '—'}</strong><span>Saved in your workspace</span></article><article><small>MESSAGES</small><strong>{analytics?.messages ?? '—'}</strong><span>Across every AI model</span></article><article><small>ESTIMATED TOKENS</small><strong>{analytics ? (analytics.estimatedTokens ?? 0).toLocaleString() : '—'}</strong><span>Processed in conversations</span></article><article className="continue-card"><small>QUICK START</small><strong>Continue creating</strong><div><Link to="/chat?model=smart">Smart chat</Link><Link to="/arena">AI Arena</Link></div></article></div><div className="recent-projects"><div><h3>Recent projects</h3><Link to="/studio">View all</Link></div>{recentProjects.length ? recentProjects.map(project => <Link to="/studio" key={project.id}><span>▦</span><div><strong>{project.name}</strong><small>{project.content?.slice(0, 70) || 'Ready for your next task'}</small></div><b>→</b></Link>) : <div className="projects-empty"><span>✦</span><p>No projects yet. Turn your next idea into a focused workspace.</p><Link to="/studio">Create project</Link></div>}</div></section>

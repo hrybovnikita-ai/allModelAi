@@ -4,6 +4,7 @@ import axios from 'axios';
 import './Checkout.css';
 import './CheckoutDemo.css';
 import './CheckoutProduction.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 const plans = {
   developer: { key: 'developer', name: 'Developer', price: 0, interval: 'month', limit: '5,000', badge: 'FREE FOR DEVELOPERS', models: 'All models', perks: ['All AI providers', '5,000 requests each month', 'Code Studio and Live Preview'] },
@@ -59,14 +60,14 @@ export default function Checkout() {
   };
 
   if (purchase) return <main className="checkout-page purchase-success-page">
-    <nav className="checkout-nav"><Link className="checkout-brand" to="/"><span>AI</span>AllModelAI</Link><Link to="/dashboard">Dashboard</Link></nav>
+    <nav className="checkout-nav"><Link className="checkout-brand" to="/"><AllModelAILogoMark />AllModelAI</Link><Link to="/dashboard">Dashboard</Link></nav>
     <p className="checkout-eyebrow">Access activated</p><div className="success-mark" aria-hidden="true">&#10003;</div>
     <h1>Your AllModelAI plan is ready.</h1><p>Your request limit and model access are now active on this account.</p>
     <div className="skill-grid">{skills.map(([index,title,description,to])=><Link className="skill-card" key={index} to={to}><span>{index}</span><strong>{title}</strong><small>{description}</small><b>Open skill &rarr;</b></Link>)}</div>
   </main>;
 
   return <main className="checkout-page">
-    <nav className="checkout-nav"><Link className="checkout-brand" to="/"><span>AI</span>AllModelAI</Link><Link to="/dashboard">Dashboard</Link></nav>
+    <nav className="checkout-nav"><Link className="checkout-brand" to="/"><AllModelAILogoMark />AllModelAI</Link><Link to="/dashboard">Dashboard</Link></nav>
     <section className="checkout-layout">
       <div className="checkout-intro">
         <p className="checkout-eyebrow">Plans and model limits</p><h1>Choose how much AI you need.</h1>

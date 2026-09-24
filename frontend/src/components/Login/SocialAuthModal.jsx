@@ -2,6 +2,7 @@ import { useState } from 'react';
 import axios from 'axios';
 import { confirmSession } from '../../lib/session';
 import './SocialAuthModal.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 export default function SocialAuthModal({ provider, onClose, onSuccess, rememberMe = true }) {
   const [loading, setLoading] = useState(false);
@@ -197,7 +198,7 @@ export default function SocialAuthModal({ provider, onClose, onSuccess, remember
           <div className="apple-body">
             {/* App Icon */}
             <div className="apple-app-icon">
-              <span>AI</span>
+              <AllModelAILogoMark size={48} />
             </div>
 
             <h2 className="apple-heading">Use your Apple Account to sign in to AllModelAI.</h2>

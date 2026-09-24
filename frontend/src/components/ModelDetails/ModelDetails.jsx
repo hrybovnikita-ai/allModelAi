@@ -3,6 +3,7 @@ import { Link, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { dashboardModels } from '../../data/dashboardModels';
 import { modelGuides } from '../../data/modelGuides';
 import './ModelDetails.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import './ModelCode.css';
 import './ModelGuideUnique.css';
 
@@ -32,7 +33,7 @@ export default function ModelDetails() {
 
   return (
     <main className="model-page">
-      <nav className="model-page-nav"><Link to="/dashboard">← Back to models</Link><Link to="/" className="model-page-brand"><span>AI</span>AllModelAI</Link></nav>
+      <nav className="model-page-nav"><Link to="/dashboard">← Back to models</Link><Link to="/" className="model-page-brand"><AllModelAILogoMark />AllModelAI</Link></nav>
       <section className="model-page-hero">
         <div className="model-page-copy"><p className="model-page-label">{model.provider} model</p><h1>{versionLabel}</h1><p>{model.description}</p><div className="model-page-actions"><Link to={`/chat?model=${model.slug}`}>Start with {model.name}</Link><a href="#model-code">View code example</a><a href="#model-guide">Read guide</a></div></div>
         <div className="model-page-image"><div><img src={model.image} alt={`${model.name} by ${model.provider}`} /></div><span>{model.provider}</span><strong>{model.name}</strong></div>

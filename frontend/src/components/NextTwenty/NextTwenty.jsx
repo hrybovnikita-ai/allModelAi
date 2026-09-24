@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import '../NextTen/NextTen.css';
 import '../NextTwentyFive/NextTwentyFive.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 const features=[
  ['debate','AI Debate Mode','Reasoning','Two models argue opposite positions and a neutral judge writes the verdict.','Debate the topic below. Write a strong case FOR, a strong case AGAINST, then act as a neutral judge: identify assumptions, weigh evidence, and give a balanced verdict.\n\nTOPIC:\n'],
@@ -33,7 +34,7 @@ export default function NextTwenty(){
  const selected=features.find(item=>item[0]===active)||features[0];
  if(!user)return <Navigate to="/" replace/>;
  const launch=()=>{if(selected[4]){if(!input.trim())return;navigate('/chat?model=smart',{state:{starterPrompt:`${selected[4]}${input}`}});return;}navigate(selected[5]);};
- return <main className="next-ten-page next-25-page"><header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><b>AI</b>AllModelAI</Link><nav><Link to="/power-center">Power Center</Link><Link to="/next-25">AI Workflows</Link><Link to="/dashboard">Dashboard</Link></nav></header>
+ return <main className="next-ten-page next-25-page"><header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><AllModelAILogoMark />AllModelAI</Link><nav><Link to="/power-center">Power Center</Link><Link to="/next-25">AI Workflows</Link><Link to="/dashboard">Dashboard</Link></nav></header>
   <section className="next-ten-hero"><div><p>ALLMODEL AI · WORKSPACE TOOLS</p><h1>Twenty new powers.<br/><span>Built into your workspace.</span></h1><small>Safety, reasoning, privacy, collaboration, publishing, data tools, and more—connected to the tools you already use.</small></div><strong>20</strong></section>
   <section className="next-25-toolbar"><label><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Find a feature..."/></label><div>{categories.map(item=><button className={category===item?'active':''} onClick={()=>setCategory(item)} key={item}>{item}</button>)}</div></section>
   <section className="next-ten-shell next-25-shell"><aside>{visible.map(item=><button type="button" className={active===item[0]?'active':''} onClick={()=>{setActive(item[0]);setInput('');}} key={item[0]}><i>{String(features.indexOf(item)+1).padStart(2,'0')}</i><span>✦</span><div><strong>{item[1]}</strong><small>{item[2]}</small></div></button>)}</aside><article className="next-ten-panel"><div className="next-ten-panel-title"><span>{String(features.findIndex(item=>item[0]===selected[0])+1).padStart(2,'0')}</span><div><small>{selected[2].toUpperCase()} MODULE</small><h2>{selected[1]}</h2></div></div><p className="next-ten-description">{selected[3]}</p>

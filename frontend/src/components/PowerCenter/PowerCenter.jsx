@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import './PowerCenter.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 const modules = [
   ['council','Council','Multi-model consensus','Ask several models and synthesize the strongest answer.','/arena'],
@@ -24,7 +25,7 @@ export default function PowerCenter(){
   const current=modules.find(item=>item[0]===active)||modules[0];
   if(!user)return <Navigate to="/" replace/>;
   return <main className="power-center">
-    <header><Link to="/dashboard"><b>AI</b>AllModelAI</Link><nav><Link to="/chat">Chat</Link><Link to="/studio">Studio</Link><Link to="/dashboard">Dashboard</Link></nav></header>
+    <header><Link to="/dashboard"><AllModelAILogoMark />AllModelAI</Link><nav><Link to="/chat">Chat</Link><Link to="/studio">Studio</Link><Link to="/dashboard">Dashboard</Link></nav></header>
     <section className="power-hero"><small>ALLMODEL AI · POWER CENTER</small><h1>Ten serious tools.<br/><span>One connected workspace.</span></h1><p>Move from a prompt to a verified, budget-aware result without leaving AllModelAI.</p></section>
     <section className="power-layout"><aside><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search tools…"/>{visible.map((item,index)=><button className={active===item[0]?'active':''} onClick={()=>setActive(item[0])} key={item[0]}><i>{String(index+1).padStart(2,'0')}</i><span><strong>{item[1]}</strong><small>{item[2]}</small></span></button>)}</aside>
       <article className="power-panel"><div className="power-number">{String(modules.findIndex(item=>item[0]===current[0])+1).padStart(2,'0')}</div><small>{current[2].toUpperCase()}</small><h2>{current[1]}</h2><p>{current[3]}</p><div className="power-flow"><span>Configure</span><b>→</b><span>Run with AI</span><b>→</b><span>Review & save</span></div><button onClick={()=>navigate(current[4])}>Open {current[1]} <b>→</b></button><footer><i/>Connected to your account, workspace, usage records, and Smart Router.</footer></article>

@@ -1,0 +1,22 @@
+[
+  {
+    "text": "what is allmodelai",
+    "label": "knowledge"
+  },
+  {
+    "text": "how does this platform work",
+    "label": "knowledge"
+  },
+  {
+    "text": "tell me about local model inference",
+    "label": "knowledge"
+  },
+  {
+    "text": "why run models locally instead of cloud",
+    "label": "knowledge"
+  },
+  {
+    "text": "explain the allmodelai architecture",
+    "label": "knowledge"
+  }
+]

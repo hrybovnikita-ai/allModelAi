@@ -2,6 +2,7 @@ import { apiFetch } from '../../lib/api';
 import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext, Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import './Studio.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import './StudioFeatures.css';
 
 const features = [
@@ -99,7 +100,7 @@ export default function Studio() {
   const startLesson=()=>{if(!learning.topic.trim())return;const next={...learning,completed:Number(learning.completed||0)+1};setLearning(next);localStorage.setItem('allmodelai_learning',JSON.stringify(next));openChat(`Act as a patient tutor. Teach me ${learning.topic} step by step, give a practical example, then test me with five questions. Do not reveal quiz answers until I respond.`,'smart');};
   const restoreBackup=async event=>{const file=event.target.files?.[0];if(!file)return;try{const backup=JSON.parse(await file.text());Object.entries(backup.local||{}).forEach(([key,value])=>{if(key.startsWith('allmodelai_'))localStorage.setItem(key,value)});window.alert('Backup restored. Reloading AllModelAI.');window.location.reload();}catch{window.alert('This is not a valid AllModelAI backup file.')}};
 
-  return <main className="studio-page"><header className="studio-header"><Link to="/dashboard" className="studio-brand"><span>AI</span>AllModelAI</Link><div><Link to="/chat">Open chat</Link><Link to="/dashboard">Dashboard</Link></div></header>
+  return <main className="studio-page"><header className="studio-header"><Link to="/dashboard" className="studio-brand"><AllModelAILogoMark />AllModelAI</Link><div><Link to="/chat">Open chat</Link><Link to="/dashboard">Dashboard</Link></div></header>
     <section className="studio-hero"><p>ALLMODEL WORKSPACE</p><h1>Everything AI. One workspace.</h1><span>Route, compare, automate, speak, and build with the world's leading models.</span></section>
     <div className="studio-layout"><nav className="studio-nav">{features.map(([key,label,description])=><button className={active===key?'active':''} onClick={()=>setActive(key)} key={key}><strong>{label}</strong><small>{description}</small></button>)}</nav>
       <section className="studio-panel"><div className="studio-title"><p>WORKSPACE MODULE</p><h2>{title}</h2></div>

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import '../NextTen/NextTen.css';
 import '../NextTwentyFive/NextTwentyFive.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 const tools=[
  ['artifacts','Artifacts Workspace','Build','Create an interactive calculator, table, chart, or mini application directly from a description.','/control-center?feature=artifacts','Create an interactive artifact from this description. Return a clear specification and a complete self-contained HTML file with CSS and JavaScript:\n\n'],
@@ -39,7 +40,7 @@ export default function BuilderTwentyFive(){
  const selected=tools.find(item=>item[0]===active)||tools[0],acceptsInput=Boolean(selected[5]);
  if(!user)return <Navigate to="/" replace/>;
  const launch=()=>{if(acceptsInput){if(!input.trim())return;const route=selected[4];if(route==='/website-builder'){navigate(route,{state:{starterPrompt:`${selected[5]}${input}`}});return;}navigate(route,{state:{starterPrompt:`${selected[5]}${input}`}});return;}navigate(selected[4]);};
- return <main className="next-ten-page next-25-page"><header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><b>AI</b>AllModelAI</Link><nav><Link to="/next-25">AI Workflows</Link><Link to="/chat">Chat</Link><Link to="/dashboard">Dashboard</Link></nav></header>
+ return <main className="next-ten-page next-25-page"><header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><AllModelAILogoMark />AllModelAI</Link><nav><Link to="/next-25">AI Workflows</Link><Link to="/chat">Chat</Link><Link to="/dashboard">Dashboard</Link></nav></header>
   <section className="next-ten-hero"><div><p>ALLMODEL AI · DEVELOPER TOOLKIT</p><h1>From prompt.<br/><span>To working product.</span></h1><small>Developer, data, document, content, agent, business, and infrastructure tools connected in one workspace.</small></div><strong>25</strong></section>
   <section className="next-25-toolbar"><label><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search Developer Toolkit..."/></label><div>{groups.map(item=><button className={group===item?'active':''} onClick={()=>setGroup(item)} key={item}>{item}</button>)}</div></section>
   <section className="next-ten-shell next-25-shell"><aside>{visible.map(item=><button type="button" className={active===item[0]?'active':''} onClick={()=>{setActive(item[0]);setInput('');}} key={item[0]}><i>{String(tools.indexOf(item)+1).padStart(2,'0')}</i><span>{item[2]==='Developer'?'</>':item[2]==='Data'?'▥':'✦'}</span><div><strong>{item[1]}</strong><small>{item[2]}</small></div></button>)}</aside>

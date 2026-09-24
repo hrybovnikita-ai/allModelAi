@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import '../NextTen/NextTen.css';
 import '../NextTwentyFive/NextTwentyFive.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 const prompt = (role, output) => `Act as ${role}. Use supported facts, mark uncertainty, and produce ${output}.\n\nUSER INPUT:\n`;
 
@@ -57,7 +58,7 @@ export default function NextThirty() {
     } else navigate(selected[4]);
   };
   return <main className="next-ten-page next-25-page">
-    <header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><b>AI</b>AllModelAI</Link><nav><Link to="/arena">AI Arena</Link><Link to="/studio">Projects</Link><Link to="/dashboard">Dashboard</Link></nav></header>
+    <header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><AllModelAILogoMark />AllModelAI</Link><nav><Link to="/arena">AI Arena</Link><Link to="/studio">Projects</Link><Link to="/dashboard">Dashboard</Link></nav></header>
     <section className="next-ten-hero"><div><p>ALLMODEL AI · 30 NEW FEATURES</p><h1>One workspace.<br/><span>Thirty new powers.</span></h1><small>Compare, verify, organize, automate, create, and measure your AI work from one connected feature hub.</small></div><strong>30</strong></section>
     <section className="next-25-toolbar"><label><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search 30 features..." aria-label="Search features" /></label><div>{categories.map((value) => <button type="button" className={category === value ? 'active' : ''} onClick={() => setCategory(value)} key={value}>{value}</button>)}</div></section>
     <section className="next-ten-shell next-25-shell"><aside>{visible.map((feature) => <button type="button" className={active === feature[0] ? 'active' : ''} onClick={() => { setActive(feature[0]); setInput(''); }} key={feature[0]}><i>{String(features.indexOf(feature) + 1).padStart(2, '0')}</i><span>✦</span><div><strong>{feature[1]}</strong><small>{feature[2]}</small></div></button>)}</aside>

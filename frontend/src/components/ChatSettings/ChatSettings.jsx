@@ -4,6 +4,7 @@ import { LANGUAGES } from '../../lib/languages';
 import { useLanguage } from '../../lib/useLanguage';
 import LanguageDialog from '../LanguageDialog/LanguageDialog';
 import './ChatSettings.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 const colors = [['Blue','#3b82f6'],['Yellow','#facc15'],['Purple','#a855f7'],['Lime','#a3e635'],['Orange','#f97316'],['Red','#ef4444'],['Red orange','#ff4500'],['Violet','#8b5cf6'],['Gray','#9ca3af'],['Green yellow','#adff2f']];
 const contrast = (hex) => {
@@ -36,7 +37,7 @@ export default function ChatSettings() {
   </div>;
   if (!user) return <Navigate to="/" replace/>;
   return <main className="chat-settings-page">
-    <header><Link to="/chat" className="settings-page-brand"><span>AI</span>AllModelAI</Link><Link to="/chat" className="back-to-chat">← {t('backChat')}</Link></header>
+    <header><Link to="/chat" className="settings-page-brand"><AllModelAILogoMark />AllModelAI</Link><Link to="/chat" className="back-to-chat">← {t('backChat')}</Link></header>
     <section className="settings-page-hero"><div><span className="settings-page-gear" aria-hidden="true">⚙</span><div><p>{t('personalChat')}</p><h1>{t('settings')}</h1><small>{t('settingsIntro')}</small></div></div><b aria-hidden="true">{t('appearance')}</b></section>
     <div className="settings-page-layout"><section className="settings-options">
       <article><small>03 · {t('language')}</small><h2>{t('language')}</h2><p>{t('confirmText')}</p><div className="page-color-grid language-grid">

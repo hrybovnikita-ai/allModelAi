@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import '../NextTen/NextTen.css';
 import '../NextTwentyFive/NextTwentyFive.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 const prompt = (role, output) => `Act as ${role}. Be practical, protect secrets, state assumptions, and produce ${output}.\n\nUSER INPUT:\n`;
 
@@ -53,7 +54,7 @@ export default function NextTwelve() {
   };
 
   return <main className="next-ten-page next-25-page">
-    <header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><b>AI</b>AllModelAI</Link><nav><Link to="/next-15">15 Ideas</Link><Link to="/chat">Chat</Link><Link to="/dashboard">Dashboard</Link></nav></header>
+    <header className="next-ten-nav"><Link to="/dashboard" className="next-ten-brand"><AllModelAILogoMark />AllModelAI</Link><nav><Link to="/next-15">15 Ideas</Link><Link to="/chat">Chat</Link><Link to="/dashboard">Dashboard</Link></nav></header>
     <section className="next-ten-hero"><div><p>ALLMODEL AI · CONNECTION & RELIABILITY</p><h1>Stay connected.<br/><span>Recover automatically.</span></h1><small>Twelve practical additions for provider setup, health, privacy, cost control, diagnostics, and resilient AI conversations.</small></div><strong>12</strong></section>
     <section className="next-25-toolbar"><label><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search 12 tools..." aria-label="Search connection tools" /></label><div>{categories.map((value) => <button type="button" className={category === value ? 'active' : ''} onClick={() => setCategory(value)} key={value}>{value}</button>)}</div></section>
     <section className="next-ten-shell next-25-shell"><aside>{visible.map((idea) => <button type="button" className={active === idea[0] ? 'active' : ''} onClick={() => { setActive(idea[0]); setInput(''); setStatusError(''); }} key={idea[0]}><i>{String(ideas.indexOf(idea) + 1).padStart(2, '0')}</i><span>✦</span><div><strong>{idea[1]}</strong><small>{idea[2]}</small></div></button>)}</aside>

@@ -1,0 +1,22 @@
+[
+  {
+    "text": "what device are you running on",
+    "label": "system_info"
+  },
+  {
+    "text": "what is your pytorch version",
+    "label": "system_info"
+  },
+  {
+    "text": "system specifications and hardware",
+    "label": "system_info"
+  },
+  {
+    "text": "status of current ai model",
+    "label": "system_info"
+  },
+  {
+    "text": "show active backend and device",
+    "label": "system_info"
+  }
+]

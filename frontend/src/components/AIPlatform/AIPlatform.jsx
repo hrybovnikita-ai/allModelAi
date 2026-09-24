@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import './AIPlatform.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 const modules = [
   ['agent','AI Agent Builder','Create agents with identity, instructions, tools, model, and memory.','/studio?tool=assistant','Create agent',['Choose a model','Write instructions','Attach knowledge and memory']],
@@ -49,7 +50,7 @@ export default function AIPlatform() {
   const visible = modules.filter((module) => `${module[1]} ${module[2]}`.toLowerCase().includes(query.toLowerCase()));
 
   return <main className="ai-platform-page">
-    <header className="platform-header"><Link to="/dashboard" className="platform-brand"><span>AI</span>AllModelAI</Link><nav><Link to="/chat">Chat</Link><Link to="/website-builder">Website Builder</Link><Link to="/dashboard">Dashboard</Link></nav></header>
+    <header className="platform-header"><Link to="/dashboard" className="platform-brand"><AllModelAILogoMark />AllModelAI</Link><nav><Link to="/chat">Chat</Link><Link to="/website-builder">Website Builder</Link><Link to="/dashboard">Dashboard</Link></nav></header>
     <section className="platform-heading"><div><p>ALLMODEL AI PLATFORM</p><h1>{modules.length} connected AI workspaces.</h1><span>Build, research, compare, verify, automate, learn, and create without leaving your project.</span></div><strong>{modules.length}</strong></section>
     <div className="platform-shell">
       <aside><label><span>Search modules</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tools..." /></label><div>{visible.map(([key,name,description])=><button type="button" className={active===key?'active':''} onClick={()=>setActive(key)} key={key}><i>{String(modules.findIndex(([item])=>item===key)+1).padStart(2,'0')}</i><span><strong>{name}</strong><small>{description}</small></span></button>)}</div></aside>

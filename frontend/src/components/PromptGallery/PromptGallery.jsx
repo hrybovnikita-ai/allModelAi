@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useOutletContext } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 import './PromptGallery.css';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
 export default function PromptGallery() {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ export default function PromptGallery() {
   return (
     <main className="prompt-gallery-page">
       <header className="prompt-gallery-header">
-        <Link to="/dashboard" className="prompt-gallery-brand"><span>AI</span>AllModelAI</Link>
+        <Link to="/dashboard" className="prompt-gallery-brand"><AllModelAILogoMark />AllModelAI</Link>
         <nav>
           <Link to="/chat">Open chat</Link>
           <Link to="/studio">Studio</Link>

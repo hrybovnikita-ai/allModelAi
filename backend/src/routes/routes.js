@@ -31,7 +31,7 @@ const {
     createChatResponse,
     analyzeVision,
     generateImage,
-    getWorkspaceItems, createWorkspaceItem, updateWorkspaceItem, deleteWorkspaceItem, getUsageAnalytics, branchConversation, webResearch, getOllamaModels, checkAnswerQuality,
+    getWorkspaceItems, createWorkspaceItem, updateWorkspaceItem, deleteWorkspaceItem, getUsageAnalytics, branchConversation, webResearch, webResearchAnswer, getOllamaModels, checkAnswerQuality,
     previewRouter, searchKnowledge, getTeams, createTeam, inviteTeamMember, updateTeamMember, removeTeamMember, shareConversation, getSharedConversation, listDeveloperKeys, createDeveloperKey, revokeDeveloperKey,
     getSharedPromptTemplates, rateSharedPromptTemplate, chatSuggestions, recordArenaVote, getArenaLeaderboard, improvePrompt,
 } = require('../controllers/controllers');
@@ -100,6 +100,7 @@ router.delete('/workspace/:id', requireAuth, deleteWorkspaceItem);
 router.post('/knowledge/search', requireAuth, searchKnowledge);
 router.get('/analytics', requireAuth, getUsageAnalytics);
 router.post('/research', requireAuth, webResearch);
+router.post('/research/answer', requireAuth, webResearchAnswer);
 router.get('/ollama/models', requireAuth, getOllamaModels);
 router.post('/quality/check', requireAuth, checkAnswerQuality);
 router.get('/teams', requireAuth, getTeams);
