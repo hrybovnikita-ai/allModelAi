@@ -43,7 +43,9 @@ test('passwordless accounts cannot be claimed through login or registration', as
   const account = { id: 90001, name: 'OAuth user', email: 'oauth-only@example.com' };
   users.push(account);
   try {
-    assert.equal((await request(app).post('/api/auth/login').send({ email: account.email, password: 'attacker-password' })).status, 401);
+    const blocked = await request(app).post('/api/auth/login').send({ email: account.email, password: 'attacker-password' });
+    assert.equal(blocked.status, 401);
+    assert.equal(blocked.body.code, 'PASSWORD_SETUP_REQUIRED');
     assert.equal((await request(app).post('/api/auth/register').send({ name: 'Attacker', email: account.email, password: 'attacker-password' })).status, 409);
     assert.equal(account.passwordHash, undefined);
   } finally { users.splice(users.indexOf(account), 1); }
@@ -62,6 +64,22 @@ test('concurrent registrations cannot create duplicate accounts', async () => {
   const payload = { name: 'Concurrent', email: 'concurrent@example.com', password: 'A secure password' };
   const results = await Promise.all([request(app).post('/api/auth/register').send(payload), request(app).post('/api/auth/register').send(payload)]);
   assert.deepEqual(results.map((result) => result.status).sort(), [201, 409]);
+});
+
+test('production login does not auto-register unknown accounts', async () => {
+  const previous = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    const result = await request(app).post('/api/auth/login').send({
+      email: 'never-registered@example.com',
+      password: 'some-password',
+    });
+    assert.equal(result.status, 401);
+    assert.equal(result.body.message, 'Incorrect email or password');
+    assert.equal(app.locals.db.database.prepare('SELECT id FROM users WHERE lower(email) = ?').get('never-registered@example.com'), undefined);
+  } finally {
+    process.env.NODE_ENV = previous;
+  }
 });
 
 test('login with new credentials auto-registers user and saves to SQL database', async () => {

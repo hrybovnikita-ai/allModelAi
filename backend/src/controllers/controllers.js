@@ -8,6 +8,12 @@ const { promisify } = require('node:util');
 const Stripe = require('stripe');
 const users = require('../data/data');
 const webSearchService = require('../services/webSearchService');
+const {
+    authLog,
+    normalizeEmail,
+    isValidEmail,
+    allowLoginAutoRegister,
+} = require('../authHelpers');
 
 const sessionCookie = 'allmodelai_session';
 const sessionDuration = 1000 * 60 * 60 * 24 * 30;
@@ -143,8 +149,8 @@ const registerUser = async (req, res) => {
 
     if (typeof name !== 'string' || !name.trim() || name.length > 100 || typeof email !== 'string' || email.length > 254 || typeof password !== 'string' || password.length > 1024) return res.status(400).json({ message: 'Enter a valid name, email and password' });
 
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    const normalizedEmail = normalizeEmail(email);
+    if (!isValidEmail(normalizedEmail)) {
         return res.status(400).json({ message: 'Enter a valid email address' });
     }
     const passwordHash = await hashPassword(password);
@@ -177,23 +183,35 @@ const registerUser = async (req, res) => {
 };
 
 const loginUser = async (req, res) => {
+    authLog('Login request received');
     const { name, email, password } = req.body;
 
-    if (!email || !password || (name !== undefined && typeof name === 'string' && !name.trim())) {
-        return res.status(400).json({ message: 'Name, email and password are required' });
+    if (!email || !password) {
+        return res.status(400).json({ message: 'Email and password are required' });
     }
 
     if (typeof email !== 'string' || typeof password !== 'string' || (name !== undefined && typeof name !== 'string') || (typeof name === 'string' && name.length > 100) || email.length > 254 || password.length > 1024) {
-        return res.status(400).json({ message: 'Enter a valid name, email and password' });
+        return res.status(400).json({ message: 'Enter a valid email and password' });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
+    authLog('Normalized email', { email: normalizedEmail });
+    if (!isValidEmail(normalizedEmail)) {
+        return res.status(400).json({ message: 'Enter a valid email address' });
+    }
+
     const safeName = (name && typeof name === 'string' && name.trim()) ? name.trim() : normalizedEmail.split('@')[0];
 
     const db = req.app.locals.db.database;
     let user = db.prepare('SELECT id, name, email, password_hash AS passwordHash FROM users WHERE lower(email) = ?').get(normalizedEmail) || users.find((item) => item.email.toLowerCase() === normalizedEmail);
 
     if (!user) {
+        authLog('User found: false');
+        if (!allowLoginAutoRegister()) {
+            authLog('Password verification: failed');
+            return res.status(401).json({ message: 'Incorrect email or password' });
+        }
+
         const passwordHash = await hashPassword(password);
         // Recheck after asynchronous hashing: a social or password request may have created it.
         try {
@@ -208,21 +226,29 @@ const loginUser = async (req, res) => {
         if (!user) return res.status(409).json({ message: 'This account was just created. Sign in again using its original method.' });
         users.push(user);
         setSession(req, res, user, req.body.rememberMe !== false && req.body.rememberMe !== 'false');
+        authLog('Session created: true');
         return res.status(200).json({
             message: 'Signed in successfully',
             user: publicUser(user),
         });
     }
 
-    // Existing user
+    authLog('User found: true', { userId: user.id });
+
     if (!user.passwordHash) {
-        return res.status(401).json({ message: 'Incorrect name, email or password' });
+        authLog('Password verification: failed');
+        return res.status(401).json({
+            code: 'PASSWORD_SETUP_REQUIRED',
+            message: 'This account uses social sign-in or has no password yet. Continue with your provider or reset your password.',
+        });
     }
 
     const passwordMatches = await verifyPassword(password, user.passwordHash);
+    authLog(`Password verification: ${passwordMatches ? 'success' : 'failed'}`);
     if (!passwordMatches) {
-        return res.status(401).json({ message: 'Incorrect name, email or password' });
-    } else if (name && typeof name === 'string' && name.trim() && user.name !== name.trim()) {
+        return res.status(401).json({ message: 'Incorrect email or password' });
+    }
+    if (name && typeof name === 'string' && name.trim() && user.name !== name.trim()) {
         user.name = name.trim();
         db.prepare('UPDATE users SET name = ? WHERE id = ?').run(user.name, user.id);
         const cached = users.find(item => item.id === user.id);
@@ -230,6 +256,7 @@ const loginUser = async (req, res) => {
     }
 
     setSession(req, res, user, req.body.rememberMe !== false && req.body.rememberMe !== 'false');
+    authLog('Session created: true');
 
     return res.status(200).json({
         message: 'Signed in successfully',

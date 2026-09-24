@@ -54,6 +54,9 @@ function LoginForm({
     }
 
     delete payload.confirmPassword;
+    if (!signingUp) {
+      delete payload.name;
+    }
 
     try {
       setSubmitting(true);
@@ -139,30 +142,32 @@ function LoginForm({
         <h2 id="login-title">
           {signingUp
             ? 'Create your account'
-            : 'Welcome back'}
+            : 'Welcome to AllModelAI'}
         </h2>
 
         <p className="login-intro">
           {signingUp
             ? 'Join one workspace for every leading AI model.'
-            : 'Sign in to continue to your AI workspace.'}
+            : 'Sign in to access your AI workspace.'}
         </p>
 
         <form
           className="login-form"
           onSubmit={handleSubmit}
         >
-          <label>
-            <span>Name</span>
+          {signingUp && (
+            <label>
+              <span>Name</span>
 
-            <input
-              name="name"
-              type="text"
-              placeholder="Your name"
-              autoComplete="name"
-              required
-            />
-          </label>
+              <input
+                name="name"
+                type="text"
+                placeholder="Your name"
+                autoComplete="name"
+                required
+              />
+            </label>
+          )}
 
           <label>
             <span>Email</span>

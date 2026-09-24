@@ -5,10 +5,17 @@ const splitOrigins = (value) => String(value || '')
     .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean);
 
-const configuredOrigins = () => [...new Set([
-    ...splitOrigins(process.env.PUBLIC_URL),
-    ...splitOrigins(process.env.FRONTEND_ORIGIN || 'http://localhost:5173'),
-])];
+const configuredOrigins = () => {
+    const origins = [
+        ...splitOrigins(process.env.PUBLIC_URL),
+        ...splitOrigins(process.env.FRONTEND_ORIGIN || 'http://localhost:5173'),
+    ];
+    const vercelUrl = String(process.env.VERCEL_URL || '').trim();
+    if (vercelUrl) {
+        origins.push(`https://${vercelUrl.replace(/^https?:\/\//, '')}`);
+    }
+    return [...new Set(origins)];
+};
 
 const requestOrigin = (req) => {
     const host = String(req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();

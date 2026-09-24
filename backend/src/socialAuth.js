@@ -2,7 +2,6 @@ const crypto = require('node:crypto');
 const admin = require('./firebaseAdmin');
 const { sessionCookieOptions } = require('./sessionCookie');
 const { validSessionToken } = require('./sessionToken');
-const { configuredOrigins } = require('./publicAccess');
 const { setSession } = require('./controllers/controllers');
 const users = require('./data/data');
 const providers = new Set(['google.com', 'apple.com', 'facebook.com']);
@@ -16,9 +15,10 @@ function sessionOwner(req) {
     return req.app.locals.db.database.prepare('SELECT user_id FROM auth_sessions WHERE token_hash = ? AND expires_at > ?').get(hash(token), Date.now())?.user_id || null;
 }
 function browserRequest(req, res, next) {
-    // Explicit allowlist, not caller-controlled forwarded hosts. Custom header blocks form-based CSRF.
+    const { isAllowedOrigin } = require('./publicAccess');
+    // Explicit allowlist plus the live forwarded host. Custom header blocks form-based CSRF.
     const origin = req.get('origin');
-    if (!origin || !configuredOrigins().includes(origin) || req.get('x-allmodelai-auth') !== '1' || !req.is('application/json')) {
+    if (!origin || !isAllowedOrigin(origin, req) || req.get('x-allmodelai-auth') !== '1' || !req.is('application/json')) {
         return res.status(403).json({ message: 'Sign-in request origin could not be verified.' });
     }
     return next();
