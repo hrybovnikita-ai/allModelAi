@@ -279,10 +279,59 @@ async function getStatus() {
 /**
  * Start AI training.
  */
+async function getOpenAiStatus() {
+    const healthy = await isServerHealthy();
+
+    if (healthy) {
+        try {
+            const res = await fetch(`${PYTHON_BASE_URL}/openai/status`);
+            if (res.ok) {
+                return await res.json();
+            }
+        } catch (err) {
+            console.warn(
+                '[aiPythonBridge] HTTP openai status failed, using CLI:',
+                err.message
+            );
+        }
+    }
+
+    return runSingleShotCmd('openai_status');
+}
+
+async function augmentWithOpenAi({ samplesPerClass = 2 } = {}) {
+    await ensureServerRunning();
+
+    const healthy = await isServerHealthy();
+
+    if (healthy) {
+        try {
+            const res = await fetch(`${PYTHON_BASE_URL}/openai/augment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ samples_per_class: samplesPerClass }),
+            });
+
+            if (res.ok) {
+                return await res.json();
+            }
+        } catch (err) {
+            console.warn(
+                '[aiPythonBridge] HTTP openai augment failed, using CLI:',
+                err.message
+            );
+        }
+    }
+
+    return runSingleShotCmd('openai_augment', { samplesPerClass });
+}
+
 async function startTraining({
     epochs = 60,
     lr = 0.005,
     batchSize = 16,
+    openaiAugment = false,
+    openaiSamplesPerClass = 2,
 } = {}) {
     await ensureServerRunning();
 
@@ -305,6 +354,8 @@ async function startTraining({
                         epochs,
                         lr,
                         batch_size: batchSize,
+                        openai_augment: openaiAugment,
+                        openai_samples_per_class: openaiSamplesPerClass,
                     }),
                 }
             );
@@ -320,14 +371,13 @@ async function startTraining({
         }
     }
 
-    return runSingleShotCmd(
-        'train',
-        {
-            epochs,
-            lr,
-            batchSize,
-        }
-    );
+    return runSingleShotCmd('train', {
+        epochs,
+        lr,
+        batchSize,
+        openaiAugment,
+        openaiSamplesPerClass,
+    });
 }
 
 /**
@@ -416,6 +466,8 @@ async function resetModel() {
 module.exports = {
     ensureServerRunning,
     getStatus,
+    getOpenAiStatus,
+    augmentWithOpenAi,
     startTraining,
     predict,
     resetModel,

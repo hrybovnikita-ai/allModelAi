@@ -1,0 +1,16 @@
+/* Chat composer is always on a dark surface — keep typed text readable. */
+.chat-page textarea.composer-prompt-input,
+html[data-theme='light'] .chat-page textarea.composer-prompt-input,
+html[data-theme='dark'] .chat-page textarea.composer-prompt-input {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  opacity: 1 !important;
+  background: transparent !important;
+  caret-color: #c4b5fd !important;
+}
+
+.chat-page textarea.composer-prompt-input::placeholder {
+  color: #d4ccff !important;
+  -webkit-text-fill-color: #d4ccff !important;
+  opacity: 0.85 !important;
+}

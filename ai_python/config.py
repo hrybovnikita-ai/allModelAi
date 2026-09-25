@@ -6,6 +6,23 @@ import random
 import torch
 
 ROOT_DIR = Path(__file__).resolve().parent
+
+
+def _load_dotenv_files() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    for env_path in (
+        ROOT_DIR / ".env",
+        ROOT_DIR.parent / "backend" / ".env",
+        ROOT_DIR.parent / ".env",
+    ):
+        if env_path.is_file():
+            load_dotenv(env_path, override=False)
+
+
+_load_dotenv_files()
 DATA_DIR = ROOT_DIR / "data"
 MODELS_DIR = ROOT_DIR / "models"
 

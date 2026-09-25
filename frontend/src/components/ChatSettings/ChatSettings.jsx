@@ -28,7 +28,7 @@ export default function ChatSettings() {
     document.documentElement.style.setProperty('--user-text-color',color);
     document.documentElement.style.setProperty('--user-bubble-text',contrast(color));
     document.documentElement.style.setProperty('--composer-color',inputColor);
-    document.documentElement.style.setProperty('--composer-text',contrast(inputColor));
+    document.documentElement.style.setProperty('--composer-text', '#ffffff');
   }, [theme,color,inputColor]);
 
   const confirmLanguage = () => { setLanguage(pendingLang); setPendingLang(null); };

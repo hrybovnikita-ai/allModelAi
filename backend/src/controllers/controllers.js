@@ -8,6 +8,7 @@ const { promisify } = require('node:util');
 const Stripe = require('stripe');
 const users = require('../data/data');
 const webSearchService = require('../services/webSearchService');
+const deepResearchService = require('../services/deepResearchService');
 const {
     authLog,
     normalizeEmail,
@@ -492,13 +493,21 @@ const getCreditStatus = (database, email) => {
     return { data, email: normalizedEmail, plan, limit, used, remaining: Math.max(limit - used, 0), billingInterval: detail?.billingInterval || planDefinition.interval, periodEnd: detailActive ? detail.periodEnd : null, models: fullAccess ? ['all'] : subscriptionPlans.free.models, enforced: !fullAccess && creditLimitsEnabled(), isDeveloper, hasSubscription, canUseDeveloper, mode, unlimited: fullAccess };
 };
 
+const { resolveImageProvider } = require('../pollinations');
+
 const getModelStatus = (_req, res) => {
     const gateway = Boolean(process.env.OPENROUTER_API_KEY || process.env.API_KEY);
     const openAI = Boolean(process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY);
     const xai = Boolean(process.env.XAI_API_KEY || process.env.GROK_API_KEY);
+    const image = resolveImageProvider();
     return res.status(200).json({
         updatedAt: new Date().toISOString(),
         variants: modelVariants,
+        imageGeneration: {
+            provider: image.provider,
+            configured: image.provider !== 'none',
+            pollinations: image.provider === 'pollinations',
+        },
         models: {
             gpt: openAI || gateway,
             gemini: Boolean(process.env.GEMINI_API_KEY || gateway),
@@ -1404,8 +1413,25 @@ const branchConversation = (req, res) => {
 };
 
 const webResearch = async (req, res) => {
-    const query = String(req.body.query || '').trim().slice(0, 300);
+    const query = String(req.body.query || '').trim().slice(0, 500);
     if (!query) return res.status(400).json({ message: 'Research query is required' });
+    const depth = req.body.depth ? deepResearchService.normalizeDepth(req.body.depth) : null;
+    const timeRange = deepResearchService.normalizeTimeRange(req.body.timeRange);
+
+    if (depth) {
+        try {
+            const payload = await deepResearchService.collectDeepResearch({ query, depth, timeRange });
+            return res.json({
+                ...payload,
+                summary: payload.sources.map((source) => `[${source.rank}] ${source.title}: ${source.excerpt}`).join('\n\n'),
+            });
+        } catch (error) {
+            console.error('[DEEP RESEARCH]', error.code || error.name, error.message);
+            const mapped = deepResearchService.mapErrorToResponse(error);
+            return res.status(mapped.status).json(mapped.body);
+        }
+    }
+
     try {
         const { searchQuery, sources } = await webSearchService.collectWebSources(query);
         return res.json({
@@ -1421,8 +1447,11 @@ const webResearch = async (req, res) => {
 };
 
 const webResearchAnswer = async (req, res) => {
-    const query = String(req.body.query || '').trim().slice(0, 300);
+    const query = String(req.body.query || '').trim().slice(0, 500);
     const model = String(req.body.model || 'gemini').trim();
+    const deepResearch = Boolean(req.body.deepResearch) || Boolean(req.body.depth);
+    const depth = deepResearch ? deepResearchService.normalizeDepth(req.body.depth || 'deep') : null;
+    const timeRange = deepResearchService.normalizeTimeRange(req.body.timeRange);
     if (!query) return res.status(400).json({ message: 'Research query is required' });
 
     res.status(200);
@@ -1431,6 +1460,18 @@ const webResearchAnswer = async (req, res) => {
     res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
+
+    if (deepResearch) {
+        try {
+            return await deepResearchService.runDeepResearch(res, { query, modelSlug: model, depth, timeRange });
+        } catch (error) {
+            console.error('[DEEP RESEARCH ANSWER]', error.code || error.name, error.message);
+            const mapped = deepResearchService.mapErrorToResponse(error);
+            webSearchService.writeSse(res, { error: mapped.body.message, code: mapped.body.code });
+            res.write('data: [DONE]\n\n');
+            return res.end();
+        }
+    }
 
     const emitStatus = (stage, extra = {}) => {
         webSearchService.writeSse(res, { webSearchStatus: stage, ...extra });

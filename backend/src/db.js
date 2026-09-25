@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
+const { ensureStorageIdeasSchema } = require('./storageIdeasSchema');
 
 const defaultDatabase = {
     users: [],
@@ -205,6 +206,8 @@ const connectDatabase = () => {
             'ALTER TABLE users ADD COLUMN password_hash TEXT'
         );
     }
+
+    ensureStorageIdeasSchema(database);
 
     database.exec(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email

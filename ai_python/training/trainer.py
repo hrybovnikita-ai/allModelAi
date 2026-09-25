@@ -25,8 +25,10 @@ from model.model_manager import (
     load_model_weights,
     save_model_weights,
 )
+from model.gradients import linear_layer_gradient_snapshot
 from model.neural_network import AILearningBrain
-from training.dataset import load_training_samples, load_validation_samples
+from services.openai_llm import generate_labeled_samples, get_openai_status
+from training.dataset import append_training_samples, load_training_samples, load_validation_samples
 from training.evaluate import evaluate_samples
 from training.metrics import load_metrics, save_metrics
 from training.preprocess import TextTokenizer
@@ -47,6 +49,7 @@ class TrainingManager:
         self.total_epochs = 0
         self.loss_history: list[float] = []
         self.accuracy_history: list[float] = []
+        self.gradient_history: list[dict] = []
         self.best_loss: float = 999.0
         self.last_accuracy: float = 0.0
         self.started_at: Optional[float] = None
@@ -66,6 +69,11 @@ class TrainingManager:
         self.accuracy_history = saved.get("accuracy_history", [])
         self.best_loss = saved.get("best_loss", 999.0)
         self.last_accuracy = saved.get("last_accuracy", 0.0)
+        self.gradient_history = saved.get("gradient_history", [])
+
+    def _reload_training_data(self) -> None:
+        self.training_samples = load_training_samples()
+        self.tokenizer.build_vocab([text for text, _ in self.training_samples])
 
     def _load_weights(self) -> bool:
         loaded = load_model_weights(self.model)
@@ -81,6 +89,7 @@ class TrainingManager:
                 self.accuracy_history,
                 self.best_loss,
                 self.last_accuracy,
+                self.gradient_history,
             )
             self._log(f"Saved optimized model weights to {MODEL_PATH.name}")
         except OSError as exc:
@@ -91,6 +100,7 @@ class TrainingManager:
             self.model = AILearningBrain().to(DEVICE)
             self.loss_history = []
             self.accuracy_history = []
+            self.gradient_history = []
             self.best_loss = 999.0
             self.last_accuracy = 0.0
             self.logger = TrainingLogger()
@@ -104,12 +114,43 @@ class TrainingManager:
                     pass
             self._log("Model weights and history reset to initial state.")
 
+    def _augment_dataset_openai(self, samples_per_class: int = 2) -> dict:
+        generated, meta = generate_labeled_samples(samples_per_class=samples_per_class)
+        added = append_training_samples(generated)
+        if added:
+            self._reload_training_data()
+            self._log(f"OpenAI augmented dataset: +{added} samples (total {len(self.training_samples)})")
+        meta["added"] = added
+        meta["total_samples"] = len(self.training_samples)
+        return meta
+
+    def augment_with_openai(self, samples_per_class: int = 2) -> dict:
+        with self.lock:
+            if self.is_training:
+                return {"ok": False, "error": "Training in progress", "added": 0}
+        return self._augment_dataset_openai(samples_per_class=samples_per_class)
+
     def run_training(
         self,
         epochs: int = DEFAULT_EPOCHS,
         lr: float = DEFAULT_LR,
         batch_size: int = DEFAULT_BATCH_SIZE,
+        openai_augment: bool = False,
+        openai_samples_per_class: int = 2,
     ) -> bool:
+        with self.lock:
+            if self.is_training:
+                return False
+
+        if openai_augment:
+            augment_meta = self._augment_dataset_openai(
+                samples_per_class=openai_samples_per_class
+            )
+            if not augment_meta.get("ok"):
+                self._log(f"OpenAI augment skipped: {augment_meta.get('error', 'unknown')}")
+            elif augment_meta.get("added", 0) == 0:
+                self._log("OpenAI augment returned no new unique samples.")
+
         with self.lock:
             if self.is_training:
                 return False
@@ -143,6 +184,7 @@ class TrainingManager:
                 correct = 0
                 batches = math.ceil(dataset_size / batch_size)
 
+                last_grad_snapshot = None
                 for batch_index in range(batches):
                     batch_idx = indices[
                         batch_index * batch_size : (batch_index + 1) * batch_size
@@ -153,12 +195,21 @@ class TrainingManager:
                     outputs = self.model(batch_x)
                     loss = criterion(outputs, batch_y)
                     loss.backward()
+                    last_grad_snapshot = linear_layer_gradient_snapshot(self.model)
                     nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=2.0)
                     optimizer.step()
 
                     epoch_loss += loss.item() * len(batch_idx)
                     preds = outputs.argmax(dim=1)
                     correct += (preds == batch_y).sum().item()
+
+                if last_grad_snapshot:
+                    self.gradient_history.append(
+                        {
+                            "epoch": epoch,
+                            **last_grad_snapshot,
+                        }
+                    )
 
                 scheduler.step()
 
@@ -173,7 +224,14 @@ class TrainingManager:
                 if avg_loss < self.best_loss:
                     self.best_loss = avg_loss
 
-                if epoch == 1 or epoch % max(epochs // 10, 1) == 0 or epoch == epochs:
+                if last_grad_snapshot and (
+                    epoch == 1 or epoch % max(epochs // 10, 1) == 0 or epoch == epochs
+                ):
+                    self._log(
+                        f"Epoch {epoch:>3}/{epochs} | Loss: {avg_loss:.4f} | Accuracy: {avg_acc:.1f}% | "
+                        f"Linear grad L2: {last_grad_snapshot['total_linear_grad_l2']:.4f}"
+                    )
+                elif epoch == 1 or epoch % max(epochs // 10, 1) == 0 or epoch == epochs:
                     self._log(
                         f"Epoch {epoch:>3}/{epochs} | Loss: {avg_loss:.4f} | Accuracy: {avg_acc:.1f}%"
                     )
@@ -227,6 +285,15 @@ class TrainingManager:
             "last_accuracy": self.last_accuracy,
             "loss_history": self.loss_history[-40:],
             "accuracy_history": self.accuracy_history[-40:],
+            "gradient_history": self.gradient_history[-40:],
+            "training_samples": len(self.training_samples),
+            "openai": get_openai_status(),
+            "backprop": {
+                "optimizer": "AdamW",
+                "loss": "CrossEntropyLoss",
+                "linear_layers": 3,
+                "gradient_clipping": 2.0,
+            },
             "classes": INTENT_CLASSES,
             "logs": self.logger.tail(15),
         }

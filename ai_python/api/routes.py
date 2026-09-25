@@ -13,7 +13,8 @@ try:
     from fastapi import BackgroundTasks, FastAPI
     from fastapi.middleware.cors import CORSMiddleware
 
-    from api.schemas import PredictRequest, TrainRequest
+    from api.schemas import OpenAiAugmentRequest, PredictRequest, TrainRequest
+    from services.openai_llm import get_openai_status
 
     FASTAPI_AVAILABLE = True
 except ImportError:
@@ -51,12 +52,31 @@ def create_app(trainer: "TrainingManager") -> Optional[Any]:
         epochs = req.epochs or DEFAULT_EPOCHS
         lr = req.lr or DEFAULT_LR
         batch_size = req.batch_size or DEFAULT_BATCH_SIZE
-        bg_tasks.add_task(trainer.run_training, epochs=epochs, lr=lr, batch_size=batch_size)
+        bg_tasks.add_task(
+            trainer.run_training,
+            epochs=epochs,
+            lr=lr,
+            batch_size=batch_size,
+            openai_augment=bool(req.openai_augment),
+            openai_samples_per_class=max(1, min(int(req.openai_samples_per_class or 2), 5)),
+        )
         return {
             "message": "AI Training session initiated in background.",
             "epochs": epochs,
             "status": "started",
+            "openai_augment": bool(req.openai_augment),
         }
+
+    @app.get("/openai/status")
+    def openai_status():
+        return get_openai_status()
+
+    @app.post("/openai/augment")
+    def openai_augment(req: OpenAiAugmentRequest):
+        if trainer.is_training:
+            return {"ok": False, "error": "Training is already in progress"}
+        per_class = max(1, min(int(req.samples_per_class or 2), 5))
+        return trainer.augment_with_openai(samples_per_class=per_class)
 
     @app.post("/predict")
     def predict(req: PredictRequest):

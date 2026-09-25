@@ -34,8 +34,30 @@ body {
   overflow-x: hidden;
 }
 
+#root > * {
+  animation: app-route-in 0.28s ease both;
+}
+
+@keyframes app-route-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #root > * {
+    animation: none;
+  }
+}
+
 .app {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }

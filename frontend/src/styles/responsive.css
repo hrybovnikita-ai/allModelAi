@@ -1,0 +1,172 @@
+/* Global responsive layout — phone, tablet, laptop, desktop + safe areas (iPhone notch, etc.) */
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --page-gutter: clamp(16px, 3vw, 48px);
+  --touch-target: 44px;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  overflow-x: clip;
+}
+
+.app {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+html[data-viewport='phone'] {
+  --page-gutter: max(14px, var(--safe-left));
+}
+
+html[data-viewport='tablet'] {
+  --page-gutter: clamp(20px, 4vw, 40px);
+}
+
+html[data-viewport='laptop'] {
+  --page-gutter: clamp(24px, 2.5vw, 44px);
+}
+
+html[data-viewport='phone'] h1,
+html[data-viewport='phone'] .dashboard-hero h1,
+html[data-viewport='phone'] .header-content h1 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* iPhone / iOS — status bar & home indicator */
+html[data-platform='ios'] .navbar {
+  padding-top: max(18px, calc(12px + var(--safe-top)));
+}
+
+html[data-platform='ios'] .header {
+  padding-top: max(102px, calc(88px + var(--safe-top)));
+}
+
+html[data-platform='ios'] .login-overlay {
+  padding:
+    max(12px, var(--safe-top))
+    max(12px, var(--safe-right))
+    max(12px, var(--safe-bottom))
+    max(12px, var(--safe-left));
+}
+
+html[data-platform='ios'] .login-modal {
+  max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px);
+}
+
+html[data-platform='ios'] .footer {
+  padding-bottom: max(30px, calc(24px + var(--safe-bottom)));
+}
+
+/* Touch-friendly controls (phones & tablets) */
+@media (pointer: coarse) {
+  .nav-auth button,
+  .menu-toggle,
+  .login-submit,
+  .login-guest,
+  .login-actions button,
+  .hero-prompt button,
+  .hero-actions button,
+  .use-btn {
+    min-height: var(--touch-target);
+  }
+}
+
+/* Phone — marketing & dashboard shells */
+@media (max-width: 767px) {
+  .container {
+    padding-inline: max(12px, var(--safe-left)) max(12px, var(--safe-right));
+  }
+
+  .footer {
+    padding:
+      56px max(16px, var(--safe-right)) max(24px, calc(24px + var(--safe-bottom)))
+      max(16px, var(--safe-left));
+    margin-top: 48px;
+  }
+
+  .footer-links {
+    gap: 28px;
+    width: 100%;
+  }
+
+  .dashboard-page,
+  .control-page,
+  .next-ten-page,
+  .chat-settings-page,
+  .everyday-page,
+  .skills-hub,
+  .expansion-hub {
+    padding-left: max(16px, var(--safe-left)) !important;
+    padding-right: max(16px, var(--safe-right)) !important;
+  }
+}
+
+/* Tablet — iPad, small Windows tablets */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .container {
+    padding-inline: var(--page-gutter);
+  }
+
+  .dashboard-hero {
+    gap: 36px;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .header-content {
+    gap: 40px;
+  }
+
+  .model-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Laptop — MacBook, 13–15" notebooks */
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .container {
+    max-width: 1180px;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Large desktop — Windows monitors */
+@media (min-width: 1440px) {
+  .container {
+    max-width: 1360px;
+  }
+}
+
+@media (min-width: 1800px) {
+  .container {
+    max-width: 1680px;
+  }
+
+  .footer-content {
+    max-width: 1520px;
+  }
+}

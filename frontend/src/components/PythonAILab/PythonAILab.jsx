@@ -18,6 +18,8 @@ export default function PythonAILab() {
   const [epochs, setEpochs] = useState(40);
   const [lr, setLr] = useState(0.005);
   const [batchSize, setBatchSize] = useState(16);
+  const [openaiAugment, setOpenaiAugment] = useState(false);
+  const [openaiStatus, setOpenaiStatus] = useState(null);
 
   // Inference state
   const [promptText, setPromptText] = useState('How does AI learn through backpropagation?');
@@ -36,15 +38,26 @@ export default function PythonAILab() {
         const data = await res.json();
         setStatus(data);
         setTraining(Boolean(data.is_training));
+        if (data.openai) setOpenaiStatus(data.openai);
       }
     } catch (e) {
       console.warn('Failed to fetch PyTorch AI status:', e);
     }
   }, []);
 
+  const fetchOpenAiStatus = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/ai-python/openai/status');
+      if (res.ok) setOpenaiStatus(await res.json());
+    } catch (e) {
+      console.warn('OpenAI status unavailable:', e);
+    }
+  }, []);
+
   useEffect(() => {
     const initialTimer = setTimeout(() => {
       void fetchStatus();
+      void fetchOpenAiStatus();
     }, 0);
 
     pollIntervalRef.current = setInterval(() => {
@@ -57,7 +70,7 @@ export default function PythonAILab() {
         clearInterval(pollIntervalRef.current);
       }
     };
-  }, [fetchStatus]);
+  }, [fetchStatus, fetchOpenAiStatus]);
 
   useEffect(() => {
     if (!training) return undefined;
@@ -81,7 +94,13 @@ export default function PythonAILab() {
       const res = await apiFetch('/api/ai-python/train', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ epochs, lr, batchSize }),
+        body: JSON.stringify({
+          epochs,
+          lr,
+          batchSize,
+          openaiAugment,
+          openaiSamplesPerClass: 2,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Training failed to initiate');
@@ -90,6 +109,25 @@ export default function PythonAILab() {
     } catch (err) {
       setErrorMsg(err.message);
       setTraining(false);
+    }
+  };
+
+  const handleOpenAiAugmentOnly = async () => {
+    setErrorMsg('');
+    setSuccessMsg('');
+    try {
+      const res = await apiFetch('/api/ai-python/openai/augment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ samplesPerClass: 2 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'Augment failed');
+      if (!data.ok) throw new Error(data.error || 'OpenAI augment failed');
+      setSuccessMsg(`OpenAI added ${data.added || 0} training samples (${data.total_samples || '—'} total).`);
+      void fetchStatus();
+    } catch (err) {
+      setErrorMsg(err.message);
     }
   };
 
@@ -187,6 +225,16 @@ export default function PythonAILab() {
               {training ? 'Training...' : 'Ready'}
             </strong>
           </div>
+          <div className="status-pill">
+            <label>TRAINING SET</label>
+            <strong>{status?.training_samples ?? '—'} samples</strong>
+          </div>
+          <div className="status-pill">
+            <label>OPENAI</label>
+            <strong className={openaiStatus?.configured ? 'state-ready' : ''}>
+              {openaiStatus?.configured ? `Connected · ${openaiStatus.model}` : 'Not configured'}
+            </strong>
+          </div>
         </div>
       </section>
 
@@ -256,6 +304,27 @@ export default function PythonAILab() {
             </div>
           </div>
 
+          <label className="py-openai-toggle">
+            <input
+              type="checkbox"
+              checked={openaiAugment}
+              disabled={training || !openaiStatus?.configured}
+              onChange={(e) => setOpenaiAugment(e.target.checked)}
+            />
+            <span>
+              Augment dataset with OpenAI before training
+              {!openaiStatus?.configured && ' (set OPENAI_API_KEY in backend .env)'}
+            </span>
+          </label>
+          <button
+            type="button"
+            className="py-btn-augment"
+            disabled={training || !openaiStatus?.configured}
+            onClick={handleOpenAiAugmentOnly}
+          >
+            Generate labeled samples via OpenAI
+          </button>
+
           <button
             className={`py-btn-train ${training ? 'is-loading' : ''}`}
             onClick={handleStartTraining}
@@ -303,6 +372,31 @@ export default function PythonAILab() {
           </div>
 
           {/* Loss Curve Visualization */}
+          {status?.gradient_history && status.gradient_history.length > 1 && (
+            <div className="chart-container">
+              <label className="chart-label">LINEAR LAYER GRADIENT L2 (BACKPROP / AUTograd)</label>
+              <div className="loss-bars">
+                {status.gradient_history.slice(-30).map((entry, i) => {
+                  const values = status.gradient_history.slice(-30).map((e) => e.total_linear_grad_l2 || 0);
+                  const maxGrad = Math.max(...values, 0.001);
+                  const heightPercent = Math.max(
+                    8,
+                    Math.min(100, ((entry.total_linear_grad_l2 || 0) / maxGrad) * 100)
+                  );
+                  return (
+                    <div
+                      key={`grad-${i}`}
+                      className="loss-bar-col grad-bar"
+                      title={`Epoch ${entry.epoch}: grad L2 ${entry.total_linear_grad_l2}`}
+                    >
+                      <div className="loss-bar grad-bar-fill" style={{ height: `${heightPercent}%` }} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {status?.loss_history && status.loss_history.length > 1 && (
             <div className="chart-container">
               <label className="chart-label">LOSS REDUCTION CURVE (PYTORCH GRADIENT DESCENT)</label>

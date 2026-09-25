@@ -1,0 +1,127 @@
+/* Chat layout tuned for iPhone, iPad, MacBook, and Windows desktops */
+
+html[data-platform='ios'] .chat-page {
+  height: 100dvh;
+  min-height: -webkit-fill-available;
+  max-height: 100dvh;
+}
+
+/* Phones */
+@media (max-width: 767px) {
+  .chat-page {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+
+  .chat-workspace {
+    min-height: 0;
+    padding-bottom: var(--safe-bottom);
+  }
+
+  .chat-page .chat-composer {
+    padding:
+      8px max(8px, var(--safe-left)) max(12px, calc(10px + var(--safe-bottom)))
+      max(8px, var(--safe-right));
+  }
+
+  .chat-page .composer-box {
+    border-radius: 18px !important;
+  }
+
+  .chat-page .image-mode-switch {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .chat-page .image-mode-switch::-webkit-scrollbar {
+    display: none;
+  }
+
+  .chat-page .image-mode-switch button {
+    flex: 0 0 auto;
+  }
+
+  .chat-page .composer-tools button,
+  .chat-page .composer-actions .send-message,
+  .chat-page .composer-actions button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .chat-page .composer-tools > span {
+    display: none;
+  }
+
+  .chat-page .context-suggestions button {
+    max-width: 100%;
+    white-space: normal;
+    text-align: left;
+  }
+
+  .chat-message.assistant pre,
+  .chat-message.assistant .response-code-block {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Tablets */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .chat-page:not(.sidebar-collapsed) {
+    grid-template-columns: min(272px, 32vw) minmax(0, 1fr);
+  }
+
+  .chat-messages,
+  .chat-page .chat-composer,
+  .chat-page .chat-composer.welcome-composer,
+  .chat-page .chat-composer.conversation-composer {
+    width: min(calc(100% - 28px), 720px) !important;
+  }
+
+  .chat-header {
+    padding-inline: max(16px, var(--safe-left)) max(16px, var(--safe-right));
+  }
+
+  .chat-page .composer-quick-texts {
+    flex-wrap: wrap;
+  }
+}
+
+/* Laptops */
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .chat-messages,
+  .chat-page .chat-composer,
+  .chat-page .chat-composer.welcome-composer,
+  .chat-page .chat-composer.conversation-composer {
+    width: min(calc(100% - 44px), 840px) !important;
+  }
+}
+
+/* Landscape phone — more room for messages */
+@media (max-width: 767px) and (orientation: landscape) {
+  html[data-orientation='landscape'] .chat-empty {
+    margin-top: 1vh;
+  }
+
+  html[data-orientation='landscape'] .chat-empty h1 {
+    font-size: 1.35rem !important;
+  }
+
+  html[data-orientation='landscape'] .prompt-suggestions {
+    display: none;
+  }
+
+  html[data-orientation='landscape'] .composer-quick-texts {
+    display: none;
+  }
+}
+
+/* Mac / Windows — comfortable line length on ultrawide */
+@media (min-width: 1600px) {
+  .chat-message {
+    max-width: min(1000px, 72vw);
+  }
+}

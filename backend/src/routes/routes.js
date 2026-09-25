@@ -40,10 +40,13 @@ const {
     startPyTorchTraining,
     predictPyTorch,
     resetPyTorchModel,
+    getOpenAiTrainingStatus,
+    augmentPyTorchDataset,
 } = require('../controllers/aiPythonController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { prepareAppGeneration } = require('../appGeneration');
 const { health, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
+const { getStorageOverview, listStorageIdea, createStorageIdea, deleteStorageIdea } = require('../controllers/storageIdeasController');
 
 const router = express.Router();
 const socialAuth = require('../socialAuth');
@@ -54,6 +57,8 @@ const { cachePublicResponse } = require('../cache');
 
 // Local PyTorch AI Learning Engine routes
 router.get('/ai-python/status', getPyTorchStatus);
+router.get('/ai-python/openai/status', getOpenAiTrainingStatus);
+router.post('/ai-python/openai/augment', requireAuth, augmentPyTorchDataset);
 router.post('/ai-python/train', requireAuth, startPyTorchTraining);
 router.post('/ai-python/predict', requireAuth, predictPyTorch);
 router.post('/ai-python/reset', requireAuth, resetPyTorchModel);
@@ -81,7 +86,10 @@ router.post('/apps/generate', requireAuth, prepareAppGeneration, createChatRespo
 router.post('/chat/improve-prompt', requireAuth, improvePrompt);
 router.post('/vision/analyze', requireAuth, analyzeVision);
 router.post('/router/preview', requireAuth, previewRouter);
+const { getImageGenerationStatus } = require('../images');
+router.get('/images/status', requireAuth, getImageGenerationStatus);
 router.post('/images', requireAuth, generateImage);
+router.post('/images/generate', requireAuth, generateImage);
 router.post('/purchases', requireAuth, createPurchase);
 router.post('/payments/checkout', requireAuth, createCheckoutSession);
 router.get('/payments/session/:sessionId', requireAuth, verifyCheckoutSession);
@@ -123,6 +131,10 @@ router.delete('/jobs/:id', requireAuth, cancelJob);
 router.get('/notifications', requireAuth, listNotifications);
 router.patch('/notifications/:id/read', requireAuth, readNotification);
 router.get('/usage/report', requireAuth, usageReport);
+router.get('/storage/ideas', requireAuth, getStorageOverview);
+router.get('/storage/ideas/:idea', requireAuth, listStorageIdea);
+router.post('/storage/ideas/:idea', requireAuth, createStorageIdea);
+router.delete('/storage/ideas/:idea/:id', requireAuth, deleteStorageIdea);
 router.get('/audit', requireAuth, auditLog);
 router.get('/webhooks', requireAuth, listWebhooks);
 router.post('/webhooks', requireAuth, createWebhook);

@@ -1,59 +1,59 @@
 {
   "gemini": [
-    {"id":"3.1-pro","name":"Gemini 3.1","label":"Pro","description":"Complex tasks, code and reasoning","gateway":"google/gemini-3.1-pro-preview","direct":"gemini-3.1-pro-preview"},
-    {"id":"3.5-flash","name":"Gemini 3.5","label":"Flash","description":"Everyday tasks and fast answers","gateway":"google/gemini-3.5-flash","direct":"gemini-3.5-flash"},
-    {"id":"3.6-flash","name":"Gemini 3.6","label":"Flash","description":"Code, images and documents","gateway":"google/gemini-3.6-flash","direct":"gemini-3.6-flash"}
+    {"id":"3.1-pro","name":"Gemini 3.1","label":"Pro","speed":"High","description":"Complex tasks, code and reasoning","gateway":"google/gemini-3.1-pro-preview","direct":"gemini-3.1-pro-preview"},
+    {"id":"3.5-flash","name":"Gemini 3.5","label":"Flash","speed":"Fast","description":"Everyday tasks and fast answers","gateway":"google/gemini-3.5-flash","direct":"gemini-3.5-flash"},
+    {"id":"3.6-flash","name":"Gemini 3.6","label":"Flash","speed":"Fast","description":"Code, images and documents","gateway":"google/gemini-3.6-flash","direct":"gemini-3.6-flash"}
   ],
   "claude": [
-    {"id":"haiku","name":"Haiku 4.5","gateway":"anthropic/claude-haiku-4.5","direct":"claude-haiku-4-5"},
-    {"id":"sonnet","name":"Sonnet 4.6","gateway":"anthropic/claude-sonnet-4.6","direct":"claude-sonnet-4-6"},
-    {"id":"opus","name":"Opus 4.6","gateway":"anthropic/claude-opus-4.6","direct":"claude-opus-4-6"}
+    {"id":"haiku","name":"Haiku 4.5","speed":"Fast","gateway":"anthropic/claude-haiku-4.5","direct":"claude-haiku-4-5"},
+    {"id":"sonnet","name":"Sonnet 4.6","speed":"Medium","gateway":"anthropic/claude-sonnet-4.6","direct":"claude-sonnet-4-6"},
+    {"id":"opus","name":"Opus 4.6","speed":"High","gateway":"anthropic/claude-opus-4.6","direct":"claude-opus-4-6"}
   ],
   "gpt": [
-    {"id":"mini","name":"GPT-4.1 Mini","gateway":"openai/gpt-4.1-mini","direct":"gpt-4.1-mini"},
-    {"id":"nano","name":"GPT-4.1 Nano","gateway":"openai/gpt-4.1-nano","direct":"gpt-4.1-nano"},
-    {"id":"full","name":"GPT-4.1","gateway":"openai/gpt-4.1","direct":"gpt-4.1"}
+    {"id":"mini","name":"GPT-4.1 Mini","speed":"Fast","gateway":"openai/gpt-4.1-mini","direct":"gpt-4.1-mini"},
+    {"id":"nano","name":"GPT-4.1 Nano","speed":"Fast","gateway":"openai/gpt-4.1-nano","direct":"gpt-4.1-nano"},
+    {"id":"full","name":"GPT-4.1","speed":"High","gateway":"openai/gpt-4.1","direct":"gpt-4.1"}
   ],
   "llama": [
-    {"id":"3.3","name":"Llama 3.3 70B","gateway":"meta-llama/llama-3.3-70b-instruct"},
-    {"id":"scout","name":"Llama 4 Scout","gateway":"meta-llama/llama-4-scout"},
-    {"id":"maverick","name":"Llama 4 Maverick","gateway":"meta-llama/llama-4-maverick"}
+    {"id":"3.3","name":"Llama 3.3 70B","speed":"Medium","gateway":"meta-llama/llama-3.3-70b-instruct"},
+    {"id":"scout","name":"Llama 4 Scout","speed":"Fast","gateway":"meta-llama/llama-4-scout"},
+    {"id":"maverick","name":"Llama 4 Maverick","speed":"High","gateway":"meta-llama/llama-4-maverick"}
   ],
   "grok": [
-    {"id":"4.3","name":"Grok 4.3","gateway":"x-ai/grok-4.3","direct":"grok-4.3"},
-    {"id":"4.6","name":"Grok 4.6","gateway":"x-ai/grok-4.6","direct":"grok-4.6"}
+    {"id":"4.3","name":"Grok 4.3","speed":"Medium","gateway":"x-ai/grok-4.3","direct":"grok-4.3"},
+    {"id":"4.6","name":"Grok 4.6","speed":"High","gateway":"x-ai/grok-4.6","direct":"grok-4.6"}
   ],
   "copilot": [
-    {"id":"mini","name":"GPT-4.1 Mini (OpenAI)","gateway":"openai/gpt-4.1-mini","direct":"gpt-4.1-mini"},
-    {"id":"full","name":"GPT-4.1 (OpenAI)","gateway":"openai/gpt-4.1","direct":"gpt-4.1"}
+    {"id":"mini","name":"GPT-4.1 Mini (OpenAI)","speed":"Fast","gateway":"openai/gpt-4.1-mini","direct":"gpt-4.1-mini"},
+    {"id":"full","name":"GPT-4.1 (OpenAI)","speed":"High","gateway":"openai/gpt-4.1","direct":"gpt-4.1"}
   ],
   "perplexity": [
-    {"id":"sonar","name":"Sonar","gateway":"perplexity/sonar"},
-    {"id":"pro","name":"Sonar Pro","gateway":"perplexity/sonar-pro"},
-    {"id":"reasoning","name":"Sonar Reasoning Pro","gateway":"perplexity/sonar-reasoning-pro"}
+    {"id":"sonar","name":"Sonar","speed":"Fast","gateway":"perplexity/sonar"},
+    {"id":"pro","name":"Sonar Pro","speed":"Medium","gateway":"perplexity/sonar-pro"},
+    {"id":"reasoning","name":"Sonar Reasoning Pro","speed":"High","gateway":"perplexity/sonar-reasoning-pro"}
   ],
   "kimi": [
-    {"id":"k2","name":"Kimi K2","gateway":"moonshotai/kimi-k2","direct":"kimi-k2-0711-preview"},
-    {"id":"k2.5","name":"Kimi K2.5","gateway":"moonshotai/kimi-k2.5","direct":"kimi-k2.5"}
+    {"id":"k2","name":"Kimi K2","speed":"Medium","gateway":"moonshotai/kimi-k2","direct":"kimi-k2-0711-preview"},
+    {"id":"k2.5","name":"Kimi K2.5","speed":"High","gateway":"moonshotai/kimi-k2.5","direct":"kimi-k2.5"}
   ],
   "deepseek": [
-    {"id":"chat","name":"DeepSeek V3","gateway":"deepseek/deepseek-chat"},
-    {"id":"reasoning","name":"DeepSeek R1","gateway":"deepseek/deepseek-r1"}
+    {"id":"chat","name":"DeepSeek V3","speed":"Fast","gateway":"deepseek/deepseek-chat"},
+    {"id":"reasoning","name":"DeepSeek R1","speed":"High","gateway":"deepseek/deepseek-r1"}
   ],
   "mistral": [
-    {"id":"small","name":"Mistral Small 3.2","gateway":"mistralai/mistral-small-3.2-24b-instruct","direct":"mistral-small-latest"},
-    {"id":"large","name":"Mistral Large","gateway":"mistralai/mistral-large","direct":"mistral-large-latest"}
+    {"id":"small","name":"Mistral Small 3.2","speed":"Fast","gateway":"mistralai/mistral-small-3.2-24b-instruct","direct":"mistral-small-latest"},
+    {"id":"large","name":"Mistral Large","speed":"High","gateway":"mistralai/mistral-large","direct":"mistral-large-latest"}
   ],
   "qwen": [
-    {"id":"3","name":"Qwen3 235B","gateway":"qwen/qwen3-235b-a22b"},
-    {"id":"coder","name":"Qwen3 Coder","gateway":"qwen/qwen3-coder"}
+    {"id":"3","name":"Qwen3 235B","speed":"High","gateway":"qwen/qwen3-235b-a22b"},
+    {"id":"coder","name":"Qwen3 Coder","speed":"Fast","gateway":"qwen/qwen3-coder"}
   ],
   "cohere": [
-    {"id":"a","name":"Command A","gateway":"cohere/command-a"},
-    {"id":"r-plus","name":"Command R+","gateway":"cohere/command-r-plus-08-2024"}
+    {"id":"a","name":"Command A","speed":"Medium","gateway":"cohere/command-a"},
+    {"id":"r-plus","name":"Command R+","speed":"High","gateway":"cohere/command-r-plus-08-2024"}
   ],
   "cloudflare": [
-    {"id":"70b","name":"Llama 3.3 70B","gateway":"meta-llama/llama-3.3-70b-instruct","direct":"@cf/meta/llama-3.3-70b-instruct-fp8-fast"},
-    {"id":"8b","name":"Llama 3.1 8B","gateway":"meta-llama/llama-3.1-8b-instruct","direct":"@cf/meta/llama-3.1-8b-instruct"}
+    {"id":"70b","name":"Llama 3.3 70B","speed":"Medium","gateway":"meta-llama/llama-3.3-70b-instruct","direct":"@cf/meta/llama-3.3-70b-instruct-fp8-fast"},
+    {"id":"8b","name":"Llama 3.1 8B","speed":"Fast","gateway":"meta-llama/llama-3.1-8b-instruct","direct":"@cf/meta/llama-3.1-8b-instruct"}
   ]
 }

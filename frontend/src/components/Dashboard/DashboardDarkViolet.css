@@ -1,0 +1,404 @@
+/* Dashboard — same black / violet language as Chat (Dark Violet) */
+.dashboard-page.dashboard-violet {
+  --dv-bg: #07070b;
+  --dv-panel: #101016;
+  --dv-card: #15151d;
+  --dv-line: rgba(124, 92, 255, 0.18);
+  --dv-muted: #8b8b9a;
+  --dv-accent: #7c5cff;
+  --dv-accent-2: #9d7bff;
+  --dv-glow: rgba(124, 92, 255, 0.22);
+  color: #eef2ff;
+  background-color: var(--dv-bg);
+  background-image:
+    radial-gradient(ellipse 72% 48% at 88% 6%, rgba(124, 92, 255, 0.2), transparent 58%),
+    radial-gradient(ellipse 55% 42% at 8% 92%, rgba(79, 58, 190, 0.14), transparent 52%);
+}
+
+.dashboard-violet .dashboard-header.dashboard-nav,
+.dashboard-violet .dashboard-nav {
+  border-bottom-color: var(--dv-line);
+  backdrop-filter: blur(14px);
+  background: rgba(7, 7, 11, 0.72);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.dashboard-violet .dashboard-brand {
+  color: #fff;
+}
+
+.dashboard-violet .dashboard-brand > span,
+.dashboard-violet .dashboard-orbit > span {
+  background: linear-gradient(135deg, #7c5cff, #9d7bff);
+  box-shadow: 0 10px 28px var(--dv-glow);
+}
+
+.dashboard-violet .dashboard-nav-links a {
+  color: #c4b5fd;
+  border: 1px solid transparent;
+  transition: color 0.18s, background 0.18s, border-color 0.18s;
+}
+
+.dashboard-violet .dashboard-nav-links a:hover,
+.dashboard-violet .dashboard-nav-links a:focus-visible {
+  color: #fff;
+  background: rgba(124, 92, 255, 0.12);
+  border-color: rgba(124, 92, 255, 0.28);
+}
+
+.dashboard-violet .dashboard-user > span {
+  background: linear-gradient(145deg, #2a2148, #15151d);
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  color: #ddd6fe;
+}
+
+.dashboard-violet .dashboard-user small {
+  color: #c4b5fd;
+}
+
+.dashboard-violet .dashboard-user button {
+  border-color: rgba(124, 92, 255, 0.28);
+  color: #a8a3b8;
+  background: rgba(21, 21, 29, 0.6);
+}
+
+.dashboard-violet .dashboard-user button:hover {
+  border-color: rgba(157, 123, 255, 0.45);
+  color: #fff;
+}
+
+.dashboard-violet .dashboard-eyebrow,
+.dashboard-violet .dashboard-section-title span,
+.dashboard-violet .dashboard-usage span {
+  color: var(--dv-accent-2);
+}
+
+.dashboard-violet .dashboard-hero h1 {
+  color: #fff;
+  letter-spacing: -0.04em;
+  text-shadow: 0 0 40px rgba(124, 92, 255, 0.15);
+}
+
+.dashboard-violet .dashboard-hero > div:first-child > p:last-of-type {
+  color: var(--dv-muted);
+}
+
+.dashboard-violet .dashboard-orbit {
+  border-color: rgba(124, 92, 255, 0.35);
+  box-shadow:
+    0 0 0 40px rgba(124, 92, 255, 0.04),
+    0 0 0 42px rgba(124, 92, 255, 0.08),
+    0 0 80px rgba(124, 92, 255, 0.12);
+}
+
+.dashboard-violet .dashboard-actions {
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.dashboard-violet .dashboard-actions a {
+  padding: 11px 16px;
+  border: 1px solid rgba(124, 92, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(16, 16, 22, 0.85);
+  color: #ede9fe;
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: transform 0.18s, border-color 0.18s, background 0.18s, box-shadow 0.18s;
+}
+
+.dashboard-violet .dashboard-actions a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(157, 123, 255, 0.5);
+  background: rgba(28, 24, 44, 0.95);
+  box-shadow: 0 8px 22px rgba(124, 92, 255, 0.14);
+}
+
+.dashboard-violet .dashboard-action-primary {
+  border-color: transparent !important;
+  background: linear-gradient(135deg, #7c5cff, #9d7bff) !important;
+  color: #fff !important;
+  box-shadow: 0 10px 26px rgba(124, 92, 255, 0.32);
+}
+
+.dashboard-violet .dashboard-usage {
+  border: 1px solid var(--dv-line);
+  border-radius: 16px;
+  background: rgba(16, 16, 22, 0.92);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+.dashboard-violet .dashboard-usage strong {
+  color: #f5f3ff;
+}
+
+.dashboard-violet .usage-track {
+  background: rgba(37, 37, 48, 0.9);
+}
+
+.dashboard-violet .usage-track i {
+  background: linear-gradient(90deg, #7c5cff, #9d7bff);
+}
+
+.dashboard-violet .dashboard-usage > a {
+  border-radius: 999px;
+  background: linear-gradient(135deg, #7c5cff, #9d7bff);
+  box-shadow: 0 8px 20px rgba(124, 92, 255, 0.28);
+}
+
+.dashboard-violet .personal-overview {
+  border: 1px solid var(--dv-line);
+  border-radius: 20px;
+  background: linear-gradient(155deg, rgba(16, 16, 22, 0.95), rgba(10, 10, 15, 0.98));
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.4);
+}
+
+.dashboard-violet .overview-heading > a,
+.dashboard-violet .recent-projects a {
+  color: var(--dv-accent-2);
+}
+
+.dashboard-violet .overview-grid article {
+  border: 1px solid rgba(124, 92, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(21, 21, 29, 0.88);
+}
+
+.dashboard-violet .overview-grid strong {
+  color: #fff;
+}
+
+.dashboard-violet .continue-card {
+  background: linear-gradient(145deg, rgba(40, 32, 72, 0.95), rgba(21, 21, 29, 0.92)) !important;
+  border-color: rgba(124, 92, 255, 0.35) !important;
+}
+
+.dashboard-violet .continue-card a {
+  background: linear-gradient(135deg, #7c5cff, #9d7bff);
+}
+
+.dashboard-violet .recent-projects > a {
+  border-color: rgba(124, 92, 255, 0.16);
+  background: rgba(16, 16, 22, 0.9);
+  color: #e9e4ff;
+}
+
+.dashboard-violet .recent-projects > a > span {
+  background: rgba(124, 92, 255, 0.18);
+  color: #c4b5fd;
+}
+
+.dashboard-violet .projects-empty {
+  border-color: rgba(124, 92, 255, 0.25);
+  color: #9ca3af;
+}
+
+.dashboard-violet .projects-empty > a {
+  background: rgba(124, 92, 255, 0.2);
+  color: #ede9fe;
+  border-radius: 8px;
+}
+
+/* Everyday toolkit inside dashboard */
+.dashboard-violet .everyday-cards {
+  --ed-bg: transparent;
+  --ed-panel: rgba(21, 21, 29, 0.92);
+  --ed-border: rgba(124, 92, 255, 0.2);
+  --ed-text: #eef2ff;
+  --ed-muted: #8b8b9a;
+  --ed-accent: #9d7bff;
+  background: rgba(16, 16, 22, 0.6);
+  border: 1px solid var(--dv-line);
+  border-radius: 22px;
+}
+
+.dashboard-violet .everyday-card-grid > a:hover {
+  border-color: rgba(157, 123, 255, 0.55);
+  box-shadow: 0 12px 28px rgba(124, 92, 255, 0.12);
+}
+
+/* Feature cards — violet family */
+.dashboard-violet .dashboard-feature-card {
+  border: 1px solid rgba(124, 92, 255, 0.2);
+  border-radius: 16px;
+  background: rgba(16, 16, 22, 0.94);
+  border-top: 3px solid rgba(124, 92, 255, 0.55);
+}
+
+.dashboard-violet .dashboard-feature-card:after {
+  background: #7c5cff;
+  opacity: 0.1;
+}
+
+.dashboard-violet .feature-card-icon {
+  background: linear-gradient(135deg, #7c5cff, #9d7bff);
+  color: #fff;
+}
+
+.dashboard-violet .dashboard-feature-card h2 {
+  color: #fff;
+}
+
+.dashboard-violet .dashboard-feature-card > p:not(.dashboard-eyebrow) {
+  color: var(--dv-muted);
+}
+
+.dashboard-violet .dashboard-sticker-row span {
+  background: rgba(124, 92, 255, 0.22);
+  color: #ede9fe;
+  border: 1px solid rgba(124, 92, 255, 0.25);
+}
+
+.dashboard-violet .dashboard-feature-card > a b,
+.dashboard-violet .dashboard-feature-card > button b {
+  color: var(--dv-accent-2);
+}
+
+/* Model library cards */
+.dashboard-violet .dashboard-section-title h2 {
+  color: #fff;
+}
+
+.dashboard-violet .dashboard-section-title p {
+  color: var(--dv-muted);
+}
+
+.dashboard-violet .dashboard-grid article {
+  border: 1px solid rgba(124, 92, 255, 0.18);
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(21, 21, 29, 0.96), rgba(13, 13, 18, 0.98));
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.dashboard-violet .dashboard-model-card:hover article {
+  transform: translateY(-4px);
+  border-color: rgba(157, 123, 255, 0.55);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), 0 0 28px rgba(124, 92, 255, 0.1);
+}
+
+.dashboard-violet .dashboard-grid small {
+  color: #a78bfa;
+}
+
+.dashboard-violet .dashboard-grid h3 {
+  color: #fff;
+}
+
+.dashboard-violet .dashboard-grid p {
+  color: #9ca3af;
+}
+
+.dashboard-violet .model-meta span {
+  border-color: rgba(124, 92, 255, 0.22);
+  color: #c4b5fd;
+}
+
+.dashboard-violet .model-open {
+  border-color: rgba(124, 92, 255, 0.25);
+  background: rgba(10, 10, 15, 0.85);
+  color: #ddd6fe;
+  border-radius: 10px;
+}
+
+.dashboard-violet .dashboard-model-card:hover .model-open {
+  border-color: rgba(157, 123, 255, 0.5);
+  color: #fff;
+}
+
+.dashboard-violet .dashboard-code-section {
+  border: 1px solid var(--dv-line);
+  border-radius: 20px;
+  background: rgba(16, 16, 22, 0.92);
+}
+
+.dashboard-violet .dashboard-code-section h2 {
+  color: #fff;
+}
+
+.dashboard-violet .dashboard-code-section pre {
+  border-color: rgba(124, 92, 255, 0.2);
+  background: #0a0a0f;
+  color: #c4b5fd;
+}
+
+.dashboard-violet .dashboard-resources h2,
+.dashboard-violet .dashboard-resource-card h3 {
+  color: #fff;
+}
+
+.dashboard-violet .dashboard-resource-card,
+.dashboard-violet .dashboard-start-guide,
+.dashboard-violet .dashboard-workspace-banner {
+  border-color: rgba(124, 92, 255, 0.18);
+  background: rgba(16, 16, 22, 0.92);
+}
+
+.dashboard-violet .dashboard-resource-number {
+  border-color: rgba(124, 92, 255, 0.35);
+  color: #c4b5fd;
+}
+
+.dashboard-violet .dashboard-workspace-banner {
+  background: radial-gradient(ellipse at top right, rgba(124, 92, 255, 0.18), transparent 65%), rgba(16, 16, 22, 0.95);
+}
+
+.dashboard-violet .dashboard-banner-links a:first-child {
+  background: linear-gradient(135deg, #7c5cff, #9d7bff);
+  border-color: transparent;
+}
+
+.dashboard-violet .dashboard-footer {
+  border-top-color: var(--dv-line);
+}
+
+.dashboard-violet .dashboard-email-notice {
+  border-color: rgba(124, 92, 255, 0.35);
+  background: rgba(124, 92, 255, 0.1);
+  color: #ddd6fe;
+}
+
+.dashboard-violet .dashboard-nav-links a[href='/chat'] {
+  border-color: rgba(124, 92, 255, 0.35);
+  background: rgba(124, 92, 255, 0.12);
+  color: #ede9fe;
+}
+
+.dashboard-violet .dashboard-nav-mobile summary {
+  border-color: rgba(124, 92, 255, 0.28);
+  background: rgba(16, 16, 22, 0.85);
+  color: #ede9fe;
+}
+
+.dashboard-violet .dashboard-nav-mobile-panel {
+  border-color: rgba(124, 92, 255, 0.28);
+  background: rgba(10, 10, 15, 0.98);
+}
+
+.dashboard-violet .header-brand,
+.dashboard-violet .header-account,
+.dashboard-violet .dashboard-nav-left,
+.dashboard-violet .dashboard-nav-right {
+  background: linear-gradient(90deg, rgba(7, 7, 11, 0.94) 70%, transparent);
+}
+
+.dashboard-violet .header-account,
+.dashboard-violet .dashboard-nav-right {
+  background: linear-gradient(270deg, rgba(7, 7, 11, 0.94) 70%, transparent);
+}
+
+.dashboard-violet .dashboard-nav-more-desktop summary {
+  color: #c4b5fd;
+}
+
+.dashboard-violet .dashboard-nav-more-desktop-panel {
+  border-color: rgba(124, 92, 255, 0.28);
+  background: rgba(10, 10, 15, 0.98);
+}
+
+.dashboard-violet .dashboard-email-notice {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}

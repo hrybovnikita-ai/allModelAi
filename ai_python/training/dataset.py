@@ -139,3 +139,33 @@ def load_test_samples() -> List[Tuple[str, str]]:
     training = load_training_samples()
     mid = max(1, len(training) // 10)
     return training[-2 * mid : -mid] if len(training) > 2 * mid else training[:mid]
+
+
+def append_training_samples(new_samples: List[Tuple[str, str]]) -> int:
+    """Merge unique labeled samples into data/train.json (creates file if missing)."""
+    if not new_samples:
+        return 0
+
+    train_path = DATA_DIR / "train.json"
+    existing = _load_json_split(train_path)
+    if not existing:
+        existing = list(TRAINING_SAMPLES)
+
+    seen = {text.strip().lower() for text, _ in existing}
+    added = 0
+    merged = list(existing)
+    for text, label in new_samples:
+        key = text.strip().lower()
+        if not key or key in seen or label not in INTENT_CLASSES:
+            continue
+        seen.add(key)
+        merged.append((text.strip(), label))
+        added += 1
+
+    if added == 0:
+        return 0
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    payload = [{"text": text, "label": label} for text, label in merged]
+    train_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return added

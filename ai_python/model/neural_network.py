@@ -1,4 +1,4 @@
-"""PyTorch classifier architecture."""
+"""PyTorch classifier: stacked Linear layers trained via backpropagation (autograd)."""
 
 from __future__ import annotations
 

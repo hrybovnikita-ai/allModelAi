@@ -7,6 +7,13 @@ import './Dashboard.css';
 import './DashboardEnhancements.css';
 import './DashboardNav.css';
 import './DashboardFeatureCards.css';
+import './DashboardDarkViolet.css';
+import './DashboardLayout.css';
+import {
+  DASHBOARD_NAV_DESKTOP_MAIN,
+  DASHBOARD_NAV_DESKTOP_MORE,
+  DASHBOARD_NAV_LINKS,
+} from './dashboardNavLinks';
 import AccountDeleteModal from '../AccountDeleteModal';
 import DashboardResources from './DashboardResources';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
@@ -45,12 +52,47 @@ export default function Dashboard() {
   };
 
   return (
-    <main className="dashboard-page">
-      <nav className="dashboard-nav" aria-label="Workspace navigation">
-        <Link to="/" className="dashboard-brand"><AllModelAILogoMark />AllModelAI</Link>
-        <div className="dashboard-nav-links"><Link to="/chat">Chat</Link><Link to="/builder-25">Developer Toolkit</Link><Link to="/next-20">Workspace Tools</Link><Link to="/next-25">AI Workflows</Link><Link to="/next-9">Research & Learning</Link><Link to="/next-10">Model Toolkit</Link><Link to="/ai-platform">AI Platform</Link><Link to="/website-builder">Website Builder</Link><Link to="/arena">Arena</Link><Link to="/explore">Models</Link><Link to="/studio">Studio</Link><Link to="/ai-tools">Power Lab</Link><Link to="/creator-tools">Creator Lab</Link><Link to="/features">Features</Link><Link to="/control-center">Control</Link></div>
-        <div className="dashboard-user"><span>{user.avatar ? <img src={user.avatar} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : user.name?.charAt(0) || user.email.charAt(0)}</span><Link to="/settings"><small>{user.name || user.email}</small></Link><button onClick={async () => { try { const response = await apiFetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); if (!response.ok) throw new Error('Could not sign out. Try again.'); clearAllSessionData(); navigate('/login', { replace: true }); } catch (error) { setDeleteError(error.message); } }}>Sign out</button><button onClick={() => setDeleteModalOpen(true)}>Delete account</button></div>
-      </nav>
+    <main className="dashboard-page dashboard-violet">
+      <header className="dashboard-header dashboard-nav">
+        <div className="dashboard-nav-bar">
+          <div className="header-brand dashboard-nav-left">
+            <Link to="/" className="dashboard-brand"><AllModelAILogoMark />AllModelAI</Link>
+          </div>
+          <nav className="header-nav dashboard-nav-center" aria-label="Workspace navigation">
+            <div className="dashboard-nav-links">
+              {DASHBOARD_NAV_DESKTOP_MAIN.map((item) => (
+                <Link key={item.to} to={item.to}>
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+            <details className="dashboard-nav-more-desktop">
+              <summary>More</summary>
+              <div className="dashboard-nav-more-desktop-panel" role="menu">
+                {DASHBOARD_NAV_DESKTOP_MORE.map((item) => (
+                  <Link key={item.to} to={item.to} role="menuitem">
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            </details>
+          </nav>
+          <div className="header-account dashboard-nav-right">
+            <details className="dashboard-nav-mobile">
+              <summary>Menu</summary>
+              <div className="dashboard-nav-mobile-panel" role="menu">
+                {DASHBOARD_NAV_LINKS.map((item) => (
+                  <Link key={item.to} to={item.to} role="menuitem">
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            </details>
+            <div className="dashboard-user"><span>{user.avatar ? <img src={user.avatar} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : user.name?.charAt(0) || user.email.charAt(0)}</span><Link to="/settings"><small>{user.name || user.email}</small></Link><button onClick={async () => { try { const response = await apiFetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); if (!response.ok) throw new Error('Could not sign out. Try again.'); clearAllSessionData(); navigate('/login', { replace: true }); } catch (error) { setDeleteError(error.message); } }}>Sign out</button><button onClick={() => setDeleteModalOpen(true)}>Delete account</button></div>
+          </div>
+        </div>
+      </header>
+      <div className="dashboard-shell">
       {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user.email}</div>}
       {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}
       {deleteError && !deleteModalOpen && <p role="alert">{deleteError}</p>}
@@ -59,8 +101,15 @@ export default function Dashboard() {
           <p className="dashboard-eyebrow">Workspace ready</p>
           <h1>Welcome, {user.name?.split(' ')[0] || 'creator'}.</h1>
           <p>Your account is connected to the backend. Choose a model and start building something remarkable.</p>
-          <div className="dashboard-actions"><Link to="/next-12">Explore 12 reliability tools</Link></div>
-        <div className="dashboard-actions"><Link to="/next-15">Explore Next 15</Link><Link to="/next-30">Explore Next 30</Link><Link to="/app-20">Explore App 20</Link><Link to="/next-20">Open Workspace Tools</Link><Link to="/power-center">Open Power Center</Link><Link to="/builder-25">Open Developer Toolkit</Link><Link to="/next-25">Explore AI Workflows</Link><Link to="/next-9">Research & Learning</Link><Link to="/next-10">Open Model Toolkit</Link><Link to="/production">Production Center</Link><Link to="/skills-hub">Skills Hub</Link><Link to="/expansion-hub">Expansion Hub</Link></div>
+          <div className="dashboard-actions">
+            <Link to="/chat?model=smart" className="dashboard-action-primary">Open Smart chat</Link>
+            <Link to="/next-12">Reliability tools</Link>
+            <Link to="/builder-25">Developer Toolkit</Link>
+            <Link to="/next-25">AI Workflows</Link>
+            <Link to="/next-9">Research</Link>
+            <Link to="/production">Production</Link>
+            <Link to="/skills-hub">Skills Hub</Link>
+          </div>
         </div>
         <div className="dashboard-orbit" aria-hidden="true"><AllModelAILogoMark /></div>
       </section>
@@ -102,6 +151,7 @@ export default function Dashboard() {
         <pre><code>{`const result = await allModelAI.chat({\n  model: 'claude-sonnet',\n  prompt: 'Create something great'\n});\n\nconsole.log(result.text);`}</code></pre>
       </section>
       <DashboardResources />
+      </div>
       {deleteModalOpen && <AccountDeleteModal onCancel={() => { setDeleteModalOpen(false); setDeleteError(''); }} onConfirm={deleteAccount} isDeleting={isDeleting} error={deleteError} />}
     </main>
   );

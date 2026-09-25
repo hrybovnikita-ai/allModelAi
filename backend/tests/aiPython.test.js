@@ -13,6 +13,13 @@ test('PyTorch AI Learning Engine endpoints', async (t) => {
         assert.ok(typeof res.body.total_parameters === 'number', 'Should return parameter count');
     });
 
+    await t.test('GET /api/ai-python/openai/status returns OpenAI integration state', async () => {
+        const res = await request(app).get('/api/ai-python/openai/status');
+        assert.equal(res.status, 200);
+        assert.ok(typeof res.body.configured === 'boolean');
+        assert.equal(res.body.library, 'openai');
+    });
+
     await t.test('POST /api/ai-python/predict returns valid classification and response', async () => {
         // Register or login a user to get auth session for protected predict
         const email = `test-ai-${Date.now()}@example.com`;

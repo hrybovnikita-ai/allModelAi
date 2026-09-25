@@ -16,6 +16,9 @@ const checks = [
 ];
 
 async function check([name, key, url, type]) {
+    if (name === 'xAI' && env.GROK_PROVIDER === 'openrouter') {
+        return console.log('xAI: skipped (GROK_PROVIDER=openrouter — Grok uses OpenRouter)');
+    }
     if (!key?.trim()) return console.log(`${name}: not configured`);
     const headers = type === 'anthropic'
         ? { 'x-api-key': key.trim(), 'anthropic-version': '2023-06-01' }
@@ -33,7 +36,16 @@ async function check([name, key, url, type]) {
     }
 }
 
-Promise.all(checks.map(check)).then(() => {
-    console.log(`Cloudflare account: ${env.CLOUDFLARE_ACCOUNT_ID?.trim() ? 'configured' : 'missing (required for Workers AI)'}`);
-    console.log('These checks do not generate content or verify generation quota/model access.');
+const pollinationsKey = (env.POLLINATIONS_API_KEY || env.POLINATIONS_API_KEY || '').trim();
+const grokViaOpenRouter = env.GROK_PROVIDER === 'openrouter'
+    || /^sk-or-/i.test((env.GROK_API_KEY || env.XAI_API_KEY || '').trim());
+
+Promise.all(checks.map(check)).then(async () => {
+    console.log(`Cloudflare account: ${env.CLOUDFLARE_ACCOUNT_ID?.trim() ? 'configured' : 'missing (required for Workers AI image)'}`);
+    console.log(`Pollinations: ${pollinationsKey ? (/^sk_/i.test(pollinationsKey) ? 'configured (sk_*)' : 'set but invalid format') : 'not configured'}`);
+    console.log(`IMAGE_PROVIDER: ${(env.IMAGE_PROVIDER || '(auto)').trim() || '(auto)'}`);
+    if (grokViaOpenRouter) {
+        console.log('Grok: routed via OpenRouter (direct x.ai key check may fail — this is OK)');
+    }
+    console.log('These checks do not generate images or chat completions (no quota spent).');
 });

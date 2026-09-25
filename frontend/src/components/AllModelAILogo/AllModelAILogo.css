@@ -27,8 +27,9 @@
 }
 
 .dashboard-orbit .allmodelai-logo-mark {
-  width: 36px;
-  height: 36px;
+  width: clamp(72px, 38%, 128px);
+  height: auto;
+  max-width: 42%;
 }
 
 .chat-brand .allmodelai-logo-mark,

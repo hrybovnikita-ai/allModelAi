@@ -28,8 +28,23 @@ def _handle_json_command(raw_json: str) -> None:
             epochs = cmd_data.get("epochs", DEFAULT_EPOCHS)
             lr = cmd_data.get("lr", DEFAULT_LR)
             batch_size = cmd_data.get("batch_size", cmd_data.get("batchSize", DEFAULT_BATCH_SIZE))
-            trainer.run_training(epochs=epochs, lr=lr, batch_size=batch_size)
+            openai_augment = bool(cmd_data.get("openaiAugment") or cmd_data.get("openai_augment"))
+            openai_samples = cmd_data.get("openaiSamplesPerClass", cmd_data.get("openai_samples_per_class", 2))
+            trainer.run_training(
+                epochs=epochs,
+                lr=lr,
+                batch_size=batch_size,
+                openai_augment=openai_augment,
+                openai_samples_per_class=int(openai_samples or 2),
+            )
             print(json.dumps(trainer.get_status()))
+        elif action == "openai_status":
+            from services.openai_llm import get_openai_status
+
+            print(json.dumps(get_openai_status()))
+        elif action == "openai_augment":
+            per_class = int(cmd_data.get("samplesPerClass", cmd_data.get("samples_per_class", 2)))
+            print(json.dumps(trainer.augment_with_openai(samples_per_class=per_class)))
         elif action == "reset":
             trainer.reset_model()
             print(json.dumps({"status": "reset"}))

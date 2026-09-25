@@ -1,0 +1,32 @@
+.storage-hub-page{min-height:100dvh;background:#07090f;color:#eef2ff}
+.storage-hub-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;border-bottom:1px solid #202b3d;flex-wrap:wrap}
+.storage-hub-brand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;font-size:1rem}
+.storage-hub-header nav{display:flex;gap:8px;flex-wrap:wrap}
+.storage-hub-header nav a{padding:8px 10px;border:1px solid #3b4960;border-radius:10px;color:#cbd5e1;text-decoration:none;font-size:.78rem}
+.storage-hub-hero{padding:28px 24px 12px;max-width:1100px;margin:0 auto}
+.storage-hub-hero p{margin:0 0 8px;color:#7567f8;font-size:.68rem;font-weight:800;letter-spacing:1.1px;text-transform:uppercase}
+.storage-hub-hero h1{margin:0 0 8px;font-size:1.85rem}
+.storage-hub-hero span{color:#7f8da3;font-size:.88rem}
+.storage-hub-layout{display:grid;grid-template-columns:minmax(220px,280px) 1fr;gap:16px;padding:16px 24px 40px;max-width:1100px;margin:0 auto}
+@media (max-width:860px){.storage-hub-layout{grid-template-columns:1fr}}
+.storage-hub-tabs{display:flex;flex-direction:column;gap:8px}
+.storage-hub-tabs button{display:flex;align-items:flex-start;gap:10px;text-align:left;padding:12px;border:1px solid #202b3d;border-radius:12px;background:#0d1422;color:#eef2ff;font:inherit;cursor:pointer}
+.storage-hub-tabs button.active{border-color:#7567f8;background:#151f31}
+.storage-hub-tabs button small{display:block;color:#7f8da3;font-size:.72rem;margin-top:4px}
+.storage-hub-tabs b{margin-left:auto;font-size:.75rem;color:#a5b4fc}
+.storage-hub-panel{padding:16px;border:1px solid #202b3d;border-radius:14px;background:#0d1422;min-height:320px}
+.storage-hub-panel h2{margin:0 0 6px;font-size:1.1rem}
+.storage-hub-panel>p{margin:0 0 14px;color:#7f8da3;font-size:.84rem;line-height:1.5}
+.storage-hub-error{margin:12px 24px;padding:12px;border:1px solid #7f3340;border-radius:10px;background:#3b1820;color:#fda4af;font-size:.82rem}
+.storage-hub-form{display:grid;gap:10px;margin-bottom:16px}
+.storage-hub-form label{display:grid;gap:6px;font-size:.78rem;color:#94a3b8}
+.storage-hub-form input,.storage-hub-form textarea,.storage-hub-form select{padding:10px;border:1px solid #3b4960;border-radius:10px;background:#151f31;color:#eef2ff;font:inherit}
+.storage-hub-form button,.storage-hub-row button,.storage-hub-actions button{padding:9px 12px;border:1px solid #7567f8;border-radius:10px;background:#7567f8;color:#fff;font:inherit;font-size:.78rem;cursor:pointer}
+.storage-hub-form button.secondary,.storage-hub-row button.secondary,.storage-hub-actions button.secondary{background:transparent;color:#cbd5e1;border-color:#3b4960}
+.storage-hub-list{display:grid;gap:10px}
+.storage-hub-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:12px;border:1px solid #202b3d;border-radius:12px;background:#111827}
+.storage-hub-row strong{font-size:.88rem}
+.storage-hub-row span{display:block;color:#7f8da3;font-size:.76rem;margin-top:4px;white-space:pre-wrap}
+.storage-hub-row div:last-child{display:flex;gap:8px;flex-shrink:0}
+.storage-hub-empty{color:#94a3b8;font-size:.84rem;padding:12px 0}
+.storage-hub-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}

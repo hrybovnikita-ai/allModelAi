@@ -23,12 +23,14 @@ def save_metrics(
     accuracy_history: List[float],
     best_loss: float,
     last_accuracy: float,
+    gradient_history: List[Dict[str, Any]] | None = None,
 ) -> None:
     payload = {
         "loss_history": loss_history[-100:],
         "accuracy_history": accuracy_history[-100:],
         "best_loss": round(float(best_loss), 4),
         "last_accuracy": round(float(last_accuracy), 4),
+        "gradient_history": (gradient_history or [])[-100:],
         "saved_at": time.time(),
     }
     METRICS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")

@@ -60,10 +60,10 @@ html[data-theme="light"] .chat-messages{scrollbar-color:#b7bcc5 #f7f7f8}html[dat
 
 /* Light mode always uses readable near-black text. */
 html[data-theme="light"] .chat-page{--light-text:#111318;--light-muted:#596273;color:var(--light-text)}
-html[data-theme="light"] .chat-brand,html[data-theme="light"] .new-chat,html[data-theme="light"] .active-model strong,html[data-theme="light"] .model-select-trigger,html[data-theme="light"] .model-options button,html[data-theme="light"] .dashboard-link,html[data-theme="light"] .chat-empty h1,html[data-theme="light"] .prompt-suggestions strong,html[data-theme="light"] .chat-message p,html[data-theme="light"] .chat-history-open strong,html[data-theme="light"] .project-list button:not(.active),html[data-theme="light"] .sidebar-links a,html[data-theme="light"] .chat-profile strong,html[data-theme="light"] .chat-composer textarea{color:var(--light-text)!important}
+html[data-theme="light"] .chat-brand,html[data-theme="light"] .new-chat,html[data-theme="light"] .active-model strong,html[data-theme="light"] .model-select-trigger,html[data-theme="light"] .model-options button,html[data-theme="light"] .dashboard-link,html[data-theme="light"] .chat-empty h1,html[data-theme="light"] .prompt-suggestions strong,html[data-theme="light"] .chat-message p,html[data-theme="light"] .chat-history-open strong,html[data-theme="light"] .project-list button:not(.active),html[data-theme="light"] .sidebar-links a,html[data-theme="light"] .chat-profile strong{color:var(--light-text)!important}
 html[data-theme="light"] .chat-subtitle,html[data-theme="light"] .prompt-suggestions small,html[data-theme="light"] .chat-history-open small,html[data-theme="light"] .chat-profile small,html[data-theme="light"] .composer-tools>span,html[data-theme="light"] .chat-composer>p{color:var(--light-muted)!important}
 html[data-theme="light"] .workspace-tools button.active,html[data-theme="light"] .workspace-tools button.active strong,html[data-theme="light"] .project-list button.active{color:#fff!important}
-html[data-theme="light"] .chat-composer textarea::placeholder,html[data-theme="light"] .chat-history-search::placeholder{color:#747b87}
+html[data-theme="light"] .chat-history-search::placeholder{color:#747b87}
 
 .sidebar-theme-settings{margin:0 1px 10px;padding:10px;border-top:1px solid #303030;border-bottom:1px solid #303030}.sidebar-theme-settings>div:first-child{display:grid;grid-template-columns:18px 1fr auto;align-items:center;gap:7px}.sidebar-theme-settings>div:first-child>span{color:#9b91ff;font-size:.72rem}.sidebar-theme-settings>div:first-child strong{font-size:.69rem}.sidebar-theme-settings>div:first-child a{color:#858585;font-size:.56rem;text-decoration:none}.sidebar-theme-settings>p{margin:7px 0 6px;color:#777;font-size:.56rem}.sidebar-theme-options{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.sidebar-theme-options button{display:grid;place-items:center;gap:2px;min-width:0;padding:6px 2px;border:1px solid #383838;border-radius:7px;background:#0a0a0a;color:#aaa;font:inherit;cursor:pointer}.sidebar-theme-options button i{font-size:.7rem;font-style:normal}.sidebar-theme-options button span{font-size:.52rem}.sidebar-theme-options button:hover,.sidebar-theme-options button.active{border-color:#7567f8;background:#24213d;color:#fff}.sidebar-theme-options button.active{box-shadow:0 0 0 1px #7567f833}
 .sidebar-theme-settings.collapsed{padding-block:9px}.sidebar-settings-actions{display:flex;align-items:center;gap:7px}.sidebar-settings-actions button{padding:2px 5px;border:0;border-radius:4px;background:transparent;color:#9b91ff;font:inherit;font-size:.56rem;cursor:pointer}.sidebar-settings-actions button:hover{background:#292449;color:#fff}.sidebar-settings-actions a{padding-left:7px;border-left:1px solid #383838}
@@ -155,8 +155,29 @@ html[data-theme="light"] .chat-workspace:has(.chat-empty){background-image:radia
 
 /* User-selected input color from Personal Chat Settings. */
 .chat-page .composer-box{background:var(--composer-color,#262626)!important}
-.chat-page .chat-composer textarea{color:var(--composer-text,#fff)!important}
-.chat-page .chat-composer textarea::placeholder{color:color-mix(in srgb,var(--composer-text,#fff) 55%,transparent)!important}
+.chat-page .composer-box textarea,
+.chat-page .chat-composer textarea{
+  color:#fff!important;
+  -webkit-text-fill-color:#fff!important;
+  background:transparent!important;
+  opacity:1!important;
+}
+.chat-page .composer-box textarea::placeholder,
+.chat-page .chat-composer textarea::placeholder{
+  color:rgba(196,181,253,.62)!important;
+  -webkit-text-fill-color:rgba(196,181,253,.62)!important;
+  opacity:1!important;
+}
+html[data-theme="light"] .chat-page .composer-box textarea,
+html[data-theme="light"] .chat-page .chat-composer textarea{
+  color:#fff!important;
+  -webkit-text-fill-color:#fff!important;
+}
+html[data-theme="light"] .chat-page .composer-box textarea::placeholder,
+html[data-theme="light"] .chat-page .chat-composer textarea::placeholder{
+  color:rgba(196,181,253,.62)!important;
+  -webkit-text-fill-color:rgba(196,181,253,.62)!important;
+}
 
 /* Settings shortcut inside the main tools block. */
 .workspace-tools .settings-quick-access{order:10;margin:3px 0;border:1px solid #5b4ed466!important;background:linear-gradient(90deg,#28204d99,#151515)!important}

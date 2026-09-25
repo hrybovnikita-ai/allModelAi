@@ -516,7 +516,14 @@ const requestGeminiStream = async (prompt, timeoutMs) => {
     });
 };
 
-const streamAiAnswer = async (res, { userQuestion, sources, modelSlug = 'gemini', onStatus, allowKnowledgeFallback = true }) => {
+const streamAiAnswer = async (res, {
+    userQuestion,
+    sources,
+    modelSlug = 'gemini',
+    onStatus,
+    allowKnowledgeFallback = true,
+    customPrompt = null,
+}) => {
     onStatus?.('analyzing');
 
     if (!resolveAiKey()) {
@@ -524,9 +531,9 @@ const streamAiAnswer = async (res, { userQuestion, sources, modelSlug = 'gemini'
     }
 
     const normalizedModel = modelSlug === 'smart' ? 'gemini' : modelSlug;
-    const synthesisPrompt = sources.length
+    const synthesisPrompt = customPrompt || (sources.length
         ? buildSynthesisPrompt(userQuestion, sources)
-        : buildKnowledgeOnlyPrompt(userQuestion);
+        : buildKnowledgeOnlyPrompt(userQuestion));
     const timeoutMs = Math.min(Math.max(Number(process.env.AI_REQUEST_TIMEOUT_MS) || 45000, 5000), 120000);
 
     const trySynthesize = async (prompt) => {

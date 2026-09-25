@@ -1,5 +1,6 @@
 import { confirmSession } from '../../lib/session';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import SocialAuthModal from './SocialAuthModal';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
@@ -54,9 +55,6 @@ function LoginForm({
     }
 
     delete payload.confirmPassword;
-    if (!signingUp) {
-      delete payload.name;
-    }
 
     try {
       setSubmitting(true);
@@ -109,20 +107,29 @@ function LoginForm({
     onModeChange(nextMode);
   };
 
-  return (
-    <div
-      className="login-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
+  useEffect(() => {
+    const closeWithEscape = (event) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', closeWithEscape);
+    return () => document.removeEventListener('keydown', closeWithEscape);
+  }, [onClose]);
+
+  const modalTree = (
+    <div className="login-overlay" role="presentation">
+      <div
+        className="login-backdrop-layer"
+        aria-hidden="true"
+        onMouseDown={onClose}
+      />
       <section
         className="login-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="login-title"
+        onMouseDown={(event) => event.stopPropagation()}
       >
         <button
           className="login-close"
@@ -155,19 +162,17 @@ function LoginForm({
           className="login-form"
           onSubmit={handleSubmit}
         >
-          {signingUp && (
-            <label>
-              <span>Name</span>
+          <label>
+            <span>Name</span>
 
-              <input
-                name="name"
-                type="text"
-                placeholder="Your name"
-                autoComplete="name"
-                required
-              />
-            </label>
-          )}
+            <input
+              name="name"
+              type="text"
+              placeholder="Your name"
+              autoComplete="name"
+              required
+            />
+          </label>
 
           <label>
             <span>Email</span>
@@ -394,4 +399,6 @@ function LoginForm({
       )}
     </div>
   );
+
+  return createPortal(modalTree, document.body);
 }

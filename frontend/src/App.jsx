@@ -10,7 +10,7 @@ import claudeLogo from "./assets/claude.png";
 import geminiLogo from "./assets/gemini.png";
 import gptLogo from "./assets/gpt.png";
 import llamaLogo from "./assets/llama.png";
-
+ 
 // Import Components
 import Header from "./components/Header/Header";
 import ModelsSection from "./components/ModelsSection/ModelsSection";
@@ -64,6 +64,7 @@ import UsageAnalytics from "./components/UsageAnalytics/UsageAnalytics";
 import EverydayAI from "./components/EverydayAI/EverydayAI";
 import EverydayCards from "./components/EverydayAI/EverydayCards";
 import PythonAILab from "./components/PythonAILab/PythonAILab";
+import StorageHub from "./components/StorageHub/StorageHub";
 
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");
@@ -176,6 +177,7 @@ export default function App() {
       <Route path="/files/:conversationId/:fileId" element={<GeneratedFile />} />
       <Route path="/model-comparison" element={<ModelComparison />} />
       <Route path="/usage-analytics" element={<UsageAnalytics />} />
+      <Route path="/storage" element={<StorageHub />} />
       <Route path="/studio" element={<Studio />} />
       <Route path="/arena" element={<Arena />} />
       <Route path="/control-center" element={<ControlCenter />} />

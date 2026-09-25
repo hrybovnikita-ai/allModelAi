@@ -1,0 +1,446 @@
+/* AllModelAI — Dark Violet premium theme (visual only) */
+.chat-page {
+  --dv-bg: #07070b;
+  --dv-panel: #101016;
+  --dv-panel-2: #0d0d12;
+  --dv-card: #15151d;
+  --dv-line: #252530;
+  --dv-muted: #8b8b9a;
+  --dv-accent: #7c5cff;
+  --dv-accent-2: #9d7bff;
+  --dv-glow: rgba(124, 92, 255, 0.24);
+  --dv-glow-soft: rgba(124, 92, 255, 0.12);
+  --chat-bg: var(--dv-bg);
+  --chat-panel: var(--dv-panel);
+  --chat-line: var(--dv-line);
+  --chat-muted: var(--dv-muted);
+  --chat-accent: var(--dv-accent);
+  animation: chat-page-in 0.35s ease both;
+}
+
+@keyframes chat-page-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-page {
+    animation: none;
+  }
+}
+
+.chat-page,
+.chat-page .chat-workspace {
+  background-color: var(--dv-bg) !important;
+  color: #fff;
+}
+
+/* Sidebar — glassmorphism */
+.chat-page .chat-sidebar {
+  border-right: 1px solid rgba(124, 92, 255, 0.14) !important;
+  background: linear-gradient(165deg, rgba(16, 16, 22, 0.88), rgba(13, 13, 18, 0.72)) !important;
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.03);
+  transition: transform 0.24s ease, box-shadow 0.24s ease;
+}
+
+.chat-page .chat-sidebar.open {
+  box-shadow: 24px 0 60px rgba(0, 0, 0, 0.55), 0 0 40px rgba(124, 92, 255, 0.08);
+}
+
+.chat-page .new-chat {
+  border-color: rgba(124, 92, 255, 0.35) !important;
+  background: rgba(21, 21, 29, 0.85) !important;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-page .new-chat:hover {
+  transform: translateY(-1px);
+  border-color: rgba(157, 123, 255, 0.55) !important;
+  background: rgba(28, 24, 44, 0.95) !important;
+  box-shadow: 0 8px 24px rgba(124, 92, 255, 0.14);
+}
+
+.chat-page .workspace-tools button {
+  border: 1px solid transparent !important;
+  border-radius: 12px !important;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-page .workspace-tools button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(124, 92, 255, 0.22) !important;
+  background: rgba(21, 21, 29, 0.9) !important;
+}
+
+.chat-page .workspace-tools button.active {
+  border-color: rgba(157, 123, 255, 0.55) !important;
+  background: linear-gradient(135deg, rgba(72, 48, 160, 0.55), rgba(38, 28, 78, 0.85)) !important;
+  box-shadow: 0 0 0 1px rgba(157, 123, 255, 0.35), 0 10px 28px rgba(124, 92, 255, 0.18);
+}
+
+.chat-page .workspace-tools button > span:first-child {
+  background: rgba(124, 92, 255, 0.16) !important;
+  color: var(--dv-accent-2) !important;
+}
+
+.chat-page .settings-quick-access,
+.chat-page .chat-settings-trigger {
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.chat-page .settings-quick-access:hover,
+.chat-page .chat-settings-trigger:hover {
+  transform: translateY(-1px);
+}
+
+.chat-page .chat-history-item:hover,
+.chat-page .chat-history-item.active {
+  background: rgba(124, 92, 255, 0.1) !important;
+}
+
+.chat-page .chat-history-count {
+  background: rgba(124, 92, 255, 0.22) !important;
+  color: #ddd6fe !important;
+}
+
+.chat-page .chat-history-search:focus,
+.chat-page .history-feed-search:focus {
+  border-color: var(--dv-accent) !important;
+  box-shadow: 0 0 0 3px var(--dv-glow-soft);
+}
+
+.chat-page .chat-history-open em {
+  color: var(--dv-accent-2) !important;
+}
+
+/* Header */
+.chat-page .chat-header {
+  border-bottom-color: rgba(124, 92, 255, 0.12) !important;
+  background: rgba(13, 13, 18, 0.82) !important;
+  backdrop-filter: blur(16px);
+}
+
+.chat-page .active-model i {
+  color: #a78bfa !important;
+}
+
+.chat-page .active-model i::before {
+  background: #9d7bff !important;
+  box-shadow: 0 0 10px rgba(157, 123, 255, 0.55) !important;
+}
+
+.chat-page .active-model i.offline {
+  color: #f87171 !important;
+}
+
+.chat-page .active-model i.offline::before {
+  background: #f87171 !important;
+  box-shadow: 0 0 10px rgba(248, 113, 113, 0.45) !important;
+}
+
+/* User / Developer switch */
+.chat-page .access-mode-switch {
+  border-color: rgba(124, 92, 255, 0.2) !important;
+  background: rgba(16, 16, 22, 0.95) !important;
+}
+
+.chat-page .access-mode-switch button {
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-page .access-mode-switch button[aria-pressed='true'] {
+  background: linear-gradient(135deg, #7c5cff, #9d7bff) !important;
+  box-shadow: 0 4px 16px rgba(124, 92, 255, 0.28) !important;
+}
+
+.chat-page .access-mode-control > small a {
+  color: var(--dv-accent-2) !important;
+}
+
+/* Model selector */
+.chat-page .model-select-trigger {
+  border-color: rgba(124, 92, 255, 0.28) !important;
+  background: linear-gradient(180deg, rgba(21, 21, 29, 0.98), rgba(13, 13, 18, 0.98)) !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.chat-page .model-select-trigger:hover,
+.chat-page .custom-model-select.open .model-select-trigger {
+  border-color: rgba(157, 123, 255, 0.55) !important;
+  box-shadow: 0 0 0 3px var(--dv-glow-soft), 0 12px 30px rgba(124, 92, 255, 0.12) !important;
+}
+
+.chat-page .model-select-trigger i {
+  color: var(--dv-accent-2) !important;
+}
+
+.chat-page .model-options {
+  border-color: rgba(124, 92, 255, 0.25) !important;
+  background: linear-gradient(165deg, rgba(18, 18, 26, 0.98), rgba(10, 10, 14, 0.98)) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 40px rgba(124, 92, 255, 0.1) !important;
+}
+
+.chat-page .model-options button:hover,
+.chat-page .model-options button.selected {
+  background: rgba(124, 92, 255, 0.16) !important;
+}
+
+.chat-page .model-options button.selected {
+  background: linear-gradient(90deg, rgba(124, 92, 255, 0.28), rgba(72, 48, 160, 0.18)) !important;
+  box-shadow: inset 0 0 0 1px rgba(157, 123, 255, 0.35);
+}
+
+.chat-page .model-options b {
+  color: var(--dv-accent-2) !important;
+}
+
+.chat-page .model-family-heading small {
+  position: relative;
+  padding-left: 10px;
+}
+
+.chat-page .model-family-heading small::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: #9d7bff;
+  box-shadow: 0 0 8px rgba(157, 123, 255, 0.45);
+}
+
+/* Workspace ambient glow */
+.chat-page .chat-workspace:has(.chat-empty) {
+  background-color: var(--dv-bg) !important;
+  background-image:
+    radial-gradient(ellipse 70% 45% at 50% 42%, rgba(88, 56, 180, 0.16) 0%, rgba(48, 36, 120, 0.08) 38%, transparent 72%),
+    radial-gradient(ellipse 45% 30% at 50% 58%, rgba(56, 88, 200, 0.08) 0%, transparent 70%) !important;
+}
+
+.chat-page .chat-empty::before {
+  background: radial-gradient(
+    ellipse at 50% 52%,
+    rgba(124, 92, 255, 0.14) 0%,
+    rgba(72, 56, 160, 0.08) 34%,
+    rgba(40, 48, 120, 0.04) 55%,
+    transparent 76%
+  ) !important;
+}
+
+.chat-page .chat-empty::after {
+  background: radial-gradient(ellipse, rgba(88, 120, 255, 0.08), transparent 70%) !important;
+}
+
+.chat-page .chat-eyebrow {
+  color: var(--dv-accent-2) !important;
+  letter-spacing: 1.4px;
+}
+
+.chat-page .chat-empty h1 {
+  color: #fff !important;
+  letter-spacing: -0.03em;
+}
+
+.chat-page .chat-subtitle {
+  color: var(--dv-muted) !important;
+}
+
+/* Suggestion cards */
+.chat-page .prompt-suggestions {
+  gap: 14px !important;
+  margin-top: 32px !important;
+}
+
+.chat-page .prompt-suggestions button {
+  padding: 20px 18px !important;
+  border-radius: 16px !important;
+  border-color: rgba(124, 92, 255, 0.18) !important;
+  background: rgba(21, 21, 29, 0.82) !important;
+  backdrop-filter: blur(10px);
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+}
+
+.chat-page .prompt-suggestions button:hover {
+  transform: translateY(-3px);
+  border-color: rgba(157, 123, 255, 0.45) !important;
+  background: rgba(28, 24, 44, 0.92) !important;
+  box-shadow: 0 14px 36px rgba(124, 92, 255, 0.16);
+}
+
+.chat-page .prompt-suggestions button > span {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 11px !important;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.28), rgba(72, 48, 160, 0.2)) !important;
+  color: #e9d5ff !important;
+  font-size: 0.9rem !important;
+  box-shadow: inset 0 0 0 1px rgba(157, 123, 255, 0.25);
+}
+
+.chat-page .prompt-suggestions strong {
+  font-size: 0.86rem !important;
+}
+
+.chat-page .prompt-suggestions small {
+  color: #9ca3af !important;
+  font-size: 0.72rem !important;
+  white-space: normal !important;
+}
+
+/* Composer — hero element */
+.chat-page .chat-composer {
+  background: linear-gradient(transparent, rgba(7, 7, 11, 0.92) 22%) !important;
+}
+
+.chat-page .composer-box {
+  border: 1px solid rgba(124, 92, 255, 0.28) !important;
+  border-radius: 22px !important;
+  background: rgba(16, 16, 22, 0.94) !important;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35) !important;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s ease;
+}
+
+.chat-page .composer-box:focus-within {
+  border-color: rgba(157, 123, 255, 0.55) !important;
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.35),
+    0 0 0 3px var(--dv-glow-soft),
+    0 0 28px rgba(124, 92, 255, 0.14) !important;
+}
+
+.chat-page .chat-workspace:has(.chat-empty) .composer-box {
+  background: rgba(16, 16, 22, 0.92) !important;
+}
+
+.chat-page .image-mode-switch {
+  gap: 8px !important;
+  padding: 4px 2px 8px !important;
+}
+
+.chat-page .image-mode-switch button {
+  border: 1px solid rgba(124, 92, 255, 0.2) !important;
+  border-radius: 999px !important;
+  padding: 8px 14px !important;
+  background: rgba(13, 13, 18, 0.8) !important;
+  color: #c4b5fd !important;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.chat-page .image-mode-switch button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(157, 123, 255, 0.4) !important;
+}
+
+.chat-page .image-mode-switch button[aria-pressed='true'] {
+  border-color: rgba(157, 123, 255, 0.55) !important;
+  background: rgba(124, 92, 255, 0.18) !important;
+  color: #ede9fe !important;
+  box-shadow: 0 0 0 1px rgba(157, 123, 255, 0.25);
+}
+
+.chat-page .composer-tools button {
+  border-color: rgba(124, 92, 255, 0.18) !important;
+  background: rgba(21, 21, 29, 0.9) !important;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.chat-page .composer-tools button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(157, 123, 255, 0.35) !important;
+  background: rgba(28, 24, 44, 0.95) !important;
+}
+
+.chat-page .composer-actions .send-message {
+  border: 0 !important;
+  background: linear-gradient(135deg, #7c5cff, #9d7bff) !important;
+  color: #fff !important;
+  box-shadow: 0 8px 22px rgba(124, 92, 255, 0.32);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.chat-page .composer-actions .send-message:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: 0 12px 28px rgba(124, 92, 255, 0.38);
+  filter: brightness(1.05);
+}
+
+.chat-page .composer-actions .send-message:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.chat-page .composer-menu {
+  border-color: rgba(124, 92, 255, 0.22) !important;
+  background: rgba(16, 16, 22, 0.98) !important;
+}
+
+.chat-page .context-suggestions button:hover {
+  border-color: var(--dv-accent) !important;
+  color: var(--dv-accent-2) !important;
+  background: rgba(124, 92, 255, 0.1) !important;
+}
+
+/* History feed panel */
+.chat-page .history-feed-overlay {
+  background: rgba(4, 4, 8, 0.78) !important;
+}
+
+.chat-page .history-feed-panel {
+  border-color: rgba(124, 92, 255, 0.22) !important;
+  background: linear-gradient(165deg, #101016, #0a0a0f) !important;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.65), 0 0 40px rgba(124, 92, 255, 0.08) !important;
+}
+
+.chat-page .history-feed-header p {
+  color: var(--dv-accent-2) !important;
+}
+
+.chat-page .history-feed-item {
+  border-color: rgba(124, 92, 255, 0.12) !important;
+  background: rgba(21, 21, 29, 0.85) !important;
+}
+
+.chat-page .history-feed-form button,
+.chat-page .history-feed-actions button,
+.chat-page .history-feed-row button {
+  border-color: rgba(124, 92, 255, 0.35) !important;
+}
+
+/* Misc accents — replace legacy green highlights */
+.chat-page .chat-history-feed-toggle.open {
+  border-color: var(--dv-accent) !important;
+  color: var(--dv-accent-2) !important;
+}
+
+.chat-page .dashboard-link:hover {
+  border-color: var(--dv-accent) !important;
+}
+
+.chat-page input,
+.chat-page textarea {
+  caret-color: var(--dv-accent-2);
+}
+
+/* Composer stays dark in chat — typed text always light (incl. light UI theme). */
+.chat-page .composer-box textarea,
+html[data-theme='light'] .chat-page .composer-box textarea {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  opacity: 1 !important;
+  background: transparent !important;
+}
+
+.chat-page .composer-box textarea::placeholder,
+html[data-theme='light'] .chat-page .composer-box textarea::placeholder {
+  color: rgba(196, 181, 253, 0.62) !important;
+  -webkit-text-fill-color: rgba(196, 181, 253, 0.62) !important;
+  opacity: 1 !important;
+}
