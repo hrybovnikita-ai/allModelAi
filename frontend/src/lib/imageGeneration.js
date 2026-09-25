@@ -10,15 +10,29 @@ export const IMAGE_STYLES = [
 ];
 
 export const IMAGE_ASPECTS = [
-  { id: '1:1', label: '1:1' },
-  { id: '16:9', label: '16:9' },
-  { id: '9:16', label: '9:16' },
+  { id: '1:1', label: 'Square (1:1)' },
+  { id: '16:9', label: 'Landscape (16:9)' },
+  { id: '9:16', label: 'Portrait (9:16)' },
 ];
 
 export const IMAGE_QUALITIES = [
   { id: 'standard', label: 'Standard' },
-  { id: 'high', label: 'High' },
+  { id: 'hd', label: 'HD' },
+  { id: 'ultra', label: 'Ultra' },
 ];
+
+export const QUALITY_LABELS = {
+  standard: 'Standard',
+  hd: 'HD',
+  ultra: 'Ultra',
+  high: 'HD',
+};
+
+export const ASPECT_LABELS = {
+  '1:1': 'Square (1:1)',
+  '16:9': 'Landscape (16:9)',
+  '9:16': 'Portrait (9:16)',
+};
 
 export async function fetchImageGenerationStatus() {
   const response = await apiFetch('/api/images/status');
@@ -28,14 +42,56 @@ export async function fetchImageGenerationStatus() {
   return response.json();
 }
 
-export function imageProviderLabel(status) {
+export function imageProviderLabel(status, quality = 'hd') {
   if (!status?.configured) return null;
+  const model = status.qualityModels?.[quality] || status.model;
   if (status.provider === 'pollinations') {
-    return `Pollinations · ${status.model || 'flux'}`;
+    return `Pollinations · ${model || 'flux'}`;
   }
-  if (status.provider === 'cloudflare') return 'Cloudflare Workers AI';
-  if (status.provider === 'openai') return `OpenAI · ${status.model || 'image'}`;
+  if (status.provider === 'cloudflare') return `Cloudflare Workers AI · ${model || 'flux'}`;
+  if (status.provider === 'openai') return `OpenAI · ${model || 'image'}`;
   return null;
+}
+
+export function extensionForMime(mimeType = '') {
+  const mime = String(mimeType).toLowerCase();
+  if (mime.includes('jpeg') || mime.includes('jpg')) return 'jpg';
+  if (mime.includes('webp')) return 'webp';
+  if (mime.includes('png')) return 'png';
+  return 'png';
+}
+
+export function dataImageBytes(imageUrl) {
+  const match = /^data:(image\/[a-z0-9.+-]+);base64,([\s\S]+)$/i.exec(String(imageUrl || ''));
+  if (!match) return null;
+  const mimeType = match[1].toLowerCase();
+  const binary = atob(match[2].replace(/\s/g, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return { mimeType, bytes };
+}
+
+export async function downloadOriginalImage(imageUrl, { mimeType, filename = 'allmodelai-image' } = {}) {
+  const decoded = dataImageBytes(imageUrl);
+  let blob;
+  let extension;
+  if (decoded) {
+    blob = new Blob([decoded.bytes], { type: decoded.mimeType });
+    extension = extensionForMime(decoded.mimeType);
+  } else {
+    const response = await fetch(imageUrl);
+    if (!response.ok) throw new Error('Could not download the original image.');
+    blob = await response.blob();
+    extension = extensionForMime(mimeType || blob.type);
+  }
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${filename}.${extension}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
 export function buildImageRequestBody({
@@ -65,4 +121,13 @@ export async function requestImageGeneration(body, signal) {
     signal,
   });
   return response;
+}
+
+export async function requestImageUpscale(imageUrl, signal) {
+  return apiFetch('/api/images/upscale', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageUrl }),
+    signal,
+  });
 }

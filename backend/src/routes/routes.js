@@ -86,8 +86,9 @@ router.post('/apps/generate', requireAuth, prepareAppGeneration, createChatRespo
 router.post('/chat/improve-prompt', requireAuth, improvePrompt);
 router.post('/vision/analyze', requireAuth, analyzeVision);
 router.post('/router/preview', requireAuth, previewRouter);
-const { getImageGenerationStatus } = require('../images');
+const { getImageGenerationStatus, upscaleGeneratedImage } = require('../images');
 router.get('/images/status', requireAuth, getImageGenerationStatus);
+router.post('/images/upscale', requireAuth, upscaleGeneratedImage);
 router.post('/images', requireAuth, generateImage);
 router.post('/images/generate', requireAuth, generateImage);
 router.post('/purchases', requireAuth, createPurchase);

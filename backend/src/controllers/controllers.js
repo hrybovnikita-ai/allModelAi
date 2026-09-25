@@ -93,9 +93,9 @@ const parseImagePayload = (raw) => {
     return null;
 };
 
-const createMessage = ({ role, text, content, id, timestamp, image, imageUrl, images }) => {
+const createMessage = ({ role, text, content, id, timestamp, image, imageUrl, images, imageQuality, imageAspect, imageSize, imageModel, imageMimeType, upscaleSupported }) => {
     const rawImage = image || imageUrl || (Array.isArray(images) && images[0]) || null;
-    return {
+    const message = {
         id: id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         role: role === 'assistant' ? 'assistant' : 'user',
         content: String(content ?? text ?? ''),
@@ -103,6 +103,13 @@ const createMessage = ({ role, text, content, id, timestamp, image, imageUrl, im
         imageUrl: rawImage,
         timestamp: timestamp || new Date().toISOString(),
     };
+    if (imageQuality) message.imageQuality = imageQuality;
+    if (imageAspect) message.imageAspect = imageAspect;
+    if (imageSize) message.imageSize = imageSize;
+    if (imageModel) message.imageModel = imageModel;
+    if (imageMimeType) message.imageMimeType = imageMimeType;
+    if (typeof upscaleSupported === 'boolean') message.upscaleSupported = upscaleSupported;
+    return message;
 };
 
 const normalizeMessages = (messages) => (Array.isArray(messages) ? messages : [])

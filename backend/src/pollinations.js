@@ -1,3 +1,5 @@
+const { redactSecrets } = require('./imageProviderAdapter');
+
 const stripQuotes = (value) => String(value || '').trim().replace(/^["']|["']$/g, '');
 
 const getPollinationsApiKey = () =>
@@ -52,17 +54,16 @@ const resolveImageProvider = () => {
 };
 
 const extractPollinationsErrorMessage = (data, response, rawText = '') => {
+    let message = '';
     if (data?.error) {
-        if (typeof data.error === 'string') return data.error;
-        if (data.error.message) return String(data.error.message);
-        if (data.error.code) return String(data.error.code);
-    }
-    if (data?.message) return String(data.message);
-    if (data?.detail) {
-        return typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
-    }
-    if (rawText) return rawText.slice(0, 500);
-    return `Pollinations HTTP ${response.status}`;
+        if (typeof data.error === 'string') message = data.error;
+        else if (data.error.message) message = String(data.error.message);
+        else if (data.error.code) message = String(data.error.code);
+    } else if (data?.message) message = String(data.message);
+    else if (data?.detail) message = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+    else if (rawText) message = rawText.slice(0, 500);
+    else message = `Pollinations HTTP ${response.status}`;
+    return redactSecrets(message);
 };
 
 const logPollinationsResponse = (response, data, rawText, durationMs, model) => {
@@ -86,12 +87,26 @@ const generatePollinationsImage = async (prompt, options = {}) => {
     }
 
     const model = stripQuotes(options.model || process.env.POLLINATIONS_IMAGE_MODEL || 'flux');
-    const size = stripQuotes(options.size || process.env.IMAGE_SIZE || '1024x1024');
+    const size = stripQuotes(options.size || '1024x1024');
     const baseUrl = stripQuotes(process.env.POLLINATIONS_API_URL || 'https://gen.pollinations.ai');
     const url = `${baseUrl.replace(/\/$/, '')}/v1/images/generations`;
+    const body = {
+        prompt: String(prompt || '').slice(0, 4000),
+        model,
+        size,
+        n: 1,
+        response_format: 'b64_json',
+    };
+    for (const key of ['quality', 'negative_prompt', 'resolution']) {
+        if (options[key] != null && options[key] !== '') body[key] = options[key];
+    }
 
     console.log('[IMAGE] Sending request to Pollinations');
     console.log('[IMAGE] Pollinations endpoint:', url);
+    console.log('[IMAGE] Pollinations size:', size);
+    console.log('[IMAGE] Pollinations quality param:', body.quality || '(omitted)');
+    console.log('[IMAGE] Pollinations resolution:', body.resolution || '(omitted)');
+    console.log('[IMAGE] Pollinations negative_prompt:', body.negative_prompt ? 'set' : '(omitted)');
 
     const started = Date.now();
     const response = await fetch(url, {
@@ -101,13 +116,7 @@ const generatePollinationsImage = async (prompt, options = {}) => {
             Authorization: `Bearer ${pollinationsKey}`,
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-            prompt: prompt.slice(0, 4000),
-            model,
-            size,
-            n: 1,
-            response_format: 'b64_json',
-        }),
+        body: JSON.stringify(body),
     });
 
     const contentType = response.headers.get('content-type') || '';

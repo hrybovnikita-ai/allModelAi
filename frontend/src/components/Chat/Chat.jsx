@@ -2,6 +2,7 @@ import { parseGeneratedFile } from '../../lib/generatedFiles';
 import { FileCard } from '../GeneratedFile/GeneratedFile';
 import { createVoiceInput } from '../../lib/voiceInput';
 import ImageGenerator from '../ImageGenerator/ImageGenerator';
+import GeneratedImageCard from './GeneratedImageCard';
 import { useLanguage } from '../../lib/useLanguage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams, useOutletContext } from 'react-router-dom';
@@ -9,7 +10,7 @@ import { Highlight } from 'prism-react-renderer';
 import { Prism, codeTheme, languageAliases } from '../../lib/codeHighlight';
 import { dashboardModels } from '../../data/dashboardModels';
 import { apiFetch, checkChatResponse } from '../../lib/api';
-import { buildImageRequestBody } from '../../lib/imageGeneration';
+import { buildImageRequestBody, downloadOriginalImage } from '../../lib/imageGeneration';
 import { logger, timingElapsed, timingNow } from '../../lib/logger';
 import { clearAllSessionData } from '../../lib/session';
 import SessionRecovery from './SessionRecovery';
@@ -35,9 +36,9 @@ function ModelSpeedBadge({ speed }) {
 // ];
 
 const suggestions = [
-  { icon: '✦', title: 'Create an idea', prompt: 'Give me three original product ideas for students.' },
-  { icon: '</>', title: 'Explain code', prompt: 'Explain React useEffect with a simple example.' },
-  { icon: '◎', title: 'Compare models', prompt: 'Compare Claude, Gemini, GPT, and Llama.' },
+  { iconImage: '/create-idea-icon.png', iconImageClass: 'suggestion-icon-inverted', title: 'Create an idea', prompt: 'Give me three original product ideas for students.' },
+  { iconImage: '/explain-code-icon.png', title: 'Explain code', prompt: 'Explain React useEffect with a simple example.' },
+  { iconLabel: 'AI', iconImageClass: 'suggestion-icon-ai', title: 'Compare models', prompt: 'Compare Claude, Gemini, GPT, and Llama.' },
 ];
 
 const chatTextColors = [
@@ -816,14 +817,14 @@ export default function Chat() {
 
   if (!user) return <Navigate to="/" replace />;
 
-  const sendMessage = async (event, overrideText, overrideMessages, overrideAttachment) => {
+  const sendMessage = async (event, overrideText, overrideMessages, overrideAttachment, options = {}) => {
     event?.preventDefault();
     const rawText = String(overrideText ?? prompt).trim();
     const currentAttachment = overrideAttachment ?? attachedImage;
     const text = rawText || (currentAttachment ? 'Analyze this screenshot: describe in detail what is shown here and give me step-by-step guidance on where to click and what to do.' : '');
     if (!text || isSending) return;
     const generatingFile = selectedSkill === 'file';
-    const generatingImage = !generatingFile && (selectedSkill === 'image' || (!currentAttachment && /^(?:нарисуй|сгенерируй\s+(?:изображение|картинку|фото)|создай\s+(?:изображение|картинку)|draw|generate\s+(?:an?\s+)?(?:image|picture|photo)|намалюй|згенеруй\s+зображення)/i.test(rawText)));
+    const generatingImage = !generatingFile && (options.forceImage || selectedSkill === 'image' || (!currentAttachment && /^(?:нарисуй|сгенерируй\s+(?:изображение|картинку|фото)|создай\s+(?:изображение|картинку)|draw|generate\s+(?:an?\s+)?(?:image|picture|photo)|намалюй|згенеруй\s+зображення)/i.test(rawText)));
     const userMessage = {
       role: 'user',
       text,
@@ -1048,15 +1049,26 @@ export default function Chat() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildImageRequestBody({
             prompt: text,
-            quality: 'high',
-            aspectRatio: '1:1',
+            quality: options.quality || 'hd',
+            aspectRatio: options.aspectRatio || '1:1',
+            style: options.style || 'auto',
           })),
           signal: controller.signal,
         });
         await checkChatResponse(imageResponse);
         const imageData = await imageResponse.json().catch(() => ({}));
         if (!imageResponse.ok || !imageData.imageUrl) throw new Error(imageData.message || 'Could not create the image.');
-        const answer = { role: 'assistant', text: 'Done! Here is your image.', imageUrl: imageData.imageUrl };
+        const answer = {
+          role: 'assistant',
+          text: 'Done! Here is your image.',
+          imageUrl: imageData.imageUrl,
+          imageQuality: imageData.quality,
+          imageAspect: imageData.aspectRatio,
+          imageSize: imageData.size,
+          imageModel: imageData.model,
+          imageMimeType: imageData.mimeType,
+          upscaleSupported: imageData.upscaleSupported,
+        };
         const stillOpen = () => activeConversationIdRef.current === startedConversationId;
         if (stillOpen()) setMessages([...nextMessages, answer]);
         if (!temporaryChat) {
@@ -1702,7 +1714,7 @@ export default function Chat() {
         </div>}
 
         <div className="chat-messages" ref={messagesContainer}>
-          {messages.length === 0 && <div className="chat-empty"><div className="model-orb"><img src={selectedModel.image} alt={`${selectedModel.name} logo`} /></div><p className="chat-eyebrow">{selectedModel.provider} · {selectedModel.name}</p><h1>{t("What can I help you create?")}</h1><p className="chat-subtitle">{t("Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.")}</p><div className="prompt-suggestions">{suggestions.map((item) => <button key={item.title} onClick={() => chooseSuggestion(item.prompt)}><span>{item.icon}</span><strong>{t(item.title)}</strong><small>{t(item.prompt)}</small></button>)}</div></div>}
+          {messages.length === 0 && <div className="chat-empty"><div className="model-orb"><img src={selectedModel.image} alt={`${selectedModel.name} logo`} /></div><p className="chat-eyebrow">{selectedModel.provider} · {selectedModel.name}</p><h1>{t("What can I help you create?")}</h1><p className="chat-subtitle">{t("Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.")}</p><div className="prompt-suggestions">{suggestions.map((item) => <button key={item.title} onClick={() => chooseSuggestion(item.prompt)}><span className={['suggestion-icon', item.iconImage && 'suggestion-icon-image', item.iconImageClass].filter(Boolean).join(' ')}>{item.iconImage ? <img src={item.iconImage} alt="" /> : item.iconLabel ? <span className="suggestion-icon-text" aria-hidden="true">{item.iconLabel}</span> : item.icon}</span><strong>{t(item.title)}</strong><small>{t(item.prompt)}</small></button>)}</div></div>}
           {messages.map((message, index) => {
             const messageModel = dashboardModels.find((model) => model.slug === message.modelSlug) || selectedModel;
             const text = message.content ?? message.text ?? '';
@@ -1714,7 +1726,7 @@ export default function Chat() {
             const editing = message.role === 'user' && editingMessageIndex === index;
             const liked = messageLikes[index];
             const feedback = messageFeedback[index];
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} />}{message.imageUrl && message.role !== 'user' && <div className="generated-image-result"><button type="button" className="generated-image-preview" onClick={() => setPreviewModalImage(message.imageUrl)} aria-label="Open image"><img className="generated-image" src={message.imageUrl} alt="Generated image" /></button><a href={message.imageUrl} download="allmodelai-image.png" target="_blank" rel="noreferrer">↓ Download image</a></div>}{text && !activelyStreaming && !editing && <div className="message-actions">
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} />}{message.imageUrl && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || 'hd', aspectRatio: message.imageAspect || '1:1' }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{text && !activelyStreaming && !editing && <div className="message-actions">
               {message.role === 'assistant' ? (
                 <>
                   <button type="button" data-tooltip={t("Copy")} onClick={() => copyMessage(generatedFile?.content || text)} aria-label="Copy response">⎘</button>
@@ -1838,7 +1850,7 @@ export default function Chat() {
             <button className="lightbox-close" onClick={() => setPreviewModalImage(null)} aria-label="Close image preview">✕</button>
             <img src={previewModalImage} alt="Full resolution screenshot preview" />
             <div className="lightbox-actions">
-              <a href={previewModalImage} download="screenshot.png" target="_blank" rel="noopener noreferrer">↓ Download image</a>
+              <button type="button" onClick={() => downloadOriginalImage(previewModalImage).catch(() => setChatError('Could not download the original image.'))}>↓ Download image</button>
             </div>
           </div>
         </div>

@@ -1,21 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
 import { checkChatResponse } from '../../lib/api';
 import {
+  ASPECT_LABELS,
   buildImageRequestBody,
+  downloadOriginalImage,
   fetchImageGenerationStatus,
   IMAGE_ASPECTS,
   IMAGE_QUALITIES,
   IMAGE_STYLES,
   imageProviderLabel,
+  QUALITY_LABELS,
   requestImageGeneration,
+  requestImageUpscale,
 } from '../../lib/imageGeneration';
 import './ImageGenerator.css';
+
+const formatSize = (size) => (size ? String(size).replace('x', '×') : '');
 
 export default function ImageGenerator({ initialPrompt = '', onClose }) {
   const [prompt, setPrompt] = useState(initialPrompt.slice(0, 4000));
   const [style, setStyle] = useState('auto');
   const [aspectRatio, setAspectRatio] = useState('1:1');
-  const [quality, setQuality] = useState('standard');
+  const [quality, setQuality] = useState('hd');
   const [image, setImage] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -88,13 +94,39 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
     await runGeneration({ editText: editInstruction.trim() });
   };
 
-  const downloadImage = () => {
+  const downloadImage = async () => {
     if (!image?.imageUrl) return;
-    const link = document.createElement('a');
-    link.href = image.imageUrl;
-    link.download = 'allmodelai-image.png';
-    link.click();
+    try {
+      await downloadOriginalImage(image.imageUrl, { mimeType: image.mimeType });
+    } catch (failure) {
+      setError(failure.message || 'Could not download the original image.');
+    }
   };
+
+  const upscaleImage = async () => {
+    if (!image?.imageUrl || busy) return;
+    const controller = new AbortController();
+    request.current = controller;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await requestImageUpscale(image.imageUrl, controller.signal);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.imageUrl) throw new Error(result.message || 'Could not upscale the image.');
+      setImage((current) => ({
+        ...current,
+        imageUrl: result.imageUrl,
+        mimeType: result.mimeType || current.mimeType,
+        upscaled: true,
+      }));
+    } catch (failure) {
+      if (!controller.signal.aborted) setError(failure.message);
+    } finally {
+      if (!controller.signal.aborted) setBusy(false);
+    }
+  };
+
+  const showUpscale = Boolean(providerStatus?.upscaleSupported || image?.upscaleSupported);
 
   return (
     <dialog ref={dialog} className="image-generator-dialog" aria-labelledby="image-generator-title" onCancel={onClose}>
@@ -102,8 +134,8 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
         <div>
           <h2 id="image-generator-title">Create image</h2>
           <p>Describe your image and AI will create it here.</p>
-          {imageProviderLabel(providerStatus) && (
-            <p className="image-generator-provider">{imageProviderLabel(providerStatus)}</p>
+          {imageProviderLabel(providerStatus, quality) && (
+            <p className="image-generator-provider">{imageProviderLabel(providerStatus, quality)}</p>
           )}
         </div>
         <button type="button" onClick={onClose} aria-label="Close image generator">×</button>
@@ -132,8 +164,8 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
             </select>
           </label>
           <label>
-            Aspect ratio
-            <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value)}>
+            Format
+            <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value)} aria-label="Image format">
               {IMAGE_ASPECTS.map((item) => (
                 <option key={item.id} value={item.id}>{item.label}</option>
               ))}
@@ -141,7 +173,7 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
           </label>
           <label>
             Quality
-            <select value={quality} onChange={(event) => setQuality(event.target.value)}>
+            <select value={quality} onChange={(event) => setQuality(event.target.value)} aria-label="Quality">
               {IMAGE_QUALITIES.map((item) => (
                 <option key={item.id} value={item.id}>{item.label}</option>
               ))}
@@ -154,7 +186,7 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
         </button>
       </form>
 
-      {busy && <p role="status">Generation may take a few minutes.</p>}
+      {busy && <p role="status">Generation may take a few minutes. Higher quality takes longer.</p>}
       {error && <p role="alert">{error}</p>}
 
       {image && (
@@ -164,10 +196,16 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
             alt={image.prompt}
             onError={() => setError('Could not load the image. Please try generating it again.')}
           />
+          <div className="image-generator-meta">
+            <span>{QUALITY_LABELS[image.quality] || image.quality}</span>
+            <span>{ASPECT_LABELS[image.aspectRatio] || image.aspectRatio}</span>
+            {image.size && <span>{formatSize(image.size)}</span>}
+          </div>
           <figcaption>{image.prompt}</figcaption>
           <div className="image-generator-actions">
-            <button type="button" onClick={downloadImage}>Download</button>
+            <button type="button" onClick={downloadImage}>Download image</button>
             <button type="button" disabled={busy} onClick={regenerate}>Regenerate</button>
+            {showUpscale && <button type="button" disabled={busy} onClick={upscaleImage}>Upscale image</button>}
             <button type="button" disabled={busy} onClick={() => setEditOpen((open) => !open)}>Edit</button>
           </div>
           {editOpen && (
