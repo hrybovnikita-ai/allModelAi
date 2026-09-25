@@ -17,8 +17,8 @@ const colorChannels = [0, 2, 4].map(index => Number.parseInt(colorValue.slice(in
 document.documentElement.style.setProperty('--user-text-color', savedMessageColor)
 document.documentElement.style.setProperty('--user-bubble-text', (colorChannels[0] * 299 + colorChannels[1] * 587 + colorChannels[2] * 114) / 1000 > 155 ? '#111111' : '#ffffff')
 const savedInputColor = savedAppearance.inputColor || '#262626'
-const inputValue = savedInputColor.replace('#', '')
-const inputChannels = [0, 2, 4].map(index => Number.parseInt(inputValue.slice(index, index + 2), 16))
+//const inputValue = savedInputColor.replace('#', '')
+// const inputChannels = [0, 2, 4].map(index => Number.parseInt(inputValue.slice(index, index + 2), 16))
 document.documentElement.style.setProperty('--composer-color', savedInputColor)
 // Chat composer surface is dark (Dark Violet) — typed text must stay light regardless of input swatch.
 document.documentElement.style.setProperty('--composer-text', '#ffffff')
