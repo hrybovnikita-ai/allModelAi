@@ -3,6 +3,10 @@ const { sessionCookieOptions } = require('../sessionCookie');
 const { createSessionToken, validSessionToken } = require('../sessionToken');
 const { publicAppOrigin } = require('../publicAccess');
 const { stripeCheckoutWalletOptions, ensureStripePaymentMethodDomain } = require('../stripeWallet');
+const { subscriptionPlans, normalizePlanKey, periodEndFor } = require('../billing/plans');
+const { activateSubscription } = require('../billing/subscriptions');
+const { wayforpayCheckoutAvailable } = require('../wayforpay/config');
+const { buildCheckoutInfo, stripeCheckoutEnabled } = require('../payments/checkoutInfo');
 const frontendOrigin = (req) => publicAppOrigin(req);
 const crypto = require('node:crypto');
 const { promisify } = require('node:util');
@@ -471,36 +475,12 @@ const deleteAccount = (req, res) => {
     return res.status(200).json({ message: 'Account deleted successfully', user: deletedUser });
 };
 
-const subscriptionPlans = {
-    free: { name: 'User', amount: 0, interval: 'month', limit: 5000, models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'mistral', 'qwen', 'cloudflare'] },
-    week: { name: 'Weekly', amount: 599, interval: 'week', limit: 500, models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'cloudflare'] },
-    common: { name: 'Pro Monthly', amount: 1900, interval: 'month', limit: 3000, models: ['smart', 'gemini', 'gpt', 'claude', 'llama', 'grok', 'copilot', 'perplexity', 'kimi', 'deepseek', 'mistral', 'qwen', 'cohere', 'cloudflare'] },
-    plus: { name: 'Power Monthly', amount: 4900, interval: 'month', limit: 12000, models: ['all'] },
-};
 const creditLimits = Object.fromEntries(Object.entries(subscriptionPlans).map(([key, plan]) => [key, plan.limit]));
 const creditLimitsEnabled = () => process.env.ENFORCE_CREDIT_LIMITS === 'true';
 const developerEmails = () => new Set(String(process.env.DEVELOPER_EMAILS || 'hrybovnikita@gmail.com').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean));
 
-const getCreditStatus = (database, email) => {
-    const normalizedEmail = String(email || '').trim().toLowerCase();
-    const data = database.read();
-    data.subscriptions ||= {};
-    data.usage ||= {};
-    const detail = database.database.prepare('SELECT plan, billing_interval AS billingInterval, request_limit AS requestLimit, period_end AS periodEnd, status FROM subscription_details WHERE email = ?').get(normalizedEmail);
-    const detailActive = detail && detail.status === 'active' && (!detail.periodEnd || Date.parse(detail.periodEnd) > Date.now());
-    const plan = detailActive && subscriptionPlans[detail.plan] ? detail.plan : 'free';
-    const isDeveloper = developerEmails().has(normalizedEmail);
-    const hasSubscription = Boolean(detailActive && subscriptionPlans[plan]?.amount > 0);
-    const canUseDeveloper = isDeveloper || hasSubscription;
-    const savedMode = database.database.prepare('SELECT mode FROM account_access_modes WHERE email = ?').get(normalizedEmail)?.mode;
-    const mode = canUseDeveloper && savedMode !== 'user' ? 'developer' : 'user';
-    const fullAccess = mode === 'developer' && canUseDeveloper;
-    const planDefinition = subscriptionPlans[plan] || subscriptionPlans.free;
-    const limit = detailActive ? detail.requestLimit : (creditLimits[plan] || creditLimits.free);
-    const used = Number(data.usage[normalizedEmail] || 0);
-
-    return { data, email: normalizedEmail, plan, limit, used, remaining: Math.max(limit - used, 0), billingInterval: detail?.billingInterval || planDefinition.interval, periodEnd: detailActive ? detail.periodEnd : null, models: fullAccess ? ['all'] : subscriptionPlans.free.models, enforced: !fullAccess && creditLimitsEnabled(), isDeveloper, hasSubscription, canUseDeveloper, mode, unlimited: fullAccess };
-};
+const { getCreditStatusCore } = require('./subscriptionController');
+const getCreditStatus = (database, email) => getCreditStatusCore(database, email);
 
 const { resolveImageProvider } = require('../pollinations');
 
@@ -614,35 +594,6 @@ const deleteChat = (req, res) => {
     return res.status(200).json({ message: 'Conversation deleted successfully' });
 };
 
-const normalizePlanKey = (value) => ({ starter: 'free', developer: 'free', pro: 'common', monthly: 'common', power: 'plus' }[String(value || '').toLowerCase()] || String(value || '').toLowerCase());
-const periodEndFor = (interval) => new Date(Date.now() + (interval === 'week' ? 7 : 30) * 24 * 60 * 60 * 1000).toISOString();
-
-const activateSubscription = (database, { email, name = 'Subscriber', city = '', dateOfBirth = '', planKey, stripeCustomerId = null, stripeSubscriptionId = null }) => {
-    const plan = subscriptionPlans[planKey];
-    if (!plan) throw new Error('Unknown subscription plan');
-    const normalizedEmail = String(email).trim().toLowerCase();
-    const data = database.read();
-    data.subscriptions ||= {};
-    data.usage ||= {};
-    const purchase = {
-        id: data.purchases.length ? Math.max(...data.purchases.map((item) => item.id)) + 1 : 1,
-        plan: planKey,
-        name: String(name).trim(),
-        email: normalizedEmail,
-        city: String(city).trim(),
-        dateOfBirth: String(dateOfBirth),
-        createdAt: new Date().toISOString(),
-    };
-    data.purchases.push(purchase);
-    data.subscriptions[normalizedEmail] = planKey;
-    data.usage[normalizedEmail] = 0;
-    database.write(data);
-    database.database.prepare(`INSERT INTO subscription_details (email, plan, billing_interval, request_limit, period_end, stripe_customer_id, stripe_subscription_id, status, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?) ON CONFLICT(email) DO UPDATE SET plan=excluded.plan, billing_interval=excluded.billing_interval, request_limit=excluded.request_limit, period_end=excluded.period_end, stripe_customer_id=excluded.stripe_customer_id, stripe_subscription_id=excluded.stripe_subscription_id, status='active', updated_at=excluded.updated_at`)
-        .run(normalizedEmail, planKey, plan.interval, plan.limit, periodEndFor(plan.interval), stripeCustomerId, stripeSubscriptionId, new Date().toISOString());
-    return purchase;
-};
-
 const createCheckoutSession = async (req, res) => {
     const planKey = normalizePlanKey(req.body.plan);
     const plan = subscriptionPlans[planKey];
@@ -653,7 +604,16 @@ const createCheckoutSession = async (req, res) => {
         return res.status(201).json({ developerAccess: true, purchase, redirectUrl: `${frontendOrigin(req)}/checkout?success=developer&plan=developer` });
     }
     if (plan.amount === 0) return res.status(403).json({ message: 'The Developer plan is available only to configured developer accounts.' });
-    if (!process.env.STRIPE_SECRET_KEY?.trim()) return res.status(503).json({ message: 'Payments are not configured. Add STRIPE_SECRET_KEY to the backend environment.' });
+    if (wayforpayCheckoutAvailable() && process.env.STRIPE_CHECKOUT_WHEN_WAYFORPAY !== 'true') {
+        return res.status(409).json({
+            message: 'Paid plan checkout uses WayForPay. Use /api/payments/wayforpay/create.',
+            primaryProvider: 'wayforpay',
+            useWayforpay: true,
+        });
+    }
+    if (!stripeCheckoutEnabled()) {
+        return res.status(503).json({ message: 'Stripe checkout is not enabled for this deployment.' });
+    }
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
     const checkoutOrigin = frontendOrigin(req);
     const embedded = req.body.embedded === true;
@@ -699,11 +659,13 @@ const getPaymentConfig = (_req, res) => {
         || process.env.VITE_STRIPE_PUBLISHABLE_KEY?.trim()
         || null;
     return res.json({
-        stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY?.trim()),
+        ...buildCheckoutInfo(),
         publishableKey,
         wallets: { applePay: true, googlePay: true },
     });
 };
+
+const getPublicCheckoutInfo = (_req, res) => res.json(buildCheckoutInfo());
 
 const fulfillStripeSession = (database, session) => {
     const planKey = normalizePlanKey(session.metadata?.plan);
@@ -1943,6 +1905,7 @@ module.exports = {
     createCheckoutSession,
     verifyCheckoutSession,
     getPaymentConfig,
+    getPublicCheckoutInfo,
     mockDeveloperSubscribe,
     stripeWebhook,
     createChatResponse,

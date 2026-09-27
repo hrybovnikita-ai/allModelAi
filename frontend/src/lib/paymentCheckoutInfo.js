@@ -1,0 +1,46 @@
+const TEST_MODE_BANNER = 'TEST MODE — NO REAL MONEY WILL BE CHARGED';
+
+/** Mirrors backend WAYFORPAY_TEST_MODE for local UI when checkout-info is unavailable. */
+export function clientWayforpayTestModeEnabled() {
+  const flag = import.meta.env.VITE_WAYFORPAY_TEST_MODE;
+  if (flag === 'false') return false;
+  if (flag === 'true') return true;
+  return import.meta.env.DEV;
+}
+
+export function buildClientTestCheckoutInfo() {
+  const testMode = clientWayforpayTestModeEnabled();
+  if (!testMode) return null;
+  return {
+    primaryProvider: 'wayforpay',
+    wayforpayCheckoutAvailable: true,
+    wayforpayTestMode: true,
+    wayforpayMockCheckout: true,
+    showTestModeBanner: true,
+    testModeBannerText: TEST_MODE_BANNER,
+    checkoutSecureLabel: 'WAYFORPAY TEST CHECKOUT',
+    fromClientFallback: true,
+  };
+}
+
+export function mergeCheckoutInfo(apiInfo) {
+  const fallback = buildClientTestCheckoutInfo();
+  if (!apiInfo) return fallback;
+  if (apiInfo.wayforpayTestMode || apiInfo.showTestModeBanner) return apiInfo;
+  if (fallback && apiInfo.primaryProvider !== 'stripe') {
+    return { ...fallback, ...apiInfo, ...fallback };
+  }
+  return apiInfo;
+}
+
+export async function fetchCheckoutInfo() {
+  try {
+    const response = await fetch('/api/payments/checkout-info', { credentials: 'include' });
+    if (!response.ok) return buildClientTestCheckoutInfo();
+    return mergeCheckoutInfo(await response.json());
+  } catch {
+    return buildClientTestCheckoutInfo();
+  }
+}
+
+export { TEST_MODE_BANNER };

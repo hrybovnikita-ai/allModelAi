@@ -5,6 +5,8 @@ import './index.css'
 import './styles/style.css'
 import App from './App.jsx'
 import { applyDeviceProfile } from './lib/deviceProfile.js'
+import { registerSW } from 'virtual:pwa-register'
+import { initPwaInstallPrompt } from './lib/pwaInstall.js'
 
 function readAppearance() {
   try { return JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}') || {} }
@@ -32,12 +34,9 @@ applyTheme()
 systemTheme.addEventListener('change', applyTheme)
 applyDeviceProfile()
 
-window.addEventListener('beforeinstallprompt', (event) => {
-  event.preventDefault()
-  window.deferredInstallPrompt = event
-})
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'))
+initPwaInstallPrompt()
+if (import.meta.env.PROD) {
+  registerSW({ immediate: true })
 }
 
 createRoot(document.getElementById('root')).render(

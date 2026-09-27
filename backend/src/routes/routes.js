@@ -30,6 +30,7 @@ const {
     verifyCheckoutSession,
     mockDeveloperSubscribe,
     getPaymentConfig,
+    getPublicCheckoutInfo,
     createChatResponse,
     analyzeVision,
     generateImage,
@@ -54,10 +55,17 @@ const {
     savePyTorchModelSlot,
     getSystemHealth,
 } = require('../controllers/aiPythonController');
+const {
+    createWayforpayPayment,
+    completeMockWayforpayPayment,
+    completeTestWayforpayCheckout,
+    getWayforpayPaymentStatus,
+} = require('../controllers/wayforpayController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { prepareAppGeneration } = require('../appGeneration');
 const { health, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
 const { getStorageOverview, listStorageIdea, createStorageIdea, deleteStorageIdea } = require('../controllers/storageIdeasController');
+const { getSubscriptionSummary, cancelTestSubscriptionHandler } = require('../controllers/subscriptionController');
 
 const router = express.Router();
 const socialAuth = require('../socialAuth');
@@ -112,11 +120,18 @@ router.post('/images/upscale', requireAuth, upscaleGeneratedImage);
 router.post('/images', requireAuth, generateImage);
 router.post('/images/generate', requireAuth, generateImage);
 router.post('/purchases', requireAuth, createPurchase);
+router.get('/payments/checkout-info', getPublicCheckoutInfo);
 router.get('/payments/config', requireAuth, getPaymentConfig);
+router.post('/payments/wayforpay/create', requireAuth, createWayforpayPayment);
+router.post('/payments/wayforpay/mock-complete', requireAuth, completeMockWayforpayPayment);
+router.post('/payments/wayforpay/test-checkout', requireAuth, completeTestWayforpayCheckout);
+router.get('/payments/wayforpay/status/:orderReference', requireAuth, getWayforpayPaymentStatus);
 router.post('/payments/checkout', requireAuth, createCheckoutSession);
 router.post('/payments/mock-subscribe', requireAuth, mockDeveloperSubscribe);
 router.get('/payments/session/:sessionId', requireAuth, verifyCheckoutSession);
 router.get('/credits', requireAuth, getCredits);
+router.get('/subscription', requireAuth, getSubscriptionSummary);
+router.post('/subscription/cancel-test', requireAuth, cancelTestSubscriptionHandler);
 router.patch('/access-mode', requireAuth, setAccessMode);
 router.get('/chat/history', requireAuth, getChatHistory);
 router.post('/chat/history', requireAuth, createChatHistory);

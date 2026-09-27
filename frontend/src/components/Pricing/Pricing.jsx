@@ -1,14 +1,37 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { buildClientTestCheckoutInfo, fetchCheckoutInfo, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
 import './Pricing.css';
+
+const initialCheckoutUi = () => {
+  const fallback = buildClientTestCheckoutInfo();
+  return {
+    showTestBanner: Boolean(fallback?.showTestModeBanner),
+    testBannerText: fallback?.testModeBannerText || TEST_MODE_BANNER,
+  };
+};
 
 export default function Pricing() {
   const navigate = useNavigate();
+  const [banner, setBanner] = useState(initialCheckoutUi);
+
+  useEffect(() => {
+    fetchCheckoutInfo().then((info) => {
+      setBanner({
+        showTestBanner: Boolean(info?.showTestModeBanner),
+        testBannerText: info?.testModeBannerText || TEST_MODE_BANNER,
+      });
+    });
+  }, []);
 
   return (
     <section id="pricing" className="pricing-section">
       <div className="section-header">
         <h2>Simple, Transparent Pricing</h2>
         <p>Choose the plan that fits your integration needs</p>
+        {banner.showTestBanner && (
+          <p className="pricing-test-mode-banner" role="status">{banner.testBannerText}</p>
+        )}
       </div>
       <div className="pricing-grid">
         <div className="pricing-card">
@@ -20,7 +43,7 @@ export default function Pricing() {
             <li>5,000 requests per month</li>
             <li>Code Studio and Live Preview</li>
           </ul>
-          <button className="pricing-btn" onClick={() => navigate('/checkout?plan=developer')}>Activate developer</button>
+          <button className="pricing-btn" type="button" onClick={() => navigate('/checkout?plan=developer')}>Activate developer</button>
         </div>
         <div className="pricing-card featured">
           <span className="featured-badge">Most Popular</span>
@@ -33,7 +56,7 @@ export default function Pricing() {
             <li>Priority API routing</li>
             <li>Email support</li>
           </ul>
-          <button className="pricing-btn featured-btn" onClick={() => navigate('/checkout?plan=pro')}>Upgrade to Pro</button>
+          <button className="pricing-btn featured-btn" type="button" onClick={() => navigate('/checkout?plan=pro')}>Upgrade to Pro</button>
         </div>
         <div className="pricing-card">
           <span className="pricing-tier">Enterprise</span>
@@ -45,7 +68,7 @@ export default function Pricing() {
             <li>Custom SLA guarantees</li>
             <li>Self-hosting options</li>
           </ul>
-          <button className="pricing-btn" onClick={() => navigate('/checkout?plan=plus')}>Choose Power</button>
+          <button className="pricing-btn" type="button" onClick={() => navigate('/checkout?plan=plus')}>Choose Power</button>
         </div>
       </div>
     </section>

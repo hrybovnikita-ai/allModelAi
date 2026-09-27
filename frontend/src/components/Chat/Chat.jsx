@@ -25,6 +25,7 @@ import AccountDeleteModal from '../AccountDeleteModal';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { isStandaloneApp } from '../../lib/appMode';
 import SubscribeStripeEmbedded from './SubscribeStripeEmbedded';
+import { submitWayforpayCheckout } from '../../lib/wayforpay';
 
 const CHAT_PLAN_TO_CHECKOUT = { starter: 'week', pro: 'common', unlimited: 'plus' };
 
@@ -341,6 +342,7 @@ export default function Chat() {
   const [subscribeStripeSecret, setSubscribeStripeSecret] = useState('');
   const [subscribeStripePublishableKey, setSubscribeStripePublishableKey] = useState('');
   const [subscribeStripeLoading, setSubscribeStripeLoading] = useState(false);
+  const [primaryPaymentProvider, setPrimaryPaymentProvider] = useState(null);
 
   const standaloneApp = useMemo(() => isStandaloneApp(), []);
   const subscribeStripeReturnUrl = useMemo(
@@ -364,6 +366,33 @@ export default function Chat() {
 
   const updateSubscribeForm = (field, value) => setSubscribeForm((form) => ({ ...form, [field]: value }));
 
+  const startWayforpayCheckout = async (planId) => {
+    const checkoutPlan = CHAT_PLAN_TO_CHECKOUT[planId] || 'common';
+    const response = await apiFetch('/api/payments/wayforpay/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: checkoutPlan }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || t('Could not start WayForPay checkout.'));
+    if (data.mockCheckout) {
+      const completeRes = await apiFetch('/api/payments/wayforpay/mock-complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderReference: data.orderReference }),
+      });
+      const completed = await completeRes.json().catch(() => ({}));
+      if (!completeRes.ok || !completed.paid) {
+        throw new Error(completed.message || t('Test payment could not be confirmed.'));
+      }
+      const creditsRes = await apiFetch(`/api/credits?email=${encodeURIComponent(user.email)}`);
+      if (creditsRes.ok) setCreditStatus(await creditsRes.json());
+      setSubscribeModalOpen(false);
+      return;
+    }
+    submitWayforpayCheckout(data);
+  };
+
   const submitSubscription = async () => {
     if (subscribeBusy || !subscribePlan) return;
     setSubscribeError('');
@@ -383,6 +412,8 @@ export default function Chat() {
         setCreditStatus(data);
         setSubscribeModalOpen(false);
         logger.success('Developer test subscription activated (no charge)');
+      } else if (primaryPaymentProvider === 'wayforpay') {
+        await startWayforpayCheckout(subscribePlan.id);
       } else if (!subscribeStripeSecret) {
         const checkoutPlan = CHAT_PLAN_TO_CHECKOUT[subscribePlan.id] || 'common';
         const response = await apiFetch('/api/payments/checkout', {
@@ -947,9 +978,14 @@ export default function Chat() {
       try {
         const configRes = await apiFetch('/api/payments/config');
         const config = configRes.ok ? await configRes.json() : {};
+        const provider = config.primaryProvider || null;
+        if (!cancelled) setPrimaryPaymentProvider(provider);
+        if (provider === 'wayforpay') {
+          return;
+        }
         const publishableKey = config.publishableKey || import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
         if (!config.stripeConfigured) {
-          throw new Error(t('Payments are not configured. Add STRIPE keys on the server.'));
+          throw new Error(t('Payments are not configured. Add payment keys on the server.'));
         }
         if (!publishableKey) {
           throw new Error(t('Missing STRIPE_PUBLISHABLE_KEY / VITE_STRIPE_PUBLISHABLE_KEY.'));
@@ -2313,6 +2349,19 @@ export default function Chat() {
                 </div>
               </div>
             </>
+          ) : primaryPaymentProvider === 'wayforpay' ? (
+            <>
+              <p className="subscribe-stripe-label">{t('Secure card payment via WayForPay')}</p>
+              <p className="subscribe-dev-note">{t('TEST MODE — NO REAL MONEY WILL BE CHARGED. Test payment simulates a WayForPay callback on the server.')}</p>
+              <button
+                disabled={subscribeBusy}
+                className="subscribe-confirm"
+                type="button"
+                onClick={() => submitSubscription()}
+              >
+                {subscribeBusy ? t('Processing…') : `${t('Pay with WayForPay')} · ${subscribePlan.price}`}
+              </button>
+            </>
           ) : (
             <>
               <p className="subscribe-stripe-label">{t('Apple Pay, Google Pay, or card — secure checkout via Stripe')}</p>
@@ -2340,7 +2389,7 @@ export default function Chat() {
             <button disabled={subscribeBusy} className="subscribe-confirm" type="button" onClick={submitSubscription}>
               {subscribeBusy ? t('Processing…') : `${t('Activate test plan')} · ${subscribePlan.price}`}
             </button>
-          ) : (
+          ) : primaryPaymentProvider === 'wayforpay' ? null : (
             <div className={`subscribe-checkout-foot ${subscribeStripeSecret ? 'is-embedded-active' : ''}`}>
               <button
                 disabled={subscribeBusy || subscribeStripeLoading}

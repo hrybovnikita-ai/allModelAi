@@ -13,12 +13,17 @@ const server = app.listen(PORT, HOST, () => {
         process.env.STRIPE_PUBLISHABLE_KEY?.trim()
         || process.env.VITE_STRIPE_PUBLISHABLE_KEY?.trim(),
     );
+    const { wayforpayCheckoutAvailable, wayforpayConfig } = require('./src/wayforpay/config');
+    if (wayforpayCheckoutAvailable()) {
+        const cfg = wayforpayConfig();
+        console.log(`WayForPay checkout: ${cfg.testMode ? 'TEST MODE (mock, no real charges)' : 'LIVE'}.`);
+    }
     if (stripeReady && stripePk) {
         const mode = process.env.STRIPE_SECRET_KEY.trim().startsWith('sk_live_') ? 'live' : 'test';
         console.log(`Stripe payments: enabled (${mode} mode).`);
     } else if (stripeReady) {
         console.log('Stripe payments: secret key set; add STRIPE_PUBLISHABLE_KEY for embedded checkout.');
-    } else {
+    } else if (!wayforpayCheckoutAvailable()) {
         console.log('Stripe payments: not configured (add STRIPE_SECRET_KEY to backend/.env).');
     }
 });

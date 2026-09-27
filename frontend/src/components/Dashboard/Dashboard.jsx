@@ -1,6 +1,6 @@
 import { apiFetch } from '../../lib/api';
 import { clearAllSessionData } from '../../lib/session';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import { dashboardModels as models } from '../../data/dashboardModels';
 import './Dashboard.css';
@@ -14,7 +14,18 @@ import DashboardResources from './DashboardResources';
 import DashboardWorkspaceNav from './DashboardWorkspaceNav';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import EverydayCards from '../EverydayAI/EverydayCards';
+import ManageSubscriptionModal from './ManageSubscriptionModal';
+import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
+
+const subscriptionStatusLabel = (creditStatus) => {
+  const key = creditStatus?.subscriptionStatus;
+  if (key === 'active') return 'Active';
+  if (key === 'free') return 'Free';
+  if (key === 'expired') return 'Expired';
+  if (key === 'canceled') return 'Canceled';
+  return creditStatus?.hasSubscription ? 'Active' : 'Free';
+};
 
 export default function Dashboard() {
   const location = useLocation();
@@ -24,10 +35,49 @@ export default function Dashboard() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [creditStatus, setCreditStatus] = useState(null);
+  const [subscriptionLoad, setSubscriptionLoad] = useState('idle');
+  const [subscriptionError, setSubscriptionError] = useState('');
   const [analytics, setAnalytics] = useState(null);
   const [recentProjects, setRecentProjects] = useState([]);
+  const [manageSubOpen, setManageSubOpen] = useState(false);
 
-  useEffect(() => { if (user?.email) apiFetch(`/api/credits?email=${encodeURIComponent(user.email)}`).then((response) => response.ok ? response.json() : null).then((data) => data && setCreditStatus(data)).catch(() => {}); }, [user?.email]);
+  const loadSubscription = useCallback(async () => {
+    if (!user?.email) return;
+    setSubscriptionLoad('loading');
+    setSubscriptionError('');
+    try {
+      let data = null;
+      const subscriptionResponse = await apiFetch('/api/subscription');
+      if (subscriptionResponse.ok) {
+        data = await subscriptionResponse.json();
+      } else {
+        console.warn('[Dashboard] GET /api/subscription failed', subscriptionResponse.status);
+        const creditsResponse = await apiFetch('/api/credits');
+        if (creditsResponse.ok) {
+          data = await creditsResponse.json();
+        } else {
+          console.warn('[Dashboard] GET /api/credits failed', creditsResponse.status);
+          throw new Error(`Could not load subscription (HTTP ${subscriptionResponse.status}).`);
+        }
+      }
+      if (!data || typeof data.remaining !== 'number') {
+        throw new Error('Subscription API returned an incomplete response.');
+      }
+      setCreditStatus(data);
+      setSubscriptionLoad('ready');
+    } catch (error) {
+      console.error('[Dashboard] subscription load error', error);
+      setSubscriptionError(error.message || 'Could not load subscription.');
+      setSubscriptionLoad('error');
+    }
+  }, [user?.email]);
+
+  useEffect(() => { loadSubscription(); }, [loadSubscription]);
+  useEffect(() => {
+    if (location.state?.subscriptionActivated && user?.email) {
+      loadSubscription();
+    }
+  }, [location.state?.subscriptionActivated, user?.email, loadSubscription]);
   useEffect(() => { if (!user?.email) return; Promise.all([apiFetch(`/api/analytics?email=${encodeURIComponent(user.email)}`).then(r => r.ok ? r.json() : null), apiFetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`).then(r => r.ok ? r.json() : [])]).then(([stats, projects]) => { setAnalytics(stats); setRecentProjects(projects.slice(0, 3)); }).catch(() => {}); }, [user?.email]);
 
 
@@ -55,6 +105,9 @@ export default function Dashboard() {
         onDeleteAccount={() => setDeleteModalOpen(true)}
       />
       <div className="dashboard-shell">
+      {location.state?.subscriptionActivated?.message && (
+        <div className="dashboard-email-notice" role="status">{location.state.subscriptionActivated.message}</div>
+      )}
       {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user.email}</div>}
       {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}
       {deleteError && !deleteModalOpen && <p role="alert">{deleteError}</p>}
@@ -75,7 +128,48 @@ export default function Dashboard() {
         </div>
         <div className="dashboard-orbit" aria-hidden="true"><AllModelAILogoMark /></div>
       </section>
-      {creditStatus && <section className="dashboard-usage"><div><span>Usage this month</span><strong>{creditStatus.plan} plan · {creditStatus.remaining} requests left</strong></div><div className="usage-track"><i style={{ width: `${Math.min((creditStatus.used / creditStatus.limit) * 100, 100)}%` }} /></div><Link to="/checkout?plan=pro">Upgrade plan</Link></section>}
+      {user?.email && (
+        <section className="dashboard-usage dashboard-subscription-card" aria-busy={subscriptionLoad === 'loading'}>
+          {subscriptionLoad === 'loading' && !creditStatus && (
+            <p className="dashboard-subscription-loading" role="status">Loading subscription…</p>
+          )}
+          {subscriptionError && (
+            <p className="dashboard-subscription-error" role="alert">
+              {subscriptionError}{' '}
+              <button type="button" className="dashboard-sub-retry" onClick={loadSubscription}>Retry</button>
+            </p>
+          )}
+          {creditStatus && (
+            <>
+              <div className="dashboard-subscription-head">
+                <div>
+                  <span>Current plan</span>
+                  <strong>{formatSubscriptionPlanLabel(creditStatus)}</strong>
+                </div>
+                <div>
+                  <span>Requests remaining</span>
+                  <strong>{Number(creditStatus.remaining).toLocaleString()}</strong>
+                </div>
+                <div>
+                  <span>Subscription status</span>
+                  <strong>{subscriptionStatusLabel(creditStatus)}</strong>
+                </div>
+                {creditStatus.expiresAtLabel && (
+                  <div>
+                    <span>Renews/Expires</span>
+                    <strong>{creditStatus.expiresAtLabel}</strong>
+                  </div>
+                )}
+              </div>
+              <div className="usage-track"><i style={{ width: `${Math.min((creditStatus.used / creditStatus.limit) * 100, 100)}%` }} /></div>
+              <div className="dashboard-subscription-actions">
+                <button type="button" className="dashboard-sub-manage" onClick={() => setManageSubOpen(true)}>Manage subscription</button>
+                <Link to="/checkout?plan=pro">Upgrade plan</Link>
+              </div>
+            </>
+          )}
+        </section>
+      )}
       <section className="personal-overview"><div className="overview-heading"><div><p className="dashboard-eyebrow">Your week</p><h2>Workspace overview</h2></div><Link to="/studio">Open analytics →</Link></div><div className="overview-grid"><article><small>CONVERSATIONS</small><strong>{analytics?.conversations ?? '—'}</strong><span>Saved in your workspace</span></article><article><small>MESSAGES</small><strong>{analytics?.messages ?? '—'}</strong><span>Across every AI model</span></article><article><small>ESTIMATED TOKENS</small><strong>{analytics ? (analytics.estimatedTokens ?? 0).toLocaleString() : '—'}</strong><span>Processed in conversations</span></article><article className="continue-card"><small>QUICK START</small><strong>Continue creating</strong><div><Link to="/chat?model=smart">Smart chat</Link><Link to="/arena">AI Arena</Link></div></article></div><div className="recent-projects"><div><h3>Recent projects</h3><Link to="/studio">View all</Link></div>{recentProjects.length ? recentProjects.map(project => <Link to="/studio" key={project.id}><span>▦</span><div><strong>{project.name}</strong><small>{project.content?.slice(0, 70) || 'Ready for your next task'}</small></div><b>→</b></Link>) : <div className="projects-empty"><span>✦</span><p>No projects yet. Turn your next idea into a focused workspace.</p><Link to="/studio">Create project</Link></div>}</div></section>
       <EverydayCards />
       <section className="dashboard-feature-cards" aria-label="Workspace highlights">
@@ -114,6 +208,12 @@ export default function Dashboard() {
       </section>
       <DashboardResources />
       </div>
+      {manageSubOpen && (
+        <ManageSubscriptionModal
+          onClose={() => setManageSubOpen(false)}
+          onUpdated={(data) => { if (data) setCreditStatus(data); loadSubscription(); }}
+        />
+      )}
       {deleteModalOpen && <AccountDeleteModal onCancel={() => { setDeleteModalOpen(false); setDeleteError(''); }} onConfirm={deleteAccount} isDeleting={isDeleting} error={deleteError} />}
     </main>
   );

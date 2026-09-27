@@ -2,6 +2,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const routes = require('./src/routes/routes');
 const { stripeWebhook } = require('./src/controllers/controllers');
+const { wayforpayCallback } = require('./src/controllers/wayforpayController');
 const { connectDatabase } = require('./src/db');
 const { configurePublicAccess } = require('./src/publicAccess');
 const users = require('./src/data/data');
@@ -12,6 +13,13 @@ const app = express();
 require('./src/sessionToken').signingKey();
 app.locals.cache = require('./src/cache').createCache();
 app.locals.db = connectDatabase();
+const { migrateAllSubscriptionPlanSlugs } = require('./src/billing/subscriptionLifecycle');
+if (process.env.NODE_ENV !== 'test') {
+    const migratedPlans = migrateAllSubscriptionPlanSlugs(app.locals.db);
+    if (migratedPlans > 0) {
+        console.log(`Subscription plan slugs migrated: ${migratedPlans} account(s) (common→pro, etc.).`);
+    }
+}
 const storedData = app.locals.db.read();
 if (storedData.users.length) {
     const seedPasswords = new Map(users.map((user) => [user.email.toLowerCase(), user.passwordHash]));
@@ -35,6 +43,12 @@ if (storedData.users.length) {
 
 configurePublicAccess(app);
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
+app.post(
+    '/api/payments/wayforpay/callback',
+    express.urlencoded({ extended: true, limit: '256kb' }),
+    express.json({ limit: '256kb' }),
+    wayforpayCallback,
+);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());

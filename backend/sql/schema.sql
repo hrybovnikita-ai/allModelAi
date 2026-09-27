@@ -30,7 +30,13 @@ CREATE TABLE IF NOT EXISTS users (
             stripe_customer_id TEXT,
             stripe_subscription_id TEXT,
             status TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            payment_provider TEXT,
+            order_reference TEXT,
+            payment_status TEXT,
+            amount REAL,
+            currency TEXT,
+            activated_at TEXT
         );
 
         CREATE TABLE IF NOT EXISTS usage (
@@ -231,6 +237,29 @@ CREATE TABLE IF NOT EXISTS account_access_modes (
     email TEXT PRIMARY KEY,
     mode TEXT NOT NULL CHECK(mode IN ('user', 'developer'))
 );
+
+CREATE TABLE IF NOT EXISTS wayforpay_payments (
+    order_reference TEXT PRIMARY KEY,
+    user_email TEXT NOT NULL,
+    user_id INTEGER,
+    plan_key TEXT NOT NULL,
+    amount REAL NOT NULL,
+    currency TEXT NOT NULL,
+    status TEXT NOT NULL,
+    transaction_status TEXT,
+    reason_code TEXT,
+    merchant_account TEXT,
+    payment_provider TEXT DEFAULT 'wayforpay',
+    is_test INTEGER NOT NULL DEFAULT 0,
+    expires_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    paid_at TEXT,
+    callback_received_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS wayforpay_payments_user_email
+ON wayforpay_payments(user_email, created_at DESC);
 
 -- Additive social authentication tables; existing accounts and sessions remain intact.
 CREATE TABLE IF NOT EXISTS social_identities (
