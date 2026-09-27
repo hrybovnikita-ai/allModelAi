@@ -71,7 +71,7 @@ export default function Checkout() {
     <section className="checkout-layout">
       <div className="checkout-intro">
         <p className="checkout-eyebrow">Plans and model limits</p><h1>Choose how much AI you need.</h1>
-        <p>Select a weekly or monthly request limit. Paid checkout is securely hosted by Stripe; AllModelAI never receives your card number or CVC.</p>
+        <p>Select a weekly or monthly request limit. Stripe checkout supports Apple Pay, Google Pay, and cards; AllModelAI never receives your card number or CVC.</p>
         <div className="checkout-plan-grid checkout-plan-grid-four">{Object.values(plans).map((plan)=><button type="button" className={selectedPlan===plan.key?'selected':''} onClick={()=>setSelectedPlan(plan.key)} key={plan.key}><i>{plan.badge}</i><span>{plan.name}</span><strong>${plan.price}<small>/{plan.interval}</small></strong><small>{plan.limit} requests · {plan.models}</small><ul>{plan.perks.map((perk)=><li key={perk}>{perk}</li>)}</ul></button>)}</div>
       </div>
       <section className="checkout-form stripe-checkout-card">

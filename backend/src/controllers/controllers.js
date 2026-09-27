@@ -2,6 +2,7 @@ const modelVariants = require('../data/modelVariants.json');
 const { sessionCookieOptions } = require('../sessionCookie');
 const { createSessionToken, validSessionToken } = require('../sessionToken');
 const { publicAppOrigin } = require('../publicAccess');
+const { stripeCheckoutWalletOptions, ensureStripePaymentMethodDomain } = require('../stripeWallet');
 const frontendOrigin = (req) => publicAppOrigin(req);
 const crypto = require('node:crypto');
 const { promisify } = require('node:util');
@@ -656,12 +657,14 @@ const createCheckoutSession = async (req, res) => {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
     const checkoutOrigin = frontendOrigin(req);
     const embedded = req.body.embedded === true;
+    await ensureStripePaymentMethodDomain(stripe, checkoutOrigin);
     const sessionParams = {
         mode: 'subscription',
         customer_email: email,
         client_reference_id: String(req.user.id),
         billing_address_collection: 'required',
         phone_number_collection: { enabled: true },
+        ...stripeCheckoutWalletOptions(),
         line_items: [{
             quantity: 1,
             price_data: {
@@ -678,7 +681,7 @@ const createCheckoutSession = async (req, res) => {
         subscription_data: { metadata: { email, plan: planKey } },
     };
     if (embedded) {
-        sessionParams.ui_mode = 'embedded';
+        sessionParams.ui_mode = 'custom';
         sessionParams.return_url = `${checkoutOrigin}/chat?subscribe=success&session_id={CHECKOUT_SESSION_ID}`;
     } else {
         sessionParams.success_url = `${checkoutOrigin}/checkout?success=1&session_id={CHECKOUT_SESSION_ID}`;
@@ -698,6 +701,7 @@ const getPaymentConfig = (_req, res) => {
     return res.json({
         stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY?.trim()),
         publishableKey,
+        wallets: { applePay: true, googlePay: true },
     });
 };
 

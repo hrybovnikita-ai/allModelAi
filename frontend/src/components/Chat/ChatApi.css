@@ -1012,13 +1012,13 @@ html[data-theme="light"] .quick-prompts button:hover, html[data-theme="light"] .
 
 .subscribe-stripe-slot {
   position: relative;
-  min-height: 440px;
+  min-height: 520px;
   width: 100%;
   margin: 8px 0 4px;
   border-radius: 12px;
   border: 1px solid rgba(124, 92, 255, 0.28);
   background: #0a0a0f;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .subscribe-stripe-slot__loader {
@@ -1037,12 +1037,52 @@ html[data-theme="light"] .quick-prompts button:hover, html[data-theme="light"] .
 .subscribe-stripe-embedded {
   position: relative;
   z-index: 2;
-  min-height: 440px;
+  min-height: 520px;
   width: 100%;
+  padding: 14px 14px 10px;
+  box-sizing: border-box;
+}
+
+.subscribe-stripe-custom {
+  display: grid;
+  gap: 12px;
+}
+
+.subscribe-stripe-wallets-hint {
+  margin: -4px 0 0;
+  color: #8b83a8;
+  font-size: 0.72rem;
+  text-align: center;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.subscribe-stripe-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #6b6580;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.subscribe-stripe-divider::before,
+.subscribe-stripe-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(124, 92, 255, 0.22);
+}
+
+.subscribe-confirm-inline {
+  width: 100%;
+  margin-top: 4px;
 }
 
 .subscribe-modal .subscribe-stripe-embedded iframe {
-  min-height: 440px;
+  min-height: 420px;
 }
 
 .subscribe-checkout-foot {

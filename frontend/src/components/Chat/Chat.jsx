@@ -343,6 +343,10 @@ export default function Chat() {
   const [subscribeStripeLoading, setSubscribeStripeLoading] = useState(false);
 
   const standaloneApp = useMemo(() => isStandaloneApp(), []);
+  const subscribeStripeReturnUrl = useMemo(
+    () => `${window.location.origin}/chat?subscribe=success&session_id={CHECKOUT_SESSION_ID}`,
+    [],
+  );
 
   const subscriptionPlans = [
     { id: 'starter', icon: '🌱', name: t('Starter'), price: '$5', period: t('per month'), features: [t('Basic models included'), t('Standard response speed'), t('Email support')] },
@@ -2311,7 +2315,7 @@ export default function Chat() {
             </>
           ) : (
             <>
-              <p className="subscribe-stripe-label">{t('Secure payment (User mode) — powered by Stripe')}</p>
+              <p className="subscribe-stripe-label">{t('Apple Pay, Google Pay, or card — secure checkout via Stripe')}</p>
               <div className="subscribe-stripe-slot" aria-busy={subscribeStripeLoading}>
                 {(subscribeStripeLoading || !subscribeStripeSecret) && !subscribeError && (
                   <div className="subscribe-stripe-slot__loader">
@@ -2322,6 +2326,10 @@ export default function Chat() {
                   <SubscribeStripeEmbedded
                     publishableKey={subscribeStripePublishableKey}
                     clientSecret={subscribeStripeSecret}
+                    returnUrl={subscribeStripeReturnUrl}
+                    onError={(message) => setSubscribeError(message)}
+                    payLabel={`${t('Subscribe')} · ${subscribePlan.price}`}
+                    processingLabel={t('Processing…')}
                   />
                 )}
               </div>
