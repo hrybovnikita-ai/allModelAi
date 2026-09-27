@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 import './PythonAILab.css';
@@ -27,9 +27,33 @@ export default function PythonAILab() {
   const [predictionResult, setPredictionResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [quotas, setQuotas] = useState(null);
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [dataset, setDataset] = useState([]);
+  const [newSampleText, setNewSampleText] = useState('');
+  const [newSampleLabel, setNewSampleLabel] = useState('greeting');
+  const [predictSlot, setPredictSlot] = useState('default');
 
   const pollIntervalRef = useRef(null);
-  const logsEndRef = useRef(null);
+  const terminalBodyRef = useRef(null);
+  const trainStreamRef = useRef(null);
+
+  const backpropPipeline = status?.backprop?.pipeline || [
+    'forward_pass',
+    'cross_entropy_loss',
+    'loss.backward()',
+    'linear_layer_gradients',
+    'clip_grad_norm_',
+    'optimizer.step()',
+  ];
+
+  const latestLinearGradients = useMemo(() => {
+    const fromStep = status?.last_training_step?.linear_gradients?.layers;
+    if (fromStep?.length) return fromStep;
+    const history = status?.gradient_history;
+    if (!history?.length) return [];
+    return history[history.length - 1]?.layers || [];
+  }, [status?.last_training_step, status?.gradient_history]);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -39,9 +63,44 @@ export default function PythonAILab() {
         setStatus(data);
         setTraining(Boolean(data.is_training));
         if (data.openai) setOpenaiStatus(data.openai);
+        if (data.pytorch_version) setErrorMsg('');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setErrorMsg(data.message || 'PyTorch AI server is unavailable. Install Python + torch or start the backend.');
       }
     } catch (e) {
       console.warn('Failed to fetch PyTorch AI status:', e);
+      setErrorMsg('Cannot reach /api/ai-python. Start allModelAi backend (port 5050) and ensure Python is installed.');
+    }
+  }, []);
+
+  const fetchQuotas = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/ai-python/quotas');
+      if (res.ok) setQuotas(await res.json());
+    } catch {
+      /* optional auth */
+    }
+  }, []);
+
+  const fetchSystemHealth = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/system/health');
+      if (res.ok) setSystemHealth(await res.json());
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const fetchDataset = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/ai-python/dataset');
+      if (res.ok) {
+        const data = await res.json();
+        setDataset(data.samples || []);
+      }
+    } catch {
+      /* ignore */
     }
   }, []);
 
@@ -58,6 +117,9 @@ export default function PythonAILab() {
     const initialTimer = setTimeout(() => {
       void fetchStatus();
       void fetchOpenAiStatus();
+      void fetchQuotas();
+      void fetchSystemHealth();
+      void fetchDataset();
     }, 0);
 
     pollIntervalRef.current = setInterval(() => {
@@ -70,7 +132,7 @@ export default function PythonAILab() {
         clearInterval(pollIntervalRef.current);
       }
     };
-  }, [fetchStatus, fetchOpenAiStatus]);
+  }, [fetchStatus, fetchOpenAiStatus, fetchQuotas, fetchSystemHealth, fetchDataset]);
 
   useEffect(() => {
     if (!training) return undefined;
@@ -83,8 +145,49 @@ export default function PythonAILab() {
   }, [training, fetchStatus]);
 
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [status?.logs]);
+    if (!training) return;
+    const terminal = terminalBodyRef.current;
+    if (terminal) {
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+  }, [status?.logs, training]);
+
+  useEffect(() => {
+    if (!training) {
+      if (trainStreamRef.current) {
+        trainStreamRef.current.close();
+        trainStreamRef.current = null;
+      }
+      return undefined;
+    }
+
+    const source = new EventSource('/api/ai-python/train/stream', { withCredentials: true });
+    trainStreamRef.current = source;
+    source.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setStatus(data);
+        setTraining(Boolean(data.is_training));
+        if (data.stream_done) {
+          source.close();
+          trainStreamRef.current = null;
+          setTraining(false);
+          void fetchQuotas();
+        }
+      } catch {
+        /* ignore malformed chunks */
+      }
+    };
+    source.onerror = () => {
+      source.close();
+      trainStreamRef.current = null;
+    };
+
+    return () => {
+      source.close();
+      trainStreamRef.current = null;
+    };
+  }, [training, fetchQuotas]);
 
   const handleStartTraining = async () => {
     setErrorMsg('');
@@ -106,6 +209,7 @@ export default function PythonAILab() {
       if (!res.ok) throw new Error(data.message || 'Training failed to initiate');
       setSuccessMsg(`AI Learning session started: ${epochs} epochs.`);
       void fetchStatus();
+      void fetchQuotas();
     } catch (err) {
       setErrorMsg(err.message);
       setTraining(false);
@@ -153,7 +257,7 @@ export default function PythonAILab() {
       const res = await apiFetch('/api/ai-python/predict', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, slot: predictSlot === 'default' ? undefined : predictSlot }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Prediction failed');
@@ -162,8 +266,118 @@ export default function PythonAILab() {
       setErrorMsg(err.message);
     } finally {
       setPredicting(false);
+      void fetchQuotas();
     }
   };
+
+  const handleAddSample = async () => {
+    if (!newSampleText.trim()) return;
+    try {
+      const res = await apiFetch('/api/ai-python/dataset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: newSampleText.trim(), label: newSampleLabel }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'Failed to add sample');
+      setNewSampleText('');
+      setSuccessMsg(data.duplicate ? 'Sample already exists in dataset.' : 'Training sample added.');
+      void fetchDataset();
+      void fetchStatus();
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
+  };
+
+  const handleDeleteSample = async (index) => {
+    try {
+      const res = await apiFetch(`/api/ai-python/dataset/${index}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Delete failed');
+      void fetchDataset();
+      void fetchStatus();
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
+  };
+
+  const handleExportModel = async () => {
+    try {
+      const res = await apiFetch('/api/ai-python/export');
+      const bundle = await res.json();
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `allmodelai-pytorch-${Date.now()}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
+  };
+
+  const handleImportModel = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const bundle = JSON.parse(text);
+      const res = await apiFetch('/api/ai-python/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bundle }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Import failed');
+      setSuccessMsg(`Imported weights: ${(data.imported_slots || []).join(', ') || 'none'}`);
+      void fetchStatus();
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const handleSaveSlot = async (slot) => {
+    try {
+      const res = await apiFetch(`/api/ai-python/models/slot/${slot}`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Save slot failed');
+      setSuccessMsg(`Current weights saved to slot ${slot.toUpperCase()}.`);
+      void fetchStatus();
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
+  };
+
+  const handleQueueTrainJob = async () => {
+    try {
+      const res = await apiFetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'pytorch-train',
+          payload: { epochs, lr, batchSize, openaiAugment },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Job queue failed');
+      setSuccessMsg(`Background job queued: ${data.id}`);
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
+  };
+
+  const classOptions = status?.classes || [
+    'greeting',
+    'ai_learning',
+    'coding_help',
+    'math_logic',
+    'creative_writing',
+    'system_info',
+    'knowledge',
+  ];
 
   return (
     <div className="py-lab-container">
@@ -235,6 +449,26 @@ export default function PythonAILab() {
               {openaiStatus?.configured ? `Connected · ${openaiStatus.model}` : 'Not configured'}
             </strong>
           </div>
+          <div className="status-pill">
+            <label>PYTORCH API</label>
+            <strong className={systemHealth?.pytorch?.status === 'ok' ? 'state-ready' : ''}>
+              {systemHealth?.pytorch?.status === 'ok' ? 'Healthy' : 'Checking…'}
+            </strong>
+          </div>
+          {quotas?.train && (
+            <div className="status-pill">
+              <label>TRAIN QUOTA</label>
+              <strong>
+                {quotas.train.used}/{quotas.train.limit} today
+              </strong>
+            </div>
+          )}
+          {status?.early_stopping?.best_val_loss != null && (
+            <div className="status-pill">
+              <label>BEST VAL LOSS</label>
+              <strong>{status.early_stopping.best_val_loss}</strong>
+            </div>
+          )}
         </div>
       </section>
 
@@ -325,6 +559,25 @@ export default function PythonAILab() {
             Generate labeled samples via OpenAI
           </button>
 
+          <div className="py-lab-actions-row">
+            <button type="button" className="py-btn-secondary" disabled={training} onClick={handleExportModel}>
+              Export .pth bundle
+            </button>
+            <label className="py-btn-secondary file-import">
+              Import bundle
+              <input type="file" accept="application/json,.json" hidden onChange={handleImportModel} />
+            </label>
+            <button type="button" className="py-btn-secondary" disabled={training} onClick={() => handleSaveSlot('a')}>
+              Save slot A
+            </button>
+            <button type="button" className="py-btn-secondary" disabled={training} onClick={() => handleSaveSlot('b')}>
+              Save slot B
+            </button>
+            <button type="button" className="py-btn-secondary" disabled={training} onClick={handleQueueTrainJob}>
+              Queue background job
+            </button>
+          </div>
+
           <button
             className={`py-btn-train ${training ? 'is-loading' : ''}`}
             onClick={handleStartTraining}
@@ -339,6 +592,85 @@ export default function PythonAILab() {
               '⚡ Start PyTorch AI Learning'
             )}
           </button>
+
+          <div className="backprop-panel">
+            <div className="backprop-panel-head">
+              <h3>Training loop: Linear → Loss → Backward</h3>
+              <p>
+                PyTorch autograd: forward through nn.Linear layers, CrossEntropyLoss, then loss.backward()
+                and linear weight gradients.
+              </p>
+            </div>
+            <ol className="backprop-steps">
+              {backpropPipeline.map((step, index) => {
+                const activeIndex = training
+                  ? Math.min(
+                      backpropPipeline.length - 1,
+                      Math.floor(((status?.progress_percent || 0) / 100) * backpropPipeline.length)
+                    )
+                  : status?.last_training_step
+                    ? backpropPipeline.indexOf('optimizer.step()')
+                    : -1;
+                const isActive = index <= activeIndex && (training || status?.last_training_step);
+                return (
+                  <li key={step} className={isActive ? 'step-done' : ''}>
+                    <span className="step-index">{index + 1}</span>
+                    <code>{step}</code>
+                  </li>
+                );
+              })}
+            </ol>
+            <div className="backprop-live">
+              <div>
+                <small>BATCH LOSS</small>
+                <strong>
+                  {status?.last_training_step?.loss != null
+                    ? status.last_training_step.loss.toFixed(4)
+                    : status?.last_loss != null
+                      ? status.last_loss.toFixed(4)
+                      : '—'}
+                </strong>
+              </div>
+              <div>
+                <small>BACKWARD</small>
+                <strong className={status?.last_training_step?.backward ? 'state-ready' : ''}>
+                  {status?.last_training_step?.backward ? 'loss.backward() ✓' : training ? '…' : '—'}
+                </strong>
+              </div>
+              <div>
+                <small>EPOCH / BATCH</small>
+                <strong>
+                  {status?.last_training_step
+                    ? `${status.last_training_step.epoch}/${status?.total_epochs || epochs} · batch ${status.last_training_step.batch}/${status.last_training_step.batches_total}`
+                    : status?.current_epoch
+                      ? `${status.current_epoch}/${status.total_epochs || epochs}`
+                      : '—'}
+                </strong>
+              </div>
+            </div>
+            {latestLinearGradients.length > 0 && (
+              <div className="linear-grad-grid">
+                <label>Linear layer gradient L2 (after backward)</label>
+                {latestLinearGradients.map((layer) => {
+                  const magnitude = layer.weight_grad_l2 + layer.bias_grad_l2;
+                  const width = Math.min(100, Math.max(6, magnitude * 120));
+                  return (
+                    <div key={layer.name} className="linear-grad-row">
+                      <span className="linear-grad-name">{layer.name}</span>
+                      <div className="linear-grad-track">
+                        <div
+                          className="linear-grad-fill"
+                          style={{ width: `${width}%` }}
+                          title={`weight L2: ${layer.weight_grad_l2}, bias L2: ${layer.bias_grad_l2}`}
+                        />
+                      </div>
+                      <span className="linear-grad-val">{magnitude.toFixed(3)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* Progress & Loss Metrics */}
           <div className="metrics-box">
@@ -422,6 +754,43 @@ export default function PythonAILab() {
             </div>
           )}
 
+          <div className="dataset-panel">
+            <div className="dataset-panel-head">
+              <h3>Training dataset (CRUD)</h3>
+              <span>{dataset.length} rows</span>
+            </div>
+            <div className="dataset-add-row">
+              <input
+                type="text"
+                placeholder="Sample text"
+                value={newSampleText}
+                onChange={(e) => setNewSampleText(e.target.value)}
+                disabled={training}
+              />
+              <select value={newSampleLabel} onChange={(e) => setNewSampleLabel(e.target.value)} disabled={training}>
+                {classOptions.map((cls) => (
+                  <option key={cls} value={cls}>
+                    {cls}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="py-btn-secondary" disabled={training} onClick={handleAddSample}>
+                Add
+              </button>
+            </div>
+            <ul className="dataset-list">
+              {dataset.slice(0, 12).map((row) => (
+                <li key={`${row.index}-${row.text.slice(0, 24)}`}>
+                  <span className="dataset-label">{row.label}</span>
+                  <span className="dataset-text">{row.text}</span>
+                  <button type="button" disabled={training} onClick={() => handleDeleteSample(row.index)}>
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
           {/* Terminal Logs */}
           <div className="terminal-box">
             <div className="terminal-header">
@@ -430,7 +799,7 @@ export default function PythonAILab() {
               <span className="dot green"></span>
               <span className="terminal-title">PyTorch Training Console</span>
             </div>
-            <div className="terminal-body">
+            <div className="terminal-body" ref={terminalBodyRef}>
               {status?.logs && status.logs.length > 0 ? (
                 status.logs.map((log, index) => (
                   <div key={index} className="log-line">
@@ -440,7 +809,6 @@ export default function PythonAILab() {
               ) : (
                 <div className="log-line text-muted">Ready to train. Press Start AI Learning above.</div>
               )}
-              <div ref={logsEndRef} />
             </div>
           </div>
         </div>
@@ -471,6 +839,15 @@ export default function PythonAILab() {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="slot-select-row">
+            <label>A/B inference slot:</label>
+            <select value={predictSlot} onChange={(e) => setPredictSlot(e.target.value)}>
+              <option value="default">Default weights</option>
+              <option value="a">Slot A {status?.model_slots?.a ? '✓' : '(empty)'}</option>
+              <option value="b">Slot B {status?.model_slots?.b ? '✓' : '(empty)'}</option>
+            </select>
           </div>
 
           {/* Test Input area */}

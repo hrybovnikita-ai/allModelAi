@@ -1,7 +1,6 @@
 import { parseGeneratedFile } from '../../lib/generatedFiles';
 import { FileCard } from '../GeneratedFile/GeneratedFile';
 import { createVoiceInput } from '../../lib/voiceInput';
-import ImageGenerator from '../ImageGenerator/ImageGenerator';
 import GeneratedImageCard from './GeneratedImageCard';
 import { useLanguage } from '../../lib/useLanguage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -21,12 +20,26 @@ import './ChatDarkViolet.css';
 import './ChatSidebarCollapse.css';
 import './ComposerInput.css';
 import SidebarIconButton from './SidebarIconButton';
+import CreateProjectModal, { ProjectIconBadge } from './CreateProjectModal';
 import AccountDeleteModal from '../AccountDeleteModal';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
+import { isStandaloneApp } from '../../lib/appMode';
+import SubscribeStripeEmbedded from './SubscribeStripeEmbedded';
+
+const CHAT_PLAN_TO_CHECKOUT = { starter: 'week', pro: 'common', unlimited: 'plus' };
 
 function ModelSpeedBadge({ speed }) {
   if (!speed || !['Fast', 'Medium', 'High'].includes(speed)) return null;
   return <em className={`model-speed-badge speed-${speed.toLowerCase()}`}>{speed}</em>;
+}
+
+function CopyMessageIcon() {
+  return (
+    <svg className="message-action-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
 }
 
 // const quickPrompts = [
@@ -191,6 +204,17 @@ function safeStorageSet(storageName, key, value) {
   }
 }
 
+const SIDEBAR_WIDTH_MIN = 200;
+const SIDEBAR_WIDTH_MAX = 520;
+const SIDEBAR_WIDTH_DEFAULT = 272;
+const SIDEBAR_WIDTH_STORAGE_KEY = 'allmodelai_sidebar_width';
+
+function readSidebarWidth() {
+  const saved = parseInt(safeStorageGet('localStorage', SIDEBAR_WIDTH_STORAGE_KEY, ''), 10);
+  if (!Number.isFinite(saved)) return SIDEBAR_WIDTH_DEFAULT;
+  return Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, saved));
+}
+
 function safeJSON(value, fallback) {
   try {
     const parsed = value ? JSON.parse(value) : fallback;
@@ -250,7 +274,6 @@ export default function Chat() {
   });
   const [prompt, setPrompt] = useState(location.state?.starterPrompt || '');
   const [isSending, setIsSending] = useState(false);
-  const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
   const [isStreamingResponse, setIsStreamingResponse] = useState(false);
   const [chatError, setChatError] = useState('');
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -260,9 +283,13 @@ export default function Chat() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     () => safeStorageGet('localStorage', 'allmodelai_sidebar_collapsed') === 'true'
   );
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
+  const sidebarWidthRef = useRef(sidebarWidth);
+  const sidebarResizeActiveRef = useRef(false);
   const [messages, setMessages] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
-  const [chatMeta] = useState(() =>
+  const [chatMeta, setChatMeta] = useState(() =>
     safeJSON(safeStorageGet('localStorage', 'allmodelai_chat_meta'), {})
   );
   const [historyQuery, setHistoryQuery] = useState('');
@@ -296,8 +323,13 @@ export default function Chat() {
   const [projects, setProjects] = useState(() =>
     safeJSON(safeStorageGet('localStorage', 'allmodelai_projects'), []).filter((item) => item && typeof item.name === 'string')
   );
-  const [activeProject, setActiveProject] = useState(null);
+  const [activeProject, setActiveProject] = useState(() => {
+    const list = safeJSON(safeStorageGet('localStorage', 'allmodelai_projects'), []).filter((item) => item && typeof item.name === 'string');
+    const activeId = safeStorageGet('localStorage', 'allmodelai_active_project_id');
+    return list.find((item) => item.id === activeId) || null;
+  });
   const [projectMenuId, setProjectMenuId] = useState(null);
+  const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [arenaOpen, setArenaOpen] = useState(false);
   const [arenaTask, setArenaTask] = useState('');
   const [variantCatalog, setVariantCatalog] = useState({});
@@ -306,6 +338,11 @@ export default function Chat() {
   const [subscribeForm, setSubscribeForm] = useState({ cardNumber: '', holder: '', email: '', city: '', birthDate: '', expiry: '', cvc: '' });
   const [subscribeBusy, setSubscribeBusy] = useState(false);
   const [subscribeError, setSubscribeError] = useState('');
+  const [subscribeStripeSecret, setSubscribeStripeSecret] = useState('');
+  const [subscribeStripePublishableKey, setSubscribeStripePublishableKey] = useState('');
+  const [subscribeStripeLoading, setSubscribeStripeLoading] = useState(false);
+
+  const standaloneApp = useMemo(() => isStandaloneApp(), []);
 
   const subscriptionPlans = [
     { id: 'starter', icon: '🌱', name: t('Starter'), price: '$5', period: t('per month'), features: [t('Basic models included'), t('Standard response speed'), t('Email support')] },
@@ -316,6 +353,7 @@ export default function Chat() {
   const openSubscribe = () => {
     setSubscribeError('');
     setSubscribePlan(null);
+    setSubscribeStripeSecret('');
     setSubscribeForm({ cardNumber: '', holder: '', email: user.email || '', city: '', birthDate: '', expiry: '', cvc: '' });
     setSubscribeModalOpen(true);
   };
@@ -323,28 +361,39 @@ export default function Chat() {
   const updateSubscribeForm = (field, value) => setSubscribeForm((form) => ({ ...form, [field]: value }));
 
   const submitSubscription = async () => {
-    if (subscribeBusy) return;
+    if (subscribeBusy || !subscribePlan) return;
     setSubscribeError('');
-    if (subscribeForm.cardNumber.replace(/\D/g, '').length < 12 || !subscribeForm.holder.trim() || !subscribeForm.email.trim()) {
-      setSubscribeError(t('Please fill in the payment details.'));
-      return;
-    }
     setSubscribeBusy(true);
     try {
-      if (creditStatus?.canUseDeveloper) {
-        // Developer mode: fake payment. Nothing is sent to the backend, no money is charged.
-        setCreditStatus((current) => ({ ...(current || {}), mode: 'developer', models: ['all'], unlimited: true }));
-      } else {
-        const response = await apiFetch('/api/subscribe', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ plan: subscribePlan?.id, ...subscribeForm }),
+      if (creditStatus?.isDeveloper) {
+        if (subscribeForm.cardNumber.replace(/\D/g, '').length < 12 || !subscribeForm.holder.trim() || !subscribeForm.email.trim()) {
+          throw new Error(t('Please fill in the payment details.'));
+        }
+        const response = await apiFetch('/api/payments/mock-subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan: subscribePlan.id, ...subscribeForm }),
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.message || t('Could not complete the subscription.'));
+        if (!response.ok) throw new Error(data.message || t('Could not complete the test subscription.'));
         setCreditStatus(data);
+        setSubscribeModalOpen(false);
+        logger.success('Developer test subscription activated (no charge)');
+      } else if (!subscribeStripeSecret) {
+        const checkoutPlan = CHAT_PLAN_TO_CHECKOUT[subscribePlan.id] || 'common';
+        const response = await apiFetch('/api/payments/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan: checkoutPlan, embedded: false }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message || t('Could not start secure checkout.'));
+        if (data.checkoutUrl) {
+          window.location.assign(data.checkoutUrl);
+          return;
+        }
+        throw new Error(t('Payment provider did not return a checkout page.'));
       }
-      setSubscribeModalOpen(false);
-      logger.success('Subscription activated — all models available');
       setSubscribeForm({ cardNumber: '', holder: '', email: '', city: '', birthDate: '', expiry: '', cvc: '' });
     } catch (error) {
       setSubscribeError(error.message);
@@ -382,11 +431,53 @@ export default function Chat() {
   const [previewModalImage, setPreviewModalImage] = useState(null);
   const [contextSuggestions, setContextSuggestions] = useState([]);
   const activeConversationIdRef = useRef(null);
+  const activeProjectRef = useRef(null);
   const selectedModel = dashboardModels.find((model) => model.slug === selectedSlug) || fallbackModel;
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
+
+  useEffect(() => {
+    activeProjectRef.current = activeProject;
+  }, [activeProject]);
+
+  const persistActiveProjectId = useCallback((project) => {
+    safeStorageSet('localStorage', 'allmodelai_active_project_id', project?.id || '');
+  }, []);
+
+  const updateChatMeta = useCallback((conversationId, patch) => {
+    if (!conversationId) return;
+    setChatMeta((current) => {
+      const next = {
+        ...current,
+        [conversationId]: { ...current[conversationId], ...patch },
+      };
+      safeStorageSet('localStorage', 'allmodelai_chat_meta', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const removeChatMeta = useCallback((conversationId) => {
+    if (!conversationId) return;
+    setChatMeta((current) => {
+      if (!current[conversationId]) return current;
+      const next = { ...current };
+      delete next[conversationId];
+      safeStorageSet('localStorage', 'allmodelai_chat_meta', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const linkConversationToProject = useCallback((conversationId) => {
+    const projectId = activeProjectRef.current?.id;
+    if (!conversationId || !projectId) return;
+    updateChatMeta(conversationId, { projectId });
+  }, [updateChatMeta]);
+
+  useEffect(() => {
+    linkConversationToProject(activeConversationId);
+  }, [activeConversationId, activeProject?.id, linkConversationToProject]);
 
   useEffect(() => {
     const el = composerInputRef.current;
@@ -406,13 +497,16 @@ export default function Chat() {
   };
 
   const modelAllowed = (slug) => slug === 'smart' || Boolean(creditStatus?.models?.includes('all') || creditStatus?.models?.includes(slug));
+
   const changeAccessMode = async (mode) => {
-    if (isSending || accessModeSaving) return;
+    if (!creditStatus?.isDeveloper || isSending || accessModeSaving) return;
     setAccessModeSaving(true);
     setChatError('');
     try {
       const response = await apiFetch('/api/access-mode', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }),
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
       });
       const access = await response.json();
       if (!response.ok) throw new Error(access.message || 'Could not change the access mode.');
@@ -423,14 +517,16 @@ export default function Chat() {
         navigate('/chat?model=gemini', { replace: true });
       }
       setModelMenuOpen(false);
-      logger.router('Access mode changed', {
-        mode: access.mode,
-        unlimited: access.unlimited,
-        models: access.models?.length,
-      });
     } catch (error) {
       setChatError(error.message);
-    } finally { setAccessModeSaving(false); }
+    } finally {
+      setAccessModeSaving(false);
+    }
+  };
+
+  const openPlusSubscription = () => {
+    setModelMenuOpen(false);
+    openSubscribe();
   };
 
   const chooseModel = (model, version) => {
@@ -560,9 +656,22 @@ export default function Chat() {
     const firstUserMessage = conversation.messages?.find((message) => message.role === 'user');
     return String(firstUserMessage?.content ?? firstUserMessage?.text ?? 'Saved conversation').replace(/\s+/g, ' ').trim().slice(0, 54);
   };
-  const visibleHistory = chatHistory
-    .filter((conversation) => `${conversation.title} ${conversationPreview(conversation)} ${(conversation.messages || []).map((message) => message.text || message.content || '').join(' ')} ${(Array.isArray(chatMeta[conversation.id]?.tags) ? chatMeta[conversation.id].tags : []).join(' ')}`.toLowerCase().includes(historyQuery.toLowerCase()))
-    .sort((first, second) => Number(Boolean(chatMeta[second.id]?.pinned)) - Number(Boolean(chatMeta[first.id]?.pinned)));
+  const matchesHistoryQuery = useCallback((conversation) => {
+    const haystack = `${conversation.title} ${conversationPreview(conversation)} ${(conversation.messages || []).map((message) => message.text || message.content || '').join(' ')} ${(Array.isArray(chatMeta[conversation.id]?.tags) ? chatMeta[conversation.id].tags : []).join(' ')}`.toLowerCase();
+    return haystack.includes(historyQuery.toLowerCase());
+  }, [chatMeta, historyQuery]);
+
+  const belongsToActiveProject = useCallback((conversation) => {
+    if (!activeProject) return true;
+    const projectId = chatMeta[conversation.id]?.projectId;
+    if (!projectId) return true;
+    return projectId === activeProject.id;
+  }, [activeProject, chatMeta]);
+
+  const visibleHistory = useMemo(() => chatHistory
+    .filter((conversation) => belongsToActiveProject(conversation) && matchesHistoryQuery(conversation))
+    .sort((first, second) => Number(Boolean(chatMeta[second.id]?.pinned)) - Number(Boolean(chatMeta[first.id]?.pinned))),
+  [belongsToActiveProject, chatHistory, chatMeta, matchesHistoryQuery]);
 
   const historyFeed = useMemo(() => {
     const rows = [];
@@ -791,6 +900,85 @@ export default function Chat() {
       })
       .catch(() => setCreditStatus(null));
   }, [user?.email, isGuest]);
+
+  useEffect(() => {
+    const subscribeSuccess = searchParams.get('subscribe');
+    const sessionId = searchParams.get('session_id');
+    if (subscribeSuccess !== 'success' || !sessionId || !user?.email || isGuest) return;
+
+    (async () => {
+      try {
+        const verifyRes = await apiFetch(`/api/payments/session/${encodeURIComponent(sessionId)}`);
+        if (!verifyRes.ok) throw new Error('Payment verification failed');
+        const creditsRes = await apiFetch(`/api/credits?email=${encodeURIComponent(user.email)}`);
+        if (creditsRes.ok) setCreditStatus(await creditsRes.json());
+        setSubscribeModalOpen(false);
+        logger.success('Subscription activated via Stripe');
+      } catch (error) {
+        setSubscribeError(error.message);
+      } finally {
+        navigate('/chat', { replace: true });
+      }
+    })();
+  }, [searchParams, user?.email, isGuest, navigate]);
+
+  useEffect(() => {
+    if (!subscribeModalOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [subscribeModalOpen]);
+
+  useEffect(() => {
+    if (!subscribeModalOpen || !subscribePlan || creditStatus?.isDeveloper || isGuest) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setSubscribeStripeLoading(true);
+      setSubscribeError('');
+      try {
+        const configRes = await apiFetch('/api/payments/config');
+        const config = configRes.ok ? await configRes.json() : {};
+        const publishableKey = config.publishableKey || import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
+        if (!config.stripeConfigured) {
+          throw new Error(t('Payments are not configured. Add STRIPE keys on the server.'));
+        }
+        if (!publishableKey) {
+          throw new Error(t('Missing STRIPE_PUBLISHABLE_KEY / VITE_STRIPE_PUBLISHABLE_KEY.'));
+        }
+        if (!cancelled) setSubscribeStripePublishableKey(publishableKey);
+
+        const checkoutPlan = CHAT_PLAN_TO_CHECKOUT[subscribePlan.id] || 'common';
+        const res = await apiFetch('/api/payments/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan: checkoutPlan, embedded: true }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || t('Could not load payment form.'));
+        if (!cancelled && data.clientSecret) setSubscribeStripeSecret(data.clientSecret);
+      } catch (error) {
+        if (!cancelled) setSubscribeError(error.message);
+      } finally {
+        if (!cancelled) setSubscribeStripeLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [subscribeModalOpen, subscribePlan?.id, creditStatus?.isDeveloper, isGuest]);
+
+  useEffect(() => {
+    if (!subscribePlan?.id || creditStatus?.isDeveloper) return;
+    setSubscribeStripeSecret('');
+    setSubscribeStripeLoading(false);
+    setSubscribeError('');
+  }, [subscribePlan?.id, creditStatus?.isDeveloper]);
 
   useEffect(() => {
     if (!user?.email || isGuest) return;
@@ -1344,6 +1532,16 @@ export default function Chat() {
     chooseSkill('web');
   };
 
+  const toggleImageSkill = () => {
+    if (selectedSkill === 'image') {
+      logger.action('Create image mode disabled');
+      setSelectedSkill(null);
+      return;
+    }
+    setAttachedImage(null);
+    chooseSkill('image');
+  };
+
   const chooseSkill = (skill) => {
     const labels = {
       image: 'Create image selected',
@@ -1375,7 +1573,14 @@ export default function Chat() {
 
   const openConversation = (conversation) => {
     setTemporaryChat(false);
-    setActiveProject(null);
+    const projectId = chatMeta[conversation.id]?.projectId;
+    let project = projectId ? projects.find((item) => item.id === projectId) : null;
+    if (!project && activeProject) {
+      updateChatMeta(conversation.id, { projectId: activeProject.id });
+      project = activeProject;
+    }
+    setActiveProject(project || null);
+    persistActiveProjectId(project || null);
     setActiveConversationId(conversation.id);
     activeConversationIdRef.current = conversation.id;
     setMessages(conversation.messages || []);
@@ -1387,8 +1592,14 @@ export default function Chat() {
     setChatError('');
   };
 
+  const pinConversation = (conversation) => {
+    const pinned = !chatMeta[conversation.id]?.pinned;
+    updateChatMeta(conversation.id, { pinned });
+    setChatMenuId(null);
+  };
+
   const renameConversation = async (conversation) => {
-    const title = window.prompt('Rename conversation', conversation.title)?.trim();
+    const title = window.prompt('Rename conversation', conversation.title || conversationPreview(conversation))?.trim();
     if (!title) return;
     const response = await apiFetch(`/api/chat/history/${conversation.id}`, {
       method: 'PATCH',
@@ -1411,8 +1622,10 @@ export default function Chat() {
     });
     if (response.ok) {
       setChatHistory((history) => history.filter((item) => item.id !== conversation.id));
+      removeChatMeta(conversation.id);
       if (activeConversationId === conversation.id) {
         setActiveConversationId(null);
+        activeConversationIdRef.current = null;
         setMessages([]);
       }
     }
@@ -1482,15 +1695,93 @@ export default function Chat() {
     safeStorageSet('localStorage', 'allmodelai_sidebar_collapsed', 'false');
   };
 
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
+
+  const finishSidebarResize = useCallback(() => {
+    if (!sidebarResizeActiveRef.current) return;
+    sidebarResizeActiveRef.current = false;
+    setSidebarResizing(false);
+    document.body.classList.remove('chat-sidebar-resizing');
+    safeStorageSet('localStorage', SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidthRef.current));
+  }, []);
+
+  useEffect(() => {
+    if (!sidebarResizing) return undefined;
+
+    const onMove = (event) => {
+      const next = Math.round(
+        Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, event.clientX))
+      );
+      setSidebarWidth(next);
+    };
+
+    const onUp = () => finishSidebarResize();
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [sidebarResizing, finishSidebarResize]);
+
+  const handleSidebarResizePointerDown = (event) => {
+    if (isSidebarCollapsed) return;
+    event.preventDefault();
+    event.stopPropagation();
+    sidebarResizeActiveRef.current = true;
+    setSidebarResizing(true);
+    document.body.classList.add('chat-sidebar-resizing');
+  };
+
+  const handleSidebarResizeDoubleClick = () => {
+    setSidebarWidth(SIDEBAR_WIDTH_DEFAULT);
+    safeStorageSet('localStorage', SIDEBAR_WIDTH_STORAGE_KEY, String(SIDEBAR_WIDTH_DEFAULT));
+  };
+
   const newChat = () => { logger.action('New conversation'); setTemporaryChat(false); setActiveConversationId(null); activeConversationIdRef.current = null; setMessages([]); setPrompt(''); setSelectedSkill(null); setChatError(''); setSidebarOpen(false); };
   const startTemporaryChat = () => { logger.action('Temporary chat'); newChat(); setTemporaryChat(true); setActiveProject(null); };
   const createProject = () => {
-    const name = window.prompt('Project name (example: Website launch, Study plan, Marketing)')?.trim();
-    if (!name) return;
-    logger.action('New project', { name });
-    const nextProjects = [...projects, { id: Date.now().toString(), name }];
-    setProjects(nextProjects); setActiveProject(nextProjects[nextProjects.length - 1]); setTemporaryChat(false);
-    safeStorageSet('localStorage', 'allmodelai_projects', JSON.stringify(nextProjects)); newChat();
+    setProjectModalOpen(true);
+    setSidebarOpen(false);
+  };
+
+  const finalizeCreateProject = ({ name, icon, color }) => {
+    logger.action('New project', { name, icon, color });
+    const project = { id: Date.now().toString(), name, icon, color };
+    const nextProjects = [...projects, project];
+    setProjects(nextProjects);
+    setProjectModalOpen(false);
+    safeStorageSet('localStorage', 'allmodelai_projects', JSON.stringify(nextProjects));
+    enterProject(project);
+  };
+
+  const enterProject = (project) => {
+    logger.action('Open project', { name: project.name });
+    setActiveProject(project);
+    persistActiveProjectId(project);
+    setTemporaryChat(false);
+    setProjectMenuId(null);
+    setSidebarOpen(false);
+    setActiveConversationId(null);
+    activeConversationIdRef.current = null;
+    setMessages([]);
+    setPrompt('');
+    setSelectedSkill(null);
+    setChatError('');
+    refreshHistory();
+  };
+
+  const leaveProject = () => {
+    logger.action('Leave project');
+    setActiveProject(null);
+    persistActiveProjectId(null);
+    newChat();
   };
   const renameProject = (project) => {
     const name = window.prompt('Rename project', project.name)?.trim();
@@ -1534,7 +1825,10 @@ export default function Chat() {
   };
 
   return (
-    <main className={`chat-page ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+    <main
+      className={`chat-page ${standaloneApp ? 'chat-page--standalone' : ''} ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${sidebarResizing ? 'sidebar-width-resizing' : ''}`}
+      style={!isSidebarCollapsed ? { '--chat-sidebar-width': `${sidebarWidth}px` } : undefined}
+    >
       <button className={`sidebar-backdrop ${sidebarOpen ? 'visible' : ''}`} aria-label={t("Close sidebar")} onClick={() => setSidebarOpen(false)} />
       <aside className={`chat-sidebar ${sidebarOpen ? 'open' : ''} ${isSidebarCollapsed ? 'is-collapsed' : ''}`}>
         <div className="sidebar-top">
@@ -1584,8 +1878,9 @@ export default function Chat() {
           <button disabled={!messages.length} onClick={exportConversation}><span>↓</span><span><strong>{t("Export chat")}</strong><small>{t("Download this conversation")}</small></span></button>
           <button onClick={editSystemInstructions}><span>⚙</span><span><strong>{t("AI instructions")}</strong><small>{t("Set language, style, and behavior")}</small></span></button>
           <button onClick={backupWorkspace}><span>⬡</span><span><strong>{t("Backup workspace")}</strong><small>{t("Download chats and settings")}</small></span></button>
+          <button onClick={() => goTo('/python-ai', 'AI Training Lab')}><span>⚡</span><span><strong>{t("AI model training")}</strong><small>{t("Linear layers, loss, backward, PyTorch")}</small></span></button>
         </div>
-        {projects.length > 0 && <div className="project-list"><p>{t("Projects")}</p>{projects.map((project) => <div className={`project-item ${activeProject?.id === project.id ? 'active' : ''}`} key={project.id}><button className="project-open" onClick={() => { setActiveProject(project); setTemporaryChat(false); setProjectMenuId(null); newChat(); }}><span>▰</span><strong>{project.name}</strong></button><button className="project-more" onClick={() => setProjectMenuId((id) => id === project.id ? null : project.id)} aria-label={`Options for ${project.name}`}>•••</button>{projectMenuId === project.id && <div className="project-menu"><button onClick={() => renameProject(project)}>✎ Rename</button><button className="danger" onClick={() => deleteProject(project)}>{t("Delete")}</button></div>}</div>)}</div>}
+        {projects.length > 0 && <div className="project-list"><p>{t("Projects")}</p>{projects.map((project) => <div className={`project-item ${activeProject?.id === project.id ? 'active' : ''}`} key={project.id}><button className="project-open" onClick={() => enterProject(project)}><ProjectIconBadge project={project} /><strong>{project.name}</strong></button><button className="project-more" onClick={() => setProjectMenuId((id) => id === project.id ? null : project.id)} aria-label={`Options for ${project.name}`}>•••</button>{projectMenuId === project.id && <div className="project-menu"><button onClick={() => renameProject(project)}>✎ Rename</button><button className="danger" onClick={() => deleteProject(project)}>{t("Delete")}</button></div>}</div>)}</div>}
         {favorites.length > 0 && <div className="favorite-list"><p>{t("Favorites")} <span>{favorites.length}</span></p>{favorites.slice(0, 4).map((favorite) => <button key={favorite.id} onClick={() => chooseSuggestion(favorite.text)} title={favorite.text}><span>★</span><span><strong>{dashboardModels.find((model) => model.slug === favorite.modelSlug)?.name || 'AI response'}</strong><small>{favorite.text}</small></span></button>)}</div>}
         <div className="chat-history" onKeyDown={(event) => { if (event.key === 'Escape') { setChatMenuId(null); event.target.closest('.chat-history-item')?.querySelector('.chat-history-more')?.focus(); } }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setChatMenuId(null); }}>
           <p className="chat-history-heading">
@@ -1610,16 +1905,43 @@ export default function Chat() {
           {visibleHistory.map((conversation) => <div className={`chat-history-item ${activeConversationId === conversation.id ? 'active' : ''}`} key={conversation.id}>
             <button className="chat-history-open" onClick={() => openConversation(conversation)}><span>{chatMeta[conversation.id]?.pinned ? '★' : '◇'}</span><span><strong>{conversation.title || conversationPreview(conversation)}</strong><small>{conversationPreview(conversation)}</small>{Array.isArray(chatMeta[conversation.id]?.tags) && chatMeta[conversation.id].tags.length > 0 && <small className="chat-tags">{chatMeta[conversation.id].tags.map((tag) => `#${tag}`).join(' ')}</small>}<em>Saved · {conversation.model}</em></span></button>
             <button type="button" aria-expanded={chatMenuId === conversation.id} className="chat-history-more" onClick={() => setChatMenuId((id) => id === conversation.id ? null : conversation.id)} aria-label={`Options for ${conversation.title}`}>•••</button>
-            {chatMenuId === conversation.id && <div className="chat-history-menu"><button type="button" onClick={() => renameConversation(conversation)}>{t("Edit")}</button><button type="button" className="danger" onClick={() => deleteConversation(conversation)}>{t("Delete")}</button></div>}
+            {chatMenuId === conversation.id && (
+              <div className="chat-history-menu" lang="en">
+                <button type="button" onClick={() => pinConversation(conversation)}>
+                  {chatMeta[conversation.id]?.pinned ? t('Unpin') : t('Pin')}
+                </button>
+                <button type="button" onClick={() => renameConversation(conversation)}>{t('Rename')}</button>
+                <button type="button" className="danger" onClick={() => deleteConversation(conversation)}>{t('Delete')}</button>
+              </div>
+            )}
           </div>)}
           </div>
         </div>
-        {imageGeneratorOpen && <ImageGenerator initialPrompt={prompt} onClose={() => setImageGeneratorOpen(false)} />}
-        <nav className="sidebar-links" aria-label={t("Chat navigation")}><Link to="/dashboard" onClick={() => logger.action('Open: Dashboard', { path: '/dashboard' })}>⌂ <span>{t("Dashboard")}</span></Link><Link to="/ai-platform" onClick={() => logger.action('Open: AI Platform', { path: '/ai-platform' })}>34 <span>{t("AI Platform")}</span></Link><Link to="/app-builder" onClick={() => logger.action('Open: App Builder', { path: '/app-builder' })}>&lt;/&gt; <span>App Builder</span></Link><Link to="/studio" onClick={() => logger.action('Open: Workspace Studio', { path: '/studio' })}>✦ <span>{t("Workspace Studio")}</span></Link><Link to="/control-center" onClick={() => logger.action('Open: Control Center', { path: '/control-center' })}>⌘ <span>{t("Control Center")}</span></Link><Link to="/models/gpt" onClick={() => logger.action('Open: Model library', { path: '/models/gpt' })}>▦ <span>{t("Model library")}</span></Link></nav>
+        <nav className="sidebar-links" aria-label={t("Chat navigation")}><Link to="/dashboard" onClick={() => logger.action('Open: Dashboard', { path: '/dashboard' })}>⌂ <span>{t("Dashboard")}</span></Link><Link to="/python-ai" onClick={() => logger.action('Open: AI Training Lab', { path: '/python-ai' })}>⚡ <span>{t("AI Training")}</span></Link><Link to="/ai-platform" onClick={() => logger.action('Open: AI Platform', { path: '/ai-platform' })}>34 <span>{t("AI Platform")}</span></Link><Link to="/app-builder" onClick={() => logger.action('Open: App Builder', { path: '/app-builder' })}>&lt;/&gt; <span>App Builder</span></Link><Link to="/studio" onClick={() => logger.action('Open: Workspace Studio', { path: '/studio' })}>✦ <span>{t("Workspace Studio")}</span></Link><Link to="/control-center" onClick={() => logger.action('Open: Control Center', { path: '/control-center' })}>⌘ <span>{t("Control Center")}</span></Link><Link to="/models/gpt" onClick={() => logger.action('Open: Model library', { path: '/models/gpt' })}>▦ <span>{t("Model library")}</span></Link></nav>
         <section className="sidebar-theme-settings collapsed" aria-label={t("Theme settings")}><button type="button" className="chat-settings-trigger" onClick={() => goTo('/chat/settings', 'Settings')}><span className="settings-gear" aria-hidden="true">⚙</span><span><strong>{t("Settings")}</strong><small>{themePreference} · {chatTextColors.find(([,color])=>color===textColor)?.[0]||'Custom'} message</small></span><b>›</b></button></section>
-        <div className="chat-profile"><span>{user.name?.charAt(0) || user.email.charAt(0)}</span><div><strong>{user.name || t("User")}</strong><small>{user.email}</small></div><button onClick={() => setDeleteModalOpen(true)} aria-label={t("Sign out")} title={t("Sign out")}>↗</button></div>
+        <div className="chat-profile">
+          <span className="chat-profile-avatar" aria-hidden="true">{user.name?.charAt(0) || user.email.charAt(0)}</span>
+          <div className="chat-profile-meta"><strong>{user.name || t("User")}</strong><small>{user.email}</small></div>
+          <button type="button" className="chat-profile-signout" onClick={() => setDeleteModalOpen(true)} aria-label={t("Sign out")} title={t("Sign out")}>↗</button>
+        </div>
         </div>
       </aside>
+
+      {!isSidebarCollapsed && (
+        <div
+          className="sidebar-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuemin={SIDEBAR_WIDTH_MIN}
+          aria-valuemax={SIDEBAR_WIDTH_MAX}
+          aria-valuenow={sidebarWidth}
+          aria-label={t('Resize sidebar')}
+          title={t('Drag to resize sidebar')}
+          style={{ left: `${sidebarWidth}px` }}
+          onPointerDown={handleSidebarResizePointerDown}
+          onDoubleClick={handleSidebarResizeDoubleClick}
+        />
+      )}
 
       <section className="chat-workspace" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
         {historyFeedOpen && (
@@ -1679,13 +2001,54 @@ export default function Chat() {
         <header className="chat-header">
           <button className="sidebar-toggle" onClick={() => setSidebarOpen(true)} aria-label={t("Open sidebar")}>☰</button>
           <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? t("Temporary chat") : activeProject ? activeProject.name : t("Chatting with")}</small><strong>{selectedModel.name}{selectedVersion ? ` · ${selectedVersion.name}` : ''}</strong></span><i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? t("Online") : t("API needed")}</i></div>
-          <div className="access-mode-control">
-            <div className="access-mode-switch" role="group" aria-label="Access mode">
-              <button type="button" aria-pressed={(creditStatus?.mode || 'user') === 'user'} disabled={isGuest || !creditStatus || isSending || accessModeSaving} onClick={() => changeAccessMode('user')}>{t("User")}</button>
-              <button type="button" aria-pressed={creditStatus?.mode === 'developer'} disabled={isGuest || !creditStatus || isSending || accessModeSaving} onClick={() => changeAccessMode('developer')} title={creditStatus?.canUseDeveloper ? t("All models") : 'Subscription or developer status required'}>Developer {!creditStatus?.canUseDeveloper && '🔒'}</button>
+          {!isGuest && creditStatus && (
+            <div className="access-mode-control">
+              <div className="access-mode-switch" role="group" aria-label="Access mode">
+                <button
+                  type="button"
+                  aria-pressed={(creditStatus.mode || 'user') === 'user'}
+                  disabled={isSending || accessModeSaving}
+                  onClick={() => creditStatus.isDeveloper && changeAccessMode('user')}
+                >
+                  {t('User')}
+                </button>
+                {creditStatus.isDeveloper ? (
+                  <button
+                    type="button"
+                    aria-pressed={creditStatus.mode === 'developer'}
+                    disabled={isSending || accessModeSaving}
+                    onClick={() => changeAccessMode('developer')}
+                    title={t('All models')}
+                  >
+                    Developer
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="access-mode-plus"
+                    aria-pressed={false}
+                    disabled={isSending}
+                    onClick={openPlusSubscription}
+                    title={t('Upgrade subscription')}
+                  >
+                    Plus
+                  </button>
+                )}
+              </div>
+              <small>
+                {accessModeSaving
+                  ? t('Saving…')
+                  : creditStatus.isDeveloper && creditStatus.mode === 'developer'
+                    ? t('All models')
+                    : t('5 free models')}
+                {!creditStatus.isDeveloper && !creditStatus.hasSubscription && (
+                  <button type="button" className="access-subscribe-inline" onClick={openPlusSubscription}>
+                    {t('Subscription')} ↗
+                  </button>
+                )}
+              </small>
             </div>
-            <small>{accessModeSaving ? t("Saving\u2026") : creditStatus?.mode === 'developer' ? t("All models") : t("5 free models")}{creditStatus && !creditStatus.canUseDeveloper && <Link to="/pricing">Subscription ↗</Link>}</small>
-          </div>
+          )}
           <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onKeyDown={(event) => { if (event.key === 'Escape') setModelMenuOpen(false); }} onBlur={(event) => { const root = event.currentTarget; window.setTimeout(() => { if (!root.contains(document.activeElement) && !root.matches(':hover')) setModelMenuOpen(false); }, 180); }}>
             <span>{t("Model")}</span>
             <button type="button" className="model-select-trigger" onClick={() => setModelMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={modelMenuOpen}>
@@ -1709,12 +2072,65 @@ export default function Chat() {
           </div>
           <Link className="dashboard-link" to="/dashboard">{t("Dashboard")}</Link>
         </header>
-        {backgroundNotification && <div className="chat-statuses">
-          <div className="model-selection-notice chat-background-notification" role="status"><span><strong>{backgroundNotification.title}</strong><small>{backgroundNotification.text}</small></span><button type="button" onClick={async () => { const history = await apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`).then((response) => response.ok ? response.json() : []); const conversation = history.find((item) => item.id === backgroundNotification.conversationId); if (conversation) openConversation(conversation); setBackgroundNotification(null); }} aria-label="Open completed response">{t("Open chat")}</button><button type="button" onClick={() => setBackgroundNotification(null)} aria-label="Dismiss notification">×</button></div>
-        </div>}
+        {(activeProject && !temporaryChat) || backgroundNotification ? (
+          <div className="chat-statuses">
+            {activeProject && !temporaryChat && (
+              <div className="chat-project-banner" role="status" lang="en">
+                <ProjectIconBadge project={activeProject} className="chat-project-banner-icon" />
+                <span>
+                  <small>{t('You are currently in this folder')}</small>
+                  <strong>{activeProject.name}</strong>
+                </span>
+                <button type="button" className="chat-project-leave" onClick={leaveProject}>
+                  {t('Leave folder')}
+                </button>
+              </div>
+            )}
+            {backgroundNotification && (
+              <div className="model-selection-notice chat-background-notification" role="status"><span><strong>{backgroundNotification.title}</strong><small>{backgroundNotification.text}</small></span><button type="button" onClick={async () => { const history = await apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`).then((response) => response.ok ? response.json() : []); const conversation = history.find((item) => item.id === backgroundNotification.conversationId); if (conversation) openConversation(conversation); setBackgroundNotification(null); }} aria-label="Open completed response">{t("Open chat")}</button><button type="button" onClick={() => setBackgroundNotification(null)} aria-label="Dismiss notification">×</button></div>
+            )}
+          </div>
+        ) : null}
 
         <div className="chat-messages" ref={messagesContainer}>
-          {messages.length === 0 && <div className="chat-empty"><div className="model-orb"><img src={selectedModel.image} alt={`${selectedModel.name} logo`} /></div><p className="chat-eyebrow">{selectedModel.provider} · {selectedModel.name}</p><h1>{t("What can I help you create?")}</h1><p className="chat-subtitle">{t("Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.")}</p><div className="prompt-suggestions">{suggestions.map((item) => <button key={item.title} onClick={() => chooseSuggestion(item.prompt)}><span className={['suggestion-icon', item.iconImage && 'suggestion-icon-image', item.iconImageClass].filter(Boolean).join(' ')}>{item.iconImage ? <img src={item.iconImage} alt="" /> : item.iconLabel ? <span className="suggestion-icon-text" aria-hidden="true">{item.iconLabel}</span> : item.icon}</span><strong>{t(item.title)}</strong><small>{t(item.prompt)}</small></button>)}</div></div>}
+          {messages.length === 0 && (
+            activeProject && !temporaryChat && visibleHistory.length > 0 ? (
+              <div className="project-conversation-panel" lang="en">
+                <div className="project-conversation-panel-head">
+                  <ProjectIconBadge project={activeProject} className="chat-empty-project-icon" />
+                  <div>
+                    <p className="chat-eyebrow">{t('Project chats')}</p>
+                    <h1>{activeProject.name}</h1>
+                    <p className="chat-subtitle">{t('Chats in this project stay grouped here.')}</p>
+                  </div>
+                </div>
+                <ul className="project-conversation-list">
+                  {visibleHistory.map((conversation) => (
+                    <li className={`project-conversation-item ${activeConversationId === conversation.id ? 'active' : ''}`} key={conversation.id}>
+                      <button type="button" className="project-conversation-open" onClick={() => openConversation(conversation)}>
+                        <span>{chatMeta[conversation.id]?.pinned ? '★' : '💬'}</span>
+                        <span>
+                          <strong>{conversation.title || conversationPreview(conversation)}</strong>
+                          <small>{conversationPreview(conversation)}</small>
+                          <em>Saved · {conversation.model}</em>
+                        </span>
+                      </button>
+                      <button type="button" className="chat-history-more" aria-expanded={chatMenuId === conversation.id} onClick={() => setChatMenuId((id) => id === conversation.id ? null : conversation.id)} aria-label={`Options for ${conversation.title || conversationPreview(conversation)}`}>•••</button>
+                      {chatMenuId === conversation.id && (
+                        <div className="chat-history-menu project-conversation-menu" lang="en">
+                          <button type="button" onClick={() => pinConversation(conversation)}>{chatMeta[conversation.id]?.pinned ? t('Unpin') : t('Pin')}</button>
+                          <button type="button" onClick={() => renameConversation(conversation)}>{t('Rename')}</button>
+                          <button type="button" className="danger" onClick={() => deleteConversation(conversation)}>{t('Delete')}</button>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="chat-empty"><div className="model-orb">{activeProject && !temporaryChat ? <ProjectIconBadge project={activeProject} className="chat-empty-project-icon" /> : <img src={selectedModel.image} alt={`${selectedModel.name} logo`} />}</div><p className="chat-eyebrow">{activeProject && !temporaryChat ? t('Projects') : `${selectedModel.provider} · ${selectedModel.name}`}</p><h1>{activeProject && !temporaryChat ? activeProject.name : t("What can I help you create?")}</h1><p className="chat-subtitle">{activeProject && !temporaryChat ? t('Chats in this project stay grouped here.') : t("Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.")}</p><div className="prompt-suggestions">{suggestions.map((item) => <button key={item.title} onClick={() => chooseSuggestion(item.prompt)}><span className={['suggestion-icon', item.iconImage && 'suggestion-icon-image', item.iconImageClass].filter(Boolean).join(' ')}>{item.iconImage ? <img src={item.iconImage} alt="" /> : item.iconLabel ? <span className="suggestion-icon-text" aria-hidden="true">{item.iconLabel}</span> : item.icon}</span><strong>{t(item.title)}</strong><small>{t(item.prompt)}</small></button>)}</div></div>
+            )
+          )}
           {messages.map((message, index) => {
             const messageModel = dashboardModels.find((model) => model.slug === message.modelSlug) || selectedModel;
             const text = message.content ?? message.text ?? '';
@@ -1729,7 +2145,7 @@ export default function Chat() {
             return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} />}{message.imageUrl && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || 'hd', aspectRatio: message.imageAspect || '1:1' }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{text && !activelyStreaming && !editing && <div className="message-actions">
               {message.role === 'assistant' ? (
                 <>
-                  <button type="button" data-tooltip={t("Copy")} onClick={() => copyMessage(generatedFile?.content || text)} aria-label="Copy response">⎘</button>
+                  <button type="button" data-tooltip={t("Copy")} onClick={() => copyMessage(generatedFile?.content || text)} aria-label="Copy response"><CopyMessageIcon /></button>
                   <button type="button" data-tooltip={liked ? 'Liked' : 'Like'} className={liked ? 'selected-like' : ''} onClick={() => likeMessage(index)} aria-label="Like response">👍</button>
                   <button type="button" data-tooltip={t("Feedback")} onClick={() => openFeedback(index)} aria-label="Leave feedback">💬</button>
                   <button type="button" data-tooltip="Good response" className={messageRatings[index] === 'up' ? t("selected") : ''} onClick={() => rateMessage(index, 'up')} aria-label="Good response">♧</button>
@@ -1741,7 +2157,7 @@ export default function Chat() {
                 </>
               ) : (
                 <>
-                  <button type="button" data-tooltip={t("Copy")} onClick={() => copyMessage(text)} aria-label="Copy message">⎘</button>
+                  <button type="button" data-tooltip={t("Copy")} onClick={() => copyMessage(text)} aria-label="Copy message"><CopyMessageIcon /></button>
                   <button type="button" data-tooltip={t("Edit")} onClick={() => editMessage(index)} aria-label="Edit message">✎</button>
                 </>
               )}
@@ -1787,7 +2203,7 @@ export default function Chat() {
             <div className="composer-box">
               <div className="image-mode-switch" role="group" aria-label="Response mode">
                 <button type="button" disabled={isSending} aria-pressed={!selectedSkill} onClick={() => setSelectedSkill(null)}>Chat</button>
-                <button type="button" disabled={isSending} aria-pressed={selectedSkill === 'image'} onClick={() => setImageGeneratorOpen(true)}>✦ Create image</button>
+                <button type="button" disabled={isSending} className={selectedSkill === 'image' ? 'image-mode-active' : ''} aria-pressed={selectedSkill === 'image'} onClick={toggleImageSkill}>✦ Create image</button>
                 <button type="button" disabled={isSending} aria-pressed={selectedSkill === 'file'} onClick={() => chooseSkill('file')}>Create file</button>
                 <button type="button" disabled={isSending} className={selectedSkill === 'deep-research' ? 'deep-research-active' : ''} aria-pressed={selectedSkill === 'deep-research'} onClick={() => chooseSkill('deep-research')}>🔎 Deep Research</button>
               </div>
@@ -1836,9 +2252,9 @@ export default function Chat() {
                 </div>
               )}
               <input ref={fileInput} className="chat-file-input" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.pdf,.txt,.md,.json,.csv,.js,.jsx,.ts,.tsx,.py,.html,.css" onChange={readFile} />
-              <textarea ref={composerInputRef} className="composer-prompt-input" value={prompt} onChange={(event) => { setPrompt(event.target.value); loadContextSuggestions(event.target.value); }} onPaste={handlePaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={selectedSkill === 'file' && !isSending ? 'For example: create a Python script, an HTML page, or a project plan in Markdown...' : isSending ? selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : attachedImage ? 'Ask anything about this screenshot (e.g. "Where should I click?") or press Send...' : selectedSkill === 'image' ? 'For example: a golden dragon over a night city, realistic style…' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : t('messagePlaceholder').replace('AllModelAI', selectedModel.name)} rows="1" aria-label={t("Chat message")} />
+              <textarea ref={composerInputRef} className="composer-prompt-input" value={prompt} onChange={(event) => { setPrompt(event.target.value); loadContextSuggestions(event.target.value); }} onPaste={handlePaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={selectedSkill === 'file' && !isSending ? 'For example: create a Python script, an HTML page, or a project plan in Markdown...' : isSending ? selectedSkill === 'image' ? 'Generating image…' : selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : attachedImage ? 'Ask anything about this screenshot (e.g. "Where should I click?") or press Send...' : selectedSkill === 'image' ? 'Describe the image and press Send — for example: a golden dragon with purple lightning on a black background…' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : t('messagePlaceholder').replace('AllModelAI', selectedModel.name)} rows="1" aria-label={t("Chat message")} />
               {contextSuggestions.length > 0 && !isSending && !attachedImage && <div className="context-suggestions">{contextSuggestions.map((item) => <button key={item} type="button" onClick={() => { setPrompt(item); setContextSuggestions([]); document.querySelector('.chat-composer textarea')?.focus(); }}>{item}</button>)}</div>}
-              <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label={t("Open tools")} aria-expanded={composerMenuOpen}>＋</button><button type="button" className={`composer-web-toggle ${selectedSkill === 'web' ? 'active' : ''}`} onClick={toggleWebSearch} aria-pressed={selectedSkill === 'web'} aria-label="Search the web" title="Search the web for current information"><span className="globe-icon">🌐</span></button><button type="button" className="composer-camera" onClick={() => fileInput.current?.click()} aria-label={t("Upload screenshot or image")} title="Upload screenshot or image (or paste Ctrl+V)">📷</button></div><span>{selectedSkill === 'web' ? '🌐 Web search enabled' : `${selectedModel.name} · ${voiceInputState === 'requesting' ? 'Allow microphone access...' : isListening ? t("Listening\u2026") : isSending ? t("Generating \u2014 you can keep typing") : attachedImage ? t("Screenshot ready to send") : t("Ready \u00b7 replies in your language")}`}</span><div className="composer-actions"><button type="button" className={voiceInputState !== 'idle' ? 'voice-active' : ''} onClick={toggleVoiceInput} aria-pressed={voiceInputState !== 'idle'} aria-label={voiceInputState !== 'idle' ? 'Stop microphone' : t("Use microphone")} title={voiceInputState !== 'idle' ? 'Stop microphone' : t("Use microphone")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></button>{isSending ? <button className="stop-generation" type="button" onClick={stopGenerating} aria-label={t("Stop generating")} title={t("Stop generating")}><i /></button> : <button className="send-message" type="submit" disabled={!prompt.trim() && !attachedImage} aria-label={t("Send message")}>↑</button>}</div></div>
+              <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label={t("Open tools")} aria-expanded={composerMenuOpen}>＋</button><button type="button" className={`composer-web-toggle ${selectedSkill === 'web' ? 'active' : ''}`} onClick={toggleWebSearch} aria-pressed={selectedSkill === 'web'} aria-label="Search the web" title="Search the web for current information"><span className="globe-icon">🌐</span></button><button type="button" className="composer-camera" onClick={() => fileInput.current?.click()} aria-label={t("Upload screenshot or image")} title="Upload screenshot or image (or paste Ctrl+V)">📷</button></div><span>{selectedSkill === 'web' ? '🌐 Web search enabled' : selectedSkill === 'image' && isSending ? '✦ Generating image…' : selectedSkill === 'image' ? '✦ Image mode — describe and send' : `${selectedModel.name} · ${voiceInputState === 'requesting' ? 'Allow microphone access...' : isListening ? t("Listening\u2026") : isSending ? t("Generating \u2014 you can keep typing") : attachedImage ? t("Screenshot ready to send") : t("Ready \u00b7 replies in your language")}`}</span><div className="composer-actions"><button type="button" className={voiceInputState !== 'idle' ? 'voice-active' : ''} onClick={toggleVoiceInput} aria-pressed={voiceInputState !== 'idle'} aria-label={voiceInputState !== 'idle' ? 'Stop microphone' : t("Use microphone")} title={voiceInputState !== 'idle' ? 'Stop microphone' : t("Use microphone")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></button>{isSending ? <button className="stop-generation" type="button" onClick={stopGenerating} aria-label={t("Stop generating")} title={t("Stop generating")}><i /></button> : <button className="send-message" type="submit" disabled={!prompt.trim() && !attachedImage} aria-label={t("Send message")}>↑</button>}</div></div>
             </div>
           </div>
           <p>{selectedModel.name} can make mistakes. Check important information.</p>
@@ -1855,6 +2271,12 @@ export default function Chat() {
           </div>
         </div>
       )}
+      {projectModalOpen && (
+        <CreateProjectModal
+          onClose={() => setProjectModalOpen(false)}
+          onCreate={finalizeCreateProject}
+        />
+      )}
       {deleteModalOpen && <AccountDeleteModal onCancel={() => { setDeleteModalOpen(false); setDeleteError(''); }} onConfirm={deleteAccount} isDeleting={isDeleting} error={deleteError} />}
       {arenaOpen && <div className="feature-modal-backdrop" onClick={() => setArenaOpen(false)}><section className="feature-modal" onClick={(event) => event.stopPropagation()}><span className="feature-modal-icon">⚔</span><small>AI ARENA</small><h2>Compare the best models</h2><p>Describe the exact task you want the models to compare.</p><textarea autoFocus value={arenaTask} onChange={(event) => setArenaTask(event.target.value)} placeholder="Example: Build a launch plan for my new fitness app" rows="3" /><div className="arena-models"><span>GPT</span><span>Claude</span><span>Gemini</span><span>Grok</span></div><button disabled={!arenaTask.trim()} onClick={launchArena}>Create comparison prompt</button><button className="modal-cancel" onClick={() => setArenaOpen(false)}>{t("Cancel")}</button></section></div>}
       {subscribeModalOpen && <div className="feature-modal-backdrop" onClick={() => setSubscribeModalOpen(false)}><section className="feature-modal subscribe-modal" onClick={(event) => event.stopPropagation()}>
@@ -1862,7 +2284,7 @@ export default function Chat() {
         {!subscribePlan ? <>
           <h2>{t('Choose your subscription plan')}</h2>
           <div className="subscribe-plans">
-            {subscriptionPlans.map((plan) => <button type="button" key={plan.id} className={`subscribe-plan ${plan.popular ? 'popular' : ''}`} onClick={() => setSubscribePlan(plan)}>
+            {subscriptionPlans.map((plan) => <button type="button" key={plan.id} className={`subscribe-plan ${plan.popular ? 'popular' : ''}`} onClick={() => { setSubscribeStripeSecret(''); setSubscribeError(''); setSubscribePlan(plan); }}>
               <span className="subscribe-plan-icon">{plan.icon}</span>
               <strong>{plan.name}</strong>
               <em>{plan.price} / {plan.period}</em>
@@ -1872,21 +2294,66 @@ export default function Chat() {
           </div>
         </> : <>
           <h2>{subscribePlan.name} — {subscribePlan.price} / {subscribePlan.period}</h2>
-          {creditStatus?.canUseDeveloper && <p className="subscribe-dev-note">🧪 {t('Developer mode: this is a test payment. No real money will be charged.')}</p>}
-          <div className="subscribe-form">
-            <input type="text" inputMode="numeric" placeholder={t('Card number (0000 0000 0000 0000)')} value={subscribeForm.cardNumber} onChange={(event) => updateSubscribeForm('cardNumber', event.target.value)} />
-            <input type="text" placeholder={t('Cardholder name')} value={subscribeForm.holder} onChange={(event) => updateSubscribeForm('holder', event.target.value)} />
-            <input type="email" placeholder={t('Email')} value={subscribeForm.email} onChange={(event) => updateSubscribeForm('email', event.target.value)} />
-            <input type="text" placeholder={t('City')} value={subscribeForm.city} onChange={(event) => updateSubscribeForm('city', event.target.value)} />
-            <input type="text" placeholder={t('Date of birth (day and month)')} value={subscribeForm.birthDate} onChange={(event) => updateSubscribeForm('birthDate', event.target.value)} />
-            <div className="subscribe-form-row">
-              <input type="text" inputMode="numeric" placeholder={t('MM / YY')} value={subscribeForm.expiry} onChange={(event) => updateSubscribeForm('expiry', event.target.value)} />
-              <input type="text" inputMode="numeric" placeholder={t('CVC')} value={subscribeForm.cvc} onChange={(event) => updateSubscribeForm('cvc', event.target.value)} />
-            </div>
-          </div>
+          {creditStatus?.isDeveloper ? (
+            <>
+              <p className="subscribe-dev-note">🧪 {t('Developer account: test payment form only. No real money is charged.')}</p>
+              <div className="subscribe-form">
+                <input type="text" inputMode="numeric" placeholder={t('Card number (0000 0000 0000 0000)')} value={subscribeForm.cardNumber} onChange={(event) => updateSubscribeForm('cardNumber', event.target.value)} />
+                <input type="text" placeholder={t('Cardholder name')} value={subscribeForm.holder} onChange={(event) => updateSubscribeForm('holder', event.target.value)} />
+                <input type="email" placeholder={t('Email')} value={subscribeForm.email} onChange={(event) => updateSubscribeForm('email', event.target.value)} />
+                <input type="text" placeholder={t('City')} value={subscribeForm.city} onChange={(event) => updateSubscribeForm('city', event.target.value)} />
+                <input type="text" placeholder={t('Date of birth (day and month)')} value={subscribeForm.birthDate} onChange={(event) => updateSubscribeForm('birthDate', event.target.value)} />
+                <div className="subscribe-form-row">
+                  <input type="text" inputMode="numeric" placeholder={t('MM / YY')} value={subscribeForm.expiry} onChange={(event) => updateSubscribeForm('expiry', event.target.value)} />
+                  <input type="text" inputMode="numeric" placeholder={t('CVC')} value={subscribeForm.cvc} onChange={(event) => updateSubscribeForm('cvc', event.target.value)} />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="subscribe-stripe-label">{t('Secure payment (User mode) — powered by Stripe')}</p>
+              <div className="subscribe-stripe-slot" aria-busy={subscribeStripeLoading}>
+                {(subscribeStripeLoading || !subscribeStripeSecret) && !subscribeError && (
+                  <div className="subscribe-stripe-slot__loader">
+                    <span>{t('Loading payment form…')}</span>
+                  </div>
+                )}
+                {subscribeStripeSecret && (
+                  <SubscribeStripeEmbedded
+                    publishableKey={subscribeStripePublishableKey}
+                    clientSecret={subscribeStripeSecret}
+                  />
+                )}
+              </div>
+            </>
+          )}
           {subscribeError && <p className="subscribe-error" role="alert">{subscribeError}</p>}
-          <button disabled={subscribeBusy} className="subscribe-confirm" onClick={submitSubscription}>{subscribeBusy ? t('Processing…') : `${t('Subscribe')} · ${subscribePlan.price}`}</button>
-          <button className="modal-cancel" onClick={() => setSubscribePlan(null)}>← {t('Back to plans')}</button>
+          {creditStatus?.isDeveloper ? (
+            <button disabled={subscribeBusy} className="subscribe-confirm" type="button" onClick={submitSubscription}>
+              {subscribeBusy ? t('Processing…') : `${t('Activate test plan')} · ${subscribePlan.price}`}
+            </button>
+          ) : (
+            <div className={`subscribe-checkout-foot ${subscribeStripeSecret ? 'is-embedded-active' : ''}`}>
+              <button
+                disabled={subscribeBusy || subscribeStripeLoading}
+                className="subscribe-confirm subscribe-confirm-fallback"
+                type="button"
+                onClick={submitSubscription}
+              >
+                {subscribeBusy ? t('Processing…') : t('Open Stripe checkout in browser')}
+              </button>
+            </div>
+          )}
+          <button
+            type="button"
+            className="modal-cancel"
+            onClick={() => {
+              setSubscribePlan(null);
+              setSubscribeStripeSecret('');
+            }}
+          >
+            ← {t('Back to plans')}
+          </button>
         </>}
         <button className="modal-cancel" onClick={() => setSubscribeModalOpen(false)}>{t('Cancel')}</button>
       </section></div>}

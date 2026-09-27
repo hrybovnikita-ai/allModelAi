@@ -1,6 +1,7 @@
 /* Collapsible desktop sidebar rail (ChatGPT-style) */
 .chat-page {
   --chat-sidebar-width: 260px;
+  position: relative;
   grid-template-columns: var(--chat-sidebar-width) minmax(0, 1fr) !important;
   transition: grid-template-columns 0.24s ease;
 }
@@ -10,6 +11,7 @@
 }
 
 .chat-sidebar {
+  position: relative;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -19,6 +21,76 @@
     max-width 0.24s ease,
     padding 0.24s ease,
     transform 0.24s ease;
+}
+
+.chat-page.sidebar-width-resizing {
+  transition: none !important;
+}
+
+.chat-page.sidebar-width-resizing .chat-sidebar,
+.chat-page.sidebar-width-resizing .chat-composer {
+  transition: none !important;
+}
+
+@media (min-width: 601px) {
+  .sidebar-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 120;
+    width: 14px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: col-resize;
+    touch-action: none;
+    transform: translateX(-50%);
+  }
+
+  .sidebar-resize-handle::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4px;
+    height: 44px;
+    border-radius: 4px;
+    transform: translate(-50%, -50%);
+    background: rgba(148, 163, 184, 0.35);
+    transition: background 0.15s ease, height 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .sidebar-resize-handle::after {
+    content: '';
+    position: absolute;
+    inset: 0 auto;
+    left: 50%;
+    width: 2px;
+    height: 100%;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    background: transparent;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .sidebar-resize-handle:hover::before,
+  .chat-sidebar-resizing .sidebar-resize-handle::before {
+    height: 72px;
+    background: rgba(196, 181, 253, 0.85);
+    box-shadow: 0 0 16px rgba(124, 92, 255, 0.45);
+  }
+
+  .sidebar-resize-handle:hover::after,
+  .chat-sidebar-resizing .sidebar-resize-handle::after {
+    background: rgba(157, 123, 255, 0.65);
+    box-shadow: 0 0 14px rgba(124, 92, 255, 0.35);
+  }
+}
+
+body.chat-sidebar-resizing {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 .chat-sidebar.is-collapsed {
@@ -284,6 +356,10 @@
   }
 
   .sidebar-collapse-toggle {
+    display: none !important;
+  }
+
+  .sidebar-resize-handle {
     display: none !important;
   }
 

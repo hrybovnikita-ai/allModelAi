@@ -22,7 +22,7 @@ def _handle_json_command(raw_json: str) -> None:
         if action == "status":
             print(json.dumps(trainer.get_status()))
         elif action == "predict":
-            result = trainer.predict(cmd_data.get("text", ""))
+            result = trainer.predict(cmd_data.get("text", ""), slot=cmd_data.get("slot"))
             print(json.dumps(result))
         elif action == "train":
             epochs = cmd_data.get("epochs", DEFAULT_EPOCHS)

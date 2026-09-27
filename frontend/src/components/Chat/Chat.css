@@ -606,3 +606,61 @@ html[data-theme="light"] .lightbox-content {
   border-color: #cbd5e1;
 }
 
+/* Sidebar profile — circular grey avatar (ChatGPT-style) */
+.chat-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 4px 6px;
+}
+
+.chat-profile > span.chat-profile-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #6e6e73;
+  color: #ffffff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.chat-profile-meta {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 1px;
+}
+
+.chat-profile-meta strong {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.chat-profile-meta small {
+  font-size: 0.6875rem;
+  line-height: 1.25;
+  color: #8e8e93;
+}
+
+.chat-profile-signout {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+html[data-theme='light'] .chat-profile > span.chat-profile-avatar {
+  background: #9ca3af;
+  color: #ffffff;
+}
+
+html[data-theme='light'] .chat-profile-meta small {
+  color: #6b7280;
+}
+

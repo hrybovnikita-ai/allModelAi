@@ -77,7 +77,22 @@ export const INTERFACE_STRINGS = {
     "Quick navigation": "Quick navigation",
     "Projects": "Projects",
     "Generate image": "Generate image",
-    "Smart Router": "Smart Router"
+    "Smart Router": "Smart Router",
+    "Create project": "Create project",
+    "Project name": "Project name",
+    "Project name placeholder": "Copenhagen Trip",
+    "Search icons": "Search icons",
+    "No icons found": "No icons found",
+    "Choose icon and color": "Choose icon and color",
+    "Project color": "Project color",
+    "Project icon": "Project icon",
+    "You are currently in this folder": "You are currently in this folder",
+    "Leave folder": "Leave folder",
+    "Chats in this project stay grouped here.": "Chats in this project stay grouped here.",
+    "Pin": "Pin",
+    "Unpin": "Unpin",
+    "Rename": "Rename",
+    "Project chats": "Project chats"
   },
   "ru": {
     "backChat": "Назад в чат",

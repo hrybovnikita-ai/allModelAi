@@ -253,8 +253,12 @@ function runSingleShotCmd(action, payload = {}) {
  * Get PyTorch AI status.
  */
 async function getStatus() {
-    const healthy =
-        await isServerHealthy();
+    let healthy = await isServerHealthy();
+
+    if (!healthy) {
+        await ensureServerRunning();
+        healthy = await isServerHealthy();
+    }
 
     if (healthy) {
         try {
@@ -383,7 +387,34 @@ async function startTraining({
 /**
  * Predict text.
  */
-async function predict(text) {
+async function fetchJson(path, options = {}) {
+    await ensureServerRunning();
+    const healthy = await isServerHealthy();
+    if (!healthy) {
+        throw new Error('PyTorch AI server is unavailable');
+    }
+    const res = await fetch(`${PYTHON_BASE_URL}${path}`, options);
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `PyTorch request failed (${res.status})`);
+    }
+    return res.json();
+}
+
+async function getHealth() {
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 1500);
+        const res = await fetch(`${PYTHON_BASE_URL}/health`, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (res.ok) return res.json();
+    } catch {
+        /* fall through */
+    }
+    return { status: 'down', service: 'pytorch_ai_service' };
+}
+
+async function predict(text, slot) {
     if (
         !text ||
         typeof text !== 'string'
@@ -410,6 +441,7 @@ async function predict(text) {
 
                     body: JSON.stringify({
                         text,
+                        slot: slot || null,
                     }),
                 }
             );
@@ -429,8 +461,50 @@ async function predict(text) {
         'predict',
         {
             text,
+            slot,
         }
     );
+}
+
+async function listDataset() {
+    try {
+        return await fetchJson('/dataset');
+    } catch {
+        return { samples: [], total: 0 };
+    }
+}
+
+async function addDatasetSample(text, label) {
+    return fetchJson('/dataset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, label }),
+    });
+}
+
+async function deleteDatasetSample(index) {
+    return fetchJson(`/dataset/${index}`, { method: 'DELETE' });
+}
+
+async function exportModelBundle() {
+    return fetchJson('/export');
+}
+
+async function importModelBundle(bundle) {
+    return fetchJson('/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bundle }),
+    });
+}
+
+async function saveModelSlot(slotId) {
+    return fetchJson(`/models/slot/${slotId}`, { method: 'POST' });
+}
+
+async function getTrainStreamUrl() {
+    await ensureServerRunning();
+    return `${PYTHON_BASE_URL}/train/stream`;
 }
 
 /**
@@ -465,10 +539,20 @@ async function resetModel() {
 
 module.exports = {
     ensureServerRunning,
+    isServerHealthy,
+    getHealth,
     getStatus,
     getOpenAiStatus,
     augmentWithOpenAi,
     startTraining,
     predict,
     resetModel,
+    listDataset,
+    addDatasetSample,
+    deleteDatasetSample,
+    exportModelBundle,
+    importModelBundle,
+    saveModelSlot,
+    getTrainStreamUrl,
+    PYTHON_BASE_URL,
 };

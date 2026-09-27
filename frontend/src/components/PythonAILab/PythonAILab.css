@@ -6,6 +6,7 @@
   color: #f1f5f9;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   padding: 0 24px 60px;
+  overflow-anchor: none;
 }
 
 /* Header */
@@ -142,6 +143,7 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: 12px;
+  min-height: 88px;
 }
 
 .status-pill {
@@ -207,6 +209,7 @@
 .py-lab-grid {
   display: grid;
   grid-template-columns: 1.15fr 0.95fr;
+  align-items: start;
   gap: 28px;
   max-width: 1240px;
   margin: 0 auto;
@@ -225,6 +228,8 @@
   padding: 26px;
   backdrop-filter: blur(12px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  align-self: start;
 }
 
 .card-header {
@@ -528,6 +533,8 @@
   padding: 12px;
   height: 130px;
   overflow-y: auto;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 0.78rem;
   line-height: 1.5;
@@ -801,4 +808,267 @@
 
 .arch-specs b {
   color: #f1f5f9;
+}
+
+.backprop-panel {
+  margin: 20px 0 8px;
+  padding: 16px 18px;
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.92), rgba(8, 12, 24, 0.96));
+}
+
+.backprop-panel-head h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  color: #e2e8f0;
+}
+
+.backprop-panel-head p {
+  margin: 0 0 14px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #94a3b8;
+}
+
+.backprop-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.backprop-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.22);
+  opacity: 0.55;
+}
+
+.backprop-steps li.step-done {
+  opacity: 1;
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.backprop-steps .step-index {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.25);
+  color: #c7d2fe;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.backprop-steps code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  color: #dbeafe;
+}
+
+.backprop-live {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.backprop-live small {
+  display: block;
+  margin-bottom: 4px;
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+.backprop-live strong {
+  font-size: 0.82rem;
+  color: #f8fafc;
+}
+
+.linear-grad-grid label {
+  display: block;
+  margin-bottom: 8px;
+  color: #a5b4fc;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.7px;
+}
+
+.linear-grad-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 52px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.linear-grad-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  color: #94a3b8;
+}
+
+.linear-grad-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.linear-grad-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6366f1, #22d3ee);
+}
+
+.linear-grad-val {
+  font-size: 0.68rem;
+  color: #cbd5e1;
+  text-align: right;
+}
+
+.py-lab-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 14px;
+}
+
+.py-btn-secondary {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.py-btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.file-import {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.dataset-panel {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: rgba(2, 6, 23, 0.55);
+}
+
+.dataset-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.dataset-panel-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.dataset-add-row {
+  display: grid;
+  grid-template-columns: 1fr 140px auto;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.dataset-add-row input,
+.dataset-add-row select {
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.8);
+  color: #f8fafc;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+}
+
+.dataset-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.dataset-list li {
+  display: grid;
+  grid-template-columns: 110px 1fr 28px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  font-size: 0.74rem;
+}
+
+.dataset-label {
+  color: #a5b4fc;
+  font-weight: 700;
+}
+
+.dataset-text {
+  color: #cbd5e1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dataset-list button {
+  border: none;
+  background: transparent;
+  color: #f87171;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.slot-select-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 0.78rem;
+}
+
+.slot-select-row select {
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.8);
+  color: #f8fafc;
+  padding: 6px 10px;
+}
+
+@media (max-width: 720px) {
+  .backprop-live {
+    grid-template-columns: 1fr;
+  }
+
+  .linear-grad-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .dataset-add-row {
+    grid-template-columns: 1fr;
+  }
 }

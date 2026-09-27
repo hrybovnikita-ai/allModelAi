@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from typing import TYPE_CHECKING, Any, Optional
 
 from config import DEFAULT_BATCH_SIZE, DEFAULT_EPOCHS, DEFAULT_LR, DEVICE
@@ -12,8 +14,15 @@ if TYPE_CHECKING:
 try:
     from fastapi import BackgroundTasks, FastAPI
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import StreamingResponse
 
-    from api.schemas import OpenAiAugmentRequest, PredictRequest, TrainRequest
+    from api.schemas import (
+        DatasetSampleRequest,
+        ImportBundleRequest,
+        OpenAiAugmentRequest,
+        PredictRequest,
+        TrainRequest,
+    )
     from services.openai_llm import get_openai_status
 
     FASTAPI_AVAILABLE = True
@@ -43,6 +52,20 @@ def create_app(trainer: "TrainingManager") -> Optional[Any]:
     @app.get("/status")
     def status():
         return trainer.get_status()
+
+    @app.get("/train/stream")
+    async def train_stream():
+        async def event_generator():
+            while True:
+                status = trainer.get_status()
+                payload = json.dumps(status)
+                yield f"data: {payload}\n\n"
+                if not trainer.is_training:
+                    yield f"data: {json.dumps({**status, 'stream_done': True})}\n\n"
+                    break
+                await asyncio.sleep(0.5)
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
 
     @app.post("/train")
     def train(req: TrainRequest, bg_tasks: BackgroundTasks):
@@ -82,11 +105,35 @@ def create_app(trainer: "TrainingManager") -> Optional[Any]:
     def predict(req: PredictRequest):
         if not req.text.strip():
             return {"error": "Input text cannot be empty"}
-        return trainer.predict(req.text)
+        return trainer.predict(req.text, slot=req.slot)
 
     @app.post("/reset")
     def reset():
         trainer.reset_model()
         return {"message": "Model reset successfully", "status": "reset"}
+
+    @app.get("/dataset")
+    def dataset_list():
+        return {"samples": trainer.list_dataset(), "total": len(trainer.list_dataset())}
+
+    @app.post("/dataset")
+    def dataset_add(req: DatasetSampleRequest):
+        return trainer.create_dataset_sample(req.text, req.label)
+
+    @app.delete("/dataset/{index}")
+    def dataset_delete(index: int):
+        return trainer.remove_dataset_sample(index)
+
+    @app.get("/export")
+    def export_weights():
+        return trainer.export_bundle()
+
+    @app.post("/import")
+    def import_weights(req: ImportBundleRequest):
+        return trainer.import_bundle(req.bundle)
+
+    @app.post("/models/slot/{slot_id}")
+    def save_slot(slot_id: str):
+        return trainer.save_ab_slot(slot_id.lower())
 
     return app

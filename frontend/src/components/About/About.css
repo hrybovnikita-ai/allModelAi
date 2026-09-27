@@ -41,3 +41,25 @@
   font-size: 0.95rem;
   line-height: 1.6;
 }
+
+@media (max-width: 767px) {
+  .about-section {
+    margin-top: 56px;
+    margin-bottom: 48px;
+  }
+
+  .about-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .about-card {
+    padding: 28px 20px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .about-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

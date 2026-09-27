@@ -25,15 +25,21 @@ const globalSearch = (req, res) => {
 };
 
 const jobPayload = row => ({ id: row.id, type: row.type, status: row.status, progress: row.progress, stage: row.stage, payload: json(row.payload), result: json(row.result, null), error: row.error, createdAt: row.created_at, updatedAt: row.updated_at });
+const { runPyTorchTrainJob } = require('../services/aiPythonJobRunner');
+
 const processJob = (app, id) => {
     const db = app.locals.db.database; const row = db.prepare('SELECT * FROM background_jobs WHERE id = ?').get(id); if (!row || row.status !== 'queued') return;
+    if (row.type === 'pytorch-train') {
+        if (process.env.NODE_ENV !== 'test') setImmediate(() => runPyTorchTrainJob(app, id));
+        return;
+    }
     db.prepare("UPDATE background_jobs SET status='running', progress=15, stage='Planning', updated_at=? WHERE id=?").run(now(), id);
     const stages = [['Collecting inputs', 35], ['Processing', 65], ['Verifying result', 90]]; let index = 0;
     const advance = () => { const current = db.prepare('SELECT status FROM background_jobs WHERE id=?').get(id); if (!current || current.status === 'canceled') return; if (index < stages.length) { const [stage, progress] = stages[index++]; db.prepare('UPDATE background_jobs SET stage=?, progress=?, updated_at=? WHERE id=?').run(stage, progress, now(), id); return setTimeout(advance, 60); } const payload = json(row.payload); const result = { completed: true, message: `${row.type} job completed`, input: payload, completedAt: now() }; db.transaction(() => { db.prepare("UPDATE background_jobs SET status='completed', progress=100, stage='Complete', result=?, updated_at=? WHERE id=?").run(JSON.stringify(result), now(), id); db.prepare('INSERT INTO notifications (id,email,title,message,kind,created_at) VALUES (?,?,?,?,?,?)').run(`notification-${crypto.randomUUID()}`, row.email, 'Background task finished', `${row.type} is ready to review.`, 'job', now()); })(); };
     setTimeout(advance, 60);
 };
 const listJobs = (req, res) => res.json(req.app.locals.db.database.prepare('SELECT * FROM background_jobs WHERE email=? ORDER BY created_at DESC LIMIT 100').all(req.user.email).map(jobPayload));
-const createJob = (req, res) => { const type = String(req.body.type || '').trim().slice(0, 50); if (!['research','evaluation','meeting','workflow','document'].includes(type)) return res.status(400).json({ message: 'Unsupported job type' }); const id = `job-${crypto.randomUUID()}`, createdAt = now(); req.app.locals.db.database.prepare("INSERT INTO background_jobs (id,email,type,status,progress,stage,payload,created_at,updated_at) VALUES (?,?,?,'queued',0,'Queued',?,?,?)").run(id, req.user.email, type, JSON.stringify(req.body.payload || {}), createdAt, createdAt); audit(req, 'job.created', 'job', id, { type }); if (process.env.NODE_ENV !== 'test') setImmediate(() => processJob(req.app, id)); return res.status(202).json(jobPayload(req.app.locals.db.database.prepare('SELECT * FROM background_jobs WHERE id=?').get(id))); };
+const createJob = (req, res) => { const type = String(req.body.type || '').trim().slice(0, 50); if (!['research','evaluation','meeting','workflow','document','pytorch-train'].includes(type)) return res.status(400).json({ message: 'Unsupported job type' }); const id = `job-${crypto.randomUUID()}`, createdAt = now(); req.app.locals.db.database.prepare("INSERT INTO background_jobs (id,email,type,status,progress,stage,payload,created_at,updated_at) VALUES (?,?,?,'queued',0,'Queued',?,?,?)").run(id, req.user.email, type, JSON.stringify(req.body.payload || {}), createdAt, createdAt); audit(req, 'job.created', 'job', id, { type }); if (process.env.NODE_ENV !== 'test') setImmediate(() => processJob(req.app, id)); return res.status(202).json(jobPayload(req.app.locals.db.database.prepare('SELECT * FROM background_jobs WHERE id=?').get(id))); };
 const cancelJob = (req, res) => { const result = req.app.locals.db.database.prepare("UPDATE background_jobs SET status='canceled', stage='Canceled', updated_at=? WHERE id=? AND email=? AND status IN ('queued','running')").run(now(), req.params.id, req.user.email); if (result.changes) audit(req, 'job.canceled', 'job', req.params.id); return result.changes ? res.json({ message: 'Job canceled' }) : res.status(404).json({ message: 'Cancelable job not found' }); };
 
 const listNotifications = (req, res) => res.json(req.app.locals.db.database.prepare('SELECT id,title,message,kind,read_at AS readAt,created_at AS createdAt FROM notifications WHERE email=? ORDER BY created_at DESC LIMIT 100').all(req.user.email));

@@ -62,3 +62,31 @@
 .animate-float-2 { animation: float2 5.5s ease-in-out infinite; }
 .animate-float-3 { animation: float3 3.8s ease-in-out infinite; }
 .animate-float-4 { animation: float4 4.8s ease-in-out infinite; }
+
+@media (max-width: 767px) {
+  .stickers-section {
+    margin: 40px 0;
+  }
+
+  .stickers-container {
+    gap: 10px;
+  }
+
+  .sticker {
+    font-size: 0.9rem;
+    padding: 10px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-1,
+  .animate-float-2,
+  .animate-float-3,
+  .animate-float-4 {
+    animation: none;
+  }
+
+  .sticker:hover {
+    transform: none;
+  }
+}

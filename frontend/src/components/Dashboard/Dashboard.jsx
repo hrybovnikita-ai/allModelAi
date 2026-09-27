@@ -9,13 +9,9 @@ import './DashboardNav.css';
 import './DashboardFeatureCards.css';
 import './DashboardDarkViolet.css';
 import './DashboardLayout.css';
-import {
-  DASHBOARD_NAV_DESKTOP_MAIN,
-  DASHBOARD_NAV_DESKTOP_MORE,
-  DASHBOARD_NAV_LINKS,
-} from './dashboardNavLinks';
 import AccountDeleteModal from '../AccountDeleteModal';
 import DashboardResources from './DashboardResources';
+import DashboardWorkspaceNav from './DashboardWorkspaceNav';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import EverydayCards from '../EverydayAI/EverydayCards';
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
@@ -53,45 +49,11 @@ export default function Dashboard() {
 
   return (
     <main className="dashboard-page dashboard-violet">
-      <header className="dashboard-header dashboard-nav">
-        <div className="dashboard-nav-bar">
-          <div className="header-brand dashboard-nav-left">
-            <Link to="/" className="dashboard-brand"><AllModelAILogoMark />AllModelAI</Link>
-          </div>
-          <nav className="header-nav dashboard-nav-center" aria-label="Workspace navigation">
-            <div className="dashboard-nav-links">
-              {DASHBOARD_NAV_DESKTOP_MAIN.map((item) => (
-                <Link key={item.to} to={item.to}>
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-            <details className="dashboard-nav-more-desktop">
-              <summary>More</summary>
-              <div className="dashboard-nav-more-desktop-panel" role="menu">
-                {DASHBOARD_NAV_DESKTOP_MORE.map((item) => (
-                  <Link key={item.to} to={item.to} role="menuitem">
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            </details>
-          </nav>
-          <div className="header-account dashboard-nav-right">
-            <details className="dashboard-nav-mobile">
-              <summary>Menu</summary>
-              <div className="dashboard-nav-mobile-panel" role="menu">
-                {DASHBOARD_NAV_LINKS.map((item) => (
-                  <Link key={item.to} to={item.to} role="menuitem">
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            </details>
-            <div className="dashboard-user"><span>{user.avatar ? <img src={user.avatar} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : user.name?.charAt(0) || user.email.charAt(0)}</span><Link to="/settings"><small>{user.name || user.email}</small></Link><button onClick={async () => { try { const response = await apiFetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); if (!response.ok) throw new Error('Could not sign out. Try again.'); clearAllSessionData(); navigate('/login', { replace: true }); } catch (error) { setDeleteError(error.message); } }}>Sign out</button><button onClick={() => setDeleteModalOpen(true)}>Delete account</button></div>
-          </div>
-        </div>
-      </header>
+      <DashboardWorkspaceNav
+        user={user}
+        onAuthError={setDeleteError}
+        onDeleteAccount={() => setDeleteModalOpen(true)}
+      />
       <div className="dashboard-shell">
       {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user.email}</div>}
       {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}

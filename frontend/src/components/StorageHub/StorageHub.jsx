@@ -6,6 +6,7 @@ import {
   deleteStorageIdea,
   fetchStorageIdea,
   fetchStorageOverview,
+  withEnglishStorageLabels,
 } from '../../lib/storageIdeas';
 import './StorageHub.css';
 
@@ -35,9 +36,14 @@ export default function StorageHub() {
     conversationId: '',
   });
 
+  const localizedIdeas = useMemo(
+    () => ideas.map((item) => withEnglishStorageLabels(item)),
+    [ideas]
+  );
+
   const activeMeta = useMemo(
-    () => ideas.find((item) => item.id === active),
-    [ideas, active]
+    () => localizedIdeas.find((item) => item.id === active),
+    [localizedIdeas, active]
   );
 
   const reloadItems = useCallback(async (ideaId) => {
@@ -163,13 +169,13 @@ export default function StorageHub() {
       const raw = localStorage.getItem('allmodelai_favorites');
       const favorites = raw ? JSON.parse(raw) : [];
       if (!Array.isArray(favorites) || !favorites.length) {
-        setError('В браузере нет избранных сообщений для импорта.');
+        setError('No starred messages found in the browser to import.');
         return;
       }
       Promise.all(
         favorites.slice(0, 10).map((item, index) =>
           createStorageIdea('favorite-prompts', {
-            title: `Импорт ${index + 1}`,
+            title: `Import ${index + 1}`,
             content: String(item.text || '').slice(0, 4000),
           })
         )
@@ -182,37 +188,37 @@ export default function StorageHub() {
         })
         .catch((err) => setError(err.message));
     } catch {
-      setError('Не удалось прочитать localStorage.');
+      setError('Could not read localStorage.');
     }
   };
 
   if (!user) return <Navigate to="/login" replace />;
 
   return (
-    <main className="storage-hub-page">
+    <main className="storage-hub-page" lang="en">
       <header className="storage-hub-header">
         <Link to="/dashboard" className="storage-hub-brand">
           <AllModelAILogoMark />
           AllModelAI
         </Link>
         <nav>
-          <Link to="/chat">Чат</Link>
-          <Link to="/prompts">Промпты</Link>
+          <Link to="/chat">Chat</Link>
+          <Link to="/prompts">Prompts</Link>
           <Link to="/python-ai">Python AI Lab</Link>
         </nav>
       </header>
 
       <section className="storage-hub-hero">
-        <p>ХРАНИЛИЩЕ · 8 ИДЕЙ</p>
+        <p>STORAGE · 8 IDEAS</p>
         <h1>Storage Hub</h1>
-        <span>Восемь типов данных на вашем аккаунте: диалоги, промпты, настройки, проекты, лимиты, закладки, вложения и обучение.</span>
+        <span>Eight data types on your account: chats, prompts, settings, projects, usage, bookmarks, attachments, and training.</span>
       </section>
 
       {error && <p className="storage-hub-error" role="alert">{error}</p>}
 
       <div className="storage-hub-layout">
-        <aside className="storage-hub-tabs" aria-label="Типы хранения">
-          {ideas.map((idea) => (
+        <aside className="storage-hub-tabs" aria-label="Storage categories">
+          {localizedIdeas.map((idea) => (
             <button
               type="button"
               key={idea.id}
@@ -232,25 +238,25 @@ export default function StorageHub() {
           <h2>{activeMeta?.title || 'Storage'}</h2>
           <p>{activeMeta?.description}</p>
 
-          {loading && <p className="storage-hub-empty">Загрузка…</p>}
+          {loading && <p className="storage-hub-empty">Loading…</p>}
 
           {!loading && active === 'favorite-prompts' && (
             <>
               <div className="storage-hub-actions">
                 <button type="button" className="secondary" onClick={importBrowserFavorites}>
-                  Импорт из браузера
+                  Import from browser
                 </button>
               </div>
               <form className="storage-hub-form" onSubmit={savePrompt}>
                 <label>
-                  Название
-                  <input value={promptForm.title} onChange={(e) => setPromptForm({ ...promptForm, title: e.target.value })} placeholder="Мой промпт" />
+                  Title
+                  <input value={promptForm.title} onChange={(e) => setPromptForm({ ...promptForm, title: e.target.value })} placeholder="My prompt" />
                 </label>
                 <label>
-                  Текст
-                  <textarea rows={4} value={promptForm.content} onChange={(e) => setPromptForm({ ...promptForm, content: e.target.value })} placeholder="Вставьте промпт…" required />
+                  Text
+                  <textarea rows={4} value={promptForm.content} onChange={(e) => setPromptForm({ ...promptForm, content: e.target.value })} placeholder="Paste your prompt…" required />
                 </label>
-                <button type="submit">Сохранить промпт</button>
+                <button type="submit">Save prompt</button>
               </form>
             </>
           )}
@@ -258,15 +264,15 @@ export default function StorageHub() {
           {!loading && active === 'chat-settings' && (
             <form className="storage-hub-form" onSubmit={saveSettings}>
               <label>
-                Модель по умолчанию
+                Default model
                 <input value={settingsForm.defaultModel} onChange={(e) => setSettingsForm({ ...settingsForm, defaultModel: e.target.value })} />
               </label>
               <label>
-                Температура
+                Temperature
                 <input type="number" min="0" max="2" step="0.1" value={settingsForm.temperature} onChange={(e) => setSettingsForm({ ...settingsForm, temperature: Number(e.target.value) })} />
               </label>
               <label>
-                Режим роутера
+                Router mode
                 <select value={settingsForm.routerMode} onChange={(e) => setSettingsForm({ ...settingsForm, routerMode: e.target.value })}>
                   <option value="economy">economy</option>
                   <option value="balanced">balanced</option>
@@ -275,77 +281,77 @@ export default function StorageHub() {
               </label>
               <label>
                 <input type="checkbox" checked={settingsForm.webSearch} onChange={(e) => setSettingsForm({ ...settingsForm, webSearch: e.target.checked })} />
-                {' '}Веб-поиск по умолчанию
+                {' '}Web search by default
               </label>
-              <button type="submit">Сохранить на аккаунт</button>
+              <button type="submit">Save to account</button>
             </form>
           )}
 
           {!loading && active === 'builder-projects' && (
             <form className="storage-hub-form" onSubmit={saveBuilder}>
               <label>
-                Тип
+                Type
                 <select value={builderForm.kind} onChange={(e) => setBuilderForm({ ...builderForm, kind: e.target.value })}>
                   <option value="website">website</option>
                   <option value="app">app</option>
                 </select>
               </label>
               <label>
-                Название
+                Name
                 <input value={builderForm.name} onChange={(e) => setBuilderForm({ ...builderForm, name: e.target.value })} required />
               </label>
               <label>
-                HTML / описание
+                HTML / description
                 <textarea rows={4} value={builderForm.html} onChange={(e) => setBuilderForm({ ...builderForm, html: e.target.value })} />
               </label>
-              <button type="submit">Сохранить проект</button>
+              <button type="submit">Save project</button>
             </form>
           )}
 
           {!loading && active === 'model-bookmarks' && (
             <form className="storage-hub-form" onSubmit={saveBookmark}>
               <label>
-                ID модели
+                Model ID
                 <input value={bookmarkForm.modelId} onChange={(e) => setBookmarkForm({ ...bookmarkForm, modelId: e.target.value })} required />
               </label>
               <label>
-                Подпись
+                Label
                 <input value={bookmarkForm.label} onChange={(e) => setBookmarkForm({ ...bookmarkForm, label: e.target.value })} placeholder="Smart router" />
               </label>
-              <button type="submit">Добавить закладку</button>
+              <button type="submit">Add bookmark</button>
             </form>
           )}
 
           {!loading && active === 'attachments' && (
             <form className="storage-hub-form" onSubmit={saveAttachment}>
               <label>
-                Имя файла
+                File name
                 <input value={attachmentForm.fileName} onChange={(e) => setAttachmentForm({ ...attachmentForm, fileName: e.target.value })} required />
               </label>
               <label>
-                ID диалога (необязательно)
+                Conversation ID (optional)
                 <input value={attachmentForm.conversationId} onChange={(e) => setAttachmentForm({ ...attachmentForm, conversationId: e.target.value })} />
               </label>
               <label>
-                Содержимое
+                Content
                 <textarea rows={4} value={attachmentForm.content} onChange={(e) => setAttachmentForm({ ...attachmentForm, content: e.target.value })} required />
               </label>
-              <button type="submit">Сохранить вложение</button>
+              <button type="submit">Save attachment</button>
             </form>
           )}
 
           {!loading && active === 'usage-daily' && (
-            <p className="storage-hub-empty">Данные собираются автоматически при каждом запросе к AI.</p>
+            <p className="storage-hub-empty">Data is collected automatically on every AI request.</p>
           )}
 
           {!loading && active === 'training-runs' && (
-            <p className="storage-hub-empty">Запуски появляются после обучения в Python AI Lab.</p>
+            <p className="storage-hub-empty">Runs appear after training in Python AI Lab.</p>
           )}
 
           {!loading && active !== 'chat-settings' && (
             <div className="storage-hub-list">
               {!items.length && active !== 'favorite-prompts' && active !== 'builder-projects' && active !== 'model-bookmarks' && active !== 'attachments' && (
-                <p className="storage-hub-empty">Пока пусто.</p>
+                <p className="storage-hub-empty">Nothing here yet.</p>
               )}
               {items.map((row) => {
                 const key = row.id || row.modelId || row.day;
@@ -359,7 +365,7 @@ export default function StorageHub() {
                 const detail =
                   row.content?.slice?.(0, 160) ||
                   row.preview ||
-                  (row.requests != null ? `${row.requests} запросов · ${row.tokens || 0} токенов` : '') ||
+                  (row.requests != null ? `${row.requests} requests · ${row.tokens || 0} tokens` : '') ||
                   row.model ||
                   JSON.stringify(row.metrics || row.config || '').slice(0, 120);
                 const deleteId = row.id || row.modelId;
@@ -375,7 +381,7 @@ export default function StorageHub() {
                     <div>
                       {canOpenChat && (
                         <button type="button" className="secondary" onClick={() => navigate(`/chat?conversation=${row.id}`)}>
-                          Открыть
+                          Open
                         </button>
                       )}
                       {canUsePrompt && (
@@ -384,12 +390,12 @@ export default function StorageHub() {
                           className="secondary"
                           onClick={() => navigate('/chat', { state: { starterPrompt: row.content } })}
                         >
-                          В чат
+                          Use in chat
                         </button>
                       )}
                       {deleteId && active !== 'usage-daily' && (
                         <button type="button" className="secondary" onClick={() => runDelete(deleteId)}>
-                          Удалить
+                          Delete
                         </button>
                       )}
                     </div>

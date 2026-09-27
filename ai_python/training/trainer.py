@@ -12,23 +12,39 @@ import torch.nn as nn
 import torch.optim as optim
 
 from config import (
+    BEST_CHECKPOINT_PATH,
     DEFAULT_BATCH_SIZE,
     DEFAULT_EPOCHS,
     DEFAULT_LR,
     DEVICE,
+    EARLY_STOP_PATIENCE,
     INTENT_CLASSES,
     MODEL_PATH,
+    MODEL_SLOT_A,
+    MODEL_SLOT_B,
 )
 from model.model_manager import (
     build_prediction,
     delete_saved_weights,
+    export_model_bundle,
+    import_model_bundle,
+    load_model_from_slot,
     load_model_weights,
+    save_best_checkpoint,
+    save_model_to_slot,
     save_model_weights,
 )
 from model.gradients import linear_layer_gradient_snapshot
 from model.neural_network import AILearningBrain
 from services.openai_llm import generate_labeled_samples, get_openai_status
-from training.dataset import append_training_samples, load_training_samples, load_validation_samples
+from training.dataset import (
+    add_training_sample,
+    append_training_samples,
+    delete_training_sample,
+    list_training_dataset,
+    load_training_samples,
+    load_validation_samples,
+)
 from training.evaluate import evaluate_samples
 from training.metrics import load_metrics, save_metrics
 from training.preprocess import TextTokenizer
@@ -54,6 +70,13 @@ class TrainingManager:
         self.last_accuracy: float = 0.0
         self.started_at: Optional[float] = None
         self.completed_at: Optional[float] = None
+        self.last_training_step: Optional[Dict[str, Any]] = None
+        self.val_loss_history: list[float] = []
+        self.best_val_loss: float = 999.0
+        self.early_stop_patience_left: int = EARLY_STOP_PATIENCE
+        self.stopped_early: bool = False
+        self.last_training_error: Optional[str] = None
+        self.training_outcome: Optional[str] = None
 
         self._restore_metrics()
         self._load_weights()
@@ -159,6 +182,12 @@ class TrainingManager:
         self.current_epoch = 0
         self.total_epochs = epochs
         self.started_at = time.time()
+        self.stopped_early = False
+        self.last_training_error = None
+        self.training_outcome = None
+        self.early_stop_patience_left = EARLY_STOP_PATIENCE
+        self.best_val_loss = 999.0
+        self.val_loss_history = []
         self._log(
             f"Initiating PyTorch AI learning session: {epochs} epochs | lr={lr} | batch_size={batch_size}"
         )
@@ -196,6 +225,14 @@ class TrainingManager:
                     loss = criterion(outputs, batch_y)
                     loss.backward()
                     last_grad_snapshot = linear_layer_gradient_snapshot(self.model)
+                    self.last_training_step = {
+                        "epoch": epoch,
+                        "batch": batch_index + 1,
+                        "batches_total": batches,
+                        "loss": round(float(loss.item()), 6),
+                        "backward": True,
+                        "linear_gradients": last_grad_snapshot,
+                    }
                     nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=2.0)
                     optimizer.step()
 
@@ -224,6 +261,27 @@ class TrainingManager:
                 if avg_loss < self.best_loss:
                     self.best_loss = avg_loss
 
+                validation = evaluate_samples(
+                    self.model, self.tokenizer, load_validation_samples()
+                )
+                val_loss = float(validation.get("loss") or 0.0)
+                self.val_loss_history.append(round(val_loss, 4))
+                if validation["count"] and val_loss < self.best_val_loss:
+                    self.best_val_loss = val_loss
+                    self.early_stop_patience_left = EARLY_STOP_PATIENCE
+                    save_best_checkpoint(self.model)
+                    self._log(
+                        f"Early-stop checkpoint saved (val loss {val_loss:.4f}, acc {validation['accuracy']:.1f}%)"
+                    )
+                elif validation["count"]:
+                    self.early_stop_patience_left -= 1
+                    if self.early_stop_patience_left <= 0:
+                        self.stopped_early = True
+                        self._log(
+                            f"Early stopping triggered after epoch {epoch} (best val loss {self.best_val_loss:.4f})"
+                        )
+                        break
+
                 if last_grad_snapshot and (
                     epoch == 1 or epoch % max(epochs // 10, 1) == 0 or epoch == epochs
                 ):
@@ -239,6 +297,9 @@ class TrainingManager:
                 time.sleep(0.015)
 
             self.model.eval()
+            if BEST_CHECKPOINT_PATH.exists() and self.stopped_early:
+                load_model_from_slot(self.model, "best")
+                self._log("Restored best checkpoint weights after early stopping.")
             self._save_weights()
             validation = evaluate_samples(
                 self.model, self.tokenizer, load_validation_samples()
@@ -249,10 +310,13 @@ class TrainingManager:
                 )
 
             duration = round(time.time() - (self.started_at or time.time()), 2)
+            self.training_outcome = "completed"
             self._log(
                 f"Training completed successfully in {duration}s! Final Accuracy: {avg_acc:.1f}%"
             )
         except Exception as exc:
+            self.last_training_error = str(exc)
+            self.training_outcome = "failed"
             self._log(f"Training error: {exc}")
         finally:
             self.is_training = False
@@ -260,9 +324,67 @@ class TrainingManager:
 
         return True
 
-    def predict(self, text: str) -> Dict[str, Any]:
+    def predict(self, text: str, slot: Optional[str] = None) -> Dict[str, Any]:
         encoded = self.tokenizer.encode(text)
-        return build_prediction(self.model, text, encoded)
+        normalized_slot = str(slot or "default").lower()
+        if normalized_slot in ("default", ""):
+            return build_prediction(self.model, text, encoded, slot="default")
+
+        backup = {key: value.detach().clone() for key, value in self.model.state_dict().items()}
+        loaded = load_model_from_slot(self.model, normalized_slot)
+        if not loaded:
+            return {
+                "error": f"Model slot '{normalized_slot}' has no saved weights",
+                "slot": normalized_slot,
+            }
+        try:
+            result = build_prediction(self.model, text, encoded, slot=normalized_slot)
+        finally:
+            self.model.load_state_dict(backup)
+            self.model.eval()
+        return result
+
+    def list_dataset(self) -> list[dict]:
+        return list_training_dataset()
+
+    def create_dataset_sample(self, text: str, label: str) -> dict:
+        with self.lock:
+            if self.is_training:
+                return {"ok": False, "error": "Training in progress"}
+            result = add_training_sample(text, label)
+            if result.get("ok"):
+                self._reload_training_data()
+            return result
+
+    def remove_dataset_sample(self, index: int) -> dict:
+        with self.lock:
+            if self.is_training:
+                return {"ok": False, "error": "Training in progress"}
+            result = delete_training_sample(index)
+            if result.get("ok"):
+                self._reload_training_data()
+            return result
+
+    def export_bundle(self) -> Dict[str, Any]:
+        return export_model_bundle()
+
+    def import_bundle(self, bundle: Dict[str, Any]) -> Dict[str, Any]:
+        with self.lock:
+            if self.is_training:
+                return {"ok": False, "error": "Training in progress"}
+            result = import_model_bundle(bundle)
+            self._load_weights()
+            self._restore_metrics()
+            return result
+
+    def save_ab_slot(self, slot: str) -> dict:
+        with self.lock:
+            if self.is_training:
+                return {"ok": False, "error": "Training in progress"}
+            if slot not in ("a", "b"):
+                return {"ok": False, "error": "Slot must be a or b"}
+            path = save_model_to_slot(self.model, slot)
+            return {"ok": True, "slot": slot, "path": str(path)}
 
     def get_status(self) -> Dict[str, Any]:
         total_params = sum(p.numel() for p in self.model.parameters())
@@ -290,9 +412,33 @@ class TrainingManager:
             "openai": get_openai_status(),
             "backprop": {
                 "optimizer": "AdamW",
-                "loss": "CrossEntropyLoss",
+                "loss_function": "CrossEntropyLoss",
                 "linear_layers": 3,
                 "gradient_clipping": 2.0,
+                "pipeline": [
+                    "forward_pass",
+                    "cross_entropy_loss",
+                    "loss.backward()",
+                    "linear_layer_gradients",
+                    "clip_grad_norm_",
+                    "optimizer.step()",
+                ],
+            },
+            "last_training_step": self.last_training_step,
+            "val_loss_history": self.val_loss_history[-40:],
+            "early_stopping": {
+                "enabled": True,
+                "patience": EARLY_STOP_PATIENCE,
+                "patience_left": self.early_stop_patience_left,
+                "best_val_loss": round(self.best_val_loss, 4) if self.best_val_loss < 900 else None,
+                "stopped_early": self.stopped_early,
+                "best_checkpoint_exists": BEST_CHECKPOINT_PATH.exists(),
+            },
+            "training_outcome": self.training_outcome,
+            "last_training_error": self.last_training_error,
+            "model_slots": {
+                "a": MODEL_SLOT_A.exists(),
+                "b": MODEL_SLOT_B.exists(),
             },
             "classes": INTENT_CLASSES,
             "logs": self.logger.tail(15),

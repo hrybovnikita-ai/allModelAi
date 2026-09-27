@@ -251,3 +251,25 @@
     min-height: 180px;
   }
 }
+
+@media (max-width: 479px) {
+  .stats-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .block-title {
+    font-size: 1.45rem;
+    margin-bottom: 22px;
+  }
+
+  .faq-item button {
+    padding: 14px 16px;
+    font-size: 0.92rem;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .uc-panel {
+    padding: 32px;
+  }
+}

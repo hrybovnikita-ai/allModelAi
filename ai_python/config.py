@@ -1,7 +1,8 @@
 """Shared configuration for the AllModelAI PyTorch service."""
 
-from pathlib import Path
+import os
 import random
+from pathlib import Path
 
 import torch
 
@@ -28,7 +29,11 @@ MODELS_DIR = ROOT_DIR / "models"
 
 MODEL_PATH = ROOT_DIR / "ai_model.pth"
 MODEL_PATH_ALT = MODELS_DIR / "ai_model.pth"
+MODEL_SLOT_A = MODELS_DIR / "ai_model_a.pth"
+MODEL_SLOT_B = MODELS_DIR / "ai_model_b.pth"
+BEST_CHECKPOINT_PATH = MODELS_DIR / "best_checkpoint.pth"
 METRICS_PATH = ROOT_DIR / "training_metrics.json"
+EARLY_STOP_PATIENCE = max(3, int(os.environ.get("EARLY_STOP_PATIENCE", "8")))
 
 SEED = 42
 VOCAB_SIZE = 128

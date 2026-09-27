@@ -36,3 +36,46 @@ export const STORAGE_IDEA_IDS = [
   'attachments',
   'training-runs',
 ];
+
+/** English labels for Storage Hub (UI always English). */
+export const STORAGE_IDEA_LABELS = {
+  'chat-history': {
+    title: 'Chat history',
+    description: 'Saved conversations with models on your account.',
+  },
+  'favorite-prompts': {
+    title: 'Favorite prompts',
+    description: 'Useful prompts you can quickly paste into chat.',
+  },
+  'chat-settings': {
+    title: 'Chat settings',
+    description: 'Default model, temperature, and router mode.',
+  },
+  'builder-projects': {
+    title: 'Builder projects',
+    description: 'Website and app drafts from Website Builder.',
+  },
+  'usage-daily': {
+    title: 'Daily usage',
+    description: 'How many AI requests you sent each day.',
+  },
+  'model-bookmarks': {
+    title: 'Model bookmarks',
+    description: 'Frequently used models in one list.',
+  },
+  attachments: {
+    title: 'Message attachments',
+    description: 'Files and notes linked to conversations.',
+  },
+  'training-runs': {
+    title: 'Training log',
+    description: 'PyTorch AI Lab runs with metrics.',
+  },
+};
+
+export function withEnglishStorageLabels(idea) {
+  if (!idea?.id) return idea;
+  const labels = STORAGE_IDEA_LABELS[idea.id];
+  if (!labels) return idea;
+  return { ...idea, title: labels.title, description: labels.description };
+}

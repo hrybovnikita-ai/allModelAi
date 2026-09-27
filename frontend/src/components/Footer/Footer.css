@@ -85,9 +85,31 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
+  .footer {
+    margin-top: 56px;
+    padding-top: 56px;
+  }
+
   .footer-content {
     flex-direction: column;
     gap: 30px;
+    padding-bottom: 36px;
+  }
+
+  .footer-brand {
+    font-size: 1.45rem;
+  }
+
+  .footer-links {
+    gap: 32px;
+    width: 100%;
+  }
+}
+
+@media (max-width: 479px) {
+  .footer-links {
+    flex-direction: column;
+    gap: 28px;
   }
 }

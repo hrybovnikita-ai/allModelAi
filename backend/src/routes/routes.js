@@ -28,6 +28,8 @@ const {
     createPurchase,
     createCheckoutSession,
     verifyCheckoutSession,
+    mockDeveloperSubscribe,
+    getPaymentConfig,
     createChatResponse,
     analyzeVision,
     generateImage,
@@ -42,6 +44,15 @@ const {
     resetPyTorchModel,
     getOpenAiTrainingStatus,
     augmentPyTorchDataset,
+    getPyTorchQuotas,
+    streamPyTorchTraining,
+    listPyTorchDataset,
+    createPyTorchDatasetSample,
+    deletePyTorchDatasetSample,
+    exportPyTorchModel,
+    importPyTorchModel,
+    savePyTorchModelSlot,
+    getSystemHealth,
 } = require('../controllers/aiPythonController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { prepareAppGeneration } = require('../appGeneration');
@@ -58,10 +69,19 @@ const { cachePublicResponse } = require('../cache');
 // Local PyTorch AI Learning Engine routes
 router.get('/ai-python/status', getPyTorchStatus);
 router.get('/ai-python/openai/status', getOpenAiTrainingStatus);
+router.get('/ai-python/quotas', requireAuth, getPyTorchQuotas);
+router.get('/ai-python/train/stream', requireAuth, streamPyTorchTraining);
+router.get('/ai-python/dataset', requireAuth, listPyTorchDataset);
+router.post('/ai-python/dataset', requireAuth, createPyTorchDatasetSample);
+router.delete('/ai-python/dataset/:index', requireAuth, deletePyTorchDatasetSample);
+router.get('/ai-python/export', requireAuth, exportPyTorchModel);
+router.post('/ai-python/import', requireAuth, importPyTorchModel);
+router.post('/ai-python/models/slot/:slot', requireAuth, savePyTorchModelSlot);
 router.post('/ai-python/openai/augment', requireAuth, augmentPyTorchDataset);
 router.post('/ai-python/train', requireAuth, startPyTorchTraining);
 router.post('/ai-python/predict', requireAuth, predictPyTorch);
 router.post('/ai-python/reset', requireAuth, resetPyTorchModel);
+router.get('/system/health', getSystemHealth);
 
 router.post('/auth/register', registerUser);
 router.post('/auth/login', loginUser);
@@ -92,7 +112,9 @@ router.post('/images/upscale', requireAuth, upscaleGeneratedImage);
 router.post('/images', requireAuth, generateImage);
 router.post('/images/generate', requireAuth, generateImage);
 router.post('/purchases', requireAuth, createPurchase);
+router.get('/payments/config', requireAuth, getPaymentConfig);
 router.post('/payments/checkout', requireAuth, createCheckoutSession);
+router.post('/payments/mock-subscribe', requireAuth, mockDeveloperSubscribe);
 router.get('/payments/session/:sessionId', requireAuth, verifyCheckoutSession);
 router.get('/credits', requireAuth, getCredits);
 router.patch('/access-mode', requireAuth, setAccessMode);

@@ -169,3 +169,41 @@ def append_training_samples(new_samples: List[Tuple[str, str]]) -> int:
     payload = [{"text": text, "label": label} for text, label in merged]
     train_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return added
+
+
+def _persist_training_samples(samples: List[Tuple[str, str]]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    payload = [{"text": text, "label": label} for text, label in samples]
+    (DATA_DIR / "train.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def list_training_dataset() -> List[dict]:
+    samples = load_training_samples()
+    return [{"index": index, "text": text, "label": label} for index, (text, label) in enumerate(samples)]
+
+
+def add_training_sample(text: str, label: str) -> dict:
+    cleaned_text = str(text or "").strip()
+    cleaned_label = str(label or "").strip()
+    if not cleaned_text or cleaned_label not in INTENT_CLASSES:
+        return {"ok": False, "error": "Valid text and label are required"}
+    added = append_training_samples([(cleaned_text, cleaned_label)])
+    return {
+        "ok": True,
+        "added": added,
+        "duplicate": added == 0,
+        "total_samples": len(load_training_samples()),
+    }
+
+
+def delete_training_sample(index: int) -> dict:
+    samples = load_training_samples()
+    if index < 0 or index >= len(samples):
+        return {"ok": False, "error": "Sample index out of range"}
+    removed = samples.pop(index)
+    _persist_training_samples(samples)
+    return {
+        "ok": True,
+        "removed": {"text": removed[0], "label": removed[1]},
+        "total_samples": len(samples),
+    }

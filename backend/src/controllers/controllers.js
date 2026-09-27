@@ -9,6 +9,7 @@ const Stripe = require('stripe');
 const users = require('../data/data');
 const webSearchService = require('../services/webSearchService');
 const deepResearchService = require('../services/deepResearchService');
+const aiPythonBridge = require('../services/aiPythonBridge');
 const {
     authLog,
     normalizeEmail,
@@ -654,19 +655,50 @@ const createCheckoutSession = async (req, res) => {
     if (!process.env.STRIPE_SECRET_KEY?.trim()) return res.status(503).json({ message: 'Payments are not configured. Add STRIPE_SECRET_KEY to the backend environment.' });
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
     const checkoutOrigin = frontendOrigin(req);
-    const session = await stripe.checkout.sessions.create({
+    const embedded = req.body.embedded === true;
+    const sessionParams = {
         mode: 'subscription',
         customer_email: email,
         client_reference_id: String(req.user.id),
         billing_address_collection: 'required',
         phone_number_collection: { enabled: true },
-        line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: plan.amount, recurring: { interval: plan.interval }, product_data: { name: `AllModelAI ${plan.name}`, description: `${plan.limit.toLocaleString()} AI requests per ${plan.interval}` } } }],
+        line_items: [{
+            quantity: 1,
+            price_data: {
+                currency: 'usd',
+                unit_amount: plan.amount,
+                recurring: { interval: plan.interval },
+                product_data: {
+                    name: `AllModelAI ${plan.name}`,
+                    description: `${plan.limit.toLocaleString()} AI requests per ${plan.interval}`,
+                },
+            },
+        }],
         metadata: { email, plan: planKey, userName: req.user.name || 'Subscriber' },
         subscription_data: { metadata: { email, plan: planKey } },
-        success_url: `${checkoutOrigin}/checkout?success=1&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${checkoutOrigin}/checkout?canceled=1&plan=${planKey}`,
-    });
+    };
+    if (embedded) {
+        sessionParams.ui_mode = 'embedded';
+        sessionParams.return_url = `${checkoutOrigin}/chat?subscribe=success&session_id={CHECKOUT_SESSION_ID}`;
+    } else {
+        sessionParams.success_url = `${checkoutOrigin}/checkout?success=1&session_id={CHECKOUT_SESSION_ID}`;
+        sessionParams.cancel_url = `${checkoutOrigin}/checkout?canceled=1&plan=${planKey}`;
+    }
+    const session = await stripe.checkout.sessions.create(sessionParams);
+    if (embedded) {
+        return res.status(201).json({ clientSecret: session.client_secret, sessionId: session.id, embedded: true });
+    }
     return res.status(201).json({ checkoutUrl: session.url });
+};
+
+const getPaymentConfig = (_req, res) => {
+    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY?.trim()
+        || process.env.VITE_STRIPE_PUBLISHABLE_KEY?.trim()
+        || null;
+    return res.json({
+        stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY?.trim()),
+        publishableKey,
+    });
 };
 
 const fulfillStripeSession = (database, session) => {
@@ -706,6 +738,36 @@ const stripeWebhook = (req, res) => {
 
 const createPurchase = (req, res) => createCheckoutSession(req, res);
 
+const CHAT_PLAN_ALIASES = { starter: 'week', pro: 'common', unlimited: 'plus' };
+
+/** Developer-only sandbox subscription (no Stripe, no real charge). */
+const mockDeveloperSubscribe = (req, res) => {
+    const email = String(req.user.email).trim().toLowerCase();
+    if (!developerEmails().has(email)) {
+        return res.status(403).json({
+            message: 'Test payments are only for configured developer accounts. Use secure Stripe checkout.',
+            useStripe: true,
+        });
+    }
+    const rawPlan = String(req.body.plan || 'plus').toLowerCase();
+    const planKey = normalizePlanKey(CHAT_PLAN_ALIASES[rawPlan] || rawPlan);
+    if (!subscriptionPlans[planKey]) {
+        return res.status(400).json({ message: 'Choose a valid subscription plan' });
+    }
+    activateSubscription(req.app.locals.db, {
+        email,
+        name: req.user.name || 'Developer',
+        city: String(req.body.city || '').trim(),
+        dateOfBirth: String(req.body.birthDate || req.body.dateOfBirth || '').trim(),
+        planKey,
+        stripeCustomerId: 'mock_dev_customer',
+        stripeSubscriptionId: `mock_dev_sub_${Date.now()}`,
+    });
+    const status = getCreditStatus(req.app.locals.db, email);
+    const { data, email: _ignored, enforced, ...access } = status;
+    return res.status(201).json({ ...access, mock: true, message: 'Developer test subscription activated (no charge).' });
+};
+
 const chooseSmartRoute = (prompt, mode = 'balanced', hasImage = false) => {
     const text = String(prompt || '').toLowerCase();
     if (hasImage) {
@@ -731,7 +793,7 @@ const chooseSmartRoute = (prompt, mode = 'balanced', hasImage = false) => {
     return { model: 'gpt', reason: 'Balanced routing selected a versatile general model.', category: 'general' };
 };
 
-const previewRouter = (req, res) => {
+const previewRouter = async (req, res) => {
     const prompt = String(req.body.prompt || '').trim();
     const hasImage = Boolean(req.body.image || req.body.hasImage);
     if (!prompt && !hasImage) return res.status(400).json({ message: 'Prompt or image is required' });
@@ -739,9 +801,31 @@ const previewRouter = (req, res) => {
     const access = getCreditStatus(req.app.locals.db, req.user.email);
     if (!access.models.includes('all') && !access.models.includes(route.model)) {
         route.model = 'gemini';
-        route.reason = 'Smart Router выбрал Gemini из моделей, доступных в режиме User.';
+        route.reason = 'Smart Router picked Gemini from models available in User mode.';
     }
-    return res.json(route);
+
+    let localClassifier = null;
+    if (prompt.length >= 8) {
+        try {
+            const prediction = await aiPythonBridge.predict(prompt.slice(0, 500));
+            if (prediction?.predicted_class) {
+                localClassifier = {
+                    predicted_class: prediction.predicted_class,
+                    confidence: prediction.confidence,
+                    hint:
+                        prediction.predicted_class === 'coding_help'
+                            ? 'Local PyTorch classifier suggests a coding-focused cloud model.'
+                            : prediction.predicted_class === 'creative_writing'
+                              ? 'Local classifier leans toward creative writing — Claude/GPT may fit.'
+                              : 'Local PyTorch intent classifier snapshot (offline).',
+                };
+            }
+        } catch {
+            localClassifier = null;
+        }
+    }
+
+    return res.json({ ...route, localClassifier });
 };
 
 const createChatResponse = async (req, res) => {
@@ -1854,6 +1938,8 @@ module.exports = {
     createPurchase,
     createCheckoutSession,
     verifyCheckoutSession,
+    getPaymentConfig,
+    mockDeveloperSubscribe,
     stripeWebhook,
     createChatResponse,
     analyzeVision,

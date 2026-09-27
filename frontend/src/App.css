@@ -67,7 +67,11 @@ body {
   max-width: 1260px;
   margin: 0 auto;
   width: 100%;
-  padding: clamp(62px, 6vw, 92px) clamp(20px, 3vw, 40px);
+  padding:
+    clamp(62px, 6vw, 92px)
+    max(var(--page-gutter, 20px), var(--safe-right))
+    clamp(62px, 6vw, 92px)
+    max(var(--page-gutter, 20px), var(--safe-left));
 }
 
 .home-layout {
@@ -94,18 +98,23 @@ body {
   .container { max-width: 1680px; }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .container {
-    padding: 42px 16px;
+    padding-block: 42px;
+    padding-inline: max(12px, var(--safe-left)) max(12px, var(--safe-right));
   }
 
-  .home-layout { gap: 58px; }
+  .home-layout {
+    gap: clamp(40px, 10vw, 58px);
+  }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 479px) {
   .container {
-    padding: 32px 12px;
+    padding-block: 32px;
   }
 
-  .home-layout { gap: 46px; }
+  .home-layout {
+    gap: 40px;
+  }
 }

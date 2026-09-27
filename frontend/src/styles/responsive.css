@@ -170,3 +170,323 @@ html[data-platform='ios'] .footer {
     max-width: 1520px;
   }
 }
+
+/* ——— Marketing / home sections (all breakpoints) ——— */
+
+.section-eyebrow,
+.grid-header p,
+.users-heading > span,
+.workflow-intro > span {
+  overflow-wrap: anywhere;
+}
+
+/* Phone */
+@media (max-width: 767px) {
+  .about-section {
+    margin-top: 56px;
+    margin-bottom: 48px;
+  }
+
+  .about-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .about-card {
+    padding: 28px 20px;
+  }
+
+  .about-card h3 {
+    font-size: 1.2rem;
+  }
+
+  .pricing-section {
+    margin-top: 48px;
+    margin-bottom: 48px;
+  }
+
+  .pricing-card {
+    padding: 32px 22px;
+  }
+
+  .price {
+    font-size: clamp(2.1rem, 9vw, 2.75rem);
+  }
+
+  .stickers-section {
+    margin: 40px 0;
+    padding: 8px 0;
+  }
+
+  .stickers-container {
+    gap: 10px;
+  }
+
+  .sticker {
+    font-size: 0.9rem;
+    padding: 10px 16px;
+  }
+
+  .users-section {
+    margin: 56px 0 48px;
+  }
+
+  .comments-heading {
+    margin-top: 48px;
+  }
+
+  .comments-heading h3 {
+    font-size: 1.35rem;
+  }
+
+  .block-title {
+    font-size: clamp(1.45rem, 5.5vw, 1.85rem);
+    margin-bottom: 24px;
+  }
+
+  .stats-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 20px 16px;
+    margin-bottom: 56px;
+  }
+
+  .stat-item strong {
+    font-size: 1.65rem;
+  }
+
+  .uc-panel {
+    padding: 22px 18px;
+    gap: 24px;
+  }
+
+  .uc-tabs {
+    justify-content: flex-start;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+
+  .uc-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .uc-tabs button {
+    flex: 0 0 auto;
+  }
+
+  .newsletter-card {
+    padding: 36px 20px;
+  }
+
+  .newsletter-card h2 {
+    font-size: 1.45rem;
+  }
+
+  .newsletter-card form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .newsletter-card input,
+  .newsletter-card button {
+    width: 100%;
+  }
+
+  .rainbow-experience {
+    margin: 2rem 0;
+  }
+
+  .models-grid {
+    text-align: left;
+  }
+
+  .grid-header {
+    text-align: center;
+  }
+}
+
+@media (max-width: 479px) {
+  .stats-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .footer-links {
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  .link-group h4 {
+    font-size: 0.92rem;
+  }
+}
+
+/* Tablet */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .about-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .about-section {
+    margin-top: 72px;
+  }
+
+  .pricing-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pricing-card:nth-child(3) {
+    grid-column: 1 / -1;
+    max-width: min(480px, 100%);
+    justify-self: center;
+    width: 100%;
+  }
+
+  .stickers-container {
+    gap: 18px;
+  }
+
+  .workflow-section {
+    padding: 36px 28px;
+  }
+
+  .home-layout {
+    gap: clamp(48px, 6vw, 72px);
+  }
+}
+
+/* Laptop narrow */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .model-cards {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .model-card {
+    padding-inline: 14px;
+  }
+
+  .model-card h3 {
+    font-size: 1.15rem;
+  }
+}
+
+/* Landscape phones & short viewports (iPhone sideways, etc.) */
+@media (orientation: landscape) and (max-height: 520px) {
+  .header {
+    min-height: auto;
+    padding-top: max(72px, calc(64px + var(--safe-top)));
+    padding-bottom: 40px;
+  }
+
+  .header-content h1 {
+    font-size: clamp(2rem, 7vh, 3.2rem);
+    margin-bottom: 12px;
+  }
+
+  .hero-prompt {
+    margin-top: 16px;
+  }
+
+  html[data-viewport='phone'] .navbar {
+    padding-top: max(10px, calc(8px + var(--safe-top)));
+    padding-bottom: 10px;
+  }
+}
+
+/* Foldables & very narrow viewports */
+@media (max-width: 360px) {
+  .nav-auth .nav-signin {
+    padding-inline: 8px;
+    font-size: 0.7rem;
+  }
+
+  .hero-actions button {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+  }
+
+  .model-card h3 {
+    font-size: 1.1rem;
+  }
+}
+
+/* Large desktop & ultrawide */
+@media (min-width: 1920px) {
+  .home-layout {
+    gap: clamp(80px, 5vw, 112px);
+  }
+
+  .footer-content,
+  .header-content {
+    max-width: 1520px;
+  }
+}
+
+@media (min-width: 2560px) {
+  .container {
+    max-width: 1840px;
+  }
+
+  .header-content h1 {
+    font-size: clamp(5rem, 4vw, 6.5rem);
+  }
+}
+
+/* Android — gesture bar & cutouts */
+html[data-platform='android'] .navbar {
+  padding-top: max(18px, calc(14px + var(--safe-top)));
+}
+
+html[data-platform='android'] .footer {
+  padding-bottom: max(30px, calc(24px + var(--safe-bottom)));
+}
+
+html[data-platform='android'] .login-overlay {
+  padding:
+    max(12px, var(--safe-top))
+    max(12px, var(--safe-right))
+    max(12px, var(--safe-bottom))
+    max(12px, var(--safe-left));
+}
+
+/* Generic app shells — readable on small screens */
+@media (max-width: 767px) {
+  .info-page,
+  .social-auth-page,
+  .checkout-page,
+  .settings-page,
+  .model-page,
+  .explorer-page,
+  .studio-page,
+  .suite-page,
+  .innovation-page,
+  .prompt-gallery-page,
+  .generated-file-page,
+  .storage-hub-page {
+    padding-inline: max(14px, var(--safe-left)) max(14px, var(--safe-right)) !important;
+  }
+
+  .info-page nav,
+  .control-header,
+  .studio-header,
+  .next-ten-nav {
+    flex-wrap: wrap;
+    gap: 10px;
+    row-gap: 12px;
+  }
+}
+
+/* Hover effects off on touch — avoids sticky :hover states */
+@media (hover: none) and (pointer: coarse) {
+  .model-card:hover,
+  .about-card:hover,
+  .pricing-card:not(.featured):hover,
+  .user-card:hover,
+  .sticker:hover {
+    transform: none;
+  }
+}

@@ -11,6 +11,18 @@ test('PyTorch AI Learning Engine endpoints', async (t) => {
         assert.ok(res.body.device, 'Should return active device');
         assert.ok(Array.isArray(res.body.classes), 'Should list classes');
         assert.ok(typeof res.body.total_parameters === 'number', 'Should return parameter count');
+        assert.ok(Array.isArray(res.body.backprop?.pipeline), 'Should expose backprop pipeline');
+        assert.equal(res.body.backprop?.loss_function, 'CrossEntropyLoss');
+        if (res.body.early_stopping) {
+            assert.equal(typeof res.body.early_stopping.patience, 'number');
+        }
+    });
+
+    await t.test('GET /api/system/health includes core and PyTorch checks', async () => {
+        const res = await request(app).get('/api/system/health');
+        assert.equal(res.status, 200);
+        assert.ok(res.body.checks);
+        assert.ok('pytorch' in res.body);
     });
 
     await t.test('GET /api/ai-python/openai/status returns OpenAI integration state', async () => {
@@ -18,6 +30,18 @@ test('PyTorch AI Learning Engine endpoints', async (t) => {
         assert.equal(res.status, 200);
         assert.ok(typeof res.body.configured === 'boolean');
         assert.equal(res.body.library, 'openai');
+    });
+
+    await t.test('GET /api/ai-python/quotas requires auth and returns train/predict limits', async () => {
+        const email = `quota-${Date.now()}@example.com`;
+        const signupRes = await request(app)
+            .post('/api/auth/register')
+            .send({ name: 'Quota Tester', email, password: 'Password123!' });
+        const cookie = signupRes.headers['set-cookie'];
+        const res = await request(app).get('/api/ai-python/quotas').set('Cookie', cookie);
+        assert.equal(res.status, 200);
+        assert.ok(res.body.train?.limit);
+        assert.ok(res.body.predict?.limit);
     });
 
     await t.test('POST /api/ai-python/predict returns valid classification and response', async () => {

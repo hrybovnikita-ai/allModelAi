@@ -24,36 +24,36 @@ const parseJson = (value, fallback) => {
 
 const ideaMeta = {
     'chat-history': {
-        title: 'История чатов',
-        description: 'Сохранённые диалоги с моделями на вашем аккаунте.',
+        title: 'Chat history',
+        description: 'Saved conversations with models on your account.',
     },
     'favorite-prompts': {
-        title: 'Избранные промпты',
-        description: 'Удачные запросы, которые можно быстро вставить в чат.',
+        title: 'Favorite prompts',
+        description: 'Useful prompts you can quickly paste into chat.',
     },
     'chat-settings': {
-        title: 'Настройки чата',
-        description: 'Модель по умолчанию, температура и режим роутера.',
+        title: 'Chat settings',
+        description: 'Default model, temperature, and router mode.',
     },
     'builder-projects': {
-        title: 'Проекты билдера',
-        description: 'Черновики сайтов и приложений из Website Builder.',
+        title: 'Builder projects',
+        description: 'Website and app drafts from Website Builder.',
     },
     'usage-daily': {
-        title: 'Использование по дням',
-        description: 'Сколько запросов ушло в AI за каждый день.',
+        title: 'Daily usage',
+        description: 'How many AI requests you sent each day.',
     },
     'model-bookmarks': {
-        title: 'Закладки моделей',
-        description: 'Часто используемые модели в одном списке.',
+        title: 'Model bookmarks',
+        description: 'Frequently used models in one list.',
     },
     attachments: {
-        title: 'Вложения к сообщениям',
-        description: 'Файлы и заметки, привязанные к диалогам.',
+        title: 'Message attachments',
+        description: 'Files and notes linked to conversations.',
     },
     'training-runs': {
-        title: 'Журнал обучения',
-        description: 'Запуски PyTorch AI Lab с метриками.',
+        title: 'Training log',
+        description: 'PyTorch AI Lab runs with metrics.',
     },
 };
 

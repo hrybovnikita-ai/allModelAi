@@ -43,3 +43,24 @@
   .nav-brand { font-size: 1rem; }
   .nav-auth button { padding-inline: 8px; }
 }
+
+@media (max-width: 767px) {
+  .navbar {
+    padding-inline: max(14px, var(--safe-left)) max(14px, var(--safe-right));
+    padding-top: max(14px, calc(12px + var(--safe-top)));
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .navbar {
+    padding-inline: var(--page-gutter, 24px);
+  }
+
+  .nav-links {
+    gap: 18px;
+  }
+
+  .nav-links a {
+    font-size: 0.92rem;
+  }
+}

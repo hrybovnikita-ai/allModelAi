@@ -22,6 +22,16 @@ class TrainRequest(BaseModel):
 
 class PredictRequest(BaseModel):
     text: str
+    slot: Optional[str] = None
+
+
+class DatasetSampleRequest(BaseModel):
+    text: str
+    label: str
+
+
+class ImportBundleRequest(BaseModel):
+    bundle: dict
 
 
 class OpenAiAugmentRequest(BaseModel):
