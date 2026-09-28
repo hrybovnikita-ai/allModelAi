@@ -46,3 +46,63 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+      - name: Locate iOS Simulator app bundle
+        id: locate_app
+        run: |
+          set -euo pipefail
+
+          is_simulator_app() {
+            [ -d "$1" ] && [ -f "$1/Info.plist" ]
+          }
+
+          app_path=""
+
+          default_path="$GITHUB_WORKSPACE/frontend/ios/App/build/Debug-iphonesimulator/App.app"
+          if is_simulator_app "$default_path"; then
+            app_path="$default_path"
+          fi
+
+          if [ -z "$app_path" ]; then
+            while IFS= read -r candidate; do
+              if is_simulator_app "$candidate"; then
+                app_path="$candidate"
+                break
+              fi
+            done < <(
+              find "$GITHUB_WORKSPACE/frontend/ios/App" "$HOME/Library/Developer/Xcode/DerivedData" \
+                -type d -name 'App.app' -path '*iphonesimulator*' 2>/dev/null \
+                | sort
+            )
+          fi
+
+          if [ -z "$app_path" ]; then
+            while IFS= read -r candidate; do
+              if is_simulator_app "$candidate"; then
+                app_path="$candidate"
+                break
+              fi
+            done < <(
+              find "$GITHUB_WORKSPACE/frontend/ios/App" -type d -name 'App.app' 2>/dev/null \
+                | sort
+            )
+          fi
+
+          if [ -z "$app_path" ]; then
+            echo "::error::App.app was not found after xcodebuild."
+            echo "Searched under frontend/ios/App and Xcode DerivedData."
+            find "$GITHUB_WORKSPACE/frontend/ios/App" -type d -name '*.app' 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Located App.app at: $app_path"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Info.plist" || true
+          echo "app_path=$app_path" >> "$GITHUB_OUTPUT"
+
+      - name: Upload iOS Simulator app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AllModelAI-iOS-Simulator
+          path: ${{ steps.locate_app.outputs.app_path }}
+          retention-days: 7
+          if-no-files-found: error
