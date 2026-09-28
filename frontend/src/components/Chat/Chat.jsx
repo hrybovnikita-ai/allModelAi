@@ -345,10 +345,10 @@ export default function Chat() {
   const [primaryPaymentProvider, setPrimaryPaymentProvider] = useState(null);
 
   const standaloneApp = useMemo(() => isStandaloneApp(), []);
-  const subscribeStripeReturnUrl = useMemo(
-    () => `${window.location.origin}/chat?subscribe=success&session_id={CHECKOUT_SESSION_ID}`,
-    [],
-  );
+  const subscribeStripeReturnUrl = useMemo(() => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}/chat?subscribe=success&session_id={CHECKOUT_SESSION_ID}`;
+  }, []);
 
   const subscriptionPlans = [
     { id: 'starter', icon: '🌱', name: t('Starter'), price: '$5', period: t('per month'), features: [t('Basic models included'), t('Standard response speed'), t('Email support')] },

@@ -46,8 +46,8 @@ function renderChat(path = '/chat') {
       h(Route, { path: '/chat', element: h(chat.default) })))));
 }
 function assertChat(html) {
-  assert.match(html, /class="chat-page"/);
-  assert.match(html, /class="chat-composer(?:\s[^"]*)?"/);
+  assert.match(html, /class="chat-page[\s"]/);
+  assert.match(html, /class="chat-composer[\s"]/);
   assert.match(html, /aria-label="Chat message"/);
 }
 const deny = () => { throw new Error('Safari storage denied'); };

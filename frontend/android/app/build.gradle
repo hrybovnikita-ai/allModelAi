@@ -1,7 +1,7 @@
-apply plugin: 'com.androi
+apply plugin: 'com.android.application'
 android {
     namespace = "com.allmodelai.app"
-    compileSdk = rootProject.ext.compileSdkVersiond.application'
+    compileSdk = rootProject.ext.compileSdkVersion
 
     defaultConfig {
         applicationId "com.allmodelai.app"
@@ -21,6 +21,10 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
 }
 

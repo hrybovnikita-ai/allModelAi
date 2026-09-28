@@ -23,7 +23,7 @@ import Dashboard from "./components/Dashboard/Dashboard";
 import ModelDetails from "./components/ModelDetails/ModelDetails";
 import Chat from "./components/Chat/Chat";
 import Checkout from "./components/Checkout/Checkout";
-import SocialAuth from "./components/SocialAuth/SocialAuth";
+import SocialAuthCallback from "./components/SocialAuth/SocialAuthCallback";
 import Workflow from "./components/Workflow/Workflow";
 import Settings from "./components/Settings/Settings";
 import Admin from "./components/Admin/Admin";
@@ -151,7 +151,8 @@ export default function App() {
   return (
     <><CommandPalette /><CookieConsent /><Routes>
       <Route path="/" element={<HomePage />} />
-      <Route path="/auth/:provider" element={<SocialAuth />} />
+      <Route path="/auth/callback" element={<SocialAuthCallback />} />
+      <Route path="/auth/:provider" element={<SocialAuthCallback />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/api-docs" element={<ApiDocs />} />
       <Route path="/privacy" element={<InfoPage type="privacy" />} />

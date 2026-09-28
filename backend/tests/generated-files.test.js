@@ -13,8 +13,8 @@ after(() => app.locals.db.close());
 test('file mode reaches the model and produces a durable private file', async () => {
   const owner = request.agent(app);
   const other = request.agent(app);
-  await owner.post('/api/auth/register').send({ name: 'Owner', email: 'file-owner@example.com', password: 'test' });
-  await other.post('/api/auth/register').send({ name: 'Other', email: 'file-other@example.com', password: 'test' });
+  await owner.post('/api/auth/register').send({ name: 'Owner', email: 'file-owner@example.com', password: 'test-password' });
+  await other.post('/api/auth/register').send({ name: 'Other', email: 'file-other@example.com', password: 'test-password' });
   const artifact = JSON.stringify({ type: 'allmodelai-file', name: 'hello.py', title: 'Greeting script', content: 'print("Hello")\n' });
   const messages = [{ role: 'user', text: 'Create a Python greeting script' }];
   const created = await owner.post('/api/chat/history').send({ model: 'qwen', messages });

@@ -35,6 +35,14 @@ set APP_HOME=%DIRNAME%
 @rem Resolve any "." and ".." in APP_HOME to make it shorter.
 for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 
+@rem Gradle cache on an ASCII path (non-ASCII Windows user profiles break worker daemons).
+if not defined GRADLE_USER_HOME set "GRADLE_USER_HOME=C:\gradle-user-home"
+
+@rem JDK 21+ for Capacitor 8 — optional java.home= in local.properties
+if not defined JAVA_HOME if exist "%APP_HOME%local.properties" for /f "usebackq tokens=1,* delims==" %%A in (`findstr /b "java.home=" "%APP_HOME%local.properties"`) do set "JAVA_HOME=%%B"
+if defined JAVA_HOME set "JAVA_HOME=%JAVA_HOME:\:=:%"
+if defined JAVA_HOME set "JAVA_HOME=%JAVA_HOME:\\=\%"
+
 @rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
 

@@ -53,7 +53,7 @@ test('invalid, expired, revoked, stale, unsupported and unverified tokens cannot
     assert.equal((await agent.get('/api/auth/session')).status, 401);
   }
 });
-test('email match requires explicit owner linking and preserves password, history and subscription', async () => {
+test('verified provider email links to existing password account and preserves data', async () => {
   const owner = request.agent(app);
   const email = 'owner-social@example.com';
   const created = await owner.post('/api/auth/register').send({ name: 'Existing Owner', email, password: 'original-password' });
@@ -64,17 +64,22 @@ test('email match requires explicit owner linking and preserves password, histor
   db.prepare('INSERT INTO subscriptions (email, plan) VALUES (?, ?)').run(email, 'pro');
   const beforeHistory = (await owner.get('/api/chat/history')).body;
   const providerToken = token('existing-provider', { email });
-  assert.equal((await login(request.agent(app), providerToken)).body.code, 'ACCOUNT_LINK_REQUIRED');
-  assert.equal((await login(request.agent(app), providerToken, { intent: 'link' })).status, 401);
-  const linked = await login(owner, providerToken, { intent: 'link' });
+  const linked = await login(request.agent(app), providerToken);
   assert.equal(linked.status, 200, JSON.stringify(linked.body));
   assert.equal(linked.body.user.id, id);
   assert.equal(db.prepare('SELECT password_hash FROM users WHERE id = ?').get(id).password_hash, password);
   assert.equal(db.prepare('SELECT plan FROM subscriptions WHERE email = ?').get(email).plan, 'pro');
-  assert.deepEqual((await owner.get('/api/chat/history')).body, beforeHistory);
-  assert.equal((await owner.get('/api/auth/session')).status, 200);
+  assert.equal(db.prepare('SELECT count(*) AS n FROM social_identities WHERE user_id = ? AND provider = ?').get(id, 'google.com').n, 1);
   const returning = await login(request.agent(app), providerToken);
   assert.equal(returning.body.user.id, id);
+  await owner.post('/api/auth/logout');
+  assert.equal((await login(request.agent(app), providerToken, { intent: 'link' })).status, 401);
+  const relogin = await owner.post('/api/auth/login').send({ email, password: 'original-password' });
+  assert.equal(relogin.status, 200);
+  const explicitLink = await login(owner, providerToken, { intent: 'link' });
+  assert.equal(explicitLink.status, 200, JSON.stringify(explicitLink.body));
+  assert.deepEqual((await owner.get('/api/chat/history')).body, beforeHistory);
+  assert.equal((await owner.get('/api/auth/session')).status, 200);
   const attacker = request.agent(app);
   await attacker.post('/api/auth/register').send({ name: 'Other', email: 'other-social@example.com', password: 'other-password' });
   assert.equal((await login(attacker, providerToken, { intent: 'link' })).body.code, 'IDENTITY_CONFLICT');
@@ -96,7 +101,7 @@ test('password registration racing social registration cannot overwrite the soci
     login(request.agent(app), value),
   ]);
   assert.equal(db.prepare('SELECT count(*) AS n FROM users WHERE email = ?').get('race-password@example.com').n, 1);
-  assert.ok(results.some(result => result.status === 409));
+  assert.ok(results.every((result) => [200, 409].includes(result.status)));
 });
 test('CSRF origin, custom header, cookie binding and one-time challenge are enforced', async () => {
   assert.equal((await request(app).post('/api/auth/firebase/challenge').send({})).status, 403);

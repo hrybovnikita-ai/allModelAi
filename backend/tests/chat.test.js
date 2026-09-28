@@ -5,7 +5,7 @@ process.env.NODE_ENV='test';process.env.DEVELOPER_EMAILS='tester@example.com';pr
 const app=require('../app'); let api; let originalFetch;
 const upstream=()=>{const encoder=new TextEncoder();return new Response(new ReadableStream({start(controller){controller.enqueue(encoder.encode(`data: ${JSON.stringify({choices:[{delta:{content:'Secure answer'}}]})}\n\ndata: [DONE]\n\n`));controller.close()}}),{status:200})};
 describe('secure chat and knowledge API',()=>{
- before(async()=>{api=request.agent(app);await api.post('/api/auth/register').send({name:'Tester',email:'tester@example.com',password:'secret'});originalFetch=global.fetch;global.fetch=async()=>upstream()});
+ before(async()=>{api=request.agent(app);await api.post('/api/auth/register').send({name:'Tester',email:'tester@example.com',password:'test-password'});originalFetch=global.fetch;global.fetch=async()=>upstream()});
  after(()=>{global.fetch=originalFetch;app.locals.db.close()});
  test('rejects versions from another family and Smart Router versions', async () => {
    for (const model of ['gpt', 'smart']) {

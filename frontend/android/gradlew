@@ -88,6 +88,24 @@ APP_BASE_NAME=${0##*/}
 # Discard cd standard output in case $CDPATH is set (https://github.com/gradle/gradle/issues/25036)
 APP_HOME=$( cd -P "${APP_HOME:-./}" > /dev/null && printf '%s\n' "$PWD" ) || exit
 
+# Gradle worker daemons fail when GRADLE_USER_HOME is under a non-ASCII Windows profile path.
+if [ -z "${GRADLE_USER_HOME:-}" ]; then
+  export GRADLE_USER_HOME="/c/gradle-user-home"
+fi
+
+# Use JDK 21+ for Capacitor 8 when java.home is set in local.properties (see gradle.properties).
+if [ -z "${JAVA_HOME:-}" ] && [ -f "$APP_HOME/local.properties" ]; then
+  _java_home_line=$(grep '^java.home=' "$APP_HOME/local.properties" | tail -1 || true)
+  if [ -n "$_java_home_line" ]; then
+    _java_home_raw=${_java_home_line#java.home=}
+    _java_home_raw=${_java_home_raw//\\:/:}
+    _java_home_raw=${_java_home_raw//\\\\/\\}
+    if [ -x "$_java_home_raw/bin/java" ] || [ -x "$_java_home_raw/bin/java.exe" ]; then
+      export JAVA_HOME="$_java_home_raw"
+    fi
+  fi
+fi
+
 # Use the maximum available, or set MAX_FD != -1 to use that value.
 MAX_FD=maximum
 

@@ -134,7 +134,7 @@ test('stalled welcome email does not prevent registration or session restoration
   try {
     const client = request.agent(app);
     const response = await client.post('/api/auth/register')
-      .send({ name: 'Any Name', email: 'welcome-timeout@example.com', password: 'x' })
+      .send({ name: 'Any Name', email: 'welcome-timeout@example.com', password: 'welcome-pass' })
       .timeout({ response: 6000 });
     assert.equal(response.status, 201);
     assert.equal(aborted, true);

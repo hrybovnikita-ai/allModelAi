@@ -1,11 +1,19 @@
-import { confirmSession } from '../../lib/session';
+import { confirmSession, restoreSession } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import SocialAuthModal from './SocialAuthModal';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { authPost } from '../../lib/authApi';
+import { validateRegistrationForm } from '../../lib/authValidation';
+import { socialSignIn, SOCIAL_PROVIDERS } from '../../lib/socialSignIn';
+import { socialError } from '../../lib/socialSession';
 import './Login.css';
+
+const PROVIDER_ICONS = {
+  Google: 'https://cdn.simpleicons.org/google',
+  Apple: 'https://cdn.simpleicons.org/apple/ffffff',
+  Facebook: 'https://cdn.simpleicons.org/facebook/1877F2',
+};
 
 export default function Login(props) {
   return <LoginForm {...props} />;
@@ -15,7 +23,7 @@ function LoginForm({
   mode,
   onClose,
   onModeChange,
-  returnTo = '/chat',
+  returnTo = '/dashboard',
   returnState,
 }) {
   const signingUp = mode === 'signup';
@@ -24,43 +32,85 @@ function LoginForm({
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [socialBusy, setSocialBusy] = useState(null);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
-  const [activeSocialProvider, setActiveSocialProvider] = useState(null);
+  const [successNotice, setSuccessNotice] = useState('');
 
-  const handleSocialSignIn = (provider) => {
+  useEffect(() => {
+    let active = true;
+    restoreSession()
+      .then((user) => {
+        if (active && user) {
+          navigate('/dashboard', { replace: true, state: { user } });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [navigate]);
+
+  const handleSocialSignIn = async (provider) => {
+    if (submitting || socialBusy) return;
     setError('');
-    setActiveSocialProvider(provider);
-  };
-
-  const handleSocialSuccess = (user) => {
-    setActiveSocialProvider(null);
-    document.activeElement?.blur();
-
-    navigate('/dashboard', {
-      replace: true,
-      state: { user },
-    });
+    setSocialBusy(provider);
+    try {
+      const outcome = await socialSignIn(provider, { rememberMe });
+      if (outcome?.redirected) {
+        return;
+      }
+      const user = outcome;
+      document.activeElement?.blur();
+      navigate('/dashboard', { replace: true, state: { user } });
+    } catch (requestError) {
+      setError(socialError(requestError));
+    } finally {
+      setSocialBusy(null);
+    }
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    setError('');
+    setSuccessNotice('');
 
     const formData = new FormData(event.currentTarget);
-    const payload = Object.fromEntries(formData.entries());
+    const raw = Object.fromEntries(formData.entries());
+    let payload;
 
-    if (signingUp && payload.password !== payload.confirmPassword) {
-      setError('Passwords do not match.');
-      return;
+    if (signingUp) {
+      const validation = validateRegistrationForm({
+        name: raw.name,
+        email: raw.email,
+        password: raw.password,
+        confirmPassword: raw.confirmPassword,
+      });
+      if (!validation.ok) {
+        setError(validation.message);
+        return;
+      }
+      payload = { ...validation.payload, rememberMe };
+    } else {
+      if (!String(raw.email || '').trim()) {
+        setError('Please enter your email address.');
+        return;
+      }
+      if (!raw.password) {
+        setError('Please enter a password.');
+        return;
+      }
+      payload = {
+        email: String(raw.email).trim().toLowerCase(),
+        password: raw.password,
+        rememberMe,
+      };
     }
 
-    delete payload.confirmPassword;
+    const destination = signingUp ? '/dashboard' : returnTo;
 
     try {
       setSubmitting(true);
-      setError('');
-
-      payload.rememberMe = payload.rememberMe === 'on';
 
       const { data } = await authPost(
         signingUp ? 'register' : 'login',
@@ -71,7 +121,11 @@ function LoginForm({
 
       document.activeElement?.blur();
 
-      navigate(returnTo, {
+      if (signingUp) {
+        setSuccessNotice('Welcome to AllModelAI');
+      }
+
+      navigate(destination, {
         replace: true,
         state: {
           ...returnState,
@@ -82,7 +136,18 @@ function LoginForm({
     } catch (requestError) {
       if (requestError.code === 'PASSWORD_SETUP_REQUIRED') {
         setError(
-          'Use your original sign-in provider or the password recovery flow for this account.',
+          'This account uses social sign-in. Continue with Google, Apple, or Facebook below.',
+        );
+      } else if (requestError.code === 'SOCIAL_ACCOUNT_EXISTS') {
+        setError(requestError.message);
+      } else if (requestError.code === 'EMAIL_ALREADY_EXISTS' || requestError.status === 409) {
+        setError(
+          requestError.message ||
+            'An account with this email already exists. Sign in instead.',
+        );
+      } else if (requestError.message?.includes('Failed to fetch')) {
+        setError(
+          'Registration service is temporarily unavailable. Please try again.',
         );
       } else {
         setError(
@@ -110,6 +175,8 @@ function LoginForm({
     return () => document.removeEventListener('keydown', closeWithEscape);
   }, [onClose]);
 
+  const socialDisabled = submitting || Boolean(socialBusy);
+
   const modalTree = (
     <div className="login-overlay" role="presentation">
       <div
@@ -135,14 +202,10 @@ function LoginForm({
 
         <AllModelAILogoMark className="login-logo" size={42} />
 
-        <p className="login-eyebrow">
-          AllModelAI account
-        </p>
+        <p className="login-eyebrow">AllModelAI account</p>
 
         <h2 id="login-title">
-          {signingUp
-            ? 'Create your account'
-            : 'Welcome to AllModelAI'}
+          {signingUp ? 'Create your account' : 'Welcome to AllModelAI'}
         </h2>
 
         <p className="login-intro">
@@ -151,25 +214,22 @@ function LoginForm({
             : 'Sign in to access your AI workspace.'}
         </p>
 
-        <form
-          className="login-form"
-          onSubmit={handleSubmit}
-        >
-          <label>
-            <span>Name</span>
-
-            <input
-              name="name"
-              type="text"
-              placeholder="Your name"
-              autoComplete="name"
-              required
-            />
-          </label>
+        <form className="login-form" onSubmit={handleSubmit}>
+          {signingUp && (
+            <label>
+              <span>Name</span>
+              <input
+                name="name"
+                type="text"
+                placeholder="Your name"
+                autoComplete="name"
+                required
+              />
+            </label>
+          )}
 
           <label>
             <span>Email</span>
-
             <input
               name="email"
               type="email"
@@ -181,47 +241,20 @@ function LoginForm({
 
           <label>
             <span>Password</span>
-
             <span className="password-field">
               <input
                 name="password"
-                type={
-                  passwordVisible
-                    ? 'text'
-                    : 'password'
-                }
-                placeholder={
-                  signingUp
-                    ? 'Choose any password'
-                    : 'Your password'
-                }
-                autoComplete={
-                  signingUp
-                    ? 'new-password'
-                    : 'current-password'
-                }
+                type={passwordVisible ? 'text' : 'password'}
+                placeholder={signingUp ? 'Choose a password' : 'Your password'}
+                autoComplete={signingUp ? 'new-password' : 'current-password'}
                 required
               />
-
               <button
                 type="button"
                 className="password-toggle"
-                onClick={() =>
-                  setPasswordVisible(
-                    (visible) => !visible,
-                  )
-                }
-                aria-label={
-                  passwordVisible
-                    ? 'Hide password'
-                    : 'Show password'
-                }
+                onClick={() => setPasswordVisible((visible) => !visible)}
+                aria-label={passwordVisible ? 'Hide password' : 'Show password'}
                 aria-pressed={passwordVisible}
-                title={
-                  passwordVisible
-                    ? 'Hide password'
-                    : 'Show password'
-                }
               >
                 {passwordVisible ? '◉' : '◎'}
               </button>
@@ -231,80 +264,55 @@ function LoginForm({
           {signingUp && (
             <label>
               <span>Confirm password</span>
-
               <span className="password-field">
                 <input
                   name="confirmPassword"
-                  type={
-                    confirmPasswordVisible
-                      ? 'text'
-                      : 'password'
-                  }
+                  type={confirmPasswordVisible ? 'text' : 'password'}
                   placeholder="Repeat your password"
                   autoComplete="new-password"
                   required
                 />
-
                 <button
                   type="button"
                   className="password-toggle"
                   onClick={() =>
-                    setConfirmPasswordVisible(
-                      (visible) => !visible,
-                    )
+                    setConfirmPasswordVisible((visible) => !visible)
                   }
                   aria-label={
-                    confirmPasswordVisible
-                      ? 'Hide password'
-                      : 'Show password'
+                    confirmPasswordVisible ? 'Hide password' : 'Show password'
                   }
-                  aria-pressed={
-                    confirmPasswordVisible
-                  }
-                  title={
-                    confirmPasswordVisible
-                      ? 'Hide password'
-                      : 'Show password'
-                  }
+                  aria-pressed={confirmPasswordVisible}
                 >
-                  {confirmPasswordVisible
-                    ? '◉'
-                    : '◎'}
+                  {confirmPasswordVisible ? '◉' : '◎'}
                 </button>
               </span>
             </label>
           )}
 
-          <label>
-            <span>
-              <input
-                name="rememberMe"
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(event) =>
-                  setRememberMe(
-                    event.target.checked,
-                  )
-                }
-              />{' '}
-              Remember me
-            </span>
+          <label className="login-remember">
+            <input
+              name="rememberMe"
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(event) => setRememberMe(event.target.checked)}
+            />
+            Remember me
           </label>
 
           {!signingUp && (
-            <a
-              className="login-forgot"
-              href="/forgot-password"
-            >
+            <a className="login-forgot" href="/forgot-password">
               Forgot password?
             </a>
           )}
 
+          {successNotice && (
+            <p className="login-success" role="status">
+              {successNotice}
+            </p>
+          )}
+
           {error && (
-            <p
-              className="login-error"
-              role="alert"
-            >
+            <p className="login-error" role="alert">
               {error}
             </p>
           )}
@@ -312,10 +320,12 @@ function LoginForm({
           <button
             className="login-submit"
             type="submit"
-            disabled={submitting}
+            disabled={socialDisabled}
           >
             {submitting
-              ? 'Please wait...'
+              ? signingUp
+                ? 'Creating account…'
+                : 'Signing in…'
               : signingUp
                 ? 'Create account'
                 : 'Sign in'}
@@ -323,73 +333,45 @@ function LoginForm({
 
           <div className="login-switch">
             <span>
-              {signingUp
-                ? 'Already have an account?'
-                : 'New to AllModelAI?'}
+              {signingUp ? 'Already have an account?' : 'New to AllModelAI?'}
             </span>
-
             <button
               type="button"
-              onClick={() =>
-                changeMode(
-                  signingUp
-                    ? 'signin'
-                    : 'signup',
-                )
-              }
+              onClick={() => changeMode(signingUp ? 'signin' : 'signup')}
             >
-              {signingUp
-                ? 'Sign in'
-                : 'Sign up'}
+              {signingUp ? 'Sign in' : 'Sign up'}
             </button>
           </div>
         </form>
 
-        <p className="social-title">
-          Or continue with
-        </p>
+        <div className="login-divider" role="separator">
+          <span>or</span>
+        </div>
 
-        <div className="login-socials">
-          {[
-            'Google',
-            'Apple',
-            'Facebook',
-          ].map((provider) => (
-            <button
-              type="button"
-              key={provider}
-              disabled={submitting}
-              onClick={() =>
-                handleSocialSignIn(provider)
-              }
-            >
-              <img
-                src={
-                  provider === 'Google'
-                    ? 'https://cdn.simpleicons.org/google'
-                    : provider === 'Apple'
-                      ? 'https://cdn.simpleicons.org/apple/ffffff'
-                      : 'https://cdn.simpleicons.org/facebook/1877F2'
-                }
-                alt=""
-              />
-
-              {provider}
-            </button>
-          ))}
+        <div className="login-socials" role="group" aria-label="Social sign-in">
+          {SOCIAL_PROVIDERS.map((provider) => {
+            const busy = socialBusy === provider;
+            return (
+              <button
+                type="button"
+                key={provider}
+                className={`login-social-btn login-social-btn--${provider.toLowerCase()}`}
+                disabled={socialDisabled}
+                aria-busy={busy}
+                onClick={() => handleSocialSignIn(provider)}
+              >
+                <img src={PROVIDER_ICONS[provider]} alt="" />
+                <span>
+                  {busy
+                    ? `Connecting to ${provider}…`
+                    : `Continue with ${provider}`}
+                </span>
+                {busy && <span className="login-social-spinner" aria-hidden="true" />}
+              </button>
+            );
+          })}
         </div>
       </section>
-
-      {activeSocialProvider && (
-        <SocialAuthModal
-          provider={activeSocialProvider}
-          rememberMe={rememberMe}
-          onClose={() =>
-            setActiveSocialProvider(null)
-          }
-          onSuccess={handleSocialSuccess}
-        />
-      )}
     </div>
   );
 

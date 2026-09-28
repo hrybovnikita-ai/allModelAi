@@ -35,7 +35,7 @@ describe('Deep Research API', () => {
         await api.post('/api/auth/register').send({
             name: 'Researcher',
             email: 'researcher@example.com',
-            password: 'secret',
+            password: 'test-password',
         });
         originalFetch = global.fetch;
     });

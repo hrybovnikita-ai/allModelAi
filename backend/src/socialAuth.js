@@ -78,12 +78,20 @@ async function exchange(req, res) {
                 const other = db.prepare('SELECT subject FROM social_identities WHERE user_id = ? AND provider = ?').get(id, profile.provider);
                 if (other && other.subject !== profile.subject) throw fail(409, 'IDENTITY_CONFLICT', 'A different identity from this provider is already connected.');
             } else if (!id) {
-                const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(profile.email);
-                if (existing) throw fail(409, 'ACCOUNT_LINK_REQUIRED', 'Sign in to your existing AllModelAI account, then open Settings > Connected accounts to confirm linking.');
-                id = Number(db.prepare('INSERT INTO users (name, email, avatar_url, email_verified) VALUES (?, ?, ?, 1)').run(profile.name, profile.email, profile.avatar).lastInsertRowid);
+                const existing = db.prepare('SELECT id, name FROM users WHERE lower(email) = ?').get(profile.email);
+                if (existing) {
+                    // Verified provider email matches an existing AllModelAI account — link and sign in (no duplicate).
+                    id = existing.id;
+                    if (profile.name && (!existing.name || existing.name === profile.email.split('@')[0])) {
+                        db.prepare('UPDATE users SET name = ? WHERE id = ?').run(profile.name, id);
+                    }
+                } else {
+                    id = Number(db.prepare('INSERT INTO users (name, email, avatar_url, email_verified) VALUES (?, ?, ?, 1)').run(profile.name, profile.email, profile.avatar).lastInsertRowid);
+                }
             }
             db.prepare('INSERT INTO social_identities (provider, subject, user_id) VALUES (?, ?, ?) ON CONFLICT(provider, subject) DO NOTHING').run(profile.provider, profile.subject, id);
             if (profile.avatar) db.prepare('UPDATE users SET avatar_url = COALESCE(avatar_url, ?) WHERE id = ?').run(profile.avatar, id);
+            db.prepare('UPDATE users SET email_verified = 1 WHERE id = ? AND email_verified IS NOT 1').run(id);
             const user = account(db, id);
             if (pending.intent === 'login') setSession(req, res, user, req.body.rememberMe !== false);
             return user;

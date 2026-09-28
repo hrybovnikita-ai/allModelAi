@@ -22,6 +22,8 @@ const {
     allowLoginAutoRegister,
     defaultLoginName,
     isLocalDevLogin,
+    validateRegistrationInput,
+    parseRememberMe,
 } = require('../authHelpers');
 
 const sessionCookie = 'allmodelai_session';
@@ -157,33 +159,53 @@ const saveUsers = (database) => {
 };
 
 const registerUser = async (req, res) => {
-    const { name, email, password } = req.body;
-
-    if (!name || !email || !password) {
-        return res.status(400).json({ message: 'Name, email and password are required' });
+    const validation = validateRegistrationInput(req.body || {});
+    if (!validation.ok) {
+        return res.status(validation.status).json({ message: validation.message });
     }
-
-    if (typeof name !== 'string' || !name.trim() || name.length > 100 || typeof email !== 'string' || email.length > 254 || typeof password !== 'string' || password.length > 1024) return res.status(400).json({ message: 'Enter a valid name, email and password' });
-
-    const normalizedEmail = normalizeEmail(email);
-    if (!isValidEmail(normalizedEmail)) {
-        return res.status(400).json({ message: 'Enter a valid email address' });
-    }
+    const { name: safeName, email: normalizedEmail, password } = validation;
     const passwordHash = await hashPassword(password);
     const db = req.app.locals.db.database;
     let newUser;
     try {
         newUser = db.transaction(() => {
-            if (users.some(user => user.email.toLowerCase() === normalizedEmail) || db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(normalizedEmail)) return null;
-            const id = Number(db.prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)').run(name.trim(), normalizedEmail, passwordHash).lastInsertRowid);
-            return { id, name: name.trim(), email: normalizedEmail, passwordHash };
+            const existing = db.prepare('SELECT id, password_hash AS passwordHash FROM users WHERE lower(email) = ?').get(normalizedEmail)
+                || users.find((user) => user.email.toLowerCase() === normalizedEmail);
+            if (existing) return { conflict: true, existing };
+            const id = Number(db.prepare('INSERT INTO users (name, email, password_hash, email_verified) VALUES (?, ?, ?, 1)').run(safeName, normalizedEmail, passwordHash).lastInsertRowid);
+            return { id, name: safeName, email: normalizedEmail, passwordHash };
         }).immediate();
     } catch (error) {
         if (!error.code?.startsWith('SQLITE_CONSTRAINT')) throw error;
     }
-    if (!newUser) return res.status(409).json({ message: 'An account with this email already exists' });
+    if (newUser?.conflict) {
+        const { existing } = newUser;
+        const row = existing.id != null
+            ? db.prepare('SELECT password_hash FROM users WHERE id = ?').get(existing.id)
+            : null;
+        const hasPassword = Boolean(existing.passwordHash || row?.password_hash);
+        const socialOnly = existing.id != null
+            ? db.prepare('SELECT 1 FROM social_identities WHERE user_id = ? LIMIT 1').get(existing.id)
+            : null;
+        if (!hasPassword && socialOnly) {
+            return res.status(409).json({
+                code: 'SOCIAL_ACCOUNT_EXISTS',
+                message: 'An account with this email already exists through Google, Apple, or Facebook. Continue with that provider below, or sign in if you already linked a password.',
+            });
+        }
+        return res.status(409).json({
+            code: 'EMAIL_ALREADY_EXISTS',
+            message: 'An account with this email already exists. Sign in instead.',
+        });
+    }
+    if (!newUser?.id) {
+        return res.status(409).json({
+            code: 'EMAIL_ALREADY_EXISTS',
+            message: 'An account with this email already exists. Sign in instead.',
+        });
+    }
     users.push(newUser);
-    setSession(req, res, newUser, req.body.rememberMe !== false && req.body.rememberMe !== 'false');
+    setSession(req, res, newUser, parseRememberMe(req.body?.rememberMe));
     let welcomeEmail = { sent: false, reason: 'not_configured' };
     try {
         welcomeEmail = await sendWelcomeEmail(newUser);
@@ -522,11 +544,12 @@ const getCreditStatus = (database, email) => getCreditStatusCore(database, email
 
 const { resolveImageProvider } = require('../pollinations');
 
+const { providerAvailabilityForRouter, buildProviderSnapshot, resolveAvailableSmartModel } = require('../providerHealth');
+
 const getModelStatus = (_req, res) => {
-    const gateway = Boolean(process.env.OPENROUTER_API_KEY || process.env.API_KEY);
-    const openAI = Boolean(process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY);
-    const xai = Boolean(process.env.XAI_API_KEY || process.env.GROK_API_KEY);
+    const availability = providerAvailabilityForRouter();
     const image = resolveImageProvider();
+    const providers = buildProviderSnapshot();
     return res.status(200).json({
         updatedAt: new Date().toISOString(),
         variants: modelVariants,
@@ -536,16 +559,19 @@ const getModelStatus = (_req, res) => {
             pollinations: image.provider === 'pollinations',
         },
         models: {
-            gpt: openAI || gateway,
-            gemini: Boolean(process.env.GEMINI_API_KEY || gateway),
-            claude: Boolean(process.env.CLAUDE_API_KEY || gateway),
-            kimi: Boolean(process.env.KIMI_API_KEY || gateway),
-            mistral: Boolean(process.env.MISTRAL_API_KEY || gateway),
-            cloudflare: Boolean(((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID) || gateway),
-            grok: xai || gateway,
-            others: gateway,
+            ...availability,
+            cloudflare: Boolean(((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID) || availability.others),
         },
+        providers,
     });
+};
+
+const getProviderHealth = async (req, res) => {
+    const { buildProviderHealth } = require('../providerHealth');
+    const adminProbe = process.env.ADMIN_KEY && req.get('x-admin-key') === process.env.ADMIN_KEY;
+    const probe = req.query.probe === '1' && (process.env.NODE_ENV !== 'production' || adminProbe);
+    const providers = await buildProviderHealth({ probe });
+    return res.json({ updatedAt: new Date().toISOString(), providers });
 };
 
 const getAdminStats = (req, res) => {
@@ -803,9 +829,15 @@ const previewRouter = async (req, res) => {
     if (!prompt && !hasImage) return res.status(400).json({ message: 'Prompt or image is required' });
     const route = chooseSmartRoute(prompt, req.body.routerMode, hasImage);
     const access = getCreditStatus(req.app.locals.db, req.user.email);
-    if (!access.models.includes('all') && !access.models.includes(route.model)) {
+    const modelAllowedPreview = (slug) => access.models.includes('all') || access.models.includes(slug) || slug === 'ai_python';
+    if (!modelAllowedPreview(route.model)) {
         route.model = 'gemini';
         route.reason = 'Smart Router picked Gemini from models available in User mode.';
+    }
+    const previewAvailable = resolveAvailableSmartModel(route.model, modelAllowedPreview);
+    if (previewAvailable && previewAvailable !== route.model) {
+        route.model = previewAvailable;
+        route.reason = `${route.reason} (switched to an available provider.)`;
     }
 
     let localClassifier = null;
@@ -874,7 +906,17 @@ const createChatResponse = async (req, res) => {
     if (model !== 'smart' && !modelAllowed(model)) return res.status(403).json({ message: 'Эта модель доступна по подписке или в режиме Developer. Выберите одну из пяти моделей User.' });
     if (model === 'smart' && !modelAllowed(routeDecision.model)) {
         routeDecision.model = 'gemini';
-        routeDecision.reason = 'Smart Router выбрал Gemini из моделей, доступных в режиме User.';
+        routeDecision.reason = 'Smart Router picked Gemini from models available in User mode.';
+    }
+    if (model === 'smart') {
+        const available = resolveAvailableSmartModel(routeDecision.model, modelAllowed);
+        if (!available) {
+            return res.status(503).json({ message: 'AI services are temporarily unavailable. Please try again.' });
+        }
+        if (available !== routeDecision.model) {
+            routeDecision.model = available;
+            routeDecision.reason = `${routeDecision.reason} (switched to an available provider.)`;
+        }
     }
     const routedModel = model === 'smart' ? routeDecision.model : model;
 
@@ -954,7 +996,7 @@ const createChatResponse = async (req, res) => {
     let apiKey = isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isCloudflare ? cloudflareKey : gatewayKey;
     if (!apiKey) {
         const provider = routedModel === 'grok' ? 'Grok (set XAI_API_KEY or OPENROUTER_API_KEY)' : isClaude ? 'Claude' : isGemini ? 'Gemini' : isKimi ? 'Kimi' : isMistral ? 'Mistral (set MISTRAL_API_KEY or OPENROUTER_API_KEY)' : isCloudflare ? 'Cloudflare' : 'OpenRouter';
-        return res.status(503).json({ message: `${provider} API key is not configured in backend/.env` });
+        return res.status(503).json({ message: 'AI services are temporarily unavailable. Please try again.' });
     }
     if (!providerModels[routedModel]) {
         return res.status(400).json({ message: 'Unsupported AI model' });
@@ -1934,6 +1976,7 @@ module.exports = {
     getCredits,
     setAccessMode,
     getModelStatus,
+    getProviderHealth,
     getAdminStats,
     getChatHistory,
     createChatHistory,

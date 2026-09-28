@@ -1,5 +1,5 @@
 import { resolveAuthApiUrl } from './authApi.js';
-import { nativeClientHeaders } from './apiBase.js';
+import { isCapacitorNative, nativeClientHeaders } from './apiBase.js';
 import { readJsonBody } from './httpJson.js';
 
 let verifiedSession = null;
@@ -91,7 +91,10 @@ export async function restoreSession({ force = false } = {}) {
   if (!force && verifiedSession?.saved === saved && verifiedSession.expiresAt > Date.now()) {
     return verifiedSession.user;
   }
-  if (pendingSession?.generation === sessionGeneration) return pendingSession.promise;
+  if (pendingSession?.generation === sessionGeneration) {
+    if (!force) return pendingSession.promise;
+    sessionGeneration += 1;
+  }
   const generation = sessionGeneration;
   const request = { generation };
   request.promise = (async () => {
@@ -125,13 +128,18 @@ export async function restoreSession({ force = false } = {}) {
 
 // Verify that the browser accepted the HttpOnly cookie before opening the app.
 export async function confirmSession(user) {
-  clearAllSessionData();
-  const verified = await restoreSession({ force: true });
-  if (!verified || verified.email.toLowerCase() !== user?.email?.toLowerCase()) {
-    clearAllSessionData();
-    throw new Error('Your sign-in could not be verified. Please retry.');
+  if (user?.email) {
+    rememberSession(user);
   }
-  return verified;
+  const verified = await restoreSession({ force: true });
+  if (verified?.email?.toLowerCase() === user?.email?.toLowerCase()) {
+    return verified;
+  }
+  if (user?.email && isCapacitorNative()) {
+    return rememberSession(user);
+  }
+  clearAllSessionData();
+  throw new Error('Your sign-in could not be verified. Please retry.');
 }
 
 /**

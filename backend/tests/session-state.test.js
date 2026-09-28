@@ -23,10 +23,13 @@ test('logout during response parsing cannot resurrect a session', async () => {
         let finish;
         let parsing;
         const started = new Promise((resolve) => { parsing = resolve; });
-        global.fetch = async () => ({ ok: true, status: 200, json: () => {
+        global.fetch = async () => {
             parsing();
-            return new Promise((resolve) => { finish = resolve; });
-        } });
+            const body = await new Promise((resolve) => {
+                finish = () => resolve(JSON.stringify({ user }));
+            });
+            return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
+        };
         const session = await fresh();
         const pending = session.restoreSession();
         const rejection = assert.rejects(pending, /Session changed/);
@@ -47,13 +50,13 @@ test('login confirmation does not reuse an older pending verification', async ()
         global.fetch = async () => {
             calls++;
             if (calls === 1) return new Promise((resolve) => { finish = resolve; });
-            return new Response(JSON.stringify({ user }));
+            return new Response(JSON.stringify({ user }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         };
         const session = await fresh();
         const pending = session.restoreSession();
         const rejection = assert.rejects(pending, /Session changed/);
         assert.deepEqual(await session.confirmSession(user), user);
-        finish(new Response('{}', { status: 401 }));
+        finish(new Response('{}', { status: 401, headers: { 'Content-Type': 'application/json' } }));
         await rejection;
         assert.deepEqual(await session.restoreSession(), user);
         assert.equal(calls, 2);
@@ -68,9 +71,9 @@ test('chat only offers recovery after a definitive session 401', async () => {
         global.fetch = async (_, options) => {
             calls++;
             assert.equal(options.credentials, 'include');
-            return new Response(JSON.stringify({ user }));
+            return new Response(JSON.stringify({ user }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         };
-        await assert.rejects(checkChatResponse(new Response('{}', { status: 401 })), (error) => {
+        await assert.rejects(checkChatResponse(new Response('{}', { status: 401, headers: { 'Content-Type': 'application/json' } })), (error) => {
             assert.equal(error.sessionExpired, false);
             assert.match(error.message, /session is active/);
             return true;

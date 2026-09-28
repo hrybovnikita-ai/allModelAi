@@ -5,6 +5,15 @@ const HOST = process.env.HOST || '0.0.0.0';
 const database = app.locals.db;
 
 const server = app.listen(PORT, HOST, () => {
+    try {
+        const providerHealth = require('./src/providerHealth');
+        providerHealth.logStartupConfig();
+        if (process.env.DISABLE_PROVIDER_PROBE_WARMUP !== 'true') {
+            setImmediate(() => providerHealth.warmProviderProbes());
+        }
+    } catch (error) {
+        console.warn('[CONFIG] Provider diagnostics unavailable:', error.message);
+    }
     console.log(`Server is running at http://localhost:${PORT}`);
     console.log(`Phones and tablets can use this same process over the public URL or LAN IP.`);
     console.log(`Database is connected at ${database.filePath}`);

@@ -20,6 +20,7 @@ const {
     getCredits,
     setAccessMode,
     getModelStatus,
+    getProviderHealth,
     getAdminStats,
     getChatHistory,
     createChatHistory,
@@ -104,6 +105,7 @@ router.post('/auth/logout', logout);
 router.post('/auth/password-reset/request', requestPasswordReset);
 router.post('/auth/password-reset/confirm', confirmPasswordReset);
 router.get('/status/models', cachePublicResponse('allmodelai:public:model-status:v1'), getModelStatus);
+router.get('/health/providers', cachePublicResponse('allmodelai:public:provider-health:v1'), getProviderHealth);
 router.get('/health', health);
 router.get('/community/users', getCommunityUsers);
 router.get('/admin/stats', getAdminStats);

@@ -12,8 +12,8 @@ let user, developer;
 const originalFetch = global.fetch;
 before(async () => {
   user = request.agent(app); developer = request.agent(app);
-  await user.post('/api/auth/register').send({name:'User',email:'user@access.test',password:'secret'});
-  await developer.post('/api/auth/register').send({name:'Developer',email:'developer@access.test',password:'secret'});
+  await user.post('/api/auth/register').send({ name: 'User', email: 'user@access.test', password: 'access-test-password' });
+  await developer.post('/api/auth/register').send({ name: 'Developer', email: 'developer@access.test', password: 'access-test-password' });
 });
 after(() => { global.fetch = originalFetch; app.locals.db.close(); });
 test('User has exactly five models and cannot grant Developer access', async () => {
