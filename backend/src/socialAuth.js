@@ -32,7 +32,7 @@ function challenge(req, res) {
     db.prepare('DELETE FROM social_auth_challenges WHERE expires_at < ?').run(Date.now());
     db.prepare('INSERT INTO social_auth_challenges (state_hash, intent, session_hash, user_id, expires_at) VALUES (?, ?, ?, ?, ?)')
         .run(hash(state), link ? 'link' : 'login', link ? hash(req.cookies.allmodelai_session) : null, link ? owner : null, Date.now() + 300000);
-    res.cookie(stateCookie, state, { ...sessionCookieOptions(), maxAge: 300000 });
+    res.cookie(stateCookie, state, { ...sessionCookieOptions(req), maxAge: 300000 });
     return res.json({ state });
 }
 function identity(claims) {
@@ -92,7 +92,7 @@ async function exchange(req, res) {
         const stored = db.prepare('SELECT id, name, email, password_hash AS passwordHash FROM users WHERE id = ?').get(result.id);
         const index = users.findIndex(user => user.id === result.id);
         if (index < 0) users.push(stored); else users[index] = stored;
-        res.clearCookie(stateCookie, sessionCookieOptions());
+        res.clearCookie(stateCookie, sessionCookieOptions(req));
         return res.json({ user: result, linked: pending.intent === 'link' });
     } catch (error) {
         const status = error.status || (error.code?.startsWith('auth/') ? 401 : 503);

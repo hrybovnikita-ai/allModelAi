@@ -1,7 +1,7 @@
 import { confirmSession } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import axios from 'axios';
+import apiClient from '../../lib/apiClient';
 import './SocialAuth.css';
 
 const providerColors = { google: '#4285f4', apple: '#111827', facebook: '#1877f2' };
@@ -18,7 +18,7 @@ export default function SocialAuth() {
 
   useEffect(() => {
     let active = true;
-    axios.get(`/api/auth/${providerKey}/accounts`, { withCredentials: true })
+    apiClient.get(`/api/auth/${providerKey}/accounts`)
       .then(({ data }) => active && setAccounts(data.accounts))
       .catch((requestError) => active && setError(requestError.response?.data?.message || 'This provider is unavailable.'))
       .finally(() => active && setLoading(false));
@@ -31,7 +31,7 @@ export default function SocialAuth() {
     setContinuing(true);
     setError('');
     try {
-      const { data } = await axios.post('/api/auth/social', { provider: providerKey, accountId: selectedAccount.id }, { withCredentials: true });
+      const { data } = await apiClient.post('/api/auth/social', { provider: providerKey, accountId: selectedAccount.id });
       await confirmSession(data.user);
       navigate('/dashboard', { state: { user: data.user }, replace: true });
     } catch (requestError) {

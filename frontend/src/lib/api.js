@@ -1,8 +1,9 @@
 import { restoreSession } from './session.js';
 import { isLoggerEnabled, logger } from './logger.js';
+import { nativeClientHeaders } from './apiBase.js';
 import { parseJsonResponse, resolveApiUrl } from './httpJson.js';
 
-export { parseJsonResponse, resolveApiUrl } from './httpJson.js';
+export { getApiBase, isCapacitorNative, parseJsonResponse, resolveApiUrl } from './httpJson.js';
 
 const apiPath = (url) => {
   try {
@@ -22,7 +23,13 @@ export function apiFetch(url, options = {}) {
     logger.api(`${method} ${path}`, { status: 'started' });
   }
 
-  return fetch(resolveApiUrl(url), { ...options, credentials: 'include' })
+  const headers = {
+    Accept: 'application/json',
+    ...nativeClientHeaders(),
+    ...(options.headers || {}),
+  };
+
+  return fetch(resolveApiUrl(url), { ...options, credentials: 'include', headers })
     .then((response) => {
       if (isLoggerEnabled()) {
         const durationMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - started);

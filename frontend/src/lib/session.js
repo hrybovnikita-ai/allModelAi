@@ -1,3 +1,4 @@
+import { nativeClientHeaders } from './apiBase.js';
 import { readJsonBody, resolveApiUrl } from './httpJson.js';
 
 let verifiedSession = null;
@@ -96,7 +97,7 @@ export async function restoreSession({ force = false } = {}) {
     const response = await fetch(resolveApiUrl('/api/auth/session'), {
       credentials: 'include',
       cache: 'no-store',
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', ...nativeClientHeaders() },
     });
     if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
     const { data, parseError } = await readJsonBody(response);

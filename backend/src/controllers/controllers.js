@@ -76,7 +76,7 @@ const setSession = (req, res, user, remember = true) => {
     const expiresAt = Date.now() + (remember ? sessionDuration : 1000 * 60 * 60 * 8);
     const token = createSessionToken(user.id, expiresAt);
     req.app.locals.db.database.prepare('INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(hashToken(token), user.id, expiresAt);
-    res.cookie(sessionCookie, token, { ...sessionCookieOptions(), ...(remember ? { maxAge: sessionDuration } : {}) });
+    res.cookie(sessionCookie, token, { ...sessionCookieOptions(req), ...(remember ? { maxAge: sessionDuration } : {}) });
 };
 
 const parseImagePayload = (raw) => {
@@ -351,7 +351,7 @@ const getSession = (req, res) => {
 const logout = (req, res) => {
     const token = req.cookies?.[sessionCookie];
     if (token) req.app.locals.db.database.prepare('DELETE FROM auth_sessions WHERE token_hash = ?').run(hashToken(token));
-    res.clearCookie(sessionCookie, sessionCookieOptions());
+    res.clearCookie(sessionCookie, sessionCookieOptions(req));
     return res.status(204).send();
 };
 
@@ -470,7 +470,7 @@ const deleteAccount = (req, res) => {
     req.app.locals.db.write(data);
     req.app.locals.db.database.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(deletedUser.id);
     req.app.locals.db.database.prepare('DELETE FROM account_access_modes WHERE email = ?').run(email);
-    res.clearCookie(sessionCookie, sessionCookieOptions());
+    res.clearCookie(sessionCookie, sessionCookieOptions(req));
 
     return res.status(200).json({ message: 'Account deleted successfully', user: deletedUser });
 };

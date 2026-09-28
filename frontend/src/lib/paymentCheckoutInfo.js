@@ -1,3 +1,6 @@
+import { nativeClientHeaders, resolveApiUrl } from './apiBase.js';
+import { parseJsonResponse } from './httpJson.js';
+
 const TEST_MODE_BANNER = 'TEST MODE — NO REAL MONEY WILL BE CHARGED';
 
 /** Mirrors backend WAYFORPAY_TEST_MODE for local UI when checkout-info is unavailable. */
@@ -35,9 +38,12 @@ export function mergeCheckoutInfo(apiInfo) {
 
 export async function fetchCheckoutInfo() {
   try {
-    const response = await fetch('/api/payments/checkout-info', { credentials: 'include' });
+    const response = await fetch(resolveApiUrl('/api/payments/checkout-info'), {
+      credentials: 'include',
+      headers: { Accept: 'application/json', ...nativeClientHeaders() },
+    });
     if (!response.ok) return buildClientTestCheckoutInfo();
-    return mergeCheckoutInfo(await response.json());
+    return mergeCheckoutInfo(await parseJsonResponse(response));
   } catch {
     return buildClientTestCheckoutInfo();
   }

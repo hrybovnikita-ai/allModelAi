@@ -5,10 +5,19 @@ const splitOrigins = (value) => String(value || '')
     .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean);
 
+const BUILTIN_NATIVE_ORIGINS = [
+    'https://localhost',
+    'http://localhost',
+    'capacitor://localhost',
+    'ionic://localhost',
+];
+
 const configuredOrigins = () => {
     const origins = [
         ...splitOrigins(process.env.PUBLIC_URL),
         ...splitOrigins(process.env.FRONTEND_ORIGIN || 'http://localhost:5173'),
+        ...splitOrigins(process.env.NATIVE_APP_ORIGINS),
+        ...BUILTIN_NATIVE_ORIGINS,
     ];
     const vercelUrl = String(process.env.VERCEL_URL || '').trim();
     if (vercelUrl) {
@@ -32,9 +41,18 @@ const originHost = (origin) => {
     }
 };
 
+const isNativeAppOrigin = (origin) => {
+    if (!origin || typeof origin !== 'string') return false;
+    const normalized = origin.trim().replace(/\/$/, '').toLowerCase();
+    if (BUILTIN_NATIVE_ORIGINS.includes(normalized)) return true;
+    if (normalized.startsWith('capacitor://') || normalized.startsWith('ionic://')) return true;
+    return splitOrigins(process.env.NATIVE_APP_ORIGINS).some((item) => item.toLowerCase() === normalized);
+};
+
 const isAllowedOrigin = (origin, req) => {
     if (!origin) return true;
     const normalized = origin.replace(/\/$/, '');
+    if (isNativeAppOrigin(normalized)) return true;
     if (configuredOrigins().includes(normalized)) return true;
     const host = String(req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
     return Boolean(host) && originHost(normalized) === host;
@@ -64,6 +82,7 @@ module.exports = {
     configuredOrigins,
     requestOrigin,
     isAllowedOrigin,
+    isNativeAppOrigin,
     publicAppOrigin,
     configurePublicAccess,
 };

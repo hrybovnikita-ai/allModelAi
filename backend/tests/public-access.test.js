@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const request = require('supertest');
-const { configuredOrigins, isAllowedOrigin, publicAppOrigin, requestOrigin } = require('../src/publicAccess');
+const { configuredOrigins, isAllowedOrigin, isNativeAppOrigin, publicAppOrigin, requestOrigin } = require('../src/publicAccess');
 
 process.env.NODE_ENV = 'test';
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'allmodelai-public-'));
@@ -23,7 +23,8 @@ test('cloud origin helpers accept the live host even when FRONTEND_ORIGIN stays 
         protocol: 'https',
         get: (name) => ({ host: 'allmodelai.onrender.com', 'x-forwarded-proto': 'https' }[name]),
     };
-    assert.deepEqual(configuredOrigins(), ['http://localhost:5173']);
+    assert.ok(configuredOrigins().includes('http://localhost:5173'));
+    assert.ok(configuredOrigins().includes('https://localhost'));
     assert.equal(requestOrigin(req), 'https://allmodelai.onrender.com');
     assert.equal(isAllowedOrigin('https://allmodelai.onrender.com', req), true);
     assert.equal(isAllowedOrigin('http://allmodelai.onrender.com', req), true);
@@ -32,6 +33,16 @@ test('cloud origin helpers accept the live host even when FRONTEND_ORIGIN stays 
     process.env.PUBLIC_URL = 'https://allmodelai.example';
     assert.equal(publicAppOrigin(req), 'https://allmodelai.example');
     delete process.env.PUBLIC_URL;
+});
+
+test('Capacitor native WebView origins are allowed for credentialed API calls', async () => {
+    const response = await request(app)
+        .get('/api/health')
+        .set('Origin', 'https://localhost');
+    assert.equal(response.status, 200);
+    assert.equal(response.headers['access-control-allow-origin'], 'https://localhost');
+    assert.equal(response.headers['access-control-allow-credentials'], 'true');
+    assert.equal(isNativeAppOrigin('capacitor://localhost'), true);
 });
 
 test('API answers chat-session requests from the same public host used by phones', async () => {

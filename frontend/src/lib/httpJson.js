@@ -1,11 +1,12 @@
-const API_BASE = String(import.meta.env?.VITE_API_BASE_URL || '').replace(/\/$/, '');
+import { nativeClientHeaders, resolveApiUrl } from './apiBase.js';
 
-export function resolveApiUrl(path) {
-  if (!path) return API_BASE || '/';
-  if (/^https?:\/\//i.test(path)) return path;
-  const normalized = path.startsWith('/') ? path : `/${path}`;
-  return API_BASE ? `${API_BASE}${normalized}` : normalized;
-}
+export {
+  getApiBase,
+  isCapacitorNative,
+  isCapacitorWebViewHost,
+  requiresAbsoluteApiBase,
+  resolveApiUrl,
+} from './apiBase.js';
 
 function looksLikeHtml(text) {
   const trimmed = text.trimStart().toLowerCase();
@@ -15,9 +16,9 @@ function looksLikeHtml(text) {
 export function apiResponseError(response, data, { html = false } = {}) {
   if (html) {
     if (response.status === 404) {
-      return 'Authentication API was not found. Start the backend (port 5050) or set VITE_API_BASE_URL for native builds.';
+      return 'Authentication API was not found. For Android, set VITE_API_BASE_URL or use production build defaults.';
     }
-    return 'The server returned a web page instead of API data. Check that the backend is running and the request URL is correct.';
+    return 'The server returned a web page instead of API data. Check VITE_API_BASE_URL and that the backend is reachable.';
   }
   return data?.message || `Request failed (${response.status})`;
 }
@@ -74,6 +75,7 @@ export async function postJson(path, body, options = {}) {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        ...nativeClientHeaders(),
         ...options.headers,
       },
       body: JSON.stringify(body),
@@ -82,7 +84,7 @@ export async function postJson(path, body, options = {}) {
   } catch (networkError) {
     throw new Error(
       networkError?.message?.includes('Failed to fetch')
-        ? 'Could not reach the server. Start the AllModelAI backend or check your network connection.'
+        ? 'Could not reach the server. Check your network or VITE_API_BASE_URL for the Android app.'
         : networkError?.message || 'Network request failed.',
     );
   }

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import SocialAuthModal from './SocialAuthModal';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
-import { postJson } from '../../lib/httpJson';
+import { postJson, resolveApiUrl } from '../../lib/httpJson';
 import './Login.css';
 
 export default function Login(props) {
@@ -60,9 +60,9 @@ function LoginForm({
       setSubmitting(true);
       setError('');
 
-      const endpoint = signingUp
-        ? '/api/auth/register'
-        : '/api/auth/login';
+      const endpoint = resolveApiUrl(
+        signingUp ? '/api/auth/register' : '/api/auth/login',
+      );
 
       payload.rememberMe = payload.rememberMe === 'on';
 
