@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AllModelAi</string>
+    <string name="title_activity_main">AllModelAi</string>
+    <string name="package_name">com.allmodelai.app</string>
+    <string name="custom_url_scheme">com.allmodelai.app</string>
+</resources>

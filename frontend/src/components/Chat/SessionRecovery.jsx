@@ -1,6 +1,6 @@
 import { confirmSession } from '../../lib/session';
 import { useState } from 'react';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, parseJsonResponse } from '../../lib/api';
 
 export default function SessionRecovery({ user, onSuccess }) {
   const [error, setError] = useState('');
@@ -18,7 +18,7 @@ export default function SessionRecovery({ user, onSuccess }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: user.name, email: user.email, password }),
       });
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
       if (!response.ok) throw new Error(data.message || 'Could not sign in. Please try again.');
       if (data.user?.email?.toLowerCase() !== user.email.toLowerCase()) {
         throw new Error('Please sign in with the account that owns this conversation.');

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import SocialAuthModal from './SocialAuthModal';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
-import axios from 'axios';
+import { postJson } from '../../lib/httpJson';
 import './Login.css';
 
 export default function Login(props) {
@@ -66,11 +66,9 @@ function LoginForm({
 
       payload.rememberMe = payload.rememberMe === 'on';
 
-      const response = await axios.post(endpoint, payload, {
-        withCredentials: true,
-      });
+      const { data } = await postJson(endpoint, payload);
 
-      const user = await confirmSession(response.data.user);
+      const user = await confirmSession(data.user);
 
       document.activeElement?.blur();
 
@@ -79,21 +77,17 @@ function LoginForm({
         state: {
           ...returnState,
           user,
-          welcomeEmail: response.data.welcomeEmail,
+          welcomeEmail: data.welcomeEmail,
         },
       });
     } catch (requestError) {
-      if (
-        requestError.response?.data?.code ===
-        'PASSWORD_SETUP_REQUIRED'
-      ) {
+      if (requestError.code === 'PASSWORD_SETUP_REQUIRED') {
         setError(
           'Use your original sign-in provider or the password recovery flow for this account.',
         );
       } else {
         setError(
-          requestError.response?.data?.message ||
-            requestError.message ||
+          requestError.message ||
             'Could not connect to the backend. Please try again.',
         );
       }

@@ -1,11 +1,17 @@
 import { confirmSession } from './session.js';
+import { postJson } from './httpJson.js';
 
-const headers = { 'Content-Type': 'application/json', 'X-AllModelAI-Auth': '1' };
 async function post(url, body) {
-  const response = await fetch(url, { method: 'POST', credentials: 'include', headers, body: JSON.stringify(body) });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw Object.assign(new Error(data.message || 'Could not complete social sign-in. Please retry.'), { code: data.code });
-  return data;
+  try {
+    const { data } = await postJson(url, body, {
+      headers: { 'X-AllModelAI-Auth': '1' },
+    });
+    return data;
+  } catch (error) {
+    throw Object.assign(new Error(error.message || 'Could not complete social sign-in. Please retry.'), {
+      code: error.code,
+    });
+  }
 }
 export function prepareSocialSession({ link = false } = {}) {
   return post('/api/auth/firebase/challenge', { intent: link ? 'link' : 'login' });

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import axios from 'axios';
 import { confirmSession } from '../../lib/session';
+import { postJson } from '../../lib/httpJson';
 import './SocialAuthModal.css';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
@@ -28,14 +28,12 @@ export default function SocialAuthModal({ provider, onClose, onSuccess, remember
         rememberMe,
       };
 
-      const response = await axios.post('/api/auth/quick-social', payload, {
-        withCredentials: true,
-      });
+      const { data } = await postJson('/api/auth/quick-social', payload);
 
-      const user = await confirmSession(response.data.user);
+      const user = await confirmSession(data.user);
       onSuccess(user);
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Social sign-in failed');
+      setError(err.message || 'Social sign-in failed');
       setLoading(false);
     }
   };

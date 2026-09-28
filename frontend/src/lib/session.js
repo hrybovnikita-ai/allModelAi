@@ -1,3 +1,5 @@
+import { readJsonBody, resolveApiUrl } from './httpJson.js';
+
 let verifiedSession = null;
 let pendingSession = null;
 let sessionGeneration = 0;
@@ -91,15 +93,23 @@ export async function restoreSession({ force = false } = {}) {
   const generation = sessionGeneration;
   const request = { generation };
   request.promise = (async () => {
-    const response = await fetch('/api/auth/session', { credentials: 'include', cache: 'no-store' });
+    const response = await fetch(resolveApiUrl('/api/auth/session'), {
+      credentials: 'include',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
     if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
+    const { data, parseError } = await readJsonBody(response);
+    if (parseError) throw parseError;
+
     if (response.status === 401) {
       verifiedSession = null;
       storage.removeItem('allmodelai_user');
       return null;
     }
-    if (!response.ok) throw new Error('Could not verify your session. Please try again.');
-    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || 'Could not verify your session. Please try again.');
+    }
     if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
     return rememberSession(data.user);
   })();

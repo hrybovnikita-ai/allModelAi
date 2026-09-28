@@ -1,5 +1,8 @@
 import { restoreSession } from './session.js';
 import { isLoggerEnabled, logger } from './logger.js';
+import { parseJsonResponse, resolveApiUrl } from './httpJson.js';
+
+export { parseJsonResponse, resolveApiUrl } from './httpJson.js';
 
 const apiPath = (url) => {
   try {
@@ -19,7 +22,7 @@ export function apiFetch(url, options = {}) {
     logger.api(`${method} ${path}`, { status: 'started' });
   }
 
-  return fetch(url, { ...options, credentials: 'include' })
+  return fetch(resolveApiUrl(url), { ...options, credentials: 'include' })
     .then((response) => {
       if (isLoggerEnabled()) {
         const durationMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - started);
@@ -50,7 +53,7 @@ export function apiFetch(url, options = {}) {
 
 export async function checkChatResponse(response) {
   if (response.ok) return response;
-  const data = await response.json().catch(() => ({}));
+  const data = await parseJsonResponse(response).catch(() => ({}));
   let sessionExpired = false;
   if (response.status === 401) {
     sessionExpired = (await restoreSession({ force: true })) === null;
