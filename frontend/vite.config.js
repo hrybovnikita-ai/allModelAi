@@ -6,9 +6,21 @@ import process from 'node:process'
 const PWA_THEME = '#7165ef'
 const PWA_BACKGROUND = '#080b12'
 
+const API_PATH_PATTERN = ({ url, request }) => {
+  if (request.mode === 'navigate') return false
+  const path = url.pathname
+  return (
+    path.startsWith('/api')
+    || path.startsWith('/auth')
+    || path.includes('/session')
+    || path.includes('/models')
+  )
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
  const env = loadEnv(mode, process.cwd(), '')
+ const pwaDisabled = env.VITE_DISABLE_PWA === 'true'
  const proxy = {
    '/api': {
      target: env.API_PROXY_TARGET || 'http://127.0.0.1:5050',
@@ -19,7 +31,9 @@ export default defineConfig(({ mode }) => {
   plugins: [
     react(),
     VitePWA({
+      disable: pwaDisabled,
       registerType: 'autoUpdate',
+      injectRegister: false,
       includeAssets: [
         'gold-dragon.png',
         'favicon.svg',
@@ -59,14 +73,19 @@ export default defineConfig(({ mode }) => {
       },
       workbox: {
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [
+          /^\/api(\/|$)/,
+          /^\/auth(\/|$)/,
+          /\/session(\/|$|\?)/,
+          /\/models(\/|$|\?)/,
+        ],
         cleanupOutdatedCaches: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}'],
         globIgnores: ['**/og-image.png', '**/gold_dragon_allModelAi*.png'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.startsWith('/api'),
+            urlPattern: API_PATH_PATTERN,
             handler: 'NetworkOnly',
           },
         ],

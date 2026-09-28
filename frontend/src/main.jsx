@@ -5,8 +5,8 @@ import './index.css'
 import './styles/style.css'
 import App from './App.jsx'
 import { applyDeviceProfile } from './lib/deviceProfile.js'
-import { registerSW } from 'virtual:pwa-register'
 import { initPwaInstallPrompt } from './lib/pwaInstall.js'
+import { initServiceWorker } from './lib/serviceWorker.js'
 
 function readAppearance() {
   try { return JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}') || {} }
@@ -35,9 +35,7 @@ systemTheme.addEventListener('change', applyTheme)
 applyDeviceProfile()
 
 initPwaInstallPrompt()
-if (import.meta.env.PROD) {
-  registerSW({ immediate: true })
-}
+void initServiceWorker()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

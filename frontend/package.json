@@ -7,7 +7,7 @@
     "dev": "vite",
     "prebuild": "node scripts/generate-pwa-icons.mjs",
     "build": "vite build",
-    "build:capacitor": "npm run build && npx cap sync",
+    "build:capacitor": "npm run prebuild && vite build --mode capacitor && npx cap sync",
     "lint": "eslint .",
     "test": "node --test tests/*.test.mjs",
     "preview": "vite preview"
