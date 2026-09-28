@@ -1,5 +1,5 @@
 import { authPost } from './authApi.js';
-import { confirmSession } from './session.js';
+import { applyAuthResponsePayload, confirmSession } from './session.js';
 
 async function post(path, body) {
   try {
@@ -20,7 +20,7 @@ export async function exchangeSocialSession(idToken, { link = false, rememberMe 
   const intent = link ? 'link' : 'login';
   const { state } = challenge || await prepareSocialSession({ link });
   const data = await post('firebase', { idToken, state, intent, rememberMe });
-  // No navigation or trusted profile cache until the actual cookie works.
+  applyAuthResponsePayload(data);
   return confirmSession(data.user);
 }
 

@@ -72,23 +72,58 @@ export function requiresAbsoluteApiBase() {
  * Absolute API origin for Capacitor / native WebView.
  * Empty string in normal browser (same-origin or Vite proxy).
  */
+function resolveNativeApiOrigin() {
+  const useProduction = import.meta.env?.VITE_CAPACITOR_USE_PRODUCTION === 'true';
+  if (useProduction) return DEFAULT_PRODUCTION_API_ORIGIN;
+
+  const platform = getCapacitorPlatform();
+  const lanUrl = stripTrailingSlash(
+    import.meta.env?.VITE_LAN_API_URL
+    || import.meta.env?.VITE_IOS_API_URL
+    || import.meta.env?.VITE_NATIVE_API_URL
+    || '',
+  );
+
+  if (platform === 'ios') {
+    return lanUrl || DEFAULT_PRODUCTION_API_ORIGIN;
+  }
+  if (platform === 'android') {
+    return lanUrl || DEFAULT_CAPACITOR_NATIVE_API_ORIGIN;
+  }
+  return lanUrl || DEFAULT_CAPACITOR_NATIVE_API_ORIGIN;
+}
+
+/**
+ * True when API requests go to a different origin than the page (split deploy or native app).
+ */
+export function usesRemoteApiOrigin() {
+  const base = getApiBase();
+  if (!base || typeof window === 'undefined') return false;
+  try {
+    return new URL(base).origin !== window.location.origin;
+  } catch {
+    return true;
+  }
+}
+
 export function getApiBase() {
   if (ENV_API_BASE) return ENV_API_BASE;
 
-  const useProduction =
-    import.meta.env?.VITE_CAPACITOR_USE_PRODUCTION === 'true';
-
-  if (isCapacitorWebViewHost()) {
-    return useProduction
-      ? DEFAULT_PRODUCTION_API_ORIGIN
-      : DEFAULT_CAPACITOR_NATIVE_API_ORIGIN;
+  if (isCapacitorWebViewHost() || requiresAbsoluteApiBase()) {
+    return resolveNativeApiOrigin();
   }
 
-  if (!requiresAbsoluteApiBase()) return '';
+  return '';
+}
 
-  return useProduction
-    ? DEFAULT_PRODUCTION_API_ORIGIN
-    : DEFAULT_CAPACITOR_NATIVE_API_ORIGIN;
+/** Public site origin for OAuth redirects (Firebase authorized domains). */
+export function getPublicAppOrigin() {
+  const configured = stripTrailingSlash(import.meta.env?.VITE_PUBLIC_APP_URL || '');
+  if (configured) return configured;
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return '';
 }
 
 /** Alias requested for auth / API clients */
@@ -133,6 +168,8 @@ export function resolveApiUrl(path) {
 }
 
 export function nativeClientHeaders() {
-  if (!requiresAbsoluteApiBase()) return {};
-  return { 'X-AllModelAI-Client': 'capacitor' };
+  if (requiresAbsoluteApiBase() || usesRemoteApiOrigin()) {
+    return { 'X-AllModelAI-Client': 'capacitor' };
+  }
+  return {};
 }

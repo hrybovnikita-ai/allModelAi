@@ -7,6 +7,7 @@ import {
   resolveApiUrl,
 } from './apiBase.js';
 import { postJson } from './httpJson.js';
+import { nativeSessionHeaders } from './nativeSession.js';
 
 function normalizeAuthPath(path) {
   if (!path) return '/api/auth/session';
@@ -56,6 +57,7 @@ export async function authGet(path, options = {}) {
     headers: {
       Accept: 'application/json',
       ...nativeClientHeaders(),
+      ...nativeSessionHeaders(),
       ...(options.headers || {}),
     },
     ...options,

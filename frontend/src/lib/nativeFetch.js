@@ -5,6 +5,7 @@ import {
   requiresAbsoluteApiBase,
   resolveApiUrl,
 } from './apiBase.js';
+import { nativeSessionHeaders } from './nativeSession.js';
 
 function isApiLikePath(pathname) {
   return pathname.startsWith('/api') || pathname.startsWith('/auth');
@@ -44,7 +45,9 @@ function patchFetch() {
   const originalFetch = window.fetch.bind(window);
   window.fetch = (input, init = {}) => {
     const headers = new Headers(init.headers || {});
-    Object.entries(nativeClientHeaders()).forEach(([key, value]) => headers.set(key, value));
+    Object.entries({ ...nativeClientHeaders(), ...nativeSessionHeaders() }).forEach(([key, value]) => {
+      headers.set(key, value);
+    });
 
     if (typeof input === 'string') {
       return originalFetch(rewriteRequestUrl(input), { ...init, headers });

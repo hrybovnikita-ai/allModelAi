@@ -1,4 +1,5 @@
 import { nativeClientHeaders, resolveApiUrl } from './apiBase.js';
+import { nativeSessionHeaders } from './nativeSession.js';
 
 export {
   API_BASE_URL,
@@ -78,6 +79,7 @@ export async function postJson(path, body, options = {}) {
         Accept: 'application/json',
         'Content-Type': 'application/json',
         ...nativeClientHeaders(),
+        ...nativeSessionHeaders(),
         ...options.headers,
       },
       body: JSON.stringify(body),

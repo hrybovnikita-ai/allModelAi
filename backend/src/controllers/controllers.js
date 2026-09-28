@@ -1,6 +1,7 @@
 const modelVariants = require('../data/modelVariants.json');
-const { sessionCookieOptions } = require('../sessionCookie');
-const { createSessionToken, validSessionToken } = require('../sessionToken');
+const { sessionCookieOptions, shouldIssueNativeSessionToken } = require('../sessionCookie');
+const { sessionCookie, hashToken, readSessionToken } = require('../sessionAuth');
+const { createSessionToken } = require('../sessionToken');
 const { publicAppOrigin } = require('../publicAccess');
 const { stripeCheckoutWalletOptions, ensureStripePaymentMethodDomain } = require('../stripeWallet');
 const { subscriptionPlans, normalizePlanKey, periodEndFor } = require('../billing/plans');
@@ -26,9 +27,12 @@ const {
     parseRememberMe,
 } = require('../authHelpers');
 
-const sessionCookie = 'allmodelai_session';
 const sessionDuration = 1000 * 60 * 60 * 24 * 30;
-const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+function nativeSessionFields(req, token) {
+    if (token && shouldIssueNativeSessionToken(req)) return { nativeSessionToken: token };
+    return {};
+}
 const scrypt = promisify(crypto.scrypt);
 const publicUser = ({ passwordHash, ...user }) => user;
 const hashPassword = async (password) => {
@@ -81,6 +85,7 @@ const setSession = (req, res, user, remember = true) => {
     const token = createSessionToken(user.id, expiresAt);
     req.app.locals.db.database.prepare('INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(hashToken(token), user.id, expiresAt);
     res.cookie(sessionCookie, token, { ...sessionCookieOptions(req), ...(remember ? { maxAge: sessionDuration } : {}) });
+    return token;
 };
 
 const parseImagePayload = (raw) => {
@@ -205,7 +210,7 @@ const registerUser = async (req, res) => {
         });
     }
     users.push(newUser);
-    setSession(req, res, newUser, parseRememberMe(req.body?.rememberMe));
+    const sessionToken = setSession(req, res, newUser, parseRememberMe(req.body?.rememberMe));
     let welcomeEmail = { sent: false, reason: 'not_configured' };
     try {
         welcomeEmail = await sendWelcomeEmail(newUser);
@@ -217,6 +222,7 @@ const registerUser = async (req, res) => {
         message: 'Account created successfully',
         user: publicUser(newUser),
         welcomeEmail,
+        ...nativeSessionFields(req, sessionToken),
     });
 };
 
@@ -248,11 +254,12 @@ const loginUser = async (req, res) => {
     ).get(normalizedEmail) || users.find((item) => item.email.toLowerCase() === normalizedEmail);
 
     const finishLogin = (account) => {
-        setSession(req, res, account, remember);
+        const sessionToken = setSession(req, res, account, remember);
         authLog('Session created: true');
         return res.status(200).json({
             message: 'Signed in successfully',
             user: publicUser(account),
+            ...nativeSessionFields(req, sessionToken),
         });
     };
 
@@ -401,15 +408,15 @@ const startGoogleAuth = (req, res) => res.redirect('/login');
 const googleCallback = (req, res) => res.status(410).send('This sign-in callback has been retired. Return to /login and use Continue with Google.');
 
 const getSession = (req, res) => {
-    const token = req.cookies?.[sessionCookie];
-    if (!validSessionToken(token)) return res.status(401).json({ message: 'No active session' });
+    const token = readSessionToken(req);
+    if (!token) return res.status(401).json({ message: 'No active session' });
     const user = req.app.locals.db.database.prepare('SELECT users.id, users.name, users.email, users.avatar_url AS avatar FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id WHERE token_hash = ? AND expires_at > ?').get(hashToken(token), Date.now());
     if (!user) return res.status(401).json({ message: 'Session expired' });
     return res.status(200).json({ user });
 };
 
 const logout = (req, res) => {
-    const token = req.cookies?.[sessionCookie];
+    const token = readSessionToken(req);
     if (token) req.app.locals.db.database.prepare('DELETE FROM auth_sessions WHERE token_hash = ?').run(hashToken(token));
     res.clearCookie(sessionCookie, sessionCookieOptions(req));
     return res.status(204).send();
@@ -806,7 +813,7 @@ const chooseSmartRoute = (prompt, mode = 'balanced', hasImage = false) => {
     }
     const signals = {
         vision: /скриншот|картинк|фото|изображен|куда нажимать|куда нажать|где нажать|screenshot|image|where to click|what do you see/.test(text),
-        coding: /code|debug|function|react|javascript|typescript|python|api|sql|ошибк|код|функц/.test(text),
+        coding: /code|debug|function|react|javascript|typescript|python|pygame|snake|game|api|sql|ошибк|код|функц|program|script|class|import|def\s/.test(text),
         research: /research|latest|source|news|find|citation|исслед|источник|новост|найди|price|pricing|cost|how much|today|weather|current|release date|сколько|цена|стоим|погод|сегодня|актуал|курс|exchange rate|stock|последн|новин/i.test(text),
         writing: /write|rewrite|essay|story|email|текст|перепиш|стать|письм/.test(text),
         multilingual: /translate|translation|перевод|переведи|україн|украин/.test(text),
@@ -816,12 +823,39 @@ const chooseSmartRoute = (prompt, mode = 'balanced', hasImage = false) => {
     if (mode === 'economy') return { model: process.env.CLOUDFLARE_ACCOUNT_ID ? 'cloudflare' : 'gemini', reason: 'Economy mode selected the lowest-cost available model.', category: 'economy' };
     if (mode === 'speed') return { model: 'gemini', reason: 'Speed mode selected Gemini for low-latency generation.', category: 'speed' };
     if (signals.research) return { model: 'perplexity', reason: 'Research intent and source-related terms were detected.', category: 'research' };
-    if (signals.coding) return { model: mode === 'quality' ? 'deepseek' : 'deepseek', reason: 'Code or debugging signals were detected.', category: 'coding' };
+    if (signals.coding) return { model: 'gemini', reason: 'Code or game-building intent was detected — Gemini is used for clear runnable output.', category: 'coding' };
     if (signals.longContext || signals.writing) return { model: 'claude', reason: signals.longContext ? 'A long document or large context was detected.' : 'Long-form writing intent was detected.', category: signals.longContext ? 'documents' : 'writing' };
     if (signals.multilingual) return { model: 'gemini', reason: 'A multilingual or translation task was detected.', category: 'multilingual' };
     if (mode === 'quality') return { model: 'claude', reason: 'Quality mode selected a strong reasoning model.', category: 'reasoning' };
-    return { model: 'gpt', reason: 'Balanced routing selected a versatile general model.', category: 'general' };
+    return { model: 'gemini', reason: 'Balanced routing selected Gemini for reliable general answers.', category: 'general' };
 };
+
+function extractOpenAIStreamDelta(chunk) {
+    const choice = chunk?.choices?.[0];
+    if (!choice) return '';
+    if (typeof choice.delta?.content === 'string') return choice.delta.content;
+    if (typeof choice.delta?.text === 'string') return choice.delta.text;
+    if (typeof choice.message?.content === 'string') return choice.message.content;
+    return '';
+}
+
+function extractGeminiStreamParts(chunk) {
+    const parts = chunk?.candidates?.[0]?.content?.parts;
+    if (!Array.isArray(parts)) return '';
+    return parts
+        .filter((part) => part && typeof part.text === 'string' && !part.thought)
+        .map((part) => part.text)
+        .join('');
+}
+
+function looksLikeCorruptedModelOutput(text) {
+    if (!text || text.length < 100) return false;
+    const words = text.split(/\s+/);
+    const suspicious = words.filter((word) => word.length > 22 && /[\\/_%]|\\u[0-9a-f]{4}/i.test(word)).length;
+    const replacementChars = (text.match(/\uFFFD/g) || []).length;
+    const backslashRuns = (text.match(/\\{4,}/g) || []).length;
+    return suspicious > 10 || replacementChars > 6 || backslashRuns > 4;
+}
 
 const previewRouter = async (req, res) => {
     const prompt = String(req.body.prompt || '').trim();
@@ -1316,6 +1350,7 @@ const createChatResponse = async (req, res) => {
         const reader = isCloudflare ? null : apiResponse.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let geminiStreamSnapshot = '';
 
         while (reader) {
             const { done, value } = await reader.read();
@@ -1326,14 +1361,29 @@ const createChatResponse = async (req, res) => {
             for (const event of events) {
                 const dataLine = event.split('\n').find((line) => line.startsWith('data: '));
                 if (!dataLine) continue;
-                const payload = dataLine.slice(6);
-                if (payload === '[DONE]') continue;
-                const chunk = JSON.parse(payload);
-                const text = isClaude
-                    ? (chunk.type === 'content_block_delta' ? chunk.delta?.text : '')
-                    : isGemini
-                        ? chunk.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('')
-                        : chunk.choices?.[0]?.delta?.content;
+                const payload = dataLine.slice(6).trim();
+                if (!payload || payload === '[DONE]') continue;
+                let chunk;
+                try {
+                    chunk = JSON.parse(payload);
+                } catch {
+                    continue;
+                }
+                let text = '';
+                if (isClaude) {
+                    text = chunk.type === 'content_block_delta' ? (chunk.delta?.text || '') : '';
+                } else if (isGemini) {
+                    const snapshot = extractGeminiStreamParts(chunk);
+                    if (snapshot.startsWith(geminiStreamSnapshot)) {
+                        text = snapshot.slice(geminiStreamSnapshot.length);
+                        geminiStreamSnapshot = snapshot;
+                    } else if (snapshot) {
+                        text = snapshot;
+                        geminiStreamSnapshot += snapshot;
+                    }
+                } else {
+                    text = extractOpenAIStreamDelta(chunk);
+                }
                 if (text) {
                     assistantText += text;
                     res.write(`data: ${JSON.stringify({ text })}\n\n`);
@@ -1341,6 +1391,12 @@ const createChatResponse = async (req, res) => {
             }
 
             if (done) break;
+        }
+
+        if (looksLikeCorruptedModelOutput(assistantText)) {
+            const safeMessage = 'The AI returned a garbled response. Please send your message again, or pick **GPT** or **Gemini** from the model menu instead of Smart Router.';
+            assistantText = safeMessage;
+            res.write(`data: ${JSON.stringify({ replace: true, text: safeMessage })}\n\n`);
         }
 
         const inputTokens = Math.ceil(normalizedInputMessages.reduce((sum, message) => sum + (message.content || '').length, 0) / 4);

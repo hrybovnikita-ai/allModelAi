@@ -1,11 +1,19 @@
 import { resolveAuthApiUrl } from './authApi.js';
-import { isCapacitorNative, nativeClientHeaders } from './apiBase.js';
+import { isCapacitorNative, nativeClientHeaders, usesRemoteApiOrigin } from './apiBase.js';
 import { readJsonBody } from './httpJson.js';
 
 let verifiedSession = null;
 let pendingSession = null;
 let sessionGeneration = 0;
 const cacheDuration = 5 * 60 * 1000;
+export {
+  applyAuthResponsePayload,
+  clearNativeSessionToken,
+  getNativeSessionToken,
+  nativeSessionHeaders,
+  storeNativeSessionToken,
+} from './nativeSession.js';
+import { clearNativeSessionToken, nativeSessionHeaders } from './nativeSession.js';
 
 /**
  * Returns an object representing the storage to use for the session.
@@ -101,7 +109,11 @@ export async function restoreSession({ force = false } = {}) {
     const response = await fetch(resolveAuthApiUrl('session'), {
       credentials: 'include',
       cache: 'no-store',
-      headers: { Accept: 'application/json', ...nativeClientHeaders() },
+      headers: {
+        Accept: 'application/json',
+        ...nativeClientHeaders(),
+        ...nativeSessionHeaders(),
+      },
     });
     if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
     const { data, parseError } = await readJsonBody(response);
@@ -135,7 +147,7 @@ export async function confirmSession(user) {
   if (verified?.email?.toLowerCase() === user?.email?.toLowerCase()) {
     return verified;
   }
-  if (user?.email && isCapacitorNative()) {
+  if (user?.email && (isCapacitorNative() || usesRemoteApiOrigin())) {
     return rememberSession(user);
   }
   clearAllSessionData();
@@ -150,4 +162,5 @@ export function clearAllSessionData() {
   verifiedSession = null;
   const storage = getStorage();
   storage.removeItem('allmodelai_user');
+  clearNativeSessionToken();
 }

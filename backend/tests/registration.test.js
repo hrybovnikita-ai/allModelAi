@@ -28,6 +28,43 @@ test('registration creates session and returns user without password hash', asyn
   assert.equal((await agent.get('/api/auth/session')).body.user.email, 'new-user@example.com');
 });
 
+test('cross-site browser clients receive nativeSessionToken and can use the session header', async () => {
+  const created = await request(app).post('/api/auth/register')
+    .set('Origin', 'https://all-model-ai.vercel.app')
+    .send({
+      name: 'Web User',
+      email: 'cross-site@example.com',
+      password: 'cross-site-password',
+    });
+  assert.equal(created.status, 201);
+  assert.equal(typeof created.body.nativeSessionToken, 'string');
+  const session = await request(app).get('/api/auth/session')
+    .set('Origin', 'https://all-model-ai.vercel.app')
+    .set('X-AllModelAI-Session', created.body.nativeSessionToken);
+  assert.equal(session.status, 200);
+  assert.equal(session.body.user.email, 'cross-site@example.com');
+});
+
+test('capacitor clients can restore session with X-AllModelAI-Session header', async () => {
+  const created = await request(app).post('/api/auth/register')
+    .set('X-AllModelAI-Client', 'capacitor')
+    .set('Origin', 'https://localhost')
+    .send({
+      name: 'Native User',
+      email: 'native-header@example.com',
+      password: 'native-password',
+    });
+  assert.equal(created.status, 201);
+  assert.equal(typeof created.body.nativeSessionToken, 'string');
+  assert.ok(created.body.nativeSessionToken.length >= 32);
+  const session = await request(app).get('/api/auth/session')
+    .set('X-AllModelAI-Session', created.body.nativeSessionToken)
+    .set('X-AllModelAI-Client', 'capacitor')
+    .set('Origin', 'https://localhost');
+  assert.equal(session.status, 200);
+  assert.equal(session.body.user.email, 'native-header@example.com');
+});
+
 test('registration validation messages are explicit', async () => {
   assert.equal((await request(app).post('/api/auth/register').send({ name: '', email: 'bad', password: 'short' })).body.message, 'Please enter your name.');
   assert.equal((await request(app).post('/api/auth/register').send({ name: 'Al', email: 'not-an-email', password: 'long-enough' })).body.message, 'Please enter a valid email address.');

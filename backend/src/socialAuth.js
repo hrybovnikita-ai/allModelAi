@@ -1,8 +1,9 @@
 const crypto = require('node:crypto');
 const admin = require('./firebaseAdmin');
 const { sessionCookieOptions } = require('./sessionCookie');
-const { validSessionToken } = require('./sessionToken');
 const { setSession } = require('./controllers/controllers');
+const { hashToken, readSessionToken } = require('./sessionAuth');
+const { shouldIssueNativeSessionToken } = require('./sessionCookie');
 const users = require('./data/data');
 const providers = new Set(['google.com', 'apple.com', 'facebook.com']);
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -10,9 +11,9 @@ const stateCookie = 'allmodelai_social_state';
 const fail = (status, code, message) => Object.assign(new Error(message), { status, code });
 const account = (db, id) => db.prepare('SELECT id, name, email, avatar_url AS avatar FROM users WHERE id = ?').get(id);
 function sessionOwner(req) {
-    const token = req.cookies?.allmodelai_session;
-    if (!validSessionToken(token)) return null;
-    return req.app.locals.db.database.prepare('SELECT user_id FROM auth_sessions WHERE token_hash = ? AND expires_at > ?').get(hash(token), Date.now())?.user_id || null;
+    const token = readSessionToken(req);
+    if (!token) return null;
+    return req.app.locals.db.database.prepare('SELECT user_id FROM auth_sessions WHERE token_hash = ? AND expires_at > ?').get(hashToken(token), Date.now())?.user_id || null;
 }
 function browserRequest(req, res, next) {
     const { isAllowedOrigin } = require('./publicAccess');
@@ -93,15 +94,22 @@ async function exchange(req, res) {
             if (profile.avatar) db.prepare('UPDATE users SET avatar_url = COALESCE(avatar_url, ?) WHERE id = ?').run(profile.avatar, id);
             db.prepare('UPDATE users SET email_verified = 1 WHERE id = ? AND email_verified IS NOT 1').run(id);
             const user = account(db, id);
-            if (pending.intent === 'login') setSession(req, res, user, req.body.rememberMe !== false);
-            return user;
+            let sessionToken;
+            if (pending.intent === 'login') {
+                sessionToken = setSession(req, res, user, req.body.rememberMe !== false);
+            }
+            return { user, sessionToken };
         }).immediate();
         // Keep the legacy account cache consistent; do not rewrite conversations or subscriptions.
-        const stored = db.prepare('SELECT id, name, email, password_hash AS passwordHash FROM users WHERE id = ?').get(result.id);
-        const index = users.findIndex(user => user.id === result.id);
+        const stored = db.prepare('SELECT id, name, email, password_hash AS passwordHash FROM users WHERE id = ?').get(result.user.id);
+        const index = users.findIndex(user => user.id === result.user.id);
         if (index < 0) users.push(stored); else users[index] = stored;
         res.clearCookie(stateCookie, sessionCookieOptions(req));
-        return res.json({ user: result, linked: pending.intent === 'link' });
+        const payload = { user: result.user, linked: pending.intent === 'link' };
+        if (shouldIssueNativeSessionToken(req) && result.sessionToken) {
+            payload.nativeSessionToken = result.sessionToken;
+        }
+        return res.json(payload);
     } catch (error) {
         const status = error.status || (error.code?.startsWith('auth/') ? 401 : 503);
         return res.status(status).json({ code: error.status ? error.code : 'SOCIAL_AUTH_FAILED',

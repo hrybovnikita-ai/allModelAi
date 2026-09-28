@@ -1483,6 +1483,15 @@ export default function Chat() {
                 : message
             )));
           }
+          if (event.replace && event.text) {
+            assistantText = event.text;
+            if (responseBelongsToOpenChat()) {
+              setMessages((current) => current.map((message, index) => (
+                index === assistantIndex ? { ...message, text: event.text } : message
+              )));
+            }
+            continue;
+          }
           const partialText = event.text;
           if (partialText) {
             assistantText += partialText;

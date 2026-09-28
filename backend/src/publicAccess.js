@@ -74,6 +74,14 @@ const configurePublicAccess = (app) => {
         cors({
             origin: (origin, callback) => callback(null, isAllowedOrigin(origin, req)),
             credentials: true,
+            allowedHeaders: [
+                'Content-Type',
+                'Authorization',
+                'Accept',
+                'X-AllModelAI-Auth',
+                'X-AllModelAI-Client',
+                'X-AllModelAI-Session',
+            ],
         })(req, res, next);
     });
 };

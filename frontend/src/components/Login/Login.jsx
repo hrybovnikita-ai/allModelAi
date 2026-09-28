@@ -1,4 +1,4 @@
-import { confirmSession, restoreSession } from '../../lib/session';
+import { applyAuthResponsePayload, confirmSession, restoreSession } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -92,6 +92,15 @@ function LoginForm({
       }
       payload = { ...validation.payload, rememberMe };
     } else {
+      const trimmedName = String(raw.name || '').trim();
+      if (!trimmedName) {
+        setError('Please enter your name.');
+        return;
+      }
+      if (trimmedName.length < 2 || trimmedName.length > 100) {
+        setError('Name must be between 2 and 100 characters.');
+        return;
+      }
       if (!String(raw.email || '').trim()) {
         setError('Please enter your email address.');
         return;
@@ -101,6 +110,7 @@ function LoginForm({
         return;
       }
       payload = {
+        name: trimmedName,
         email: String(raw.email).trim().toLowerCase(),
         password: raw.password,
         rememberMe,
@@ -117,6 +127,7 @@ function LoginForm({
         payload,
       );
 
+      applyAuthResponsePayload(data);
       const user = await confirmSession(data.user);
 
       document.activeElement?.blur();
@@ -215,18 +226,16 @@ function LoginForm({
         </p>
 
         <form className="login-form" onSubmit={handleSubmit}>
-          {signingUp && (
-            <label>
-              <span>Name</span>
-              <input
-                name="name"
-                type="text"
-                placeholder="Your name"
-                autoComplete="name"
-                required
-              />
-            </label>
-          )}
+          <label>
+            <span>Name</span>
+            <input
+              name="name"
+              type="text"
+              placeholder="Your name"
+              autoComplete="name"
+              required
+            />
+          </label>
 
           <label>
             <span>Email</span>

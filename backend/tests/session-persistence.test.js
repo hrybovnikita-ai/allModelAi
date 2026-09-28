@@ -81,7 +81,9 @@ test('production cookie attributes and exact credentialed CORS origins', async (
         delete process.env.COOKIE_SECURE;
         process.env.FRONTEND_ORIGIN = 'https://app.example.com';
         const response = await request(app).post('/api/auth/register')
-            .set('Origin', 'https://app.example.com').set('X-Forwarded-Proto', 'https')
+            .set('Origin', 'https://app.example.com')
+            .set('Host', 'app.example.com')
+            .set('X-Forwarded-Proto', 'https')
             .send({ name: 'HTTPS User', email: 'https@persistence.example', password: 'test-password' });
         assert.equal(response.status, 201);
         assert.match(response.headers['set-cookie'][0], /; Secure/);
@@ -97,6 +99,16 @@ test('production cookie attributes and exact credentialed CORS origins', async (
         const logout = await request(app).post('/api/auth/logout');
         assert.match(logout.headers['set-cookie'][0], /; Secure/);
         assert.match(logout.headers['set-cookie'][0], /; SameSite=Lax/);
+
+        const split = await request(app).post('/api/auth/register')
+            .set('Origin', 'https://app.example.com')
+            .set('Host', 'api.example.com')
+            .set('X-Forwarded-Proto', 'https')
+            .send({ name: 'Split User', email: 'split@persistence.example', password: 'test-password' });
+        assert.equal(split.status, 201);
+        assert.match(split.headers['set-cookie'][0], /; SameSite=None/);
+        assert.match(split.headers['set-cookie'][0], /; Secure/);
+        assert.equal(typeof split.body.nativeSessionToken, 'string');
     } finally {
         for (const [key, value] of Object.entries(previous)) {
             if (value === undefined) delete process.env[key];
