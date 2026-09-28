@@ -20,8 +20,8 @@ const {
     normalizeEmail,
     isValidEmail,
     allowLoginAutoRegister,
-    allowDevPasswordBypass,
     defaultLoginName,
+    isLocalDevLogin,
 } = require('../authHelpers');
 
 const sessionCookie = 'allmodelai_session';
@@ -218,10 +218,12 @@ const loginUser = async (req, res) => {
 
     const safeName = defaultLoginName(normalizedEmail, name);
     const remember = req.body.rememberMe !== false && req.body.rememberMe !== 'false';
-    const devPasswordBypass = allowDevPasswordBypass();
 
     const db = req.app.locals.db.database;
-    let user = db.prepare('SELECT id, name, email, password_hash AS passwordHash FROM users WHERE lower(email) = ?').get(normalizedEmail) || users.find((item) => item.email.toLowerCase() === normalizedEmail);
+
+    const loadUserByEmail = () => db.prepare(
+        'SELECT id, name, email, password_hash AS passwordHash FROM users WHERE lower(email) = ?',
+    ).get(normalizedEmail) || users.find((item) => item.email.toLowerCase() === normalizedEmail);
 
     const finishLogin = (account) => {
         setSession(req, res, account, remember);
@@ -232,66 +234,86 @@ const loginUser = async (req, res) => {
         });
     };
 
+    const syncUserName = (account) => {
+        if (!safeName || account.name === safeName) return account;
+        account.name = safeName;
+        db.prepare('UPDATE users SET name = ? WHERE id = ?').run(account.name, account.id);
+        const cached = users.find((item) => item.id === account.id);
+        if (cached) cached.name = account.name;
+        return account;
+    };
+
+    const provisionUserOnLogin = async ({ logCreate = false } = {}) => {
+        let account = loadUserByEmail();
+        if (account) return syncUserName(account);
+
+        if (logCreate) authLog('User found: false — creating SQLite record (development)');
+        const passwordHash = await hashPassword(password);
+        try {
+            account = db.transaction(() => {
+                if (db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(normalizedEmail)) return null;
+                const id = Number(db.prepare(
+                    'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)',
+                ).run(safeName, normalizedEmail, passwordHash).lastInsertRowid);
+                return { id, name: safeName, email: normalizedEmail, passwordHash };
+            }).immediate();
+        } catch (error) {
+            if (!error.code?.startsWith('SQLITE_CONSTRAINT')) throw error;
+        }
+
+        if (!account) account = loadUserByEmail();
+        else users.push(account);
+
+        if (!account) return null;
+
+        if (logCreate) authLog('User auto-created on login (development)');
+        return account;
+    };
+
+    // Local `node server.js`: never compare passwords (scrypt); create missing users; always 200 + session cookie.
+    if (isLocalDevLogin()) {
+        const existing = loadUserByEmail();
+        authLog(existing ? 'User found: true' : 'User found: false', existing ? { userId: existing.id } : undefined);
+        authLog('Password verification: skipped (development)');
+        const account = await provisionUserOnLogin({ logCreate: !existing });
+        if (!account) {
+            return res.status(409).json({ message: 'This account was just created. Sign in again using its original method.' });
+        }
+        return finishLogin(account);
+    }
+
+    let user = loadUserByEmail();
+
     if (!user) {
         authLog('User found: false');
         if (!allowLoginAutoRegister()) {
             authLog('Password verification: failed');
             return res.status(401).json({ message: 'Incorrect email or password' });
         }
-
-        const passwordHash = await hashPassword(password);
-        // Recheck after asynchronous hashing: a social or password request may have created it.
-        try {
-            user = db.transaction(() => {
-                if (db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(normalizedEmail)) return null;
-                const id = Number(db.prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)').run(safeName, normalizedEmail, passwordHash).lastInsertRowid);
-                return { id, name: safeName, email: normalizedEmail, passwordHash };
-            }).immediate();
-        } catch (error) {
-            if (!error.code?.startsWith('SQLITE_CONSTRAINT')) throw error;
+        user = await provisionUserOnLogin();
+        if (!user) {
+            return res.status(409).json({ message: 'This account was just created. Sign in again using its original method.' });
         }
-        if (!user) return res.status(409).json({ message: 'This account was just created. Sign in again using its original method.' });
-        users.push(user);
-        authLog('User auto-created on login (development)');
         return finishLogin(user);
     }
 
     authLog('User found: true', { userId: user.id });
 
     if (!user.passwordHash) {
-        if (!devPasswordBypass) {
-            authLog('Password verification: failed');
-            return res.status(401).json({
-                code: 'PASSWORD_SETUP_REQUIRED',
-                message: 'This account uses social sign-in or has no password yet. Continue with your provider or reset your password.',
-            });
-        }
-        const passwordHash = await hashPassword(password);
-        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
-        user.passwordHash = passwordHash;
-        const cached = users.find((item) => item.id === user.id);
-        if (cached) cached.passwordHash = passwordHash;
-        authLog('Password verification: bypassed (development, password set)');
-    } else {
-        const passwordMatches = await verifyPassword(password, user.passwordHash);
-        if (passwordMatches) {
-            authLog('Password verification: success');
-        } else if (devPasswordBypass) {
-            authLog('Password verification: bypassed (development)');
-        } else {
-            authLog('Password verification: failed');
-            return res.status(401).json({ message: 'Incorrect email or password' });
-        }
+        authLog('Password verification: failed');
+        return res.status(401).json({
+            code: 'PASSWORD_SETUP_REQUIRED',
+            message: 'This account uses social sign-in or has no password yet. Continue with your provider or reset your password.',
+        });
     }
 
-    if (safeName && user.name !== safeName) {
-        user.name = safeName;
-        db.prepare('UPDATE users SET name = ? WHERE id = ?').run(user.name, user.id);
-        const cached = users.find((item) => item.id === user.id);
-        if (cached) cached.name = user.name;
+    const passwordMatches = await verifyPassword(password, user.passwordHash);
+    authLog(`Password verification: ${passwordMatches ? 'success' : 'failed'}`);
+    if (!passwordMatches) {
+        return res.status(401).json({ message: 'Incorrect email or password' });
     }
 
-    return finishLogin(user);
+    return finishLogin(syncUserName(user));
 };
 
 const providerNames = { google: 'Google', apple: 'Apple', facebook: 'Facebook' };

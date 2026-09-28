@@ -56,6 +56,11 @@ function defaultLoginName(normalizedEmail, name) {
     return normalizedEmail.split('@')[0];
 }
 
+/** True when `node server.js` local dev should auto-provision users and skip password checks. */
+function isLocalDevLogin() {
+    return allowLoginAutoRegister() && allowDevPasswordBypass();
+}
+
 module.exports = {
     authLog,
     normalizeEmail,
@@ -63,4 +68,5 @@ module.exports = {
     allowLoginAutoRegister,
     allowDevPasswordBypass,
     defaultLoginName,
+    isLocalDevLogin,
 };
