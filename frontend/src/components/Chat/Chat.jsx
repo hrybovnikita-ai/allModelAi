@@ -1014,13 +1014,6 @@ export default function Chat() {
   }, [subscribeModalOpen, subscribePlan?.id, creditStatus?.isDeveloper, isGuest]);
 
   useEffect(() => {
-    if (!subscribePlan?.id || creditStatus?.isDeveloper) return;
-    setSubscribeStripeSecret('');
-    setSubscribeStripeLoading(false);
-    setSubscribeError('');
-  }, [subscribePlan?.id, creditStatus?.isDeveloper]);
-
-  useEffect(() => {
     if (!user?.email || isGuest) return;
     apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
       .then((response) => response.ok ? response.json() : [])
@@ -1042,6 +1035,41 @@ export default function Chat() {
     const handler = setTimeout(() => loadContextSuggestions(prompt), 220);
     return () => clearTimeout(handler);
   }, [prompt, isSending, loadContextSuggestions]);
+
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
+
+  const finishSidebarResize = useCallback(() => {
+    if (!sidebarResizeActiveRef.current) return;
+    sidebarResizeActiveRef.current = false;
+    setSidebarResizing(false);
+    document.body.classList.remove('chat-sidebar-resizing');
+    safeStorageSet('localStorage', SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidthRef.current));
+  }, []);
+
+  useEffect(() => {
+    if (!sidebarResizing) return undefined;
+
+    const onMove = (event) => {
+      const next = Math.round(
+        Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, event.clientX))
+      );
+      setSidebarWidth(next);
+    };
+
+    const onUp = () => finishSidebarResize();
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [sidebarResizing, finishSidebarResize]);
 
   if (!user) return <Navigate to="/" replace />;
 
@@ -1735,41 +1763,6 @@ export default function Chat() {
     safeStorageSet('localStorage', 'allmodelai_sidebar_collapsed', 'false');
   };
 
-  useEffect(() => {
-    sidebarWidthRef.current = sidebarWidth;
-  }, [sidebarWidth]);
-
-  const finishSidebarResize = useCallback(() => {
-    if (!sidebarResizeActiveRef.current) return;
-    sidebarResizeActiveRef.current = false;
-    setSidebarResizing(false);
-    document.body.classList.remove('chat-sidebar-resizing');
-    safeStorageSet('localStorage', SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidthRef.current));
-  }, []);
-
-  useEffect(() => {
-    if (!sidebarResizing) return undefined;
-
-    const onMove = (event) => {
-      const next = Math.round(
-        Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, event.clientX))
-      );
-      setSidebarWidth(next);
-    };
-
-    const onUp = () => finishSidebarResize();
-
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-    };
-  }, [sidebarResizing, finishSidebarResize]);
-
   const handleSidebarResizePointerDown = (event) => {
     if (isSidebarCollapsed) return;
     event.preventDefault();
@@ -1793,7 +1786,7 @@ export default function Chat() {
 
   const finalizeCreateProject = ({ name, icon, color }) => {
     logger.action('New project', { name, icon, color });
-    const project = { id: Date.now().toString(), name, icon, color };
+    const project = { id: crypto.randomUUID(), name, icon, color };
     const nextProjects = [...projects, project];
     setProjects(nextProjects);
     setProjectModalOpen(false);

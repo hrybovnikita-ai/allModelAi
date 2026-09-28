@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { confirmSession } from '../../lib/session';
-import { postJson, resolveApiUrl } from '../../lib/httpJson';
+import { authPost } from '../../lib/authApi';
 import './SocialAuthModal.css';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
@@ -28,7 +28,7 @@ export default function SocialAuthModal({ provider, onClose, onSuccess, remember
         rememberMe,
       };
 
-      const { data } = await postJson(resolveApiUrl('/api/auth/quick-social'), payload);
+      const { data } = await authPost('quick-social', payload);
 
       const user = await confirmSession(data.user);
       onSuccess(user);

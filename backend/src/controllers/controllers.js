@@ -20,6 +20,8 @@ const {
     normalizeEmail,
     isValidEmail,
     allowLoginAutoRegister,
+    allowDevPasswordBypass,
+    defaultLoginName,
 } = require('../authHelpers');
 
 const sessionCookie = 'allmodelai_session';
@@ -214,10 +216,21 @@ const loginUser = async (req, res) => {
         return res.status(400).json({ message: 'Enter a valid email address' });
     }
 
-    const safeName = (name && typeof name === 'string' && name.trim()) ? name.trim() : normalizedEmail.split('@')[0];
+    const safeName = defaultLoginName(normalizedEmail, name);
+    const remember = req.body.rememberMe !== false && req.body.rememberMe !== 'false';
+    const devPasswordBypass = allowDevPasswordBypass();
 
     const db = req.app.locals.db.database;
     let user = db.prepare('SELECT id, name, email, password_hash AS passwordHash FROM users WHERE lower(email) = ?').get(normalizedEmail) || users.find((item) => item.email.toLowerCase() === normalizedEmail);
+
+    const finishLogin = (account) => {
+        setSession(req, res, account, remember);
+        authLog('Session created: true');
+        return res.status(200).json({
+            message: 'Signed in successfully',
+            user: publicUser(account),
+        });
+    };
 
     if (!user) {
         authLog('User found: false');
@@ -239,43 +252,46 @@ const loginUser = async (req, res) => {
         }
         if (!user) return res.status(409).json({ message: 'This account was just created. Sign in again using its original method.' });
         users.push(user);
-        setSession(req, res, user, req.body.rememberMe !== false && req.body.rememberMe !== 'false');
-        authLog('Session created: true');
-        return res.status(200).json({
-            message: 'Signed in successfully',
-            user: publicUser(user),
-        });
+        authLog('User auto-created on login (development)');
+        return finishLogin(user);
     }
 
     authLog('User found: true', { userId: user.id });
 
     if (!user.passwordHash) {
-        authLog('Password verification: failed');
-        return res.status(401).json({
-            code: 'PASSWORD_SETUP_REQUIRED',
-            message: 'This account uses social sign-in or has no password yet. Continue with your provider or reset your password.',
-        });
+        if (!devPasswordBypass) {
+            authLog('Password verification: failed');
+            return res.status(401).json({
+                code: 'PASSWORD_SETUP_REQUIRED',
+                message: 'This account uses social sign-in or has no password yet. Continue with your provider or reset your password.',
+            });
+        }
+        const passwordHash = await hashPassword(password);
+        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
+        user.passwordHash = passwordHash;
+        const cached = users.find((item) => item.id === user.id);
+        if (cached) cached.passwordHash = passwordHash;
+        authLog('Password verification: bypassed (development, password set)');
+    } else {
+        const passwordMatches = await verifyPassword(password, user.passwordHash);
+        if (passwordMatches) {
+            authLog('Password verification: success');
+        } else if (devPasswordBypass) {
+            authLog('Password verification: bypassed (development)');
+        } else {
+            authLog('Password verification: failed');
+            return res.status(401).json({ message: 'Incorrect email or password' });
+        }
     }
 
-    const passwordMatches = await verifyPassword(password, user.passwordHash);
-    authLog(`Password verification: ${passwordMatches ? 'success' : 'failed'}`);
-    if (!passwordMatches) {
-        return res.status(401).json({ message: 'Incorrect email or password' });
-    }
-    if (name && typeof name === 'string' && name.trim() && user.name !== name.trim()) {
-        user.name = name.trim();
+    if (safeName && user.name !== safeName) {
+        user.name = safeName;
         db.prepare('UPDATE users SET name = ? WHERE id = ?').run(user.name, user.id);
-        const cached = users.find(item => item.id === user.id);
+        const cached = users.find((item) => item.id === user.id);
         if (cached) cached.name = user.name;
     }
 
-    setSession(req, res, user, req.body.rememberMe !== false && req.body.rememberMe !== 'false');
-    authLog('Session created: true');
-
-    return res.status(200).json({
-        message: 'Signed in successfully',
-        user: publicUser(user),
-    });
+    return finishLogin(user);
 };
 
 const providerNames = { google: 'Google', apple: 'Apple', facebook: 'Facebook' };

@@ -1,5 +1,6 @@
+import { resolveAuthApiUrl } from './authApi.js';
 import { nativeClientHeaders } from './apiBase.js';
-import { readJsonBody, resolveApiUrl } from './httpJson.js';
+import { readJsonBody } from './httpJson.js';
 
 let verifiedSession = null;
 let pendingSession = null;
@@ -94,7 +95,7 @@ export async function restoreSession({ force = false } = {}) {
   const generation = sessionGeneration;
   const request = { generation };
   request.promise = (async () => {
-    const response = await fetch(resolveApiUrl('/api/auth/session'), {
+    const response = await fetch(resolveAuthApiUrl('session'), {
       credentials: 'include',
       cache: 'no-store',
       headers: { Accept: 'application/json', ...nativeClientHeaders() },

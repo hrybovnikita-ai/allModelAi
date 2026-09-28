@@ -1,9 +1,9 @@
+import { authPost } from './authApi.js';
 import { confirmSession } from './session.js';
-import { postJson } from './httpJson.js';
 
-async function post(url, body) {
+async function post(path, body) {
   try {
-    const { data } = await postJson(url, body, {
+    const { data } = await authPost(path, body, {
       headers: { 'X-AllModelAI-Auth': '1' },
     });
     return data;
@@ -14,12 +14,12 @@ async function post(url, body) {
   }
 }
 export function prepareSocialSession({ link = false } = {}) {
-  return post('/api/auth/firebase/challenge', { intent: link ? 'link' : 'login' });
+  return post('firebase/challenge', { intent: link ? 'link' : 'login' });
 }
 export async function exchangeSocialSession(idToken, { link = false, rememberMe = true, challenge } = {}) {
   const intent = link ? 'link' : 'login';
   const { state } = challenge || await prepareSocialSession({ link });
-  const data = await post('/api/auth/firebase', { idToken, state, intent, rememberMe });
+  const data = await post('firebase', { idToken, state, intent, rememberMe });
   // No navigation or trusted profile cache until the actual cookie works.
   return confirmSession(data.user);
 }

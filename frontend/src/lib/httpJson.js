@@ -1,6 +1,8 @@
 import { nativeClientHeaders, resolveApiUrl } from './apiBase.js';
 
 export {
+  API_BASE_URL,
+  getAPIBaseURL,
   getApiBase,
   isCapacitorNative,
   isCapacitorWebViewHost,
@@ -66,7 +68,7 @@ export async function parseJsonResponse(response) {
 }
 
 export async function postJson(path, body, options = {}) {
-  const url = resolveApiUrl(path);
+  const url = /^https?:\/\//i.test(path) ? path : resolveApiUrl(path);
   let response;
   try {
     response = await fetch(url, {
@@ -82,11 +84,10 @@ export async function postJson(path, body, options = {}) {
       signal: options.signal,
     });
   } catch (networkError) {
-    throw new Error(
-      networkError?.message?.includes('Failed to fetch')
-        ? 'Could not reach the server. Check your network or VITE_API_BASE_URL for the Android app.'
-        : networkError?.message || 'Network request failed.',
-    );
+    const message = networkError?.message?.includes('Failed to fetch')
+      ? 'Could not reach the server. Check your network or VITE_API_BASE_URL for the Android app.'
+      : networkError?.message || 'Network request failed.';
+    throw new Error(message, { cause: networkError });
   }
 
   const { data, parseError, html } = await readJsonBody(response);

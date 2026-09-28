@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, parseJsonResponse } from '../../lib/api';
 
 export default function ForgotPassword() {
   const [searchParams] = useSearchParams();
@@ -47,7 +47,7 @@ export default function ForgotPassword() {
         }
       );
 
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
 
       if (!response.ok) {
         throw new Error(
@@ -124,7 +124,7 @@ export default function ForgotPassword() {
         }
       );
 
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
 
       if (!response.ok) {
         throw new Error(data.message || 'Could not change password.');

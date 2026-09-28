@@ -70,14 +70,12 @@ export default function Dashboard() {
       setSubscriptionError(error.message || 'Could not load subscription.');
       setSubscriptionLoad('error');
     }
-  }, [user?.email]);
+  }, [user.email]);
 
-  useEffect(() => { loadSubscription(); }, [loadSubscription]);
   useEffect(() => {
-    if (location.state?.subscriptionActivated && user?.email) {
-      loadSubscription();
-    }
-  }, [location.state?.subscriptionActivated, user?.email, loadSubscription]);
+    if (!user?.email) return;
+    void loadSubscription();
+  }, [user?.email, location.state?.subscriptionActivated, loadSubscription]);
   useEffect(() => { if (!user?.email) return; Promise.all([apiFetch(`/api/analytics?email=${encodeURIComponent(user.email)}`).then(r => r.ok ? r.json() : null), apiFetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`).then(r => r.ok ? r.json() : [])]).then(([stats, projects]) => { setAnalytics(stats); setRecentProjects(projects.slice(0, 3)); }).catch(() => {}); }, [user?.email]);
 
 

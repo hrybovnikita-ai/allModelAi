@@ -5,15 +5,21 @@ export const apiClient = axios.create({
   withCredentials: true,
   headers: {
     Accept: 'application/json',
-    ...nativeClientHeaders(),
   },
 });
 
 apiClient.interceptors.request.use((config) => {
+  Object.assign(config.headers, nativeClientHeaders());
+
   const url = config.url || '';
-  if (url && !/^https?:\/\//i.test(url)) {
+  if (!url) return config;
+
+  if (/^https?:\/\//i.test(url)) {
+    config.url = resolveApiUrl(url);
+  } else {
     config.url = resolveApiUrl(url.startsWith('/') ? url : `/${url}`);
   }
+
   return config;
 });
 

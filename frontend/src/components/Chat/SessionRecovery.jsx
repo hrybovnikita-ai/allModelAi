@@ -1,6 +1,8 @@
 import { confirmSession } from '../../lib/session';
 import { useState } from 'react';
-import { apiFetch, parseJsonResponse } from '../../lib/api';
+import { resolveAuthApiUrl } from '../../lib/authApi';
+import { parseJsonResponse } from '../../lib/api';
+import { nativeClientHeaders } from '../../lib/apiBase';
 
 export default function SessionRecovery({ user, onSuccess }) {
   const [error, setError] = useState('');
@@ -13,9 +15,14 @@ export default function SessionRecovery({ user, onSuccess }) {
     setSubmitting(true);
     setError('');
     try {
-      const response = await apiFetch('/api/auth/login', {
+      const response = await fetch(resolveAuthApiUrl('login'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...nativeClientHeaders(),
+        },
         body: JSON.stringify({ name: user.name, email: user.email, password }),
       });
       const data = await parseJsonResponse(response);

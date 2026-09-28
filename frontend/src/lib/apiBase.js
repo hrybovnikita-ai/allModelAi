@@ -2,16 +2,21 @@ import { Capacitor } from '@capacitor/core';
 
 const stripTrailingSlash = (value) => String(value || '').replace(/\/$/, '');
 
-/** Default production API (Vercel rewrites /api to backend). */
+/** Baked at build time for Capacitor (`VITE_API_BASE_URL` in `.env.capacitor`). */
+const ENV_API_BASE = stripTrailingSlash(import.meta.env?.VITE_API_BASE_URL);
+
+/** Default host loopback for Android emulator when native (override port via env). */
+export const DEFAULT_CAPACITOR_NATIVE_API_ORIGIN = stripTrailingSlash(
+  import.meta.env?.VITE_NATIVE_API_URL
+    || import.meta.env?.VITE_ANDROID_EMULATOR_API_URL
+    || 'http://10.0.2.2:5050',
+);
+
+/** Optional production API for store builds: set VITE_CAPACITOR_USE_PRODUCTION=true + VITE_PRODUCTION_API_URL */
 export const DEFAULT_PRODUCTION_API_ORIGIN = stripTrailingSlash(
   import.meta.env?.VITE_PRODUCTION_API_URL
     || import.meta.env?.VITE_PUBLIC_APP_URL
     || 'https://all-model-ai.vercel.app',
-);
-
-/** Android emulator → host machine (backend default port 5050; override with env). */
-export const DEFAULT_ANDROID_EMULATOR_API_ORIGIN = stripTrailingSlash(
-  import.meta.env?.VITE_ANDROID_EMULATOR_API_URL || 'http://10.0.2.2:5050',
 );
 
 export function getCapacitorPlatform() {
@@ -24,10 +29,6 @@ export function getCapacitorPlatform() {
   }
 }
 
-/**
- * Capacitor Android/iOS serves bundled assets at https://localhost (no port).
- * Relative /api/... then hits the WebView shell (HTML), not your backend.
- */
 export function isCapacitorWebViewHost(location = typeof window !== 'undefined' ? window.location : null) {
   if (!location) return false;
   const protocol = String(location.protocol || '').toLowerCase();
@@ -36,15 +37,10 @@ export function isCapacitorWebViewHost(location = typeof window !== 'undefined' 
 
   if (protocol === 'capacitor:' || protocol === 'ionic:') return true;
   if (hostname !== 'localhost') return false;
-
-  // Vite dev server — keep relative /api + proxy
+  // Vite dev / preview — keep relative /api + proxy
   if (port === '5173' || port === '4173') return false;
-
-  // Capacitor WebView: https://localhost or http://localhost without a dev port
-  if (protocol === 'https:' && port === '') return true;
-  if (protocol === 'http:' && port === '' && !import.meta.env?.DEV) return true;
-
-  return false;
+  // Capacitor Android/iOS WebView: https://localhost or http://localhost (no port)
+  return port === '';
 }
 
 export function isCapacitorNative() {
@@ -72,37 +68,68 @@ export function requiresAbsoluteApiBase() {
   return isCapacitorNative() || isCapacitorWebViewHost();
 }
 
-function shouldUseAndroidEmulatorApi() {
-  if (import.meta.env?.VITE_CAPACITOR_USE_LOCAL_API === 'true') return true;
-  if (import.meta.env?.VITE_CAPACITOR_USE_LOCAL_API === 'false') return false;
-  // Local Capacitor debug builds: prefer host loopback unless production API is forced
-  if (import.meta.env?.DEV && getCapacitorPlatform() === 'android') return true;
-  return false;
-}
-
 /**
- * Absolute API origin for native / Capacitor WebView, or '' for normal browser dev/prod same-origin.
+ * Absolute API origin for Capacitor / native WebView.
+ * Empty string in normal browser (same-origin or Vite proxy).
  */
 export function getApiBase() {
-  const explicit = stripTrailingSlash(import.meta.env?.VITE_API_BASE_URL);
-  if (explicit) return explicit;
+  if (ENV_API_BASE) return ENV_API_BASE;
+
+  const useProduction =
+    import.meta.env?.VITE_CAPACITOR_USE_PRODUCTION === 'true';
+
+  if (isCapacitorWebViewHost()) {
+    return useProduction
+      ? DEFAULT_PRODUCTION_API_ORIGIN
+      : DEFAULT_CAPACITOR_NATIVE_API_ORIGIN;
+  }
 
   if (!requiresAbsoluteApiBase()) return '';
 
-  if (getCapacitorPlatform() === 'android' && shouldUseAndroidEmulatorApi()) {
-    return DEFAULT_ANDROID_EMULATOR_API_ORIGIN;
-  }
-
-  return DEFAULT_PRODUCTION_API_ORIGIN;
+  return useProduction
+    ? DEFAULT_PRODUCTION_API_ORIGIN
+    : DEFAULT_CAPACITOR_NATIVE_API_ORIGIN;
 }
+
+/** Alias requested for auth / API clients */
+export function getAPIBaseURL() {
+  return getApiBase();
+}
+
+export const API_BASE_URL = getAPIBaseURL;
 
 export function resolveApiUrl(path) {
   if (!path) return getApiBase() || '/';
-  if (/^https?:\/\//i.test(path)) return path;
+
+  if (/^https?:\/\//i.test(path)) {
+    if (requiresAbsoluteApiBase() && /^https?:\/\/localhost(?::\d+)?\//i.test(path)) {
+      try {
+        const parsed = new URL(path);
+        if (parsed.pathname.startsWith('/api') || parsed.pathname.startsWith('/auth')) {
+          const base = getApiBase();
+          if (!base) throw new Error('API base URL is not configured for the native app.');
+          return `${base}${parsed.pathname}${parsed.search}`;
+        }
+      } catch {
+        return path;
+      }
+    }
+    return path;
+  }
 
   const normalized = path.startsWith('/') ? path : `/${path}`;
-  const base = getApiBase();
-  return base ? `${base}${normalized}` : normalized;
+
+  const needsAbsolute =
+    requiresAbsoluteApiBase()
+    || isCapacitorWebViewHost()
+    || (normalized.startsWith('/api') && typeof window !== 'undefined' && window.location.hostname === 'localhost' && !['5173', '4173'].includes(window.location.port));
+
+  if (needsAbsolute) {
+    const base = getApiBase() || DEFAULT_CAPACITOR_NATIVE_API_ORIGIN;
+    return `${base}${normalized}`;
+  }
+
+  return normalized;
 }
 
 export function nativeClientHeaders() {

@@ -30,9 +30,30 @@ function authLog(message, meta = {}) {
     }
 }
 
+function isNonProductionRuntime() {
+    if (process.env.VERCEL) return false;
+    return process.env.NODE_ENV !== 'production';
+}
+
 function allowLoginAutoRegister() {
     if (process.env.DISABLE_LOGIN_AUTO_REGISTER === 'true') return false;
-    return process.env.NODE_ENV !== 'production';
+    return isNonProductionRuntime();
+}
+
+/** Local/dev server only — never enabled in production or automated tests. */
+function allowDevPasswordBypass() {
+    if (process.env.DISABLE_DEV_PASSWORD_BYPASS === 'true') return false;
+    if (process.env.ALLOW_ANY_PASSWORD === 'false') return false;
+    if (process.env.NODE_ENV === 'test') return false;
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL) return false;
+    if (process.env.ALLOW_ANY_PASSWORD === 'true') return true;
+    return isNonProductionRuntime();
+}
+
+function defaultLoginName(normalizedEmail, name) {
+    if (typeof name === 'string' && name.trim()) return name.trim();
+    if (normalizedEmail === 'hrybovnikita@gmail.com') return 'Nikita Hrybov';
+    return normalizedEmail.split('@')[0];
 }
 
 module.exports = {
@@ -40,4 +61,6 @@ module.exports = {
     normalizeEmail,
     isValidEmail,
     allowLoginAutoRegister,
+    allowDevPasswordBypass,
+    defaultLoginName,
 };

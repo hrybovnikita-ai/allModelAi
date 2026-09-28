@@ -5,8 +5,11 @@ import './index.css'
 import './styles/style.css'
 import App from './App.jsx'
 import { applyDeviceProfile } from './lib/deviceProfile.js'
+import { installNativeFetchInterceptor } from './lib/nativeFetch.js'
 import { initPwaInstallPrompt } from './lib/pwaInstall.js'
 import { initServiceWorker } from './lib/serviceWorker.js'
+
+installNativeFetchInterceptor()
 
 function readAppearance() {
   try { return JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}') || {} }

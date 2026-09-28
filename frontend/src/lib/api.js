@@ -3,7 +3,14 @@ import { isLoggerEnabled, logger } from './logger.js';
 import { nativeClientHeaders } from './apiBase.js';
 import { parseJsonResponse, resolveApiUrl } from './httpJson.js';
 
-export { getApiBase, isCapacitorNative, parseJsonResponse, resolveApiUrl } from './httpJson.js';
+export {
+  API_BASE_URL,
+  getAPIBaseURL,
+  getApiBase,
+  isCapacitorNative,
+  parseJsonResponse,
+  resolveApiUrl,
+} from './httpJson.js';
 
 const apiPath = (url) => {
   try {

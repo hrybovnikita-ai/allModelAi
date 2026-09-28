@@ -1,23 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLanguage } from '../../lib/useLanguage';
+import { PROJECT_COLORS, PROJECT_ICONS } from './createProjectConstants.js';
 import './CreateProjectModal.css';
 
-export const PROJECT_COLORS = [
-  { id: 'gray', value: '#737373' },
-  { id: 'red', value: '#ef4444' },
-  { id: 'orange', value: '#f97316' },
-  { id: 'yellow', value: '#eab308' },
-  { id: 'green', value: '#22c55e' },
-  { id: 'blue', value: '#3b82f6' },
-  { id: 'purple', value: '#a855f7' },
-  { id: 'pink', value: '#ec4899' },
-];
-
-export const PROJECT_ICONS = [
-  '📁', '💼', '📚', '🎓', '✈️', '🏠', '💡', '🎯', '📊', '🛠️', '🎨', '📝', '💻', '🚀', '⭐', '❤️',
-  '🎮', '🌍', '📷', '🔬', '🛒', '💰', '📞', '✏️', '🗂️', '📅', '🏋️', '🍳', '🎵', '📈', '🧪', '🏥', '🚌',
-];
+export { PROJECT_COLORS, PROJECT_ICONS } from './createProjectConstants.js';
 
 export function ProjectIconBadge({ project, className = '' }) {
   const color = project?.color || '#52525b';

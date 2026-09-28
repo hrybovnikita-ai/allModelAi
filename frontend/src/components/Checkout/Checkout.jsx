@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import axios from 'axios';
+import apiClient from '../../lib/apiClient';
 import './Checkout.css';
 import './CheckoutDemo.css';
 import './CheckoutProduction.css';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { buildClientTestCheckoutInfo, fetchCheckoutInfo, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
+import { apiFetch } from '../../lib/api';
 import { pollWayforpayPaymentStatus, runTestWayforpayCheckout, submitWayforpayCheckout } from '../../lib/wayforpay';
 
 const plans = {
@@ -66,7 +67,7 @@ export default function Checkout() {
     const sessionId = searchParams.get('session_id');
     if (searchParams.get('success') === 'developer') return;
     if (!sessionId || searchParams.get('success') !== '1') return;
-    axios.get(`/api/payments/session/${encodeURIComponent(sessionId)}`, { withCredentials: true })
+    apiClient.get(`/api/payments/session/${encodeURIComponent(sessionId)}`)
       .then((response) => setPurchase(response.data.purchase))
       .catch((requestError) => setError(requestError.response?.data?.message || 'Stripe payment could not be verified.'))
       .finally(() => setCheckoutBusy(false));
@@ -79,7 +80,6 @@ export default function Checkout() {
     let cancelled = false;
     (async () => {
       try {
-        const apiFetch = (path, options = {}) => fetch(path, { credentials: 'include', ...options });
         const paid = await pollWayforpayPaymentStatus(apiFetch, orderReference);
         if (cancelled) return;
         if (!paid?.paid) {
@@ -100,7 +100,7 @@ export default function Checkout() {
   }, [searchParams, navigate, selectedPlan]);
 
   const runLiveWayforpayCheckout = async (planKey) => {
-    const response = await axios.post('/api/payments/wayforpay/create', { plan: planKey }, { withCredentials: true });
+    const response = await apiClient.post('/api/payments/wayforpay/create', { plan: planKey });
     if (response.data.mockCheckout || response.data.testMode) {
       throw new Error('Unexpected test checkout response. Refresh the page and try again.');
     }
@@ -121,7 +121,7 @@ export default function Checkout() {
       const mockMode = Boolean(info?.wayforpayMockCheckout ?? isMockWayforpay);
 
       if (summary.price > 0 && mockMode) {
-        const result = await runTestWayforpayCheckout(axios, selectedPlan);
+        const result = await runTestWayforpayCheckout(apiClient, selectedPlan);
         if (!result?.paid && !result?.success) {
           throw new Error('Test payment was not confirmed by the server.');
         }
@@ -139,7 +139,7 @@ export default function Checkout() {
         throw new Error('Test mode: paid checkout uses WayForPay mock only.');
       }
 
-      const response = await axios.post('/api/payments/checkout', { plan: selectedPlan }, { withCredentials: true });
+      const response = await apiClient.post('/api/payments/checkout', { plan: selectedPlan });
 
       if (response.data.developerAccess) {
         setPurchase(response.data.purchase);
