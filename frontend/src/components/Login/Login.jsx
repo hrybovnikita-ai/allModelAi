@@ -1,4 +1,4 @@
-import { applyAuthResponsePayload, confirmSession, restoreSession } from '../../lib/session';
+import { applyAuthResponsePayload, confirmSession } from '../../lib/session';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
@@ -36,20 +36,6 @@ function LoginForm({
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [successNotice, setSuccessNotice] = useState('');
-
-  useEffect(() => {
-    let active = true;
-    restoreSession()
-      .then((user) => {
-        if (active && user) {
-          navigate('/dashboard', { replace: true, state: { user } });
-        }
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [navigate]);
 
   const handleSocialSignIn = async (provider) => {
     if (submitting || socialBusy) return;
