@@ -1,4 +1,8 @@
 const { subscriptionPlans, periodEndFor, normalizePlanKey, planSlugForKey, planDisplayName } = require('./plans');
+const {
+    getTableColumnNames,
+    isPostgresDatabaseMode,
+} = require('../db/schemaIntrospection');
 
 const PLAN_LABELS = {
     free: 'Free',
@@ -65,9 +69,14 @@ const migrateAllSubscriptionPlanSlugs = (appDb) => {
 };
 
 const ensureSubscriptionBillingSchema = (database) => {
-    const columns = database.prepare('PRAGMA table_info(subscription_details)').all().map((c) => c.name);
+    if (isPostgresDatabaseMode()) {
+        return;
+    }
+    const columns = getTableColumnNames(database, 'subscription_details');
     const addColumn = (name, ddl) => {
-        if (!columns.includes(name)) database.exec(`ALTER TABLE subscription_details ADD COLUMN ${ddl}`);
+        if (!columns.includes(name)) {
+            database.exec(`ALTER TABLE subscription_details ADD COLUMN ${ddl}`);
+        }
     };
     addColumn('payment_provider', 'payment_provider TEXT');
     addColumn('order_reference', 'order_reference TEXT');

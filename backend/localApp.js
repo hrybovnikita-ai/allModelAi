@@ -14,10 +14,16 @@ require('./src/sessionToken').signingKey();
 app.locals.cache = require('./src/cache').createCache();
 app.locals.db = connectDatabase();
 const { migrateAllSubscriptionPlanSlugs } = require('./src/billing/subscriptionLifecycle');
+const { logStartupSqlFailure } = require('./src/db/schemaIntrospection');
 if (process.env.NODE_ENV !== 'test') {
-    const migratedPlans = migrateAllSubscriptionPlanSlugs(app.locals.db);
-    if (migratedPlans > 0) {
-        console.log(`Subscription plan slugs migrated: ${migratedPlans} account(s) (common→pro, etc.).`);
+    try {
+        const migratedPlans = migrateAllSubscriptionPlanSlugs(app.locals.db);
+        if (migratedPlans > 0) {
+            console.log(`Subscription plan slugs migrated: ${migratedPlans} account(s) (common→pro, etc.).`);
+        }
+    } catch (error) {
+        logStartupSqlFailure('migrateAllSubscriptionPlanSlugs', error);
+        throw error;
     }
 }
 const storedData = app.locals.db.read();

@@ -1,4 +1,9 @@
+const { isPostgresDatabaseMode, getTableColumnNames } = require('../db/schemaIntrospection');
+
 const ensureWayforpaySchema = (database) => {
+    if (isPostgresDatabaseMode()) {
+        return;
+    }
     database.exec(`
         CREATE TABLE IF NOT EXISTS wayforpay_payments (
             order_reference TEXT PRIMARY KEY,
@@ -22,7 +27,7 @@ const ensureWayforpaySchema = (database) => {
         CREATE INDEX IF NOT EXISTS wayforpay_payments_user_email
         ON wayforpay_payments(user_email, created_at DESC);
     `);
-    const columns = database.prepare('PRAGMA table_info(wayforpay_payments)').all().map((c) => c.name);
+    const columns = getTableColumnNames(database, 'wayforpay_payments');
     const addColumn = (name, ddl) => {
         if (!columns.includes(name)) database.exec(`ALTER TABLE wayforpay_payments ADD COLUMN ${ddl}`);
     };
