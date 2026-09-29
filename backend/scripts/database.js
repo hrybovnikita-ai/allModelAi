@@ -1,10 +1,6 @@
 const path = require('node:path');
 
-try {
-    process.loadEnvFile(path.join(__dirname, '..', '.env'));
-} catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-}
+require('./load-backend-env').loadBackendEnv();
 
 const command = process.argv[2];
 if (!['init', 'check'].includes(command)) {

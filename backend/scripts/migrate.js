@@ -2,11 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-try {
-    process.loadEnvFile(path.join(__dirname, '..', '.env'));
-} catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-}
+require('./load-backend-env').loadBackendEnv();
 
 const { resolveDatabaseUrl } = require('../src/db/provider');
 const { createPgPool, formatSafePgFailure } = require('../src/db/pgConfig');

@@ -93,7 +93,6 @@ router.post('/ai-python/reset', requireAuth, resetPyTorchModel);
 router.get('/system/health', getSystemHealth);
 
 router.post('/auth/register', registerUser);
-// POST /api/auth/login — dev mode (local server): auto-create user + skip password verify (see loginUser in controllers.js)
 router.post('/auth/login', loginUser);
 router.post('/auth/quick-social', quickSocialLogin);
 router.get('/auth/:provider/accounts', getSocialAccounts);

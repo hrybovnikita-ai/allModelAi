@@ -1,11 +1,7 @@
 const path = require('node:path');
 
 if (process.env.NODE_ENV !== 'test') {
-    try {
-        process.loadEnvFile(path.join(__dirname, '.env'));
-    } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
-    }
+    require('./scripts/load-backend-env').loadBackendEnv();
 }
 
 // Vercel must proxy /api to PERSISTENT_BACKEND_ORIGIN (Render/Fly/Docker disk).

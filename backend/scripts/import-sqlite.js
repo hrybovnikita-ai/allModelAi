@@ -12,11 +12,7 @@ const {
     classifyUser,
 } = require('./import-sqlite-lib');
 
-try {
-    process.loadEnvFile(path.join(__dirname, '..', '.env'));
-} catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-}
+require('./load-backend-env').loadBackendEnv();
 
 const defaultSqlitePath = path.join(__dirname, '..', 'storage', 'database.sqlite');
 

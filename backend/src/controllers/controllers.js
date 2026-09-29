@@ -12,6 +12,7 @@ const frontendOrigin = (req) => publicAppOrigin(req);
 const crypto = require('node:crypto');
 const { hashPassword, verifyPassword } = require('../password');
 const { loadAuthUserByEmail } = require('../authUser');
+const { extractPasswordHash } = require('../authPasswordHash');
 const Stripe = require('stripe');
 const users = require('../data/data');
 const webSearchService = require('../services/webSearchService');
@@ -176,7 +177,7 @@ const registerUser = async (req, res) => {
         const row = existing.id != null
             ? db.prepare('SELECT password_hash FROM users WHERE id = ?').get(existing.id)
             : null;
-        const hasPassword = Boolean(existing.passwordHash || row?.password_hash);
+        const hasPassword = Boolean(existing.passwordHash || extractPasswordHash(row));
         const socialOnly = existing.id != null
             ? db.prepare('SELECT 1 FROM social_identities WHERE user_id = ? LIMIT 1').get(existing.id)
             : null;
@@ -260,8 +261,7 @@ const loginUser = async (req, res) => {
     const user = loadAuthUserByEmail(db, normalizedEmail);
 
     if (!user) {
-        authLog('SQL user found: false');
-        authLog('Password verification: failed');
+        authLog('Login rejected', { reason: 'USER_NOT_FOUND' });
         return res.status(401).json({ message: 'Incorrect email or password' });
     }
 
@@ -269,20 +269,32 @@ const loginUser = async (req, res) => {
     authLog(`Password hash present: ${Boolean(user.passwordHash)}`);
 
     if (!user.passwordHash) {
-        authLog('Password verification: failed');
+        authLog('Login rejected', { reason: 'PASSWORD_HASH_MISSING' });
         return res.status(401).json({
             code: 'PASSWORD_SETUP_REQUIRED',
             message: 'This account uses social sign-in or has no password yet. Continue with your provider or reset your password.',
         });
     }
 
-    const passwordMatches = await verifyPassword(password, user.passwordHash);
+    let passwordMatches = false;
+    try {
+        passwordMatches = await verifyPassword(password, user.passwordHash);
+    } catch (error) {
+        authLog('Login rejected', { reason: 'PASSWORD_VERIFY_ERROR', code: error.code || 'unknown' });
+        return res.status(401).json({ message: 'Incorrect email or password' });
+    }
     authLog(`Password verification: ${passwordMatches ? 'success' : 'failed'}`);
     if (!passwordMatches) {
+        authLog('Login rejected', { reason: 'PASSWORD_MISMATCH' });
         return res.status(401).json({ message: 'Incorrect email or password' });
     }
 
-    return finishLogin(syncUserName(user));
+    try {
+        return finishLogin(syncUserName(user));
+    } catch (error) {
+        authLog('Login rejected', { reason: 'SESSION_CREATION_FAILED', code: error.code || 'unknown' });
+        throw error;
+    }
 };
 
 const providerNames = { google: 'Google', apple: 'Apple', facebook: 'Facebook' };
