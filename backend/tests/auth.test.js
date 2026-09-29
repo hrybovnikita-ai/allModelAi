@@ -30,25 +30,49 @@ test('register, restore session, logout, and login with normalized email', async
   assert.doesNotMatch(temporary.headers['set-cookie'][0], /Max-Age=/i);
 });
 
-test('wrong passwords cannot bypass authentication, even with the legacy flag', async () => {
+test('wrong passwords cannot bypass authentication in development mode', async () => {
+  const previous = process.env.NODE_ENV;
+  delete process.env.NODE_ENV;
   process.env.ALLOW_ANY_PASSWORD = 'true';
   try {
-    const result = await request(app).post('/api/auth/login').send({ email: 'alice.johnson@gmail.com', password: 'wrong' });
+    await request(app).post('/api/auth/register').send({
+      name: 'Alice Johnson',
+      email: 'alice.johnson@gmail.com',
+      password: 'alice-correct-password',
+    });
+    const result = await request(app).post('/api/auth/login').send({
+      email: 'alice.johnson@gmail.com',
+      password: 'wrong-password-1',
+    });
     assert.equal(result.status, 401);
     assert.equal(result.headers['set-cookie'], undefined);
-  } finally { delete process.env.ALLOW_ANY_PASSWORD; }
+  } finally {
+    delete process.env.ALLOW_ANY_PASSWORD;
+    app.locals.db.database.prepare('DELETE FROM users WHERE lower(email) = ?').run('alice.johnson@gmail.com');
+    if (previous === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previous;
+  }
 });
 
 test('passwordless accounts cannot be claimed through login or registration', async () => {
-  const account = { id: 90001, name: 'OAuth user', email: 'oauth-only@example.com' };
-  users.push(account);
+  const email = 'oauth-only@example.com';
+  const db = app.locals.db.database;
+  const id = Number(db.prepare(
+    'INSERT INTO users (name, email, password_hash, email_verified) VALUES (?, ?, NULL, 1)',
+  ).run('OAuth user', email).lastInsertRowid);
   try {
-    const blocked = await request(app).post('/api/auth/login').send({ email: account.email, password: 'attacker-password' });
+    const blocked = await request(app).post('/api/auth/login').send({ email, password: 'attacker-password' });
     assert.equal(blocked.status, 401);
     assert.equal(blocked.body.code, 'PASSWORD_SETUP_REQUIRED');
-    assert.equal((await request(app).post('/api/auth/register').send({ name: 'Attacker', email: account.email, password: 'attacker-password' })).status, 409);
-    assert.equal(account.passwordHash, undefined);
-  } finally { users.splice(users.indexOf(account), 1); }
+    assert.equal((await request(app).post('/api/auth/register').send({
+      name: 'Attacker',
+      email,
+      password: 'attacker-password',
+    })).status, 409);
+    assert.equal(db.prepare('SELECT password_hash FROM users WHERE id = ?').get(id).password_hash, null);
+  } finally {
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+  }
 });
 
 test('invalid credential types produce validation errors', async () => {
@@ -111,31 +135,25 @@ test('production login does not auto-register unknown accounts', async () => {
   }
 });
 
-test('login with new credentials auto-registers user and saves to SQL database', async () => {
+test('login cannot create users; registration plus login works', async () => {
   const agent = request.agent(app);
-  const loginRes = await agent.post('/api/auth/login').send({
-    name: 'Nikita Hrybov',
-    email: 'hrybovnikita@gmail.com',
-    password: 'Altruist228',
-    rememberMe: true,
-  });
+  const email = 'registered-login@example.com';
+  const password = 'RegisteredLogin1';
+  const db = app.locals.db.database;
+  const before = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+  assert.equal((await request(app).post('/api/auth/login').send({ email, password })).status, 401);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, before);
+  assert.equal((await agent.post('/api/auth/register').send({
+    name: 'Registered User',
+    email,
+    password,
+  })).status, 201);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, before + 1);
+  const loginRes = await agent.post('/api/auth/login').send({ email, password });
   assert.equal(loginRes.status, 200);
-  assert.equal(loginRes.body.user.name, 'Nikita Hrybov');
-  assert.equal(loginRes.body.user.email, 'hrybovnikita@gmail.com');
-
-  // Verify session endpoint recognizes the newly created user
-  const sessionRes = await agent.get('/api/auth/session');
-  assert.equal(sessionRes.status, 200);
-  assert.equal(sessionRes.body.user.email, 'hrybovnikita@gmail.com');
-
-  // Verify record exists in SQLite database
-  const userInDb = app.locals.db.database.prepare('SELECT * FROM users WHERE lower(email) = ?').get('hrybovnikita@gmail.com');
-  assert.ok(userInDb);
-  assert.equal(userInDb.name, 'Nikita Hrybov');
-
-  // Clean up created user
-  const index = users.findIndex((u) => u.email === 'hrybovnikita@gmail.com');
-  if (index !== -1) users.splice(index, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, before + 1);
+  assert.equal((await agent.get('/api/auth/session')).body.user.email, email);
+  db.prepare('DELETE FROM users WHERE lower(email) = ?').run(email);
   const authIndex = users.findIndex((u) => u.email === 'auth@example.com');
   if (authIndex !== -1) users.splice(authIndex, 1);
   const concurrentIndex = users.findIndex((u) => u.email === 'concurrent@example.com');

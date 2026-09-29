@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test tests/*.test.js",
+    "test": "node --require ./tests/test-preload.js --test tests/*.test.js",
+    "check-password": "node scripts/check-password.js",
     "db:init": "node scripts/database.js init",
     "db:check": "node scripts/database.js check",
     "providers:check": "node scripts/check-providers.js",

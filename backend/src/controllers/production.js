@@ -1,18 +1,31 @@
 const crypto = require('node:crypto');
-const { promisify } = require('node:util');
 const users = require('../data/data');
-const scrypt = promisify(crypto.scrypt);
+const { hashPassword } = require('../password');
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const json = (value, fallback = {}) => { try { return JSON.parse(value); } catch { return fallback; } };
 const now = () => new Date().toISOString();
 const audit = (req, action, targetType, targetId, metadata = {}) => req.app.locals.db.database.prepare('INSERT INTO audit_events (email, action, target_type, target_id, metadata, ip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(req.user.email, action, targetType || null, targetId || null, JSON.stringify(metadata), req.ip || null, now());
+
+const { databaseFingerprint } = require('../runtimeDiagnostics');
 
 const health = (req, res) => {
     const database = req.app.locals.db.database;
     const checks = { database: false, openai: Boolean(process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY), openrouter: Boolean(process.env.OPENROUTER_API_KEY || process.env.API_KEY), email: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM), payments: Boolean(process.env.STRIPE_SECRET_KEY) || Boolean(process.env.WAYFORPAY_SECRET_KEY?.trim() && process.env.WAYFORPAY_MERCHANT_ACCOUNT?.trim()), postgres: false, monitoring: Boolean(process.env.SENTRY_DSN) };
     try { database.prepare('SELECT 1').get(); checks.database = true; } catch { /* reported below */ }
     const ready = checks.database;
-    return res.status(ready ? 200 : 503).json({ status: ready ? 'healthy' : 'degraded', service: 'AllModelAI', database: { engine: 'sqlite', connected: checks.database }, version: process.env.APP_VERSION || '1.0.0', uptimeSeconds: Math.floor(process.uptime()), checks, timestamp: now() });
+    return res.status(ready ? 200 : 503).json({
+        status: ready ? 'healthy' : 'degraded',
+        service: 'AllModelAI',
+        database: {
+            engine: 'sqlite',
+            connected: checks.database,
+            fingerprint: checks.database ? databaseFingerprint(database) : null,
+        },
+        version: process.env.APP_VERSION || '1.0.0',
+        uptimeSeconds: Math.floor(process.uptime()),
+        checks,
+        timestamp: now(),
+    });
 };
 
 const globalSearch = (req, res) => {
@@ -57,6 +70,6 @@ const createAccountToken=(req,res,purpose)=>{const secret=crypto.randomBytes(32)
 const requestEmailVerification=(req,res)=>createAccountToken(req,res,'verify_email');
 const confirmEmailVerification=(req,res)=>{const token=String(req.body.token||''),db=req.app.locals.db.database,row=db.prepare("SELECT * FROM account_tokens WHERE token_hash=? AND purpose='verify_email' AND expires_at>?").get(hash(token),Date.now());if(!row)return res.status(400).json({message:'Invalid or expired verification token'});db.transaction(()=>{db.prepare('UPDATE users SET email_verified=1 WHERE lower(email)=lower(?)').run(row.email);db.prepare('DELETE FROM account_tokens WHERE token_hash=?').run(hash(token));})();return res.json({message:'Email verified'});};
 const requestPasswordReset=(req,res)=>{const email=String(req.body.email||'').trim().toLowerCase(),db=req.app.locals.db.database,user=db.prepare('SELECT id,email FROM users WHERE lower(email)=lower(?)').get(email);if(!user)return res.json({message:'If the account exists, a password reset request was created.'});const secret=crypto.randomBytes(32).toString('base64url'),expiresAt=Date.now()+30*60*1000;db.prepare('INSERT INTO account_tokens (token_hash,email,purpose,expires_at,created_at) VALUES (?,?,?,?,?)').run(hash(secret),user.email,'password_reset',expiresAt,now());return res.json({message:'If the account exists, a password reset request was created.',...(process.env.NODE_ENV==='test'||process.env.EXPOSE_ACCOUNT_TOKENS==='true'?{token:secret}:{})});};
-const confirmPasswordReset=async(req,res)=>{const token=String(req.body.token||''),password=String(req.body.password||''),db=req.app.locals.db.database,row=db.prepare("SELECT * FROM account_tokens WHERE token_hash=? AND purpose='password_reset' AND expires_at>?").get(hash(token),Date.now());if(!row||password.length<8)return res.status(400).json({message:'Valid token and password of at least 8 characters required'});const salt=crypto.randomBytes(16).toString('hex'),derived=await scrypt(password,salt,64),passwordHash=`${salt}:${Buffer.from(derived).toString('hex')}`;const memoryUser=users.find(user=>user.email.toLowerCase()===row.email.toLowerCase());if(memoryUser)memoryUser.passwordHash=passwordHash;db.transaction(()=>{db.prepare('UPDATE users SET password_hash=? WHERE lower(email)=lower(?)').run(passwordHash,row.email);db.prepare('DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE lower(email)=lower(?))').run(row.email);db.prepare('DELETE FROM account_tokens WHERE token_hash=?').run(hash(token));})();return res.json({message:'Password changed. Sign in again.'});};
+const confirmPasswordReset=async(req,res)=>{const token=String(req.body.token||''),password=String(req.body.password||''),db=req.app.locals.db.database,row=db.prepare("SELECT * FROM account_tokens WHERE token_hash=? AND purpose='password_reset' AND expires_at>?").get(hash(token),Date.now());if(!row||password.length<8)return res.status(400).json({message:'Valid token and password of at least 8 characters required'});const passwordHash=await hashPassword(password);const memoryUser=users.find(user=>user.email.toLowerCase()===row.email.toLowerCase());if(memoryUser)memoryUser.passwordHash=passwordHash;db.transaction(()=>{db.prepare('UPDATE users SET password_hash=? WHERE lower(email)=lower(?)').run(passwordHash,row.email);db.prepare('DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE lower(email)=lower(?))').run(row.email);db.prepare('DELETE FROM account_tokens WHERE token_hash=?').run(hash(token));})();return res.json({message:'Password changed. Sign in again.'});};
 
 module.exports={health,globalSearch,listJobs,createJob,cancelJob,listNotifications,readNotification,usageReport,auditLog,listWebhooks,createWebhook,deleteWebhook,privacyExport,requestEmailVerification,confirmEmailVerification,requestPasswordReset,confirmPasswordReset};

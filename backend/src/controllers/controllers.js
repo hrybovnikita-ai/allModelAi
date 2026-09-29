@@ -10,7 +10,8 @@ const { wayforpayCheckoutAvailable } = require('../wayforpay/config');
 const { buildCheckoutInfo, stripeCheckoutEnabled } = require('../payments/checkoutInfo');
 const frontendOrigin = (req) => publicAppOrigin(req);
 const crypto = require('node:crypto');
-const { promisify } = require('node:util');
+const { hashPassword, verifyPassword } = require('../password');
+const { loadAuthUserByEmail } = require('../authUser');
 const Stripe = require('stripe');
 const users = require('../data/data');
 const webSearchService = require('../services/webSearchService');
@@ -21,9 +22,7 @@ const {
     normalizeEmail,
     normalizeLoginEmail,
     isValidEmail,
-    allowLoginAutoRegister,
     defaultLoginName,
-    isLocalDevLogin,
     validateRegistrationInput,
     parseRememberMe,
 } = require('../authHelpers');
@@ -34,20 +33,7 @@ function nativeSessionFields(req, token) {
     if (token && shouldIssueNativeSessionToken(req)) return { nativeSessionToken: token };
     return {};
 }
-const scrypt = promisify(crypto.scrypt);
 const publicUser = ({ passwordHash, ...user }) => user;
-const hashPassword = async (password) => {
-    const salt = crypto.randomBytes(16).toString('hex');
-    const derivedKey = await scrypt(password, salt, 64);
-    return `${salt}:${Buffer.from(derivedKey).toString('hex')}`;
-};
-const verifyPassword = async (password, passwordHash) => {
-    if (!passwordHash || !passwordHash.includes(':')) return false;
-    const [salt, storedKey] = passwordHash.split(':');
-    const derivedKey = Buffer.from(await scrypt(password, salt, 64));
-    const storedBuffer = Buffer.from(storedKey, 'hex');
-    return storedBuffer.length === derivedKey.length && crypto.timingSafeEqual(storedBuffer, derivedKey);
-};
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
 })[character]);
@@ -175,8 +161,9 @@ const registerUser = async (req, res) => {
     let newUser;
     try {
         newUser = db.transaction(() => {
-            const existing = db.prepare('SELECT id, password_hash AS passwordHash FROM users WHERE lower(email) = ?').get(normalizedEmail)
-                || users.find((user) => user.email.toLowerCase() === normalizedEmail);
+            const existing = db.prepare(
+                'SELECT id, password_hash AS passwordHash FROM users WHERE lower(trim(email)) = ?',
+            ).get(normalizedEmail);
             if (existing) return { conflict: true, existing };
             const id = Number(db.prepare('INSERT INTO users (name, email, password_hash, email_verified) VALUES (?, ?, ?, 1)').run(safeName, normalizedEmail, passwordHash).lastInsertRowid);
             return { id, name: safeName, email: normalizedEmail, passwordHash };
@@ -250,13 +237,10 @@ const loginUser = async (req, res) => {
 
     const db = req.app.locals.db.database;
 
-    const loadUserByEmail = () => db.prepare(
-        'SELECT id, name, email, password_hash AS passwordHash FROM users WHERE lower(email) = ?',
-    ).get(normalizedEmail) || users.find((item) => item.email.toLowerCase() === normalizedEmail);
-
     const finishLogin = (account) => {
         const sessionToken = setSession(req, res, account, remember);
         authLog('Session created: true');
+        authLog('Cookie issued: true');
         return res.status(200).json({
             message: 'Signed in successfully',
             user: publicUser(account),
@@ -273,61 +257,16 @@ const loginUser = async (req, res) => {
         return account;
     };
 
-    const provisionUserOnLogin = async ({ logCreate = false } = {}) => {
-        let account = loadUserByEmail();
-        if (account) return syncUserName(account);
-
-        if (logCreate) authLog('User found: false — creating SQLite record (development)');
-        const passwordHash = await hashPassword(password);
-        try {
-            account = db.transaction(() => {
-                if (db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(normalizedEmail)) return null;
-                const id = Number(db.prepare(
-                    'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)',
-                ).run(safeName, normalizedEmail, passwordHash).lastInsertRowid);
-                return { id, name: safeName, email: normalizedEmail, passwordHash };
-            }).immediate();
-        } catch (error) {
-            if (!error.code?.startsWith('SQLITE_CONSTRAINT')) throw error;
-        }
-
-        if (!account) account = loadUserByEmail();
-        else users.push(account);
-
-        if (!account) return null;
-
-        if (logCreate) authLog('User auto-created on login (development)');
-        return account;
-    };
-
-    // Local `node server.js`: never compare passwords (scrypt); create missing users; always 200 + session cookie.
-    if (isLocalDevLogin()) {
-        const existing = loadUserByEmail();
-        authLog(existing ? 'User found: true' : 'User found: false', existing ? { userId: existing.id } : undefined);
-        authLog('Password verification: skipped (development)');
-        const account = await provisionUserOnLogin({ logCreate: !existing });
-        if (!account) {
-            return res.status(409).json({ message: 'This account was just created. Sign in again using its original method.' });
-        }
-        return finishLogin(account);
-    }
-
-    let user = loadUserByEmail();
+    const user = loadAuthUserByEmail(db, normalizedEmail);
 
     if (!user) {
-        authLog('User found: false');
-        if (!allowLoginAutoRegister()) {
-            authLog('Password verification: failed');
-            return res.status(401).json({ message: 'Incorrect email or password' });
-        }
-        user = await provisionUserOnLogin();
-        if (!user) {
-            return res.status(409).json({ message: 'This account was just created. Sign in again using its original method.' });
-        }
-        return finishLogin(user);
+        authLog('SQL user found: false');
+        authLog('Password verification: failed');
+        return res.status(401).json({ message: 'Incorrect email or password' });
     }
 
-    authLog('User found: true', { userId: user.id });
+    authLog('SQL user found: true', { userId: user.id });
+    authLog(`Password hash present: ${Boolean(user.passwordHash)}`);
 
     if (!user.passwordHash) {
         authLog('Password verification: failed');

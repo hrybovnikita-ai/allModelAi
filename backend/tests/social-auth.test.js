@@ -101,7 +101,8 @@ test('password registration racing social registration cannot overwrite the soci
     login(request.agent(app), value),
   ]);
   assert.equal(db.prepare('SELECT count(*) AS n FROM users WHERE email = ?').get('race-password@example.com').n, 1);
-  assert.ok(results.every((result) => [200, 409].includes(result.status)));
+  assert.ok(results.some((result) => result.status === 200));
+  assert.ok(results.every((result) => [200, 401, 409].includes(result.status)));
 });
 test('CSRF origin, custom header, cookie binding and one-time challenge are enforced', async () => {
   assert.equal((await request(app).post('/api/auth/firebase/challenge').send({})).status, 403);

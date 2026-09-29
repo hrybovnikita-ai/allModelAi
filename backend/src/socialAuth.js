@@ -5,6 +5,7 @@ const { setSession } = require('./controllers/controllers');
 const { hashToken, readSessionToken } = require('./sessionAuth');
 const { shouldIssueNativeSessionToken } = require('./sessionCookie');
 const users = require('./data/data');
+const { normalizeLoginEmail } = require('./authHelpers');
 const providers = new Set(['google.com', 'apple.com', 'facebook.com']);
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const stateCookie = 'allmodelai_social_state';
@@ -79,7 +80,8 @@ async function exchange(req, res) {
                 const other = db.prepare('SELECT subject FROM social_identities WHERE user_id = ? AND provider = ?').get(id, profile.provider);
                 if (other && other.subject !== profile.subject) throw fail(409, 'IDENTITY_CONFLICT', 'A different identity from this provider is already connected.');
             } else if (!id) {
-                const existing = db.prepare('SELECT id, name FROM users WHERE lower(email) = ?').get(profile.email);
+                const canonicalEmail = normalizeLoginEmail(profile.email);
+                const existing = db.prepare('SELECT id, name FROM users WHERE lower(email) = ?').get(canonicalEmail);
                 if (existing) {
                     // Verified provider email matches an existing AllModelAI account — link and sign in (no duplicate).
                     id = existing.id;
@@ -87,7 +89,7 @@ async function exchange(req, res) {
                         db.prepare('UPDATE users SET name = ? WHERE id = ?').run(profile.name, id);
                     }
                 } else {
-                    id = Number(db.prepare('INSERT INTO users (name, email, avatar_url, email_verified) VALUES (?, ?, ?, 1)').run(profile.name, profile.email, profile.avatar).lastInsertRowid);
+                    id = Number(db.prepare('INSERT INTO users (name, email, avatar_url, email_verified) VALUES (?, ?, ?, 1)').run(profile.name, canonicalEmail, profile.avatar).lastInsertRowid);
                 }
             }
             db.prepare('INSERT INTO social_identities (provider, subject, user_id) VALUES (?, ?, ?) ON CONFLICT(provider, subject) DO NOTHING').run(profile.provider, profile.subject, id);

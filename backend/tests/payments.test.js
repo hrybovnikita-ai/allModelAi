@@ -58,11 +58,11 @@ test('Payments: developer mock vs user Stripe checkout', async (t) => {
     });
 
     await t.test('POST /api/payments/checkout gives developer access without Stripe for owner email', async () => {
-        const loginRes = await request(app)
-            .post('/api/auth/login')
-            .send({ email: 'owner@example.com', password: 'Password123!' });
-        assert.equal(loginRes.status, 200);
-        const cookie = loginRes.headers['set-cookie'];
+        const registerRes = await request(app)
+            .post('/api/auth/register')
+            .send({ name: 'Owner', email: 'owner@example.com', password: 'Password123!' });
+        assert.equal(registerRes.status, 201);
+        const cookie = registerRes.headers['set-cookie'];
         const res = await request(app)
             .post('/api/payments/checkout')
             .set('Cookie', cookie)

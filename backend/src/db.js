@@ -55,6 +55,23 @@ const connectDatabase = () => {
         ? `${configuredPath}.sqlite`
         : configuredPath;
 
+    const defaultDevDatabasePath = path.resolve(
+        __dirname,
+        '..',
+        'storage',
+        'database.sqlite',
+    );
+    const resolvedDatabasePath = path.resolve(filePath);
+    if (process.env.NODE_ENV === 'test') {
+        const allowRealDatabase = process.env.ALLOW_REAL_DATABASE === 'true';
+        if (!allowRealDatabase && resolvedDatabasePath === defaultDevDatabasePath) {
+            throw new Error(
+                'Refusing to run tests against backend/storage/database.sqlite. '
+                + 'Use tests/test-preload.js or set DB_FILE to an isolated test database.',
+            );
+        }
+    }
+
     // Locally this creates backend/storage if necessary.
     const databaseDirectory = path.dirname(filePath);
 
