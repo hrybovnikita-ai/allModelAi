@@ -12,6 +12,11 @@ const frontendOrigin = (req) => publicAppOrigin(req);
 const crypto = require('node:crypto');
 const { hashPassword, verifyPassword } = require('../password');
 const { loadAuthUserByEmail } = require('../authUser');
+const {
+    insertAuthSession,
+    syncLoginUserName,
+    safeSessionErrorCode,
+} = require('../authSessionStore');
 const { extractPasswordHash } = require('../authPasswordHash');
 const Stripe = require('stripe');
 const users = require('../data/data');
@@ -68,10 +73,10 @@ const sendWelcomeEmail = async (user) => {
     const result = await response.json();
     return { sent: true, id: result.id };
 };
-const setSession = (req, res, user, remember = true) => {
+const setSession = async (req, res, user, remember = true) => {
     const expiresAt = Date.now() + (remember ? sessionDuration : 1000 * 60 * 60 * 8);
     const token = createSessionToken(user.id, expiresAt);
-    req.app.locals.db.database.prepare('INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(hashToken(token), user.id, expiresAt);
+    await insertAuthSession(req.app.locals.db, hashToken(token), user.id, expiresAt);
     res.cookie(sessionCookie, token, { ...sessionCookieOptions(req), ...(remember ? { maxAge: sessionDuration } : {}) });
     return token;
 };
@@ -199,7 +204,7 @@ const registerUser = async (req, res) => {
         });
     }
     users.push(newUser);
-    const sessionToken = setSession(req, res, newUser, parseRememberMe(req.body?.rememberMe));
+    const sessionToken = await setSession(req, res, newUser, parseRememberMe(req.body?.rememberMe));
     let welcomeEmail = { sent: false, reason: 'not_configured' };
     try {
         welcomeEmail = await sendWelcomeEmail(newUser);
@@ -238,24 +243,16 @@ const loginUser = async (req, res) => {
 
     const db = req.app.locals.db.database;
 
-    const finishLogin = (account) => {
-        const sessionToken = setSession(req, res, account, remember);
-        authLog('Session created: true');
-        authLog('Cookie issued: true');
+    const finishLogin = async (account) => {
+        const sessionToken = await setSession(req, res, account, remember);
+        authLog('SESSION_DB_INSERT_SUCCESS');
+        authLog('COOKIE_ISSUED');
+        authLog('LOGIN_RESPONSE_SENT');
         return res.status(200).json({
             message: 'Signed in successfully',
             user: publicUser(account),
             ...nativeSessionFields(req, sessionToken),
         });
-    };
-
-    const syncUserName = (account) => {
-        if (!safeName || account.name === safeName) return account;
-        account.name = safeName;
-        db.prepare('UPDATE users SET name = ? WHERE id = ?').run(account.name, account.id);
-        const cached = users.find((item) => item.id === account.id);
-        if (cached) cached.name = account.name;
-        return account;
     };
 
     const user = loadAuthUserByEmail(db, normalizedEmail);
@@ -289,11 +286,18 @@ const loginUser = async (req, res) => {
         return res.status(401).json({ message: 'Incorrect email or password' });
     }
 
+    authLog('PASSWORD_VERIFIED');
     try {
-        return finishLogin(syncUserName(user));
+        const synced = await syncLoginUserName(req.app.locals.db, user, safeName, users);
+        authLog('USER_SYNC_SUCCESS');
+        return await finishLogin(synced);
     } catch (error) {
-        authLog('Login rejected', { reason: 'SESSION_CREATION_FAILED', code: error.code || 'unknown' });
-        throw error;
+        const code = safeSessionErrorCode(error);
+        authLog('SESSION_DB_INSERT_FAILED', { reason: code });
+        return res.status(500).json({
+            code: 'SESSION_CREATION_FAILED',
+            message: 'Could not complete sign-in. Please try again.',
+        });
     }
 };
 
@@ -312,7 +316,7 @@ const getSocialAccounts = (req, res) => {
     return res.status(200).json({ provider: providerNames[provider], accounts });
 };
 
-const socialLogin = (req, res) => {
+const socialLogin = async (req, res) => {
     if (process.env.NODE_ENV === 'production' || process.env.VERCEL || process.env.ENABLE_DEMO_SOCIAL_AUTH !== 'true') return res.status(404).json({ message: 'Demo social sign-in is disabled. Use Google OAuth.' });
     const provider = String(req.body.provider || '').toLowerCase();
     const accountId = String(req.body.accountId || '');
@@ -320,7 +324,7 @@ const socialLogin = (req, res) => {
     const sourceUser = users.find((user) => user.id === Number(accountId.slice(provider.length + 1)));
     if (!sourceUser) return res.status(404).json({ message: 'Provider account was not found' });
     const user = { ...publicUser(sourceUser), provider: providerNames[provider] };
-    setSession(req, res, user, true);
+    await setSession(req, res, user, true);
     return res.status(200).json({ message: `Signed in with ${providerNames[provider]}`, user });
 };
 
@@ -344,7 +348,7 @@ const quickSocialLogin = async (req, res) => {
             user.avatar = avatar;
         }
 
-        setSession(req, res, user, rememberMe !== false && rememberMe !== 'false');
+        await setSession(req, res, user, rememberMe !== false && rememberMe !== 'false');
         return res.status(200).json({
             message: `Signed in successfully with ${provider}`,
             user: publicUser(user),

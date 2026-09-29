@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { once } = require('node:events');
 const request = require('supertest');
-const { createVercelProxy } = require('../src/vercelProxy');
+const { createVercelProxy, proxyFailureCode } = require('../src/vercelProxy');
 
 process.env.NODE_ENV = 'test';
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'allmodelai-proxy-'));
@@ -63,6 +63,43 @@ test('proxy preserves SSE, multiple cookies and request payloads', async () => {
         assert.equal(response.headers['set-cookie'].length, 2);
         assert.equal(response.headers['cache-control'], 'no-store');
     } finally { await new Promise((resolve) => server.close(resolve)); }
+});
+
+test('login POST through proxy forwards 200 and Set-Cookie from Render backend', async () => {
+    const server = app.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    try {
+        const origin = `http://127.0.0.1:${server.address().port}`;
+        const proxy = createVercelProxy({ origin, allowHttp: true });
+        await request(app).post('/api/auth/register').send({
+            name: 'Proxy Login',
+            email: 'proxy-login@example.com',
+            password: 'test-password',
+        });
+        const login = await request(proxy)
+            .post('/api/auth/login')
+            .set('Host', 'all-model-ai.vercel.app')
+            .set('Origin', 'https://all-model-ai.vercel.app')
+            .set('X-Forwarded-Proto', 'https')
+            .send({ email: 'proxy-login@example.com', password: 'test-password' });
+        assert.equal(login.status, 200);
+        assert.ok(login.headers['set-cookie']);
+        assert.match(login.headers['set-cookie'][0], /allmodelai_session=/);
+        const cookie = login.headers['set-cookie'][0].split(';')[0];
+        const session = await request(proxy)
+            .get('/api/auth/session')
+            .set('Host', 'all-model-ai.vercel.app')
+            .set('Cookie', cookie);
+        assert.equal(session.status, 200);
+        assert.equal(session.body.user.email, 'proxy-login@example.com');
+    } finally {
+        await new Promise((resolve) => server.close(resolve));
+    }
+});
+
+test('proxy timeout maps to PROXY_TIMEOUT failure code', () => {
+    assert.equal(proxyFailureCode(new Error('Backend timed out')), 'PROXY_TIMEOUT');
+    assert.equal(proxyFailureCode(new Error('ECONNRESET')), 'UPSTREAM_CONNECTION_FAILED');
 });
 
 test('missing, unsafe or looping backend configuration is a service failure, not logout', async () => {

@@ -96,12 +96,12 @@ async function exchange(req, res) {
             if (profile.avatar) db.prepare('UPDATE users SET avatar_url = COALESCE(avatar_url, ?) WHERE id = ?').run(profile.avatar, id);
             db.prepare('UPDATE users SET email_verified = 1 WHERE id = ? AND email_verified IS NOT 1').run(id);
             const user = account(db, id);
-            let sessionToken;
-            if (pending.intent === 'login') {
-                sessionToken = setSession(req, res, user, req.body.rememberMe !== false);
-            }
-            return { user, sessionToken };
+            return { user, createSession: pending.intent === 'login' };
         }).immediate();
+        let sessionToken;
+        if (result.createSession) {
+            sessionToken = await setSession(req, res, result.user, req.body.rememberMe !== false);
+        }
         // Keep the legacy account cache consistent; do not rewrite conversations or subscriptions.
         const stored = db.prepare('SELECT id, name, email, password_hash AS passwordHash FROM users WHERE id = ?').get(result.user.id);
         const index = users.findIndex(user => user.id === result.user.id);

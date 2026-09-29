@@ -11,6 +11,24 @@ function forwardedHeaders(headers) {
     return Object.fromEntries(Object.entries(headers).filter(([name]) => !excluded.has(name)));
 }
 
+function applyUpstreamHeaders(res, upstreamHeaders) {
+    const headers = forwardedHeaders(upstreamHeaders);
+    for (const [name, value] of Object.entries(headers)) {
+        if (value === undefined) continue;
+        if (name === 'set-cookie') {
+            res.setHeader('Set-Cookie', value);
+            continue;
+        }
+        res.setHeader(name, value);
+    }
+}
+
+function proxyFailureCode(error) {
+    if (!error) return 'UPSTREAM_CONNECTION_FAILED';
+    if (error.message === 'Backend timed out') return 'PROXY_TIMEOUT';
+    return 'UPSTREAM_CONNECTION_FAILED';
+}
+
 function createVercelProxy({ origin = process.env.PERSISTENT_BACKEND_ORIGIN, allowHttp = false } = {}) {
     const app = express();
     app.set('trust proxy', 1);
@@ -33,20 +51,20 @@ function createVercelProxy({ origin = process.env.PERSISTENT_BACKEND_ORIGIN, all
         headers['x-forwarded-proto'] = req.protocol;
         headers['x-allmodelai-proxy-hop'] = '1';
         const transport = backend.protocol === 'https:' ? https : http;
-        // Pipe both directions to preserve uploads, multiple cookies and SSE chat streams.
         const upstream = transport.request(new URL(backend.origin + req.url), {
             method: req.method, headers,
         }, (response) => {
             res.status(response.statusCode);
-            for (const [name, value] of Object.entries(forwardedHeaders(response.headers))) {
-                if (value !== undefined) res.setHeader(name, value);
-            }
+            applyUpstreamHeaders(res, response.headers);
             res.setHeader('Cache-Control', 'no-store');
             response.on('error', () => res.destroy());
             response.pipe(res);
         });
         upstream.setTimeout(120000, () => upstream.destroy(new Error('Backend timed out')));
-        upstream.on('error', () => {
+        upstream.on('error', (error) => {
+            if (process.env.NODE_ENV !== 'test') {
+                console.log(`[PROXY] ${proxyFailureCode(error)}`);
+            }
             if (res.headersSent) return res.destroy();
             res.status(503).json({ message: 'Could not reach the server. Please retry. Your conversation is still open.' });
         });
@@ -57,4 +75,4 @@ function createVercelProxy({ origin = process.env.PERSISTENT_BACKEND_ORIGIN, all
     return app;
 }
 
-module.exports = { createVercelProxy };
+module.exports = { createVercelProxy, applyUpstreamHeaders, proxyFailureCode };
