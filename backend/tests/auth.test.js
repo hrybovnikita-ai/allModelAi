@@ -66,6 +66,35 @@ test('concurrent registrations cannot create duplicate accounts', async () => {
   assert.deepEqual(results.map((result) => result.status).sort(), [201, 409]);
 });
 
+test('known login email typos map to the canonical address', async () => {
+  const { normalizeLoginEmail } = require('../src/authHelpers');
+  assert.equal(normalizeLoginEmail('  hrybownikita@gmail.com '), 'hrybovnikita@gmail.com');
+});
+
+test('production login accepts a typo email when the canonical account exists', async () => {
+  const previous = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  const password = 'TypoAliasPass1';
+  try {
+    assert.equal((await request(app).post('/api/auth/register').send({
+      name: 'Alias Owner',
+      email: 'hrybovnikita@gmail.com',
+      password,
+    })).status, 201);
+    const login = await request(app).post('/api/auth/login').send({
+      email: 'hrybownikita@gmail.com',
+      password,
+    });
+    assert.equal(login.status, 200);
+    assert.equal(login.body.user.email, 'hrybovnikita@gmail.com');
+  } finally {
+    app.locals.db.database.prepare('DELETE FROM users WHERE lower(email) = ?').run('hrybovnikita@gmail.com');
+    const index = users.findIndex((item) => item.email.toLowerCase() === 'hrybovnikita@gmail.com');
+    if (index !== -1) users.splice(index, 1);
+    process.env.NODE_ENV = previous;
+  }
+});
+
 test('production login does not auto-register unknown accounts', async () => {
   const previous = process.env.NODE_ENV;
   process.env.NODE_ENV = 'production';

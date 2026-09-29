@@ -8,6 +8,7 @@ export default defineConfig([
   globalIgnores([
     'dist/**',
     'android/**',
+    'ios/**',
     'node_modules/**',
     'public/sw.js',
     'public/workbox-*.js',

@@ -19,6 +19,7 @@ const aiPythonBridge = require('../services/aiPythonBridge');
 const {
     authLog,
     normalizeEmail,
+    normalizeLoginEmail,
     isValidEmail,
     allowLoginAutoRegister,
     defaultLoginName,
@@ -238,7 +239,7 @@ const loginUser = async (req, res) => {
         return res.status(400).json({ message: 'Enter a valid email and password' });
     }
 
-    const normalizedEmail = normalizeEmail(email);
+    const normalizedEmail = normalizeLoginEmail(email);
     authLog('Normalized email', { email: normalizedEmail });
     if (!isValidEmail(normalizedEmail)) {
         return res.status(400).json({ message: 'Enter a valid email address' });

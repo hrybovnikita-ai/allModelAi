@@ -14,6 +14,16 @@ function normalizeEmail(email) {
     return email.trim().toLowerCase();
 }
 
+/** Maps common login typos to the canonical account email (same person, one SQLite row). */
+const LOGIN_EMAIL_ALIASES = new Map([
+    ['hrybownikita@gmail.com', 'hrybovnikita@gmail.com'],
+]);
+
+function normalizeLoginEmail(email) {
+    const normalized = normalizeEmail(email);
+    return LOGIN_EMAIL_ALIASES.get(normalized) || normalized;
+}
+
 function isValidEmail(email) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -42,7 +52,7 @@ function validateRegistrationInput({ name, email, password }) {
     if (email.length > 254) {
         return { ok: false, status: 400, message: 'Please enter a valid email address.' };
     }
-    const normalizedEmail = normalizeEmail(email);
+    const normalizedEmail = normalizeLoginEmail(email);
     if (!isValidEmail(normalizedEmail)) {
         return { ok: false, status: 400, message: 'Please enter a valid email address.' };
     }
@@ -92,7 +102,9 @@ function allowDevPasswordBypass() {
 
 function defaultLoginName(normalizedEmail, name) {
     if (typeof name === 'string' && name.trim()) return name.trim();
-    if (normalizedEmail === 'hrybovnikita@gmail.com') return 'Nikita Hrybov';
+    if (normalizedEmail === 'hrybovnikita@gmail.com' || normalizedEmail === 'hrybownikita@gmail.com') {
+        return 'Nikita Hrybov';
+    }
     return normalizedEmail.split('@')[0];
 }
 
@@ -104,6 +116,7 @@ function isLocalDevLogin() {
 module.exports = {
     authLog,
     normalizeEmail,
+    normalizeLoginEmail,
     isValidEmail,
     allowLoginAutoRegister,
     allowDevPasswordBypass,

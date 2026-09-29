@@ -7,13 +7,18 @@ Phone and tablet on home Wi-Fi: double-click `start-home-server.bat`, then open 
 A unified workspace for multiple AI models: secure chat, an explainable Smart Router, a knowledge base, AI Arena, and team workspaces.
 
 Getting Started
+
+Windows (recommended): double-click `start-dev.bat` in the `allModelAi` folder. It starts the API on port **5050** and Vite on **5173**. If you only run `npm run dev` in `frontend`, Vite will show `ECONNREFUSED 127.0.0.1:5050` until the backend is running.
+
+Manual setup:
+
 cd backend
 
 Copy-Item .env.example .env
 
 npm install
 
-npm start
+npm run dev
 
 In a second terminal:
 

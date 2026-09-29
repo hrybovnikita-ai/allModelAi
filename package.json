@@ -6,6 +6,8 @@
   },
   "scripts": {
     "start": "node backend/server.js",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
     "build": "npm --prefix frontend ci && npm --prefix frontend run build && npm --prefix backend ci --omit=dev"
   }
 }
