@@ -2,6 +2,13 @@ const express = require('express');
 const http = require('node:http');
 const https = require('node:https');
 
+const UPSTREAM_TIMEOUT_MS = Number(process.env.PROXY_UPSTREAM_TIMEOUT_MS || 180000);
+const httpsKeepAliveAgent = new https.Agent({
+    keepAlive: true,
+    maxSockets: 32,
+    timeout: UPSTREAM_TIMEOUT_MS,
+});
+
 const hopHeaders = new Set(['connection', 'keep-alive', 'proxy-authenticate',
     'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 
@@ -29,6 +36,10 @@ function proxyFailureCode(error) {
     return 'UPSTREAM_CONNECTION_FAILED';
 }
 
+function safePathname(url) {
+    return String(url || '').split('?')[0] || '/api';
+}
+
 function createVercelProxy({ origin = process.env.PERSISTENT_BACKEND_ORIGIN, allowHttp = false } = {}) {
     const app = express();
     app.set('trust proxy', 1);
@@ -51,19 +62,33 @@ function createVercelProxy({ origin = process.env.PERSISTENT_BACKEND_ORIGIN, all
         headers['x-forwarded-proto'] = req.protocol;
         headers['x-allmodelai-proxy-hop'] = '1';
         const transport = backend.protocol === 'https:' ? https : http;
-        const upstream = transport.request(new URL(backend.origin + req.url), {
-            method: req.method, headers,
+        const startedAt = Date.now();
+        const pathname = safePathname(req.url);
+        if (process.env.NODE_ENV !== 'test') {
+            console.log(`[PROXY] UPSTREAM_REQUEST ${req.method} ${pathname}`);
+        }
+        const upstream = transport.request({
+            protocol: backend.protocol,
+            hostname: backend.hostname,
+            port: backend.port || (backend.protocol === 'https:' ? 443 : 80),
+            path: req.url,
+            method: req.method,
+            headers,
+            agent: backend.protocol === 'https:' ? httpsKeepAliveAgent : undefined,
         }, (response) => {
+            if (process.env.NODE_ENV !== 'test') {
+                console.log(`[PROXY] UPSTREAM_RESPONSE ${req.method} ${pathname} ${response.statusCode} ${Date.now() - startedAt}ms`);
+            }
             res.status(response.statusCode);
             applyUpstreamHeaders(res, response.headers);
             res.setHeader('Cache-Control', 'no-store');
             response.on('error', () => res.destroy());
             response.pipe(res);
         });
-        upstream.setTimeout(120000, () => upstream.destroy(new Error('Backend timed out')));
+        upstream.setTimeout(UPSTREAM_TIMEOUT_MS, () => upstream.destroy(new Error('Backend timed out')));
         upstream.on('error', (error) => {
             if (process.env.NODE_ENV !== 'test') {
-                console.log(`[PROXY] ${proxyFailureCode(error)}`);
+                console.log(`[PROXY] ${proxyFailureCode(error)} ${req.method} ${pathname} ${Date.now() - startedAt}ms`);
             }
             if (res.headersSent) return res.destroy();
             res.status(503).json({ message: 'Could not reach the server. Please retry. Your conversation is still open.' });
@@ -75,4 +100,9 @@ function createVercelProxy({ origin = process.env.PERSISTENT_BACKEND_ORIGIN, all
     return app;
 }
 
-module.exports = { createVercelProxy, applyUpstreamHeaders, proxyFailureCode };
+module.exports = {
+    createVercelProxy,
+    applyUpstreamHeaders,
+    proxyFailureCode,
+    UPSTREAM_TIMEOUT_MS,
+};

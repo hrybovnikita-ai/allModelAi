@@ -5,7 +5,8 @@ import { readJsonBody } from './httpJson.js';
 let verifiedSession = null;
 let pendingSession = null;
 let sessionGeneration = 0;
-const cacheDuration = 5 * 60 * 1000;
+/** Client-side hint only; server HttpOnly cookie is the source of truth. */
+const cacheDuration = 30 * 60 * 1000;
 export {
   applyAuthResponsePayload,
   clearNativeSessionToken,

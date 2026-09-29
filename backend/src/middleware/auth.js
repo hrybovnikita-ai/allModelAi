@@ -1,6 +1,25 @@
 const { hashToken, readSessionToken } = require('../sessionAuth');
 
-const requireAuth = (req, res, next) => {
+async function lookupSessionUser(dbConnection, tokenHash, nowMs) {
+    const engine = dbConnection.engine || 'sqlite';
+    const database = dbConnection.database;
+    if (engine === 'postgres' && database?.pool) {
+        const result = await database.pool.query(
+            `SELECT users.id, users.name, users.email
+             FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id
+             WHERE token_hash = $1 AND expires_at > $2`,
+            [tokenHash, nowMs],
+        );
+        return result.rows[0] || null;
+    }
+    return database.prepare(`
+        SELECT users.id, users.name, users.email
+        FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id
+        WHERE token_hash = ? AND expires_at > ?
+    `).get(tokenHash, nowMs) || null;
+}
+
+const requireAuth = async (req, res, next) => {
     const token = readSessionToken(req);
     const bearer = String(req.get('authorization') || '').match(/^Bearer\s+(amai_[A-Za-z0-9_-]+)$/i)?.[1];
     if (bearer) {
@@ -9,19 +28,23 @@ const requireAuth = (req, res, next) => {
         if (key.used_count >= key.request_limit) return res.status(429).json({ message: 'API key request budget reached' });
         req.app.locals.db.database.prepare('UPDATE developer_api_keys SET last_used_at = ?, used_count = used_count + 1 WHERE id = ?').run(new Date().toISOString(), key.id);
         req.user = { id: key.user_id, name: key.user_name, email: key.email };
-        req.authType = 'api_key'; req.apiKeyId = key.id;
+        req.authType = 'api_key';
+        req.apiKeyId = key.id;
         return next();
     }
     if (!token) return res.status(401).json({ message: 'Sign in or provide a Bearer API key' });
-    const user = req.app.locals.db.database.prepare(`
-        SELECT users.id, users.name, users.email
-        FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id
-        WHERE token_hash = ? AND expires_at > ?
-    `).get(hashToken(token), Date.now());
-    if (!user) return res.status(401).json({ message: 'Session expired. Sign in again.' });
-    req.user = user;
-    req.authType = 'session';
-    return next();
+    try {
+        const user = await lookupSessionUser(req.app.locals.db, hashToken(token), Date.now());
+        if (!user) return res.status(401).json({ message: 'Session expired. Sign in again.' });
+        req.user = user;
+        req.authType = 'session';
+        return next();
+    } catch (error) {
+        if (process.env.NODE_ENV !== 'test') {
+            console.log('[AUTH] SESSION_LOOKUP_FAILED', { reason: 'SESSION_LOOKUP_ERROR' });
+        }
+        return res.status(500).json({ message: 'Could not verify your session. Please try again.' });
+    }
 };
 
 const requireAdmin = (req, res, next) => {
@@ -30,4 +53,4 @@ const requireAdmin = (req, res, next) => {
     return next();
 };
 
-module.exports = { requireAuth, requireAdmin };
+module.exports = { requireAuth, requireAdmin, lookupSessionUser };

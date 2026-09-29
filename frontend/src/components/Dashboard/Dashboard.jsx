@@ -16,6 +16,7 @@ import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import EverydayCards from '../EverydayAI/EverydayCards';
 import ManageSubscriptionModal from './ManageSubscriptionModal';
 import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
+import { isCompleteCreditStatus, normalizeCreditStatus } from '../../lib/creditStatus';
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
 
 const subscriptionStatusLabel = (creditStatus) => {
@@ -60,10 +61,11 @@ export default function Dashboard() {
           throw new Error(`Could not load subscription (HTTP ${subscriptionResponse.status}).`);
         }
       }
-      if (!data || typeof data.remaining !== 'number') {
+      const normalized = normalizeCreditStatus(data);
+      if (!isCompleteCreditStatus(normalized)) {
         throw new Error('Subscription API returned an incomplete response.');
       }
-      setCreditStatus(data);
+      setCreditStatus(normalized);
       setSubscriptionLoad('ready');
     } catch (error) {
       console.error('[Dashboard] subscription load error', error);

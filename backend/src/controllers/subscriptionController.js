@@ -9,12 +9,15 @@ const {
     repairLegacyPlanRow,
     resolveStoredPlanKey,
 } = require('../billing/subscriptionLifecycle');
+
+function readUsageCount(database, normalizedEmail) {
+    const row = database.database.prepare('SELECT used FROM usage WHERE email = ?').get(normalizedEmail);
+    return Number(row?.used ?? 0);
+}
+
 const getCreditStatusCore = (database, email) => {
     const normalizedEmail = String(email || '').trim().toLowerCase();
     expireSubscriptionIfNeeded(database, normalizedEmail);
-    const data = database.read();
-    data.subscriptions ||= {};
-    data.usage ||= {};
     let detail = readSubscriptionDetail(database, normalizedEmail);
     if (detail) {
         detail = repairLegacyPlanRow(database.database, normalizedEmail, detail);
@@ -38,7 +41,7 @@ const getCreditStatusCore = (database, email) => {
     const fullAccess = mode === 'developer' && canUseDeveloper;
     const planDefinition = subscriptionPlans[plan] || subscriptionPlans.free;
     const limit = detailActive ? detail.requestLimit : (creditLimits[plan] || creditLimits.free);
-    const used = Number(data.usage[normalizedEmail] || 0);
+    const used = readUsageCount(database, normalizedEmail);
     const remaining = Math.max(limit - used, 0);
     const billingInterval = detail?.billingInterval || planDefinition.interval;
     const subscriptionView = buildSubscriptionPublicView(detail, plan, limit, used, remaining, billingInterval, {
@@ -47,7 +50,6 @@ const getCreditStatusCore = (database, email) => {
     });
 
     return {
-        data,
         email: normalizedEmail,
         plan,
         limit,
@@ -62,21 +64,31 @@ const getCreditStatusCore = (database, email) => {
         canUseDeveloper,
         mode,
         unlimited: fullAccess,
+        active: Boolean(detailActive && hasSubscription),
         ...subscriptionView,
     };
 };
 
 const getSubscriptionSummary = (req, res) => {
-    const status = getCreditStatusCore(req.app.locals.db, req.user.email);
-    const { data, email, enforced, ...access } = status;
-    const checkoutFlags = buildCheckoutInfo();
-    return res.json({
-        ...checkoutFlags,
-        ...access,
-        currentPlan: access.currentPlan || access.planDisplayName,
-        planKey: access.planKey || access.planSlug,
-        manageTestSubscription: wayforpayTestModeEnabled() && access.hasSubscription && access.paymentProvider === 'wayforpay',
-    });
+    try {
+        const status = getCreditStatusCore(req.app.locals.db, req.user.email);
+        const checkoutFlags = buildCheckoutInfo();
+        return res.json({
+            ...checkoutFlags,
+            ...status,
+            currentPlan: status.currentPlan || status.planDisplayName,
+            planKey: status.planKey || status.planSlug,
+            manageTestSubscription: wayforpayTestModeEnabled() && status.hasSubscription && status.paymentProvider === 'wayforpay',
+        });
+    } catch (error) {
+        if (process.env.NODE_ENV !== 'test') {
+            console.log('[SUBSCRIPTION] STATUS_FAILED', { reason: 'SUBSCRIPTION_READ_ERROR' });
+        }
+        return res.status(500).json({
+            code: 'SUBSCRIPTION_UNAVAILABLE',
+            message: 'Could not load subscription status. Please try again.',
+        });
+    }
 };
 
 const cancelTestSubscriptionHandler = (req, res) => {
@@ -88,9 +100,8 @@ const cancelTestSubscriptionHandler = (req, res) => {
         return res.status(result.status).json({ message: result.message });
     }
     const status = getCreditStatusCore(req.app.locals.db, req.user.email);
-    const { data, email, enforced, ...access } = status;
     return res.json({
-        ...access,
+        ...status,
         message: 'Test subscription ended. Your account is on the Free plan.',
     });
 };

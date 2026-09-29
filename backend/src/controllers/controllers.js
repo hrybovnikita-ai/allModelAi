@@ -363,12 +363,24 @@ const quickSocialLogin = async (req, res) => {
 const startGoogleAuth = (req, res) => res.redirect('/login');
 const googleCallback = (req, res) => res.status(410).send('This sign-in callback has been retired. Return to /login and use Continue with Google.');
 
-const getSession = (req, res) => {
+const { lookupSessionUser } = require('../middleware/auth');
+
+const getSession = async (req, res) => {
     const token = readSessionToken(req);
     if (!token) return res.status(401).json({ message: 'No active session' });
-    const user = req.app.locals.db.database.prepare('SELECT users.id, users.name, users.email, users.avatar_url AS avatar FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id WHERE token_hash = ? AND expires_at > ?').get(hashToken(token), Date.now());
-    if (!user) return res.status(401).json({ message: 'Session expired' });
-    return res.status(200).json({ user });
+    try {
+        const user = await lookupSessionUser(req.app.locals.db, hashToken(token), Date.now());
+        if (!user) return res.status(401).json({ message: 'Session expired' });
+        const avatarRow = req.app.locals.db.database.prepare(
+            'SELECT avatar_url AS avatar FROM users WHERE id = ?',
+        ).get(user.id);
+        return res.status(200).json({ user: { ...user, avatar: avatarRow?.avatar || null } });
+    } catch (error) {
+        if (process.env.NODE_ENV !== 'test') {
+            console.log('[AUTH] SESSION_READ_FAILED', { reason: 'SESSION_READ_ERROR' });
+        }
+        return res.status(500).json({ message: 'Could not read your session. Please try again.' });
+    }
 };
 
 const logout = (req, res) => {
@@ -545,9 +557,18 @@ const getAdminStats = (req, res) => {
 };
 
 const getCredits = (req, res) => {
-    const status = getCreditStatus(req.app.locals.db, req.user.email);
-    const { data, email, enforced, ...access } = status;
-    return res.status(200).json(access);
+    try {
+        const status = getCreditStatus(req.app.locals.db, req.user.email);
+        return res.status(200).json(status);
+    } catch (error) {
+        if (process.env.NODE_ENV !== 'test') {
+            console.log('[CREDITS] STATUS_FAILED', { reason: 'CREDITS_READ_ERROR' });
+        }
+        return res.status(500).json({
+            code: 'CREDITS_UNAVAILABLE',
+            message: 'Could not load account credits. Please try again.',
+        });
+    }
 };
 
 const setAccessMode = (req, res) => {
@@ -559,15 +580,49 @@ const setAccessMode = (req, res) => {
     return getCredits(req, res);
 };
 
-const getChatHistory = (req, res) => {
-    const email = req.user.email;
+const bumpUsageCount = (database, normalizedEmail) => {
+    database.prepare(`
+        INSERT INTO usage (email, used) VALUES (?, 1)
+        ON CONFLICT(email) DO UPDATE SET used = usage.used + 1
+    `).run(normalizedEmail);
+};
 
-    const data = req.app.locals.db.read();
-    const conversations = (data.conversations || [])
-        .filter((conversation) => conversation.email === email)
-        .map(getConversationPayload)
-        .sort((first, second) => second.updatedAt.localeCompare(first.updatedAt));
-    return res.status(200).json(conversations);
+const getChatHistory = (req, res) => {
+    const normalizedEmail = String(req.user.email || '').trim().toLowerCase();
+    try {
+        const rows = req.app.locals.db.database.prepare(`
+            SELECT
+                id,
+                email,
+                model,
+                title,
+                messages,
+                created_at AS createdAt,
+                updated_at AS updatedAt
+            FROM conversations
+            WHERE lower(trim(email)) = ?
+            ORDER BY updated_at DESC
+        `).all(normalizedEmail);
+        const conversations = rows.map((row) => getConversationPayload({
+            ...row,
+            messages: (() => {
+                try {
+                    return JSON.parse(row.messages || '[]');
+                } catch {
+                    return [];
+                }
+            })(),
+        }));
+        return res.status(200).json(conversations);
+    } catch (error) {
+        if (process.env.NODE_ENV !== 'test') {
+            console.log('[CHAT] HISTORY_FAILED', { reason: 'HISTORY_READ_ERROR' });
+        }
+        return res.status(500).json({
+            code: 'CHAT_HISTORY_UNAVAILABLE',
+            message: 'Could not load chat history. Please try again.',
+        });
+    }
 };
 
 const createChatHistory = (req, res) => {
@@ -1364,12 +1419,11 @@ const createChatResponse = async (req, res) => {
                 req.app.locals.db.database.prepare('INSERT INTO usage_events (email,model,input_tokens,output_tokens,latency_ms,fallback_used,estimated_cost,created_at) VALUES (?,?,?,?,?,?,?,?)').run(userEmail, actualUsageModel, inputTokens, outputTokens, Date.now() - requestStartedAt, fallbackUsed ? 1 : 0, estimatedCost, new Date().toISOString());
                 if (temporary) return;
 
-                creditStatus.data.usage[creditStatus.email] = creditStatus.used + 1;
-                req.app.locals.db.write(creditStatus.data);
+                const normalizedEmail = String(userEmail).trim().toLowerCase();
+                bumpUsageCount(req.app.locals.db.database, normalizedEmail);
                 const data = req.app.locals.db.read();
                 data.conversations ||= [];
                 const now = new Date().toISOString();
-                const normalizedEmail = String(userEmail).trim().toLowerCase();
                 const savedMessages = normalizeMessages([...messages, { role: 'assistant', content: assistantText }]);
                 const conversation = conversationId
                     ? data.conversations.find((item) => item.id === conversationId && item.email === normalizedEmail)

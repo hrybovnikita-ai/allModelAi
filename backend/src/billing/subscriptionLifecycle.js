@@ -103,10 +103,17 @@ const revertToFreePlan = (database, email, { status = 'expired', paymentStatus =
         WHERE email = ?
     `).run('free', free.interval, free.limit, status, paymentStatus, now, normalizedEmail);
 
-    const data = database.read();
-    data.subscriptions ||= {};
-    data.subscriptions[normalizedEmail] = 'free';
-    database.write(data);
+    database.database.prepare(`
+        INSERT INTO subscriptions (email, plan) VALUES (?, 'free')
+        ON CONFLICT(email) DO UPDATE SET plan = excluded.plan
+    `).run(normalizedEmail);
+
+    if (!isPostgresDatabaseMode()) {
+        const data = database.read();
+        data.subscriptions ||= {};
+        data.subscriptions[normalizedEmail] = 'free';
+        database.write(data);
+    }
 };
 
 const expireSubscriptionIfNeeded = (database, email) => {
@@ -170,7 +177,7 @@ const readSubscriptionDetail = (database, email) => {
 };
 
 const subscriptionStatusLabel = (detail, planKey, { isDeveloper = false } = {}) => {
-    if (!detail) return isDeveloper ? 'active' : 'none';
+    if (!detail) return isDeveloper ? 'active' : 'free';
     if (detail.status === 'canceled') return 'canceled';
     if (detail.status === 'expired') return 'expired';
     if (detail.status === 'active') {
