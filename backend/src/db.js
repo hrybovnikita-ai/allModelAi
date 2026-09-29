@@ -4,6 +4,7 @@ const Database = require('better-sqlite3');
 const { ensureStorageIdeasSchema } = require('./storageIdeasSchema');
 const { createConnectionApi } = require('./db/connectionApi');
 const { connectPostgresSync } = require('./db/postgresSync');
+const { formatSafePgFailure } = require('./db/pgConfig');
 const {
     getDatabaseEngine,
     resolveDatabaseUrl,
@@ -57,9 +58,7 @@ const connectDatabase = () => {
             database = connectPostgresSync(resolvedPostgres.url);
         } catch (error) {
             throw new Error(
-                `PostgreSQL connection failed (${resolvedPostgres.source} is set). `
-                + 'Verify the Session Pooler URI, SSL, and that migrations have been applied. '
-                + `Details: ${error.message}`,
+                `PostgreSQL connection failed (${resolvedPostgres.source} is set). ${formatSafePgFailure(error)}`,
             );
         }
         connection = createConnectionApi(database, {

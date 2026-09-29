@@ -1,5 +1,5 @@
-const { Pool } = require('pg');
 const deasync = require('deasync');
+const { createPgPool, formatSafePgFailure } = require('./pgConfig');
 const {
     translatePlaceholders,
     translateSql,
@@ -24,15 +24,6 @@ function waitFor(promiseFactory) {
         throw error;
     }
     return result;
-}
-
-function createPostgresPool(connectionString) {
-    const useSsl = process.env.DATABASE_SSL !== 'false';
-    return new Pool({
-        connectionString,
-        ssl: useSsl ? { rejectUnauthorized: false } : undefined,
-        max: Number(process.env.DATABASE_POOL_MAX || 10),
-    });
 }
 
 class PostgresSyncDatabase {
@@ -157,8 +148,13 @@ class PostgresSyncDatabase {
 }
 
 function connectPostgresSync(connectionString) {
-    const pool = createPostgresPool(connectionString);
-    waitFor(() => pool.query('SELECT 1'));
+    const pool = createPgPool(connectionString);
+    try {
+        waitFor(() => pool.query('SELECT 1'));
+    } catch (error) {
+        waitFor(() => pool.end());
+        throw new Error(formatSafePgFailure(error));
+    }
     const database = new PostgresSyncDatabase(pool);
     const usersTable = database.prepare(`
         SELECT 1 AS ok

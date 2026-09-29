@@ -1,18 +1,27 @@
 #!/usr/bin/env node
 const fs = require('node:fs');
 const path = require('node:path');
-const { Pool } = require('pg');
-const { requireDatabaseUrl } = require('../src/db/provider');
+
+try {
+    process.loadEnvFile(path.join(__dirname, '..', '.env'));
+} catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+}
+
+const { resolveDatabaseUrl } = require('../src/db/provider');
+const { createPgPool, formatSafePgFailure } = require('../src/db/pgConfig');
 
 const migrationsDir = path.join(__dirname, '..', 'migrations');
 
 async function main() {
-    const connectionString = requireDatabaseUrl();
-    const useSsl = process.env.DATABASE_SSL !== 'false';
-    const pool = new Pool({
-        connectionString,
-        ssl: useSsl ? { rejectUnauthorized: false } : undefined,
-    });
+    const resolved = resolveDatabaseUrl();
+    if (!resolved) {
+        throw new Error(
+            'DATABASE_URL is required for migrations (also accepts POSTGRES_URL or SUPABASE_DATABASE_URL).',
+        );
+    }
+
+    const pool = createPgPool(resolved.url);
 
     try {
         await pool.query(`
@@ -53,10 +62,23 @@ async function main() {
             }
         }
 
+        const usersTable = await pool.query(`
+            SELECT 1 AS ok
+            FROM information_schema.tables
+            WHERE table_schema = 'public' AND table_name = 'users'
+            LIMIT 1
+        `);
+        if (!usersTable.rowCount) {
+            throw new Error('Migration finished but public.users is missing.');
+        }
+
         console.log(JSON.stringify({
             status: 'ok',
+            engine: 'postgres',
+            configuredFrom: resolved.source,
             migrationsAppliedThisRun: ran,
             totalMigrations: files.length,
+            usersTable: true,
         }, null, 2));
     } finally {
         await pool.end();
@@ -64,6 +86,6 @@ async function main() {
 }
 
 main().catch((error) => {
-    console.error('Migration failed:', error.message);
+    console.error(formatSafePgFailure(error));
     process.exit(1);
 });
