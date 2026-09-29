@@ -22,9 +22,9 @@ services:
       - key: DB_FILE
         value: /app/backend/storage/database.sqlite
       - key: PUBLIC_URL
-        sync: false
+        value: https://all-model-ai.vercel.app
       - key: FRONTEND_ORIGIN
-        sync: false
+        value: https://all-model-ai.vercel.app
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENROUTER_API_KEY

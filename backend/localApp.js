@@ -4,12 +4,14 @@ const routes = require('./src/routes/routes');
 const { stripeWebhook } = require('./src/controllers/controllers');
 const { wayforpayCallback } = require('./src/controllers/wayforpayController');
 const { connectDatabase } = require('./src/db');
-const { configurePublicAccess } = require('./src/publicAccess');
+const { configureTrustProxy, createCredentialedCorsMiddleware } = require('./src/publicAccess');
 const users = require('./src/data/data');
 const path = require('path');
 const fs = require('fs');
 
 const app = express();
+configureTrustProxy(app);
+app.use(createCredentialedCorsMiddleware());
 require('./src/sessionToken').signingKey();
 app.locals.cache = require('./src/cache').createCache();
 app.locals.db = connectDatabase();
@@ -47,7 +49,6 @@ if (storedData.users.length) {
     app.locals.db.write(storedData);
 }
 
-configurePublicAccess(app);
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
 app.post(
     '/api/payments/wayforpay/callback',

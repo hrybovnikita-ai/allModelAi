@@ -45,6 +45,18 @@ test('Capacitor native WebView origins are allowed for credentialed API calls', 
     assert.equal(isNativeAppOrigin('capacitor://localhost'), true);
 });
 
+test('production Vercel frontend is allowed even when FRONTEND_ORIGIN is unset on Render', async () => {
+    delete process.env.FRONTEND_ORIGIN;
+    delete process.env.PUBLIC_URL;
+    const origin = 'https://all-model-ai.vercel.app';
+    const response = await request(app)
+        .get('/api/health')
+        .set('Origin', origin);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers['access-control-allow-origin'], origin);
+    assert.equal(response.headers['access-control-allow-credentials'], 'true');
+});
+
 test('API answers chat-session requests from the same public host used by phones', async () => {
     process.env.FRONTEND_ORIGIN = 'http://localhost:5173';
     const origin = 'https://allmodelai.onrender.com';

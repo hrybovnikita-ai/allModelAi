@@ -1,61 +1,22 @@
-const cors = require('cors');
+const {
+    ALL_MODEL_AI_VERCEL_PRODUCTION,
+    configuredOrigins,
+    isAllowedOrigin,
+    isNativeAppOrigin,
+    isAllModelAiVercelProjectOrigin,
+    createCredentialedCorsMiddleware,
+} = require('./corsPolicy');
 
 const splitOrigins = (value) => String(value || '')
     .split(',')
     .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean);
 
-const BUILTIN_NATIVE_ORIGINS = [
-    'https://localhost',
-    'http://localhost',
-    'capacitor://localhost',
-    'ionic://localhost',
-];
-
-const configuredOrigins = () => {
-    const origins = [
-        ...splitOrigins(process.env.PUBLIC_URL),
-        ...splitOrigins(process.env.FRONTEND_ORIGIN || 'http://localhost:5173'),
-        ...splitOrigins(process.env.NATIVE_APP_ORIGINS),
-        ...BUILTIN_NATIVE_ORIGINS,
-    ];
-    const vercelUrl = String(process.env.VERCEL_URL || '').trim();
-    if (vercelUrl) {
-        origins.push(`https://${vercelUrl.replace(/^https?:\/\//, '')}`);
-    }
-    return [...new Set(origins)];
-};
-
 const requestOrigin = (req) => {
     const host = String(req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
     if (!host) return '';
     const proto = String(req.get('x-forwarded-proto') || req.protocol || 'http').split(',')[0].trim();
     return `${proto}://${host}`;
-};
-
-const originHost = (origin) => {
-    try {
-        return new URL(origin).host;
-    } catch {
-        return '';
-    }
-};
-
-const isNativeAppOrigin = (origin) => {
-    if (!origin || typeof origin !== 'string') return false;
-    const normalized = origin.trim().replace(/\/$/, '').toLowerCase();
-    if (BUILTIN_NATIVE_ORIGINS.includes(normalized)) return true;
-    if (normalized.startsWith('capacitor://') || normalized.startsWith('ionic://')) return true;
-    return splitOrigins(process.env.NATIVE_APP_ORIGINS).some((item) => item.toLowerCase() === normalized);
-};
-
-const isAllowedOrigin = (origin, req) => {
-    if (!origin) return true;
-    const normalized = origin.replace(/\/$/, '');
-    if (isNativeAppOrigin(normalized)) return true;
-    if (configuredOrigins().includes(normalized)) return true;
-    const host = String(req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
-    return Boolean(host) && originHost(normalized) === host;
 };
 
 const publicAppOrigin = (req) => {
@@ -68,29 +29,25 @@ const publicAppOrigin = (req) => {
     return configuredOrigins()[0];
 };
 
-const configurePublicAccess = (app) => {
+function configureTrustProxy(app) {
     app.set('trust proxy', 1);
-    app.use((req, res, next) => {
-        cors({
-            origin: (origin, callback) => callback(null, isAllowedOrigin(origin, req)),
-            credentials: true,
-            allowedHeaders: [
-                'Content-Type',
-                'Authorization',
-                'Accept',
-                'X-AllModelAI-Auth',
-                'X-AllModelAI-Client',
-                'X-AllModelAI-Session',
-            ],
-        })(req, res, next);
-    });
+}
+
+/** @deprecated Use configureTrustProxy + createCredentialedCorsMiddleware in localApp instead. */
+const configurePublicAccess = (app) => {
+    configureTrustProxy(app);
+    app.use(createCredentialedCorsMiddleware());
 };
 
 module.exports = {
+    ALL_MODEL_AI_VERCEL_PRODUCTION,
     configuredOrigins,
     requestOrigin,
     isAllowedOrigin,
     isNativeAppOrigin,
+    isAllModelAiVercelProjectOrigin,
     publicAppOrigin,
+    configureTrustProxy,
+    createCredentialedCorsMiddleware,
     configurePublicAccess,
 };
