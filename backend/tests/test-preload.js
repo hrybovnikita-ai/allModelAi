@@ -4,6 +4,10 @@ const path = require('node:path');
 
 process.env.NODE_ENV = 'test';
 
+if (process.env.ALLOW_POSTGRES_TESTS !== 'true') {
+    delete process.env.DATABASE_URL;
+}
+
 if (!process.env.DB_FILE) {
     process.env.DB_FILE = path.join(
         os.tmpdir(),

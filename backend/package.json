@@ -10,6 +10,8 @@
     "check-password": "node scripts/check-password.js",
     "db:init": "node scripts/database.js init",
     "db:check": "node scripts/database.js check",
+    "db:migrate": "node scripts/migrate.js",
+    "db:import-sqlite": "node scripts/import-sqlite.js",
     "providers:check": "node scripts/check-providers.js",
     "stripe:check": "node scripts/stripe-check.js",
     "stripe:sync": "node scripts/sync-stripe-publishable.js"
@@ -18,6 +20,7 @@
     "better-sqlite3": "^12.11.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "deasync": "^0.1.30",
     "express": "^5.1.0",
     "firebase-admin": "^14.4.0",
     "jsonwebtoken": "^9.0.3",

@@ -31,7 +31,7 @@ test('SQL persists accounts, sessions and chats after reconnecting', async () =>
     assert.ok(JSON.stringify(history.body).includes(created.body.id));
     assert.equal((await request(app).get('/api/chat/history')).status, 401);
     const health = await client.get('/api/health');
-    assert.equal(health.body.database.engine, 'sqlite');
+    assert.equal(health.body.database.engine, app.locals.db.engine || 'sqlite');
     assert.equal(health.body.database.connected, true);
     assert.match(health.body.database.fingerprint, /^[a-f0-9]{16}$/);
     assert.equal(app.locals.db.database.pragma('integrity_check', { simple: true }), 'ok');

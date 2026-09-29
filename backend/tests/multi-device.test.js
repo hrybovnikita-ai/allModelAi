@@ -40,7 +40,9 @@ test('two devices share one account and history while keeping independent sessio
             assert.ok(history.body.some(row => row.id === chat.body.id));
         }
         app.locals.db.close();
+        process.env.ALLOW_SQLITE_PRODUCTION = 'true';
         app.locals.db = connectDatabase();
+        delete process.env.ALLOW_SQLITE_PRODUCTION;
         assert.equal((await desktop.get('/api/auth/session')).status, 200);
         assert.equal((await phone.get('/api/auth/session')).status, 200);
         assert.equal((await desktop.post('/api/auth/logout')).status, 204);

@@ -1,14 +1,26 @@
 const app = require('./app');
-const { logRuntimeDiagnostics } = require('./src/runtimeDiagnostics');
+const {
+    logRuntimeDiagnostics,
+    verifyDatabaseConnection,
+} = require('./src/runtimeDiagnostics');
 
 const PORT = process.env.PORT || 5050;
 const HOST = process.env.HOST || '0.0.0.0';
 const database = app.locals.db;
+const databaseConnected = verifyDatabaseConnection(database?.database);
+
+if (!databaseConnected) {
+    console.error('[RUNTIME] database connected: false');
+    console.error('[RUNTIME] Refusing to start: active database connection check failed.');
+    process.exit(1);
+}
 
 const server = app.listen(PORT, HOST, () => {
     logRuntimeDiagnostics({
         databasePath: database?.filePath,
         database: database?.database,
+        databaseEngine: database?.engine || 'sqlite',
+        databaseConnected,
     });
     try {
         const providerHealth = require('./src/providerHealth');
@@ -21,7 +33,11 @@ const server = app.listen(PORT, HOST, () => {
     }
     console.log(`Server is running at http://localhost:${PORT}`);
     console.log(`Phones and tablets can use this same process over the public URL or LAN IP.`);
-    console.log(`Database is connected at ${database.filePath}`);
+    if (database.engine === 'postgres') {
+        console.log('Database is connected (PostgreSQL via DATABASE_URL).');
+    } else {
+        console.log(`Database is connected at ${database.filePath}`);
+    }
     const stripeReady = Boolean(process.env.STRIPE_SECRET_KEY?.trim());
     const stripePk = Boolean(
         process.env.STRIPE_PUBLISHABLE_KEY?.trim()

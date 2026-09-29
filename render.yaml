@@ -17,6 +17,8 @@ services:
         value: 0.0.0.0
       - key: COOKIE_SECURE
         value: "true"
+      - key: DATABASE_URL
+        sync: false
       - key: DB_FILE
         value: /app/backend/storage/database.sqlite
       - key: PUBLIC_URL

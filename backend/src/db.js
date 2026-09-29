@@ -2,6 +2,13 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 const { ensureStorageIdeasSchema } = require('./storageIdeasSchema');
+const { createConnectionApi } = require('./db/connectionApi');
+const { connectPostgresSync } = require('./db/postgresSync');
+const {
+    getDatabaseEngine,
+    resolveDatabaseUrl,
+    assertProductionDatabasePolicy,
+} = require('./db/provider');
 
 const defaultDatabase = {
     users: [],
@@ -33,6 +40,38 @@ const connectDatabase = () => {
         throw new Error('Vercel cannot persist SQLite sessions. Configure PERSISTENT_BACKEND_ORIGIN.');
     }
     if (connection) {
+        return connection;
+    }
+
+    assertProductionDatabasePolicy();
+
+    const resolvedPostgres = resolveDatabaseUrl();
+    if (resolvedPostgres) {
+        if (process.env.NODE_ENV === 'test' && process.env.ALLOW_POSTGRES_TESTS !== 'true') {
+            throw new Error(
+                'Refusing to run tests against PostgreSQL. Unset DATABASE_URL or set ALLOW_POSTGRES_TESTS=true.',
+            );
+        }
+        let database;
+        try {
+            database = connectPostgresSync(resolvedPostgres.url);
+        } catch (error) {
+            throw new Error(
+                `PostgreSQL connection failed (${resolvedPostgres.source} is set). `
+                + 'Verify the Session Pooler URI, SSL, and that migrations have been applied. '
+                + `Details: ${error.message}`,
+            );
+        }
+        connection = createConnectionApi(database, {
+            engine: 'postgres',
+            filePath: 'postgresql',
+            configuredFrom: resolvedPostgres.source,
+        });
+        const originalClose = connection.close.bind(connection);
+        connection.close = () => {
+            originalClose();
+            connection = undefined;
+        };
         return connection;
     }
 
@@ -417,309 +456,14 @@ const connectDatabase = () => {
         })();
     }
 
-    connection = {
+    connection = createConnectionApi(database, {
+        engine: getDatabaseEngine(),
         filePath,
-        database,
-
-        read() {
-            return {
-                users: database
-                    .prepare(`
-                        SELECT
-                            id,
-                            name,
-                            email,
-                            password_hash AS passwordHash
-                        FROM users
-                        ORDER BY id
-                    `)
-                    .all(),
-
-                purchases: database
-                    .prepare(`
-                        SELECT
-                            id,
-                            name,
-                            email,
-                            city,
-                            date_of_birth AS dateOfBirth,
-                            plan,
-                            created_at AS createdAt
-                        FROM purchases
-                        ORDER BY id
-                    `)
-                    .all(),
-
-                subscriptions:
-                    Object.fromEntries(
-                        database
-                            .prepare(`
-                                SELECT
-                                    email,
-                                    plan
-                                FROM subscriptions
-                            `)
-                            .all()
-                            .map(
-                                (row) => [
-                                    row.email,
-                                    row.plan,
-                                ]
-                            )
-                    ),
-
-                usage:
-                    Object.fromEntries(
-                        database
-                            .prepare(`
-                                SELECT
-                                    email,
-                                    used
-                                FROM usage
-                            `)
-                            .all()
-                            .map(
-                                (row) => [
-                                    row.email,
-                                    row.used,
-                                ]
-                            )
-                    ),
-
-                conversations:
-                    database
-                        .prepare(`
-                            SELECT
-                                id,
-                                email,
-                                model,
-                                title,
-                                messages,
-                                created_at AS createdAt,
-                                updated_at AS updatedAt
-                            FROM conversations
-                            ORDER BY updated_at DESC
-                        `)
-                        .all()
-                        .map(
-                            (item) => ({
-                                ...item,
-                                messages:
-                                    JSON.parse(
-                                        item.messages
-                                    ),
-                            })
-                        ),
-            };
-        },
-
-        write(data) {
-            database.transaction(() => {
-
-                // IMPORTANT:
-                // Do not delete users here.
-                // auth_sessions references users with
-                // ON DELETE CASCADE, so deleting and
-                // recreating users would destroy sessions.
-
-                const conversationIds = (
-                    data.conversations || []
-                )
-                    .map(
-                        (item) =>
-                            item.id
-                    )
-                    .filter(Boolean);
-
-                if (conversationIds.length) {
-                    database
-                        .prepare(`
-                            DELETE FROM conversations
-                            WHERE id NOT IN (
-                                ${conversationIds
-                                .map(
-                                    () => '?'
-                                )
-                                .join(',')}
-                            )
-                        `)
-                        .run(
-                            ...conversationIds
-                        );
-                } else {
-                    database.exec(
-                        'DELETE FROM conversations'
-                    );
-                }
-
-                database.exec(`
-                    DELETE FROM purchases;
-                    DELETE FROM subscriptions;
-                    DELETE FROM usage;
-                `);
-
-                // IMPORTANT:
-                // Do NOT use INSERT OR REPLACE here.
-                // SQLite REPLACE may delete the existing
-                // user row before inserting it again,
-                // which can remove auth_sessions through
-                // ON DELETE CASCADE.
-                const insertUser =
-                    database.prepare(`
-                        INSERT INTO users (
-                            id,
-                            name,
-                            email,
-                            password_hash
-                        )
-                        VALUES (?, ?, ?, ?)
-
-                        ON CONFLICT(id)
-                        DO UPDATE SET
-                            name =
-                                excluded.name,
-                            email =
-                                excluded.email,
-                            password_hash =
-                                excluded.password_hash
-                    `);
-
-                const insertPurchase =
-                    database.prepare(`
-                        INSERT INTO purchases (
-                            id,
-                            name,
-                            email,
-                            city,
-                            date_of_birth,
-                            plan,
-                            created_at
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    `);
-
-                const insertSubscription =
-                    database.prepare(`
-                        INSERT INTO subscriptions (
-                            email,
-                            plan
-                        )
-                        VALUES (?, ?)
-                    `);
-
-                const insertUsage =
-                    database.prepare(`
-                        INSERT INTO usage (
-                            email,
-                            used
-                        )
-                        VALUES (?, ?)
-                    `);
-
-                const insertConversation =
-                    database.prepare(`
-                        INSERT INTO conversations (
-                            id,
-                            email,
-                            model,
-                            title,
-                            messages,
-                            created_at,
-                            updated_at
-                        )
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-
-                        ON CONFLICT(id)
-                        DO UPDATE SET
-                            email =
-                                excluded.email,
-                            model =
-                                excluded.model,
-                            title =
-                                excluded.title,
-                            messages =
-                                excluded.messages,
-                            updated_at =
-                                excluded.updated_at
-                    `);
-
-                (
-                    data.users || []
-                ).forEach(
-                    (user) => {
-                        insertUser.run(
-                            user.id,
-                            user.name,
-                            user.email,
-                            user.passwordHash || null
-                        );
-                    }
-                );
-
-                (
-                    data.purchases || []
-                ).forEach(
-                    (purchase) => {
-                        insertPurchase.run(
-                            purchase.id,
-                            purchase.name,
-                            purchase.email,
-                            purchase.city,
-                            purchase.dateOfBirth,
-                            purchase.plan,
-                            purchase.createdAt
-                        );
-                    }
-                );
-
-                Object.entries(
-                    data.subscriptions || {}
-                ).forEach(
-                    ([email, plan]) => {
-                        insertSubscription.run(
-                            email,
-                            plan
-                        );
-                    }
-                );
-
-                Object.entries(
-                    data.usage || {}
-                ).forEach(
-                    ([email, used]) => {
-                        insertUsage.run(
-                            email,
-                            used
-                        );
-                    }
-                );
-
-                (
-                    data.conversations || []
-                ).forEach(
-                    (item) => {
-                        insertConversation.run(
-                            item.id,
-                            item.email,
-                            item.model,
-                            item.title,
-                            JSON.stringify(
-                                item.messages || []
-                            ),
-                            item.createdAt,
-                            item.updatedAt
-                        );
-                    }
-                );
-            })();
-
-            return data;
-        },
-
-        close() {
-            database.close();
-            connection = undefined;
-        },
+    });
+    const originalClose = connection.close.bind(connection);
+    connection.close = () => {
+        originalClose();
+        connection = undefined;
     };
 
     return connection;
@@ -727,4 +471,5 @@ const connectDatabase = () => {
 
 module.exports = {
     connectDatabase,
+    getDatabaseEngine,
 };

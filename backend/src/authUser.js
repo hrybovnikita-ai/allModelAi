@@ -1,5 +1,5 @@
 /**
- * Email/password auth reads users only from SQLite (never from src/data/data.js).
+ * Email/password auth reads users only from the active database (never from src/data/data.js).
  */
 function loadAuthUserByEmail(database, normalizedEmail) {
     if (!database || !normalizedEmail) return null;

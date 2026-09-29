@@ -15,7 +15,8 @@ WORKDIR /app/backend
 RUN npm ci --omit=dev
 COPY backend ./
 COPY --from=frontend /frontend/dist /app/frontend/dist
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=5050 DB_FILE=/app/backend/storage/database.sqlite
+# DATABASE_URL (Supabase pooler) selects PostgreSQL in production. DB_FILE is only used when DATABASE_URL is unset.
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=5050
 EXPOSE 5050
 HEALTHCHECK --interval=30s --timeout=8s --start-period=20s --retries=3 \
     CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||5050)+'/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
