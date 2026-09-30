@@ -1,4 +1,5 @@
 const deasync = require('deasync');
+const { forbidSyncPostgresInHttp } = require('./httpPostgresGuard');
 const { createPgPool, formatSafePgFailure } = require('./pgConfig');
 const {
     translatePlaceholders,
@@ -42,6 +43,7 @@ class PostgresSyncDatabase {
     }
 
     prepare(sql) {
+        forbidSyncPostgresInHttp();
         const baseSql = translateSql(sql);
         const self = this;
 
@@ -74,6 +76,7 @@ class PostgresSyncDatabase {
     }
 
     exec(sql) {
+        forbidSyncPostgresInHttp();
         const statements = String(sql)
             .split(';')
             .map((part) => part.trim())
@@ -84,6 +87,7 @@ class PostgresSyncDatabase {
     }
 
     transaction(fn) {
+        forbidSyncPostgresInHttp();
         const self = this;
         return () => {
             waitFor(async () => {

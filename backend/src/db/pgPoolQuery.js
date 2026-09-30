@@ -76,6 +76,33 @@ async function queryPgPool(pool, text, values = [], { timeoutMs = DEFAULT_QUERY_
     }
 }
 
+async function withPgTransaction(pool, fn) {
+    if (!pool?.connect) {
+        throw new Error('PostgreSQL pool does not support transactions.');
+    }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await fn(client);
+        await client.query('COMMIT');
+        return result;
+    } catch (error) {
+        try {
+            await client.query('ROLLBACK');
+        } catch {
+            /* ignore rollback failure */
+        }
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+async function queryPgClient(client, text, values = [], { timeoutMs = DEFAULT_QUERY_TIMEOUT_MS } = {}) {
+    const queryConfig = buildQueryConfig(text, values, timeoutMs);
+    return client.query(queryConfig);
+}
+
 function resolvePostgresAsyncPool(connection) {
     if (!connection) return null;
     if (connection.pgAsyncPool) return connection.pgAsyncPool;
@@ -90,6 +117,8 @@ module.exports = {
     describePgPoolStats,
     isPgTimeoutError,
     queryPgPool,
+    queryPgClient,
+    withPgTransaction,
     resolvePostgresAsyncPool,
     buildQueryConfig,
 };

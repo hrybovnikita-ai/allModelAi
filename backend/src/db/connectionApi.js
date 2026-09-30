@@ -1,9 +1,15 @@
+const { forbidSyncPostgresInHttp } = require('./httpPostgresGuard');
+
 function createConnectionApi(database, meta = {}) {
+    const engine = meta.engine || 'sqlite';
     return {
-        engine: meta.engine || 'sqlite',
+        engine,
         filePath: meta.filePath || null,
 
         read() {
+            if (engine === 'postgres') {
+                forbidSyncPostgresInHttp();
+            }
             return {
                 users: database
                     .prepare(`
@@ -96,6 +102,9 @@ function createConnectionApi(database, meta = {}) {
         },
 
         write(data) {
+            if (engine === 'postgres') {
+                forbidSyncPostgresInHttp();
+            }
             database.transaction(() => {
                 const conversationIds = (
                     data.conversations || []

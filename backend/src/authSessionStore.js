@@ -53,6 +53,21 @@ async function syncLoginUserName(connection, account, safeName, usersCache) {
     return account;
 }
 
+async function deleteAuthSessionByToken(connection, tokenHash) {
+    const asyncPool = resolvePostgresAsyncPool(connection);
+    if (asyncPool) {
+        await queryPgPool(
+            asyncPool,
+            'DELETE FROM auth_sessions WHERE token_hash = $1',
+            [tokenHash],
+        );
+        return;
+    }
+    connection.database.prepare(
+        'DELETE FROM auth_sessions WHERE token_hash = ?',
+    ).run(tokenHash);
+}
+
 function safeSessionErrorCode(error) {
     const code = String(error?.code || '');
     if (code === '23505') return 'SESSION_DUPLICATE';
@@ -65,5 +80,6 @@ function safeSessionErrorCode(error) {
 module.exports = {
     insertAuthSession,
     syncLoginUserName,
+    deleteAuthSessionByToken,
     safeSessionErrorCode,
 };

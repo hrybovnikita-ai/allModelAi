@@ -11,6 +11,8 @@ const fs = require('fs');
 
 const app = express();
 configureTrustProxy(app);
+const { httpPostgresGuardMiddleware } = require('./src/db/httpPostgresGuard');
+app.use('/api', httpPostgresGuardMiddleware);
 app.use(createCredentialedCorsMiddleware());
 app.use('/api', (req, res, next) => {
     const path = req.path;

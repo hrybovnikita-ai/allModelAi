@@ -59,12 +59,12 @@ const startPyTorchTraining = async (req, res) => {
             openaiSamplesPerClass: parsedOpenAiPerClass,
         };
         let trainingRunId = null;
-        if (req.user?.email && req.app.locals.db?.database) {
-            trainingRunId = recordTrainingRun(
-                req.app.locals.db.database,
+        if (req.user?.email && req.app.locals.db) {
+            trainingRunId = await recordTrainingRun(
+                req.app.locals.db,
                 req.user.email,
                 config,
-                result?.metrics || result || {}
+                result?.metrics || result || {},
             );
         }
 

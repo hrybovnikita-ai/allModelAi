@@ -1,5 +1,10 @@
 const { hashToken, readSessionToken } = require('../sessionAuth');
 const { queryPgPool, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
+const {
+    isPostgresConnection,
+    lookupDeveloperApiKeyAsync,
+    touchDeveloperApiKeyAsync,
+} = require('../db/postgresHttpReads');
 
 async function lookupSessionUser(dbConnection, tokenHash, nowMs) {
     const engine = dbConnection.engine || 'sqlite';
@@ -26,10 +31,24 @@ const requireAuth = async (req, res, next) => {
     const token = readSessionToken(req);
     const bearer = String(req.get('authorization') || '').match(/^Bearer\s+(amai_[A-Za-z0-9_-]+)$/i)?.[1];
     if (bearer) {
-        const key = req.app.locals.db.database.prepare(`SELECT developer_api_keys.*, users.id AS user_id, users.name AS user_name FROM developer_api_keys JOIN users ON lower(users.email) = lower(developer_api_keys.email) WHERE key_hash = ? AND (expires_at IS NULL OR expires_at > ?)`).get(hashToken(bearer), new Date().toISOString());
+        const connection = req.app.locals.db;
+        const nowIso = new Date().toISOString();
+        const keyHash = hashToken(bearer);
+        let key;
+        if (isPostgresConnection(connection)) {
+            key = await lookupDeveloperApiKeyAsync(connection, keyHash, nowIso);
+        } else {
+            key = connection.database.prepare(`SELECT developer_api_keys.*, users.id AS user_id, users.name AS user_name FROM developer_api_keys JOIN users ON lower(users.email) = lower(developer_api_keys.email) WHERE key_hash = ? AND (expires_at IS NULL OR expires_at > ?)`).get(keyHash, nowIso);
+        }
         if (!key) return res.status(401).json({ message: 'Invalid or expired API key' });
-        if (key.used_count >= key.request_limit) return res.status(429).json({ message: 'API key request budget reached' });
-        req.app.locals.db.database.prepare('UPDATE developer_api_keys SET last_used_at = ?, used_count = used_count + 1 WHERE id = ?').run(new Date().toISOString(), key.id);
+        const usedCount = Number(key.used_count ?? key.usedcount ?? 0);
+        const requestLimit = Number(key.request_limit ?? key.requestlimit ?? 0);
+        if (usedCount >= requestLimit) return res.status(429).json({ message: 'API key request budget reached' });
+        if (isPostgresConnection(connection)) {
+            await touchDeveloperApiKeyAsync(connection, key.id, nowIso);
+        } else {
+            connection.database.prepare('UPDATE developer_api_keys SET last_used_at = ?, used_count = used_count + 1 WHERE id = ?').run(nowIso, key.id);
+        }
         req.user = { id: key.user_id, name: key.user_name, email: key.email };
         req.authType = 'api_key';
         req.apiKeyId = key.id;

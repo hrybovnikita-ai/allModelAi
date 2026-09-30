@@ -2,15 +2,18 @@ const crypto = require('node:crypto');
 
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
 
+const { isPostgresConnection } = require('../db/postgresHttpReads');
+const { listWebhooksForEmailAsync } = require('../db/postgresHttpProduction');
+
 const dispatchTrainingWebhooks = async (app, email, event, payload) => {
-    const db = app?.locals?.db?.database;
-    if (!db || !email) return;
+    const connection = app?.locals?.db;
+    if (!connection || !email) return;
 
     let hooks = [];
     try {
-        hooks = db
-            .prepare('SELECT id, url, secret_hash FROM webhooks WHERE email = ?')
-            .all(email);
+        hooks = isPostgresConnection(connection)
+            ? await listWebhooksForEmailAsync(connection, email)
+            : connection.database.prepare('SELECT id, url, secret_hash FROM webhooks WHERE email = ?').all(email);
     } catch {
         return;
     }

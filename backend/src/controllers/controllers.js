@@ -152,10 +152,13 @@ const getConversationPayload = (conversation) => ({
     messages: normalizeMessages(conversation.messages),
 });
 
-const saveUsers = (database) => {
-    const data = database.read();
+const saveUsers = (connection) => {
+    if (isPostgresConnection(connection)) {
+        return;
+    }
+    const data = connection.read();
     data.users = users;
-    database.write(data);
+    connection.write(data);
 };
 
 const registerUser = async (req, res) => {
@@ -165,29 +168,44 @@ const registerUser = async (req, res) => {
     }
     const { name: safeName, email: normalizedEmail, password } = validation;
     const passwordHash = await hashPassword(password);
-    const db = req.app.locals.db.database;
+    const connection = req.app.locals.db;
     let newUser;
     try {
-        newUser = db.transaction(() => {
-            const existing = db.prepare(
-                'SELECT id, password_hash AS passwordHash FROM users WHERE lower(trim(email)) = ?',
-            ).get(normalizedEmail);
-            if (existing) return { conflict: true, existing };
-            const id = Number(db.prepare('INSERT INTO users (name, email, password_hash, email_verified) VALUES (?, ?, ?, 1)').run(safeName, normalizedEmail, passwordHash).lastInsertRowid);
-            return { id, name: safeName, email: normalizedEmail, passwordHash };
-        }).immediate();
+        if (isPostgresConnection(connection)) {
+            newUser = await registerUserPostgresAsync(connection, { safeName, normalizedEmail, passwordHash });
+        } else {
+            const db = connection.database;
+            newUser = db.transaction(() => {
+                const existing = db.prepare(
+                    'SELECT id, password_hash AS passwordHash FROM users WHERE lower(trim(email)) = ?',
+                ).get(normalizedEmail);
+                if (existing) return { conflict: true, existing };
+                const id = Number(db.prepare('INSERT INTO users (name, email, password_hash, email_verified) VALUES (?, ?, ?, 1)').run(safeName, normalizedEmail, passwordHash).lastInsertRowid);
+                return { id, name: safeName, email: normalizedEmail, passwordHash };
+            }).immediate();
+        }
     } catch (error) {
         if (!error.code?.startsWith('SQLITE_CONSTRAINT')) throw error;
     }
     if (newUser?.conflict) {
         const { existing } = newUser;
-        const row = existing.id != null
-            ? db.prepare('SELECT password_hash FROM users WHERE id = ?').get(existing.id)
-            : null;
+        let row = null;
+        let socialOnly = null;
+        if (isPostgresConnection(connection)) {
+            if (existing.id != null) {
+                row = { password_hash: await getPasswordHashByUserIdAsync(connection, existing.id) };
+                socialOnly = await userHasSocialIdentityAsync(connection, existing.id);
+            }
+        } else {
+            const db = connection.database;
+            row = existing.id != null
+                ? db.prepare('SELECT password_hash FROM users WHERE id = ?').get(existing.id)
+                : null;
+            socialOnly = existing.id != null
+                ? db.prepare('SELECT 1 FROM social_identities WHERE user_id = ? LIMIT 1').get(existing.id)
+                : null;
+        }
         const hasPassword = Boolean(existing.passwordHash || extractPasswordHash(row));
-        const socialOnly = existing.id != null
-            ? db.prepare('SELECT 1 FROM social_identities WHERE user_id = ? LIMIT 1').get(existing.id)
-            : null;
         if (!hasPassword && socialOnly) {
             return res.status(409).json({
                 code: 'SOCIAL_ACCOUNT_EXISTS',
@@ -363,16 +381,23 @@ const quickSocialLogin = async (req, res) => {
         }
         const normalizedEmail = String(email).trim().toLowerCase();
         const safeName = (name && typeof name === 'string' && name.trim()) ? name.trim() : normalizedEmail.split('@')[0];
-        const db = req.app.locals.db.database;
-
-        let user = db.prepare('SELECT id, name, email, avatar_url AS avatar FROM users WHERE lower(email) = ?').get(normalizedEmail);
-        if (!user) {
-            const id = Number(db.prepare('INSERT INTO users (name, email, avatar_url, email_verified) VALUES (?, ?, ?, 1)').run(safeName, normalizedEmail, avatar || null).lastInsertRowid);
-            user = { id, name: safeName, email: normalizedEmail, avatar: avatar || null };
+        const connection = req.app.locals.db;
+        let user;
+        if (isPostgresConnection(connection)) {
+            user = await findOrCreateQuickSocialUserAsync(connection, { safeName, normalizedEmail, avatar });
+        } else {
+            const db = connection.database;
+            user = db.prepare('SELECT id, name, email, avatar_url AS avatar FROM users WHERE lower(email) = ?').get(normalizedEmail);
+            if (!user) {
+                const id = Number(db.prepare('INSERT INTO users (name, email, avatar_url, email_verified) VALUES (?, ?, ?, 1)').run(safeName, normalizedEmail, avatar || null).lastInsertRowid);
+                user = { id, name: safeName, email: normalizedEmail, avatar: avatar || null };
+            } else if (avatar && !user.avatar) {
+                db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(avatar, user.id);
+                user.avatar = avatar;
+            }
+        }
+        if (!users.find((item) => item.id === user.id)) {
             users.push(user);
-        } else if (avatar && !user.avatar) {
-            db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(avatar, user.id);
-            user.avatar = avatar;
         }
 
         await setSession(req, res, user, rememberMe !== false && rememberMe !== 'false');
@@ -422,11 +447,24 @@ const getSession = async (req, res) => {
     }
 };
 
-const logout = (req, res) => {
-    const token = readSessionToken(req);
-    if (token) req.app.locals.db.database.prepare('DELETE FROM auth_sessions WHERE token_hash = ?').run(hashToken(token));
-    res.clearCookie(sessionCookie, sessionCookieOptions(req));
-    return res.status(204).send();
+const logout = async (req, res) => {
+    authLog('LOGOUT_START');
+    const startedAt = Date.now();
+    try {
+        const token = readSessionToken(req);
+        if (token) {
+            await deleteAuthSessionByToken(req.app.locals.db, hashToken(token));
+        }
+        res.clearCookie(sessionCookie, sessionCookieOptions(req));
+        authLog('LOGOUT_SUCCESS', { durationMs: Date.now() - startedAt });
+        return res.status(204).send();
+    } catch (error) {
+        authLog('LOGOUT_FAILED', {
+            durationMs: Date.now() - startedAt,
+            code: error.code || 'unknown',
+        });
+        return res.status(500).json({ message: 'Could not sign out. Please try again.' });
+    }
 };
 
 const getUsers = (req, res) => {
@@ -528,22 +566,27 @@ const deleteUser = (req, res) => {
     });
 };
 
-const deleteAccount = (req, res) => {
+const deleteAccount = async (req, res) => {
     const email = req.user.email;
 
     const index = users.findIndex((user) => user.email.toLowerCase() === email);
     if (index === -1) return res.status(404).json({ message: 'Account not found' });
 
     const [deletedUser] = users.splice(index, 1);
-    const data = req.app.locals.db.read();
-    data.users = users;
-    data.conversations = (data.conversations || []).filter((conversation) => conversation.email !== email);
-    data.purchases = (data.purchases || []).filter((purchase) => purchase.email !== email);
-    if (data.subscriptions) delete data.subscriptions[email];
-    if (data.usage) delete data.usage[email];
-    req.app.locals.db.write(data);
-    req.app.locals.db.database.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(deletedUser.id);
-    req.app.locals.db.database.prepare('DELETE FROM account_access_modes WHERE email = ?').run(email);
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        await deleteAccountPostgresAsync(connection, { userId: deletedUser.id, email });
+    } else {
+        const data = connection.read();
+        data.users = users;
+        data.conversations = (data.conversations || []).filter((conversation) => conversation.email !== email);
+        data.purchases = (data.purchases || []).filter((purchase) => purchase.email !== email);
+        if (data.subscriptions) delete data.subscriptions[email];
+        if (data.usage) delete data.usage[email];
+        connection.write(data);
+        connection.database.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(deletedUser.id);
+        connection.database.prepare('DELETE FROM account_access_modes WHERE email = ?').run(email);
+    }
     res.clearCookie(sessionCookie, sessionCookieOptions(req));
 
     return res.status(200).json({ message: 'Account deleted successfully', user: deletedUser });
@@ -553,8 +596,67 @@ const creditLimits = Object.fromEntries(Object.entries(subscriptionPlans).map(([
 const creditLimitsEnabled = () => process.env.ENFORCE_CREDIT_LIMITS === 'true';
 const developerEmails = () => new Set(String(process.env.DEVELOPER_EMAILS || 'hrybovnikita@gmail.com').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean));
 
-const { getCreditStatusCore } = require('./subscriptionController');
+const { getCreditStatusCore, getCreditStatusCoreAsync } = require('./subscriptionController');
 const getCreditStatus = (database, email) => getCreditStatusCore(database, email);
+const getCreditStatusAsync = (database, email) => getCreditStatusCoreAsync(database, email);
+const { deleteAuthSessionByToken } = require('../authSessionStore');
+const {
+    isPostgresConnection,
+    listAnalyticsConversationRows,
+    listChatHistoryRows,
+    listWorkspaceItemRows,
+} = require('../db/postgresHttpReads');
+const {
+    registerUserPostgresAsync,
+    userHasSocialIdentityAsync,
+    getPasswordHashByUserIdAsync,
+    findOrCreateQuickSocialUserAsync,
+    deleteAccountPostgresAsync,
+} = require('../db/postgresHttpAuth');
+const {
+    bumpUsageCountAsync,
+    insertUsageEventAsync,
+    listMemoryWorkspaceDataAsync,
+    listDocumentWorkspaceItemsAsync,
+    persistChatTurnAsync,
+    insertConversationRowAsync,
+    updateConversationRowAsync,
+    deleteConversationRowAsync,
+    getConversationRowAsync,
+} = require('../db/postgresHttpChat');
+const {
+    insertWorkspaceItemAsync,
+    getWorkspaceItemAsync,
+    getWorkspaceItemByIdAsync,
+    updateWorkspaceItemDataAsync,
+    deleteWorkspaceItemAsync,
+    listSharedPromptWorkspaceItemsAsync,
+} = require('../db/postgresHttpWorkspace');
+const {
+    listTeamsForUserAsync,
+    listTeamMembersAsync,
+    getTeamAccessAsync,
+    createTeamAsync,
+    upsertTeamMemberAsync,
+    updateTeamMemberRoleAsync,
+    removeTeamMemberAsync,
+} = require('../db/postgresHttpTeams');
+const {
+    listDeveloperApiKeysAsync,
+    insertDeveloperApiKeyAsync,
+    deleteDeveloperApiKeyAsync,
+    insertArenaVoteAsync,
+    listArenaVotesAsync,
+    getSharedConversationByTokenAsync,
+    getConversationIdForOwnerAsync,
+    getOrCreateShareTokenAsync,
+} = require('../db/postgresHttpDeveloperKeys');
+const { activateSubscriptionAsync } = require('../billing/subscriptionsAsync');
+const {
+    findActiveSubscriptionEmailByStripeIdAsync,
+    updateSubscriptionCanceledByStripeIdAsync,
+    countActiveSessionsAsync,
+} = require('../db/postgresHttpProduction');
 
 const { resolveImageProvider } = require('../pollinations');
 
@@ -595,21 +697,36 @@ const getProviderHealth = async (req, res) => {
     return res.json({ updatedAt: new Date().toISOString(), providers });
 };
 
-const getAdminStats = (req, res) => {
+const getAdminStats = async (req, res) => {
     if (!process.env.ADMIN_KEY) return res.status(503).json({ message: 'Admin access is not configured' });
     if (req.get('x-admin-key') !== process.env.ADMIN_KEY) return res.status(401).json({ message: 'Invalid admin key' });
-    const data = req.app.locals.db.read();
-    return res.status(200).json({ users: data.users.length, conversations: data.conversations.length, purchases: data.purchases.length, activeSessions: req.app.locals.db.database.prepare('SELECT COUNT(*) AS count FROM auth_sessions WHERE expires_at > ?').get(Date.now()).count });
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        const activeSessions = await countActiveSessionsAsync(connection, Date.now());
+        return res.status(200).json({
+            users: users.length,
+            conversations: null,
+            purchases: null,
+            activeSessions,
+            postgres: true,
+        });
+    }
+    const data = connection.read();
+    return res.status(200).json({ users: data.users.length, conversations: data.conversations.length, purchases: data.purchases.length, activeSessions: connection.database.prepare('SELECT COUNT(*) AS count FROM auth_sessions WHERE expires_at > ?').get(Date.now()).count });
 };
 
-const getCredits = (req, res) => {
+const getCredits = async (req, res) => {
+    authLog('CREDITS_ROUTE_START');
+    const startedAt = Date.now();
     try {
-        const status = getCreditStatus(req.app.locals.db, req.user.email);
+        const status = await getCreditStatusAsync(req.app.locals.db, req.user.email);
+        authLog('CREDITS_ROUTE_SUCCESS', { durationMs: Date.now() - startedAt });
         return res.status(200).json(status);
     } catch (error) {
-        if (process.env.NODE_ENV !== 'test') {
-            console.log('[CREDITS] STATUS_FAILED', { reason: 'CREDITS_READ_ERROR' });
-        }
+        authLog('CREDITS_ROUTE_FAILED', {
+            durationMs: Date.now() - startedAt,
+            code: error.code || 'unknown',
+        });
         return res.status(500).json({
             code: 'CREDITS_UNAVAILABLE',
             message: 'Could not load account credits. Please try again.',
@@ -617,12 +734,23 @@ const getCredits = (req, res) => {
     }
 };
 
-const setAccessMode = (req, res) => {
+const setAccessMode = async (req, res) => {
     const mode = req.body.mode;
     if (!['user', 'developer'].includes(mode)) return res.status(400).json({ message: 'Выберите User или Developer.' });
-    const status = getCreditStatus(req.app.locals.db, req.user.email);
+    const status = await getCreditStatusAsync(req.app.locals.db, req.user.email);
     if (mode === 'developer' && !status.canUseDeveloper) return res.status(403).json({ message: 'All models are available with a subscription or for a verified developer account.' });
-    req.app.locals.db.database.prepare('INSERT INTO account_access_modes (email,mode) VALUES (?,?) ON CONFLICT(email) DO UPDATE SET mode=excluded.mode').run(status.email, mode);
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        const { queryPgPool, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
+        await queryPgPool(
+            resolvePostgresAsyncPool(connection),
+            `INSERT INTO account_access_modes (email, mode) VALUES ($1, $2)
+             ON CONFLICT (email) DO UPDATE SET mode = EXCLUDED.mode`,
+            [status.email, mode],
+        );
+    } else {
+        connection.database.prepare('INSERT INTO account_access_modes (email,mode) VALUES (?,?) ON CONFLICT(email) DO UPDATE SET mode=excluded.mode').run(status.email, mode);
+    }
     return getCredits(req, res);
 };
 
@@ -633,24 +761,29 @@ const bumpUsageCount = (database, normalizedEmail) => {
     `).run(normalizedEmail);
 };
 
-const getChatHistory = (req, res) => {
+const getChatHistory = async (req, res) => {
     const normalizedEmail = String(req.user.email || '').trim().toLowerCase();
     try {
-        const rows = req.app.locals.db.database.prepare(`
-            SELECT
-                id,
-                email,
-                model,
-                title,
-                messages,
-                created_at AS createdAt,
-                updated_at AS updatedAt
-            FROM conversations
-            WHERE lower(trim(email)) = ?
-            ORDER BY updated_at DESC
-        `).all(normalizedEmail);
+        const connection = req.app.locals.db;
+        const rows = isPostgresConnection(connection)
+            ? await listChatHistoryRows(connection, normalizedEmail)
+            : connection.database.prepare(`
+                SELECT
+                    id,
+                    email,
+                    model,
+                    title,
+                    messages,
+                    created_at AS createdAt,
+                    updated_at AS updatedAt
+                FROM conversations
+                WHERE lower(trim(email)) = ?
+                ORDER BY updated_at DESC
+            `).all(normalizedEmail);
         const conversations = rows.map((row) => getConversationPayload({
             ...row,
+            createdAt: row.createdAt ?? row.createdat,
+            updatedAt: row.updatedAt ?? row.updatedat,
             messages: (() => {
                 try {
                     return JSON.parse(row.messages || '[]');
@@ -671,7 +804,7 @@ const getChatHistory = (req, res) => {
     }
 };
 
-const createChatHistory = (req, res) => {
+const createChatHistory = async (req, res) => {
     const email = req.user.email;
     const model = String(req.body.model || 'gpt');
     const messages = normalizeMessages(req.body.messages);
@@ -686,39 +819,64 @@ const createChatHistory = (req, res) => {
         createdAt: now,
         updatedAt: now,
     };
-    const data = req.app.locals.db.read();
-    data.conversations ||= [];
-    data.conversations.push(conversation);
-    req.app.locals.db.write(data);
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        await insertConversationRowAsync(connection, conversation);
+    } else {
+        const data = connection.read();
+        data.conversations ||= [];
+        data.conversations.push(conversation);
+        connection.write(data);
+    }
     return res.status(201).json(conversation);
 };
 
-const renameChat = (req, res) => {
+const renameChat = async (req, res) => {
     const email = req.user.email;
     const title = req.body.title === undefined ? undefined : String(req.body.title).trim().slice(0, 60);
     const messages = Array.isArray(req.body.messages) ? normalizeMessages(req.body.messages) : undefined;
     if (!title && !messages) return res.status(400).json({ message: 'Title or messages are required' });
 
-    const data = req.app.locals.db.read();
+    const connection = req.app.locals.db;
+    const now = new Date().toISOString();
+    if (isPostgresConnection(connection)) {
+        const existing = await getConversationRowAsync(connection, req.params.id, email);
+        if (!existing) return res.status(404).json({ message: 'Conversation not found' });
+        const patch = { updatedAt: now };
+        if (title) patch.title = title;
+        if (messages) patch.messages = messages;
+        await updateConversationRowAsync(connection, req.params.id, email, patch);
+        const updated = await getConversationRowAsync(connection, req.params.id, email);
+        return res.status(200).json(getConversationPayload({
+            ...updated,
+            messages: JSON.parse(updated.messages || '[]'),
+        }));
+    }
+    const data = connection.read();
     const conversation = (data.conversations || []).find((item) => item.id === req.params.id && item.email === email);
     if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
 
     if (title) conversation.title = title;
     if (messages) conversation.messages = messages;
-    conversation.updatedAt = new Date().toISOString();
-    req.app.locals.db.write(data);
+    conversation.updatedAt = now;
+    connection.write(data);
     return res.status(200).json(getConversationPayload(conversation));
 };
 
-const deleteChat = (req, res) => {
+const deleteChat = async (req, res) => {
     const email = req.user.email;
-
-    const data = req.app.locals.db.read();
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        const changes = await deleteConversationRowAsync(connection, req.params.id, email);
+        if (!changes) return res.status(404).json({ message: 'Conversation not found' });
+        return res.status(200).json({ message: 'Conversation deleted successfully' });
+    }
+    const data = connection.read();
     const index = (data.conversations || []).findIndex((item) => item.id === req.params.id && item.email === email);
     if (index === -1) return res.status(404).json({ message: 'Conversation not found' });
 
     data.conversations.splice(index, 1);
-    req.app.locals.db.write(data);
+    connection.write(data);
     return res.status(200).json({ message: 'Conversation deleted successfully' });
 };
 
@@ -728,7 +886,10 @@ const createCheckoutSession = async (req, res) => {
     if (!plan) return res.status(400).json({ message: 'Choose a valid subscription plan' });
     const email = String(req.user.email).trim().toLowerCase();
     if (developerEmails().has(email)) {
-        const purchase = activateSubscription(req.app.locals.db, { email, name: req.user.name, planKey: 'free' });
+        const connection = req.app.locals.db;
+        const purchase = isPostgresConnection(connection)
+            ? await activateSubscriptionAsync(connection, { email, name: req.user.name, planKey: 'free' })
+            : activateSubscription(connection, { email, name: req.user.name, planKey: 'free' });
         return res.status(201).json({ developerAccess: true, purchase, redirectUrl: `${frontendOrigin(req)}/checkout?success=developer&plan=developer` });
     }
     if (plan.amount === 0) return res.status(403).json({ message: 'The Developer plan is available only to configured developer accounts.' });
@@ -795,15 +956,31 @@ const getPaymentConfig = (_req, res) => {
 
 const getPublicCheckoutInfo = (_req, res) => res.json(buildCheckoutInfo());
 
-const fulfillStripeSession = (database, session) => {
+const fulfillStripeSession = async (connection, session) => {
     const planKey = normalizePlanKey(session.metadata?.plan);
     if (!subscriptionPlans[planKey] || (session.payment_status !== 'paid' && session.status !== 'complete')) throw new Error('Payment is not complete');
-    const existing = session.subscription && database.database.prepare('SELECT email FROM subscription_details WHERE stripe_subscription_id = ? AND status = ?').get(String(session.subscription), 'active');
-    if (existing) {
-        const previous = database.read().purchases.filter((item) => item.email === existing.email && item.plan === planKey).at(-1);
-        return previous || { email: existing.email, plan: planKey, name: session.metadata.userName || 'Subscriber' };
+    if (isPostgresConnection(connection) && session.subscription) {
+        const existingEmail = await findActiveSubscriptionEmailByStripeIdAsync(connection, String(session.subscription));
+        if (existingEmail) {
+            return { email: existingEmail, plan: planKey, name: session.metadata.userName || 'Subscriber' };
+        }
+    } else if (session.subscription) {
+        const existing = connection.database.prepare('SELECT email FROM subscription_details WHERE stripe_subscription_id = ? AND status = ?').get(String(session.subscription), 'active');
+        if (existing) {
+            const previous = connection.read().purchases.filter((item) => item.email === existing.email && item.plan === planKey).at(-1);
+            return previous || { email: existing.email, plan: planKey, name: session.metadata.userName || 'Subscriber' };
+        }
     }
-    return activateSubscription(database, { email: session.metadata.email || session.customer_details?.email, name: session.metadata.userName, planKey, stripeCustomerId: session.customer, stripeSubscriptionId: session.subscription });
+    const payload = {
+        email: session.metadata.email || session.customer_details?.email,
+        name: session.metadata.userName,
+        planKey,
+        stripeCustomerId: session.customer,
+        stripeSubscriptionId: session.subscription,
+    };
+    return isPostgresConnection(connection)
+        ? activateSubscriptionAsync(connection, payload)
+        : activateSubscription(connection, payload);
 };
 
 const verifyCheckoutSession = async (req, res) => {
@@ -811,21 +988,27 @@ const verifyCheckoutSession = async (req, res) => {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
     const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
     if (String(session.metadata?.email).toLowerCase() !== String(req.user.email).toLowerCase()) return res.status(403).json({ message: 'This checkout belongs to another account' });
-    const purchase = fulfillStripeSession(req.app.locals.db, session);
+    const purchase = await fulfillStripeSession(req.app.locals.db, session);
     return res.json({ purchase, plan: subscriptionPlans[purchase.plan] });
 };
 
-const stripeWebhook = (req, res) => {
+const stripeWebhook = async (req, res) => {
     if (!process.env.STRIPE_SECRET_KEY?.trim() || !process.env.STRIPE_WEBHOOK_SECRET?.trim()) return res.status(503).send('Stripe webhook is not configured');
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
     let event;
     try { event = stripe.webhooks.constructEvent(req.body, req.get('stripe-signature'), process.env.STRIPE_WEBHOOK_SECRET.trim()); }
     catch (error) { return res.status(400).send(`Webhook Error: ${error.message}`); }
+    const connection = req.app.locals.db;
     if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
-        try { fulfillStripeSession(req.app.locals.db, event.data.object); } catch (error) { return res.status(400).send(error.message); }
+        try { await fulfillStripeSession(connection, event.data.object); } catch (error) { return res.status(400).send(error.message); }
     }
     if (event.type === 'customer.subscription.deleted') {
-        req.app.locals.db.database.prepare("UPDATE subscription_details SET status = 'canceled', updated_at = ? WHERE stripe_subscription_id = ?").run(new Date().toISOString(), String(event.data.object.id));
+        const updatedAt = new Date().toISOString();
+        if (isPostgresConnection(connection)) {
+            await updateSubscriptionCanceledByStripeIdAsync(connection, String(event.data.object.id), updatedAt);
+        } else {
+            connection.database.prepare("UPDATE subscription_details SET status = 'canceled', updated_at = ? WHERE stripe_subscription_id = ?").run(updatedAt, String(event.data.object.id));
+        }
     }
     return res.json({ received: true });
 };
@@ -835,7 +1018,7 @@ const createPurchase = (req, res) => createCheckoutSession(req, res);
 const CHAT_PLAN_ALIASES = { starter: 'week', pro: 'common', unlimited: 'plus' };
 
 /** Developer-only sandbox subscription (no Stripe, no real charge). */
-const mockDeveloperSubscribe = (req, res) => {
+const mockDeveloperSubscribe = async (req, res) => {
     const email = String(req.user.email).trim().toLowerCase();
     if (!developerEmails().has(email)) {
         return res.status(403).json({
@@ -848,16 +1031,29 @@ const mockDeveloperSubscribe = (req, res) => {
     if (!subscriptionPlans[planKey]) {
         return res.status(400).json({ message: 'Choose a valid subscription plan' });
     }
-    activateSubscription(req.app.locals.db, {
-        email,
-        name: req.user.name || 'Developer',
-        city: String(req.body.city || '').trim(),
-        dateOfBirth: String(req.body.birthDate || req.body.dateOfBirth || '').trim(),
-        planKey,
-        stripeCustomerId: 'mock_dev_customer',
-        stripeSubscriptionId: `mock_dev_sub_${Date.now()}`,
-    });
-    const status = getCreditStatus(req.app.locals.db, email);
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        await activateSubscriptionAsync(connection, {
+            email,
+            name: req.user.name || 'Developer',
+            city: String(req.body.city || '').trim(),
+            dateOfBirth: String(req.body.birthDate || req.body.dateOfBirth || '').trim(),
+            planKey,
+            stripeCustomerId: 'mock_dev_customer',
+            stripeSubscriptionId: `mock_dev_sub_${Date.now()}`,
+        });
+    } else {
+        activateSubscription(connection, {
+            email,
+            name: req.user.name || 'Developer',
+            city: String(req.body.city || '').trim(),
+            dateOfBirth: String(req.body.birthDate || req.body.dateOfBirth || '').trim(),
+            planKey,
+            stripeCustomerId: 'mock_dev_customer',
+            stripeSubscriptionId: `mock_dev_sub_${Date.now()}`,
+        });
+    }
+    const status = await getCreditStatusAsync(req.app.locals.db, email);
     const { data, email: _ignored, enforced, ...access } = status;
     return res.status(201).json({ ...access, mock: true, message: 'Developer test subscription activated (no charge).' });
 };
@@ -919,7 +1115,7 @@ const previewRouter = async (req, res) => {
     const hasImage = Boolean(req.body.image || req.body.hasImage);
     if (!prompt && !hasImage) return res.status(400).json({ message: 'Prompt or image is required' });
     const route = chooseSmartRoute(prompt, req.body.routerMode, hasImage);
-    const access = getCreditStatus(req.app.locals.db, req.user.email);
+    const access = await getCreditStatusAsync(req.app.locals.db, req.user.email);
     const modelAllowedPreview = (slug) => access.models.includes('all') || access.models.includes(slug) || slug === 'ai_python';
     if (!modelAllowedPreview(route.model)) {
         route.model = 'gemini';
@@ -992,7 +1188,7 @@ const createChatResponse = async (req, res) => {
     const latestPrompt = String(latestMessage?.content || '');
     const hasAttachedImage = normalizedInputMessages.some((m) => Boolean(m.image || m.imageUrl));
     const routeDecision = chooseSmartRoute(latestPrompt, routerMode, hasAttachedImage);
-    const creditStatus = getCreditStatus(req.app.locals.db, userEmail);
+    const creditStatus = await getCreditStatusAsync(req.app.locals.db, userEmail);
     const modelAllowed = (slug) => creditStatus.models.includes('all') || creditStatus.models.includes(slug) || slug === 'ai_python';
     if (model !== 'smart' && !modelAllowed(model)) return res.status(403).json({ message: 'Эта модель доступна по подписке или в режиме Developer. Выберите одну из пяти моделей User.' });
     if (model === 'smart' && !modelAllowed(routeDecision.model)) {
@@ -1030,35 +1226,61 @@ const createChatResponse = async (req, res) => {
             res.end();
 
             setImmediate(() => {
-                try {
-                    req.app.locals.db.database.prepare('INSERT INTO usage_events (email,model,input_tokens,output_tokens,latency_ms,fallback_used,estimated_cost,created_at) VALUES (?,?,?,?,?,?,?,?)').run(userEmail, 'ai_python', Math.ceil(latestPrompt.length / 4), Math.ceil(assistantText.length / 4), Date.now() - requestStartedAt, 0, 0, new Date().toISOString());
-                    if (temporary) return;
-                    const data = req.app.locals.db.read();
-                    data.conversations ||= [];
-                    const now = new Date().toISOString();
-                    const normalizedEmail = String(userEmail).trim().toLowerCase();
-                    const savedMessages = normalizeMessages([...messages, { role: 'assistant', content: assistantText }]);
-                    const conversation = conversationId
-                        ? data.conversations.find((item) => item.id === conversationId && item.email === normalizedEmail)
-                        : null;
-                    if (conversation) {
-                        conversation.messages = savedMessages;
-                        conversation.updatedAt = now;
-                    } else {
-                        data.conversations.push({
-                            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                            email: normalizedEmail,
-                            model,
-                            title: createConversationTitle(savedMessages),
-                            messages: savedMessages,
-                            createdAt: now,
-                            updatedAt: now,
-                        });
+                void (async () => {
+                    try {
+                        const connection = req.app.locals.db;
+                        const createdAt = new Date().toISOString();
+                        const savedMessages = normalizeMessages([...messages, { role: 'assistant', content: assistantText }]);
+                        if (isPostgresConnection(connection)) {
+                            await insertUsageEventAsync(connection, {
+                                email: userEmail,
+                                model: 'ai_python',
+                                inputTokens: Math.ceil(latestPrompt.length / 4),
+                                outputTokens: Math.ceil(assistantText.length / 4),
+                                latencyMs: Date.now() - requestStartedAt,
+                                fallbackUsed: false,
+                                estimatedCost: 0,
+                                createdAt,
+                            });
+                            await persistChatTurnAsync(connection, {
+                                userEmail,
+                                conversationId,
+                                temporary,
+                                model,
+                                savedMessages,
+                                title: createConversationTitle(savedMessages),
+                                bumpUsage: false,
+                            });
+                            return;
+                        }
+                        connection.database.prepare('INSERT INTO usage_events (email,model,input_tokens,output_tokens,latency_ms,fallback_used,estimated_cost,created_at) VALUES (?,?,?,?,?,?,?,?)').run(userEmail, 'ai_python', Math.ceil(latestPrompt.length / 4), Math.ceil(assistantText.length / 4), Date.now() - requestStartedAt, 0, 0, createdAt);
+                        if (temporary) return;
+                        const data = connection.read();
+                        data.conversations ||= [];
+                        const now = createdAt;
+                        const normalizedEmail = String(userEmail).trim().toLowerCase();
+                        const conversation = conversationId
+                            ? data.conversations.find((item) => item.id === conversationId && item.email === normalizedEmail)
+                            : null;
+                        if (conversation) {
+                            conversation.messages = savedMessages;
+                            conversation.updatedAt = now;
+                        } else {
+                            data.conversations.push({
+                                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                                email: normalizedEmail,
+                                model,
+                                title: createConversationTitle(savedMessages),
+                                messages: savedMessages,
+                                createdAt: now,
+                                updatedAt: now,
+                            });
+                        }
+                        connection.write(data);
+                    } catch (e) {
+                        console.error('Error recording conversation:', e);
                     }
-                    req.app.locals.db.write(data);
-                } catch (e) {
-                    console.error('Error recording conversation:', e);
-                }
+                })();
             });
             return;
         } catch (err) {
@@ -1100,9 +1322,13 @@ const createChatResponse = async (req, res) => {
         return res.status(403).json({ message: `${model} is not included in your current plan. Upgrade your model access to use it.` });
     }
 
-    const memoryRows = req.app.locals.db.database.prepare("SELECT data FROM workspace_items WHERE email = ? AND type = 'memory' ORDER BY updated_at DESC LIMIT 20").all(String(userEmail).trim().toLowerCase());
+    const connection = req.app.locals.db;
+    const normalizedChatEmail = String(userEmail).trim().toLowerCase();
+    const memoryRows = isPostgresConnection(connection)
+        ? await listMemoryWorkspaceDataAsync(connection, normalizedChatEmail)
+        : connection.database.prepare("SELECT data FROM workspace_items WHERE email = ? AND type = 'memory' ORDER BY updated_at DESC LIMIT 20").all(normalizedChatEmail);
     const memories = memoryRows.map((row) => JSON.parse(row.data).name).filter(Boolean);
-    const knowledge = useKnowledge ? findKnowledge(req.app.locals.db.database, userEmail, latestPrompt, 4) : [];
+    const knowledge = useKnowledge ? await findKnowledgeForUser(connection, userEmail, latestPrompt, 4) : [];
     const safePreference = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
     const preferences = {
         length: safePreference(responsePrefs.length, ['short', 'balanced', 'detailed'], 'balanced'),
@@ -1461,37 +1687,62 @@ const createChatResponse = async (req, res) => {
         const actualUsageModel = fallbackUsed ? fallbackModel : routedModel;
         const estimatedCost = Number((((inputTokens * 0.5) + (outputTokens * 1.5)) / 1000000).toFixed(6));
         setImmediate(() => {
-            try {
-                req.app.locals.db.database.prepare('INSERT INTO usage_events (email,model,input_tokens,output_tokens,latency_ms,fallback_used,estimated_cost,created_at) VALUES (?,?,?,?,?,?,?,?)').run(userEmail, actualUsageModel, inputTokens, outputTokens, Date.now() - requestStartedAt, fallbackUsed ? 1 : 0, estimatedCost, new Date().toISOString());
-                if (temporary) return;
-
-                const normalizedEmail = String(userEmail).trim().toLowerCase();
-                bumpUsageCount(req.app.locals.db.database, normalizedEmail);
-                const data = req.app.locals.db.read();
-                data.conversations ||= [];
-                const now = new Date().toISOString();
-                const savedMessages = normalizeMessages([...messages, { role: 'assistant', content: assistantText }]);
-                const conversation = conversationId
-                    ? data.conversations.find((item) => item.id === conversationId && item.email === normalizedEmail)
-                    : null;
-                if (conversation) {
-                    conversation.messages = savedMessages;
-                    conversation.updatedAt = now;
-                } else {
-                    data.conversations.push({
-                        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                        email: normalizedEmail,
-                        model,
-                        title: createConversationTitle(savedMessages),
-                        messages: savedMessages,
-                        createdAt: now,
-                        updatedAt: now,
-                    });
+            void (async () => {
+                try {
+                    const chatConnection = req.app.locals.db;
+                    const createdAt = new Date().toISOString();
+                    const savedMessages = normalizeMessages([...messages, { role: 'assistant', content: assistantText }]);
+                    if (isPostgresConnection(chatConnection)) {
+                        await insertUsageEventAsync(chatConnection, {
+                            email: userEmail,
+                            model: actualUsageModel,
+                            inputTokens,
+                            outputTokens,
+                            latencyMs: Date.now() - requestStartedAt,
+                            fallbackUsed,
+                            estimatedCost,
+                            createdAt,
+                        });
+                        await persistChatTurnAsync(chatConnection, {
+                            userEmail,
+                            conversationId,
+                            temporary,
+                            model,
+                            savedMessages,
+                            title: createConversationTitle(savedMessages),
+                            bumpUsage: !temporary,
+                        });
+                        return;
+                    }
+                    chatConnection.database.prepare('INSERT INTO usage_events (email,model,input_tokens,output_tokens,latency_ms,fallback_used,estimated_cost,created_at) VALUES (?,?,?,?,?,?,?,?)').run(userEmail, actualUsageModel, inputTokens, outputTokens, Date.now() - requestStartedAt, fallbackUsed ? 1 : 0, estimatedCost, createdAt);
+                    if (temporary) return;
+                    const normalizedEmail = String(userEmail).trim().toLowerCase();
+                    bumpUsageCount(chatConnection.database, normalizedEmail);
+                    const data = chatConnection.read();
+                    data.conversations ||= [];
+                    const now = createdAt;
+                    const conversation = conversationId
+                        ? data.conversations.find((item) => item.id === conversationId && item.email === normalizedEmail)
+                        : null;
+                    if (conversation) {
+                        conversation.messages = savedMessages;
+                        conversation.updatedAt = now;
+                    } else {
+                        data.conversations.push({
+                            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                            email: normalizedEmail,
+                            model,
+                            title: createConversationTitle(savedMessages),
+                            messages: savedMessages,
+                            createdAt: now,
+                            updatedAt: now,
+                        });
+                    }
+                    chatConnection.write(data);
+                } catch (error) {
+                    console.error('[CHAT PERSISTENCE]', error.message);
                 }
-                req.app.locals.db.write(data);
-            } catch (error) {
-                console.error('[CHAT PERSISTENCE]', error.message);
-            }
+            })();
         });
         res.write('data: [DONE]\n\n');
         return res.end();
@@ -1607,43 +1858,66 @@ const workspaceTypes = new Set(['memory', 'project', 'document', 'prompt', 'assi
 const cleanEmail = (value) => String(value || '').trim().toLowerCase();
 const parseWorkspaceItem = (row) => ({ id: row.id, type: row.type, ...JSON.parse(row.data), createdAt: row.created_at, updatedAt: row.updated_at });
 
-const getWorkspaceItems = (req, res) => {
+const getWorkspaceItems = async (req, res) => {
     const email = req.user.email;
     const type = String(req.query.type || '');
     if (!workspaceTypes.has(type)) return res.status(400).json({ message: 'Valid type is required' });
-    const rows = req.app.locals.db.database.prepare('SELECT * FROM workspace_items WHERE email = ? AND type = ? ORDER BY updated_at DESC').all(email, type);
+    const connection = req.app.locals.db;
+    const rows = isPostgresConnection(connection)
+        ? await listWorkspaceItemRows(connection, email, type)
+        : connection.database.prepare('SELECT * FROM workspace_items WHERE email = ? AND type = ? ORDER BY updated_at DESC').all(email, type);
     return res.json(rows.map(parseWorkspaceItem));
 };
 
-const createWorkspaceItem = (req, res) => {
+const createWorkspaceItem = async (req, res) => {
     const email = req.user.email;
     const type = String(req.body.type || '');
     if (!workspaceTypes.has(type)) return res.status(400).json({ message: 'Valid type is required' });
     const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = new Date().toISOString();
     const data = { ...req.body }; delete data.email; delete data.type; delete data.id;
-    req.app.locals.db.database.prepare('INSERT INTO workspace_items (id, email, type, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, email, type, JSON.stringify(data), now, now);
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        await insertWorkspaceItemAsync(connection, { id, email, type, data, createdAt: now, updatedAt: now });
+    } else {
+        connection.database.prepare('INSERT INTO workspace_items (id, email, type, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, email, type, JSON.stringify(data), now, now);
+    }
     return res.status(201).json({ id, type, ...data, createdAt: now, updatedAt: now });
 };
 
-const updateWorkspaceItem = (req, res) => {
+const updateWorkspaceItem = async (req, res) => {
     const email = req.user.email;
-    const row = req.app.locals.db.database.prepare('SELECT * FROM workspace_items WHERE id = ? AND email = ?').get(req.params.id, email);
+    const connection = req.app.locals.db;
+    const row = isPostgresConnection(connection)
+        ? await getWorkspaceItemAsync(connection, req.params.id, email)
+        : connection.database.prepare('SELECT * FROM workspace_items WHERE id = ? AND email = ?').get(req.params.id, email);
     if (!row) return res.status(404).json({ message: 'Workspace item not found' });
     const current = JSON.parse(row.data); const patch = { ...req.body }; delete patch.email; delete patch.id; delete patch.type;
     const data = { ...current, ...patch }; const now = new Date().toISOString();
-    req.app.locals.db.database.prepare('UPDATE workspace_items SET data = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(data), now, row.id);
+    if (isPostgresConnection(connection)) {
+        await updateWorkspaceItemDataAsync(connection, row.id, JSON.stringify(data), now);
+    } else {
+        connection.database.prepare('UPDATE workspace_items SET data = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(data), now, row.id);
+    }
     return res.json({ id: row.id, type: row.type, ...data, createdAt: row.created_at, updatedAt: now });
 };
 
-const deleteWorkspaceItem = (req, res) => {
-    const result = req.app.locals.db.database.prepare('DELETE FROM workspace_items WHERE id = ? AND email = ?').run(req.params.id, req.user.email);
+const deleteWorkspaceItem = async (req, res) => {
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        const changes = await deleteWorkspaceItemAsync(connection, req.params.id, req.user.email);
+        return changes ? res.json({ message: 'Deleted' }) : res.status(404).json({ message: 'Workspace item not found' });
+    }
+    const result = connection.database.prepare('DELETE FROM workspace_items WHERE id = ? AND email = ?').run(req.params.id, req.user.email);
     return result.changes ? res.json({ message: 'Deleted' }) : res.status(404).json({ message: 'Workspace item not found' });
 };
 
-const getUsageAnalytics = (req, res) => {
+const getUsageAnalytics = async (req, res) => {
     const email = req.user.email;
-    const conversations = req.app.locals.db.database.prepare('SELECT model, messages, created_at AS createdAt FROM conversations WHERE email = ?').all(email);
+    const connection = req.app.locals.db;
+    const conversations = isPostgresConnection(connection)
+        ? await listAnalyticsConversationRows(connection, email)
+        : connection.database.prepare('SELECT model, messages, created_at AS createdAt FROM conversations WHERE email = ?').all(email);
     const byModel = {}; let messages = 0; let characters = 0; let freeConversations = 0;
     const freeModels = new Set(['gemini', 'cloudflare']);
     conversations.forEach((conversation) => { const list = JSON.parse(conversation.messages || '[]'); const model=conversation.model||'gpt'; byModel[model] = (byModel[model] || 0) + 1; if(freeModels.has(model))freeConversations+=1; messages += list.length; characters += list.reduce((sum, item) => sum + String(item.content || item.text || '').length, 0); });
@@ -1653,12 +1927,31 @@ const getUsageAnalytics = (req, res) => {
     return res.json({ conversations: conversations.length, messages, estimatedTokens, estimatedCost, estimatedSavings:Number((estimatedTokens/1000000*2.4-estimatedCost).toFixed(4)), freeConversations, paidConversations:conversations.length-freeConversations, byModel });
 };
 
-const branchConversation = (req, res) => {
-    const email = req.user.email; const source = req.app.locals.db.database.prepare('SELECT * FROM conversations WHERE id = ? AND email = ?').get(req.params.id, email);
+const branchConversation = async (req, res) => {
+    const email = req.user.email;
+    const connection = req.app.locals.db;
+    const source = isPostgresConnection(connection)
+        ? await getConversationRowAsync(connection, req.params.id, email)
+        : connection.database.prepare('SELECT * FROM conversations WHERE id = ? AND email = ?').get(req.params.id, email);
     if (!source) return res.status(404).json({ message: 'Conversation not found' });
-    const messages = JSON.parse(source.messages || '[]').slice(0, Math.max(1, Number(req.body.messageCount) || 1)); const id = `branch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; const now = new Date().toISOString();
-    req.app.locals.db.database.prepare('INSERT INTO conversations (id, email, model, title, messages, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, email, req.body.model || source.model, `${source.title} (branch)`, JSON.stringify(messages), now, now);
-    return res.status(201).json({ id, email, model: req.body.model || source.model, title: `${source.title} (branch)`, messages, createdAt: now, updatedAt: now });
+    const messages = JSON.parse(source.messages || '[]').slice(0, Math.max(1, Number(req.body.messageCount) || 1));
+    const id = `branch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const now = new Date().toISOString();
+    const branch = {
+        id,
+        email,
+        model: req.body.model || source.model,
+        title: `${source.title} (branch)`,
+        messages,
+        createdAt: now,
+        updatedAt: now,
+    };
+    if (isPostgresConnection(connection)) {
+        await insertConversationRowAsync(connection, branch);
+    } else {
+        connection.database.prepare('INSERT INTO conversations (id, email, model, title, messages, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, email, branch.model, branch.title, JSON.stringify(messages), now, now);
+    }
+    return res.status(201).json({ id, email, model: branch.model, title: branch.title, messages, createdAt: now, updatedAt: now });
 };
 
 const webResearch = async (req, res) => {
@@ -1827,10 +2120,10 @@ const chunksFor = (content, size = 1200, overlap = 180) => {
     for (let start = 0; start < text.length; start += size - overlap) chunks.push(text.slice(start, start + size));
     return chunks.slice(0, 80);
 };
-const findKnowledge = (database, email, query, limit = 5) => {
+const scoreKnowledgeRows = (rows, query, limit = 5) => {
     const terms = tokenize(query).map(stemToken).filter(Boolean);
     if (!terms.length) return [];
-    return database.prepare("SELECT * FROM workspace_items WHERE email = ? AND type = 'document' ORDER BY updated_at DESC").all(email)
+    return rows
         .flatMap((row) => {
             const data = JSON.parse(row.data);
             return chunksFor(data.content).map((chunk, chunkIndex) => {
@@ -1844,23 +2137,47 @@ const findKnowledge = (database, email, query, limit = 5) => {
         }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, Math.min(Number(limit) || 5, 10));
 };
 
-const getSharedPromptTemplates = (req, res) => {
-    const rows = req.app.locals.db.database.prepare("SELECT * FROM workspace_items WHERE type = 'prompt' AND json_extract(data, '$.shared') = 'true' ORDER BY updated_at DESC").all();
+const findKnowledge = (database, email, query, limit = 5) => {
+    const rows = database.prepare("SELECT * FROM workspace_items WHERE email = ? AND type = 'document' ORDER BY updated_at DESC").all(email);
+    return scoreKnowledgeRows(rows, query, limit);
+};
+
+const findKnowledgeForUser = async (connection, email, query, limit = 5) => {
+    if (isPostgresConnection(connection)) {
+        const rows = await listDocumentWorkspaceItemsAsync(connection, email);
+        return scoreKnowledgeRows(rows, query, limit);
+    }
+    return findKnowledge(connection.database, email, query, limit);
+};
+
+const getSharedPromptTemplates = async (req, res) => {
+    const connection = req.app.locals.db;
+    const rows = isPostgresConnection(connection)
+        ? await listSharedPromptWorkspaceItemsAsync(connection)
+        : connection.database.prepare("SELECT * FROM workspace_items WHERE type = 'prompt' AND json_extract(data, '$.shared') = 'true' ORDER BY updated_at DESC").all();
     const items = rows.map(parseWorkspaceItem).map((item) => ({ ...item, rating: Number(item.rating || 0) }));
     return res.json(items);
 };
 
-const rateSharedPromptTemplate = (req, res) => {
+const rateSharedPromptTemplate = async (req, res) => {
     const id = String(req.params.id || '');
     if (!id) return res.status(400).json({ message: 'Template id is required' });
-    const row = req.app.locals.db.database.prepare('SELECT * FROM workspace_items WHERE id = ?').get(id);
+    const connection = req.app.locals.db;
+    const row = isPostgresConnection(connection)
+        ? await getWorkspaceItemByIdAsync(connection, id)
+        : connection.database.prepare('SELECT * FROM workspace_items WHERE id = ?').get(id);
     if (!row || row.type !== 'prompt') return res.status(404).json({ message: 'Template not found' });
     const data = JSON.parse(row.data);
     if (!data.shared) return res.status(403).json({ message: 'Only shared templates can be rated' });
     const delta = req.body.direction === 'down' ? -1 : req.body.direction === 'clear' ? -Number(data.rating || 0) : 1;
     const rating = Math.max(0, Number(data.rating || 0) + delta);
     const updated = { ...data, rating };
-    req.app.locals.db.database.prepare('UPDATE workspace_items SET data = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(updated), new Date().toISOString(), row.id);
+    const now = new Date().toISOString();
+    if (isPostgresConnection(connection)) {
+        await updateWorkspaceItemDataAsync(connection, row.id, JSON.stringify(updated), now);
+    } else {
+        connection.database.prepare('UPDATE workspace_items SET data = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(updated), now, row.id);
+    }
     return res.json({ id, rating });
 };
 
@@ -1878,18 +2195,22 @@ const chatSuggestions = (req, res) => {
     return res.json({ suggestions: suggestions.slice(0, 3) });
 };
 
-const searchKnowledge = (req, res) => {
+const searchKnowledge = async (req, res) => {
     const query = String(req.body.query || '').trim();
     if (!query) return res.status(400).json({ message: 'Search query is required' });
-    return res.json({ query, results: findKnowledge(req.app.locals.db.database, req.user.email, query, req.body.limit) });
+    const results = await findKnowledgeForUser(req.app.locals.db, req.user.email, query, req.body.limit);
+    return res.json({ query, results });
 };
 
-const listDeveloperKeys = (req, res) => {
-    const rows = req.app.locals.db.database.prepare('SELECT id, name, prefix, created_at AS createdAt, last_used_at AS lastUsedAt, expires_at AS expiresAt, request_limit AS requestLimit, used_count AS usedCount FROM developer_api_keys WHERE email = ? ORDER BY created_at DESC').all(req.user.email);
+const listDeveloperKeys = async (req, res) => {
+    const connection = req.app.locals.db;
+    const rows = isPostgresConnection(connection)
+        ? await listDeveloperApiKeysAsync(connection, req.user.email)
+        : connection.database.prepare('SELECT id, name, prefix, created_at AS createdAt, last_used_at AS lastUsedAt, expires_at AS expiresAt, request_limit AS requestLimit, used_count AS usedCount FROM developer_api_keys WHERE email = ? ORDER BY created_at DESC').all(req.user.email);
     return res.json(rows);
 };
 
-const createDeveloperKey = (req, res) => {
+const createDeveloperKey = async (req, res) => {
     const name = String(req.body.name || '').trim().slice(0, 80);
     if (!name) return res.status(400).json({ message: 'Key name is required' });
     const secret = `amai_${crypto.randomBytes(28).toString('base64url')}`;
@@ -1898,26 +2219,165 @@ const createDeveloperKey = (req, res) => {
     const createdAt = new Date().toISOString();
     const requestLimit = Math.min(Math.max(Number(req.body.requestLimit) || 1000, 10), 100000);
     const expiresAt = req.body.expiresAt ? new Date(req.body.expiresAt).toISOString() : null;
-    req.app.locals.db.database.prepare('INSERT INTO developer_api_keys (id, email, name, key_hash, prefix, created_at, expires_at, request_limit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, req.user.email, name, hashToken(secret), prefix, createdAt, expiresAt, requestLimit);
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        await insertDeveloperApiKeyAsync(connection, {
+            id,
+            email: req.user.email,
+            name,
+            keyHash: hashToken(secret),
+            prefix,
+            createdAt,
+            expiresAt,
+            requestLimit,
+        });
+    } else {
+        connection.database.prepare('INSERT INTO developer_api_keys (id, email, name, key_hash, prefix, created_at, expires_at, request_limit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, req.user.email, name, hashToken(secret), prefix, createdAt, expiresAt, requestLimit);
+    }
     return res.status(201).json({ id, name, prefix, createdAt, expiresAt, requestLimit, usedCount: 0, secret, warning: 'Copy this key now. It will not be shown again.' });
 };
 
-const revokeDeveloperKey = (req, res) => {
-    const result = req.app.locals.db.database.prepare('DELETE FROM developer_api_keys WHERE id = ? AND email = ?').run(req.params.id, req.user.email);
+const revokeDeveloperKey = async (req, res) => {
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        const changes = await deleteDeveloperApiKeyAsync(connection, req.params.id, req.user.email);
+        return changes ? res.json({ message: 'API key revoked' }) : res.status(404).json({ message: 'API key not found' });
+    }
+    const result = connection.database.prepare('DELETE FROM developer_api_keys WHERE id = ? AND email = ?').run(req.params.id, req.user.email);
     return result.changes ? res.json({ message: 'API key revoked' }) : res.status(404).json({ message: 'API key not found' });
 };
 
 const teamAccess = (database, teamId, email) => database.prepare(`SELECT teams.*, team_members.role FROM teams JOIN team_members ON team_members.team_id = teams.id WHERE teams.id = ? AND team_members.email = ?`).get(teamId, email);
 const teamPayload = (database, team) => ({ ...team, members: database.prepare('SELECT email, role, created_at AS createdAt FROM team_members WHERE team_id = ? ORDER BY created_at').all(team.id) });
-const getTeams = (req, res) => { const database=req.app.locals.db.database; const rows=database.prepare('SELECT teams.*, team_members.role FROM teams JOIN team_members ON team_members.team_id = teams.id WHERE team_members.email = ? ORDER BY teams.created_at DESC').all(req.user.email); return res.json(rows.map((row)=>teamPayload(database,row))); };
-const createTeam = (req, res) => { const name=String(req.body.name||'').trim().slice(0,80);if(!name)return res.status(400).json({message:'Team name is required'});const id=`team-${crypto.randomUUID()}`;const now=new Date().toISOString();const database=req.app.locals.db.database;database.transaction(()=>{database.prepare('INSERT INTO teams (id,name,owner_email,created_at) VALUES (?,?,?,?)').run(id,name,req.user.email,now);database.prepare('INSERT INTO team_members (team_id,email,role,created_at) VALUES (?,?,?,?)').run(id,req.user.email,'owner',now)})();return res.status(201).json(teamPayload(database,{id,name,owner_email:req.user.email,created_at:now,role:'owner'})); };
-const inviteTeamMember = (req,res) => {const database=req.app.locals.db.database;const access=teamAccess(database,req.params.id,req.user.email);if(!access||!['owner','editor'].includes(access.role))return res.status(403).json({message:'Only owners and editors can invite members'});const email=cleanEmail(req.body.email);const role=['editor','viewer'].includes(req.body.role)?req.body.role:'viewer';if(!email)return res.status(400).json({message:'Member email is required'});database.prepare('INSERT INTO team_members (team_id,email,role,created_at) VALUES (?,?,?,?) ON CONFLICT(team_id,email) DO UPDATE SET role=excluded.role').run(req.params.id,email,role,new Date().toISOString());return res.status(201).json(teamPayload(database,access));};
-const updateTeamMember = (req,res) => {const database=req.app.locals.db.database;const access=teamAccess(database,req.params.id,req.user.email);if(!access||access.role!=='owner')return res.status(403).json({message:'Only the owner can change roles'});const email=cleanEmail(req.params.email);if(email===access.owner_email)return res.status(400).json({message:'The owner role cannot be changed'});const role=['editor','viewer'].includes(req.body.role)?req.body.role:null;if(!role)return res.status(400).json({message:'Role must be editor or viewer'});const result=database.prepare('UPDATE team_members SET role=? WHERE team_id=? AND email=?').run(role,req.params.id,email);return result.changes?res.json(teamPayload(database,access)):res.status(404).json({message:'Member not found'});};
-const removeTeamMember = (req,res) => {const database=req.app.locals.db.database;const access=teamAccess(database,req.params.id,req.user.email);if(!access||access.role!=='owner')return res.status(403).json({message:'Only the owner can remove members'});const email=cleanEmail(req.params.email);if(email===access.owner_email)return res.status(400).json({message:'The owner cannot be removed'});const result=database.prepare('DELETE FROM team_members WHERE team_id=? AND email=?').run(req.params.id,email);return result.changes?res.json({message:'Member removed'}):res.status(404).json({message:'Member not found'});};
-const shareConversation = (req,res) => {const database=req.app.locals.db.database;const conversation=database.prepare('SELECT id FROM conversations WHERE id=? AND email=?').get(req.params.id,req.user.email);if(!conversation)return res.status(404).json({message:'Conversation not found'});let share=database.prepare('SELECT token FROM shared_conversations WHERE conversation_id=? AND owner_email=?').get(conversation.id,req.user.email);if(!share){share={token:crypto.randomBytes(24).toString('base64url')};database.prepare('INSERT INTO shared_conversations (token,conversation_id,owner_email,created_at) VALUES (?,?,?,?)').run(share.token,conversation.id,req.user.email,new Date().toISOString());}return res.json({token:share.token,url:`${frontendOrigin(req)}/shared/${share.token}`});};
-const getSharedConversation = (req,res) => {const row=req.app.locals.db.database.prepare('SELECT conversations.title,conversations.model,conversations.messages,shared_conversations.created_at AS sharedAt FROM shared_conversations JOIN conversations ON conversations.id=shared_conversations.conversation_id WHERE shared_conversations.token=?').get(req.params.token);if(!row)return res.status(404).json({message:'Shared conversation not found'});return res.json({...row,messages:normalizeMessages(JSON.parse(row.messages))});};
+const teamPayloadAsync = async (connection, team) => ({
+    ...team,
+    members: await listTeamMembersAsync(connection, team.id),
+});
 
-const recordArenaVote = (req, res) => {
+const getTeams = async (req, res) => {
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        const rows = await listTeamsForUserAsync(connection, req.user.email);
+        return res.json(await Promise.all(rows.map((row) => teamPayloadAsync(connection, row))));
+    }
+    const database = connection.database;
+    const rows = database.prepare('SELECT teams.*, team_members.role FROM teams JOIN team_members ON team_members.team_id = teams.id WHERE team_members.email = ? ORDER BY teams.created_at DESC').all(req.user.email);
+    return res.json(rows.map((row) => teamPayload(database, row)));
+};
+
+const createTeam = async (req, res) => {
+    const name = String(req.body.name || '').trim().slice(0, 80);
+    if (!name) return res.status(400).json({ message: 'Team name is required' });
+    const id = `team-${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        await createTeamAsync(connection, { id, name, ownerEmail: req.user.email, now });
+        return res.status(201).json(await teamPayloadAsync(connection, { id, name, owner_email: req.user.email, created_at: now, role: 'owner' }));
+    }
+    const database = connection.database;
+    database.transaction(() => {
+        database.prepare('INSERT INTO teams (id,name,owner_email,created_at) VALUES (?,?,?,?)').run(id, name, req.user.email, now);
+        database.prepare('INSERT INTO team_members (team_id,email,role,created_at) VALUES (?,?,?,?)').run(id, req.user.email, 'owner', now);
+    })();
+    return res.status(201).json(teamPayload(database, { id, name, owner_email: req.user.email, created_at: now, role: 'owner' }));
+};
+
+const inviteTeamMember = async (req, res) => {
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        const access = await getTeamAccessAsync(connection, req.params.id, req.user.email);
+        if (!access || !['owner', 'editor'].includes(access.role)) return res.status(403).json({ message: 'Only owners and editors can invite members' });
+        const email = cleanEmail(req.body.email);
+        const role = ['editor', 'viewer'].includes(req.body.role) ? req.body.role : 'viewer';
+        if (!email) return res.status(400).json({ message: 'Member email is required' });
+        await upsertTeamMemberAsync(connection, req.params.id, email, role, new Date().toISOString());
+        return res.status(201).json(await teamPayloadAsync(connection, access));
+    }
+    const database = connection.database;
+    const access = teamAccess(database, req.params.id, req.user.email);
+    if (!access || !['owner', 'editor'].includes(access.role)) return res.status(403).json({ message: 'Only owners and editors can invite members' });
+    const email = cleanEmail(req.body.email);
+    const role = ['editor', 'viewer'].includes(req.body.role) ? req.body.role : 'viewer';
+    if (!email) return res.status(400).json({ message: 'Member email is required' });
+    database.prepare('INSERT INTO team_members (team_id,email,role,created_at) VALUES (?,?,?,?) ON CONFLICT(team_id,email) DO UPDATE SET role=excluded.role').run(req.params.id, email, role, new Date().toISOString());
+    return res.status(201).json(teamPayload(database, access));
+};
+
+const updateTeamMember = async (req, res) => {
+    const connection = req.app.locals.db;
+    const email = cleanEmail(req.params.email);
+    const role = ['editor', 'viewer'].includes(req.body.role) ? req.body.role : null;
+    if (!role) return res.status(400).json({ message: 'Role must be editor or viewer' });
+    if (isPostgresConnection(connection)) {
+        const access = await getTeamAccessAsync(connection, req.params.id, req.user.email);
+        if (!access || access.role !== 'owner') return res.status(403).json({ message: 'Only the owner can change roles' });
+        if (email === access.owner_email) return res.status(400).json({ message: 'The owner role cannot be changed' });
+        const changes = await updateTeamMemberRoleAsync(connection, req.params.id, email, role);
+        return changes ? res.json(await teamPayloadAsync(connection, access)) : res.status(404).json({ message: 'Member not found' });
+    }
+    const database = connection.database;
+    const access = teamAccess(database, req.params.id, req.user.email);
+    if (!access || access.role !== 'owner') return res.status(403).json({ message: 'Only the owner can change roles' });
+    if (email === access.owner_email) return res.status(400).json({ message: 'The owner role cannot be changed' });
+    const result = database.prepare('UPDATE team_members SET role=? WHERE team_id=? AND email=?').run(role, req.params.id, email);
+    return result.changes ? res.json(teamPayload(database, access)) : res.status(404).json({ message: 'Member not found' });
+};
+
+const removeTeamMember = async (req, res) => {
+    const connection = req.app.locals.db;
+    const email = cleanEmail(req.params.email);
+    if (isPostgresConnection(connection)) {
+        const access = await getTeamAccessAsync(connection, req.params.id, req.user.email);
+        if (!access || access.role !== 'owner') return res.status(403).json({ message: 'Only the owner can remove members' });
+        if (email === access.owner_email) return res.status(400).json({ message: 'The owner cannot be removed' });
+        const changes = await removeTeamMemberAsync(connection, req.params.id, email);
+        return changes ? res.json({ message: 'Member removed' }) : res.status(404).json({ message: 'Member not found' });
+    }
+    const database = connection.database;
+    const access = teamAccess(database, req.params.id, req.user.email);
+    if (!access || access.role !== 'owner') return res.status(403).json({ message: 'Only the owner can remove members' });
+    if (email === access.owner_email) return res.status(400).json({ message: 'The owner cannot be removed' });
+    const result = database.prepare('DELETE FROM team_members WHERE team_id=? AND email=?').run(req.params.id, email);
+    return result.changes ? res.json({ message: 'Member removed' }) : res.status(404).json({ message: 'Member not found' });
+};
+
+const shareConversation = async (req, res) => {
+    const connection = req.app.locals.db;
+    const conversation = isPostgresConnection(connection)
+        ? await getConversationIdForOwnerAsync(connection, req.params.id, req.user.email)
+        : connection.database.prepare('SELECT id FROM conversations WHERE id=? AND email=?').get(req.params.id, req.user.email);
+    if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
+    const conversationId = conversation.id || conversation;
+    if (isPostgresConnection(connection)) {
+        const token = await getOrCreateShareTokenAsync(
+            connection,
+            conversationId,
+            req.user.email,
+            crypto.randomBytes(24).toString('base64url'),
+            new Date().toISOString(),
+        );
+        return res.json({ token, url: `${frontendOrigin(req)}/shared/${token}` });
+    }
+    const database = connection.database;
+    let share = database.prepare('SELECT token FROM shared_conversations WHERE conversation_id=? AND owner_email=?').get(conversationId, req.user.email);
+    if (!share) {
+        share = { token: crypto.randomBytes(24).toString('base64url') };
+        database.prepare('INSERT INTO shared_conversations (token,conversation_id,owner_email,created_at) VALUES (?,?,?,?)').run(share.token, conversationId, req.user.email, new Date().toISOString());
+    }
+    return res.json({ token: share.token, url: `${frontendOrigin(req)}/shared/${share.token}` });
+};
+
+const getSharedConversation = async (req, res) => {
+    const connection = req.app.locals.db;
+    const row = isPostgresConnection(connection)
+        ? await getSharedConversationByTokenAsync(connection, req.params.token)
+        : connection.database.prepare('SELECT conversations.title,conversations.model,conversations.messages,shared_conversations.created_at AS sharedAt FROM shared_conversations JOIN conversations ON conversations.id=shared_conversations.conversation_id WHERE shared_conversations.token=?').get(req.params.token);
+    if (!row) return res.status(404).json({ message: 'Shared conversation not found' });
+    return res.json({ ...row, messages: normalizeMessages(JSON.parse(row.messages)) });
+};
+
+const recordArenaVote = async (req, res) => {
     const userEmail = req.user.email;
     const { model_a, model_b, winner } = req.body;
     if (!model_a || !model_b || !winner) {
@@ -1929,9 +2389,14 @@ const recordArenaVote = (req, res) => {
     }
     const now = new Date().toISOString();
     try {
-        req.app.locals.db.database.prepare(
-            'INSERT INTO arena_votes (user_email, model_a, model_b, winner, created_at) VALUES (?, ?, ?, ?, ?)'
-        ).run(userEmail, model_a, model_b, winner, now);
+        const connection = req.app.locals.db;
+        if (isPostgresConnection(connection)) {
+            await insertArenaVoteAsync(connection, { userEmail, modelA: model_a, modelB: model_b, winner, createdAt: now });
+        } else {
+            connection.database.prepare(
+                'INSERT INTO arena_votes (user_email, model_a, model_b, winner, created_at) VALUES (?, ?, ?, ?, ?)',
+            ).run(userEmail, model_a, model_b, winner, now);
+        }
         return res.status(201).json({ message: 'Vote recorded successfully' });
     } catch (error) {
         console.error('[ARENA VOTE ERROR]', error.message);
@@ -1939,11 +2404,12 @@ const recordArenaVote = (req, res) => {
     }
 };
 
-const getArenaLeaderboard = (req, res) => {
+const getArenaLeaderboard = async (req, res) => {
     try {
-        const votes = req.app.locals.db.database.prepare(
-            'SELECT model_a, model_b, winner FROM arena_votes'
-        ).all();
+        const connection = req.app.locals.db;
+        const votes = isPostgresConnection(connection)
+            ? await listArenaVotesAsync(connection)
+            : connection.database.prepare('SELECT model_a, model_b, winner FROM arena_votes').all();
 
         const candidateModels = ['gpt', 'claude', 'gemini', 'cloudflare', 'deepseek', 'llama', 'grok', 'copilot', 'perplexity', 'kimi', 'mistral', 'qwen', 'cohere'];
         const stats = {};

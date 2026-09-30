@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const { isPostgresConnection } = require('../db/postgresHttpReads');
+const { getStorageOverviewCountsAsync, pgQuery } = require('../db/postgresHttpStorageIdeas');
 
 const IDEAS = new Set([
     'chat-history',
@@ -169,20 +171,24 @@ const listByIdea = (database, email, idea) => {
     }
 };
 
-const getStorageOverview = (req, res) => {
+const getStorageOverview = async (req, res) => {
     const email = req.user.email;
-    const database = req.app.locals.db.database;
-
-    const counts = {
-        chatHistory: database.prepare('SELECT COUNT(*) AS c FROM conversations WHERE email = ?').get(email).c,
-        favoritePrompts: database.prepare('SELECT COUNT(*) AS c FROM storage_favorite_prompts WHERE email = ?').get(email).c,
-        chatSettings: database.prepare('SELECT COUNT(*) AS c FROM storage_chat_settings WHERE email = ?').get(email).c,
-        builderProjects: database.prepare('SELECT COUNT(*) AS c FROM storage_builder_projects WHERE email = ?').get(email).c,
-        usageDays: database.prepare('SELECT COUNT(DISTINCT substr(created_at, 1, 10)) AS c FROM usage_events WHERE email = ?').get(email).c,
-        modelBookmarks: database.prepare('SELECT COUNT(*) AS c FROM storage_model_bookmarks WHERE email = ?').get(email).c,
-        attachments: database.prepare('SELECT COUNT(*) AS c FROM storage_message_attachments WHERE email = ?').get(email).c,
-        trainingRuns: database.prepare('SELECT COUNT(*) AS c FROM storage_training_runs WHERE email = ?').get(email).c,
-    };
+    const connection = req.app.locals.db;
+    const counts = isPostgresConnection(connection)
+        ? await getStorageOverviewCountsAsync(connection, email)
+        : (() => {
+            const database = connection.database;
+            return {
+                chatHistory: database.prepare('SELECT COUNT(*) AS c FROM conversations WHERE email = ?').get(email).c,
+                favoritePrompts: database.prepare('SELECT COUNT(*) AS c FROM storage_favorite_prompts WHERE email = ?').get(email).c,
+                chatSettings: database.prepare('SELECT COUNT(*) AS c FROM storage_chat_settings WHERE email = ?').get(email).c,
+                builderProjects: database.prepare('SELECT COUNT(*) AS c FROM storage_builder_projects WHERE email = ?').get(email).c,
+                usageDays: database.prepare('SELECT COUNT(DISTINCT substr(created_at, 1, 10)) AS c FROM usage_events WHERE email = ?').get(email).c,
+                modelBookmarks: database.prepare('SELECT COUNT(*) AS c FROM storage_model_bookmarks WHERE email = ?').get(email).c,
+                attachments: database.prepare('SELECT COUNT(*) AS c FROM storage_message_attachments WHERE email = ?').get(email).c,
+                trainingRuns: database.prepare('SELECT COUNT(*) AS c FROM storage_training_runs WHERE email = ?').get(email).c,
+            };
+        })();
 
     return res.json({
         ideas: Object.entries(ideaMeta).map(([id, meta]) => ({
@@ -202,19 +208,79 @@ const getStorageOverview = (req, res) => {
     });
 };
 
-const listStorageIdea = (req, res) => {
+const listStorageIdea = async (req, res) => {
     const idea = String(req.params.idea || '');
     if (!IDEAS.has(idea)) {
         return res.status(400).json({ message: 'Unknown storage idea.' });
     }
-    const items = listByIdea(req.app.locals.db.database, req.user.email, idea);
+    const connection = req.app.locals.db;
+    if (isPostgresConnection(connection)) {
+        const email = req.user.email;
+        if (idea === 'chat-history') {
+            const result = await pgQuery(connection, `SELECT id, model, title, created_at AS "createdAt", updated_at AS "updatedAt", length(messages) AS "messageBytes" FROM conversations WHERE email = $1 ORDER BY updated_at DESC LIMIT 100`, [email]);
+            return res.json(result.rows);
+        }
+        if (idea === 'favorite-prompts') {
+            const result = await pgQuery(connection, 'SELECT id, title, content, created_at AS "createdAt" FROM storage_favorite_prompts WHERE email = $1 ORDER BY created_at DESC', [email]);
+            return res.json(result.rows);
+        }
+        if (idea === 'chat-settings') {
+            const result = await pgQuery(connection, 'SELECT settings, updated_at AS "updatedAt" FROM storage_chat_settings WHERE email = $1', [email]);
+            const row = result.rows[0];
+            if (!row) {
+                return res.json({
+                    defaultModel: 'smart',
+                    temperature: 0.7,
+                    webSearch: false,
+                    routerMode: 'balanced',
+                    responseLanguage: 'auto',
+                    updatedAt: null,
+                });
+            }
+            return res.json({ ...parseJson(row.settings, {}), updatedAt: row.updatedAt });
+        }
+        if (idea === 'builder-projects') {
+            const result = await pgQuery(connection, 'SELECT id, kind, name, payload, created_at AS "createdAt", updated_at AS "updatedAt" FROM storage_builder_projects WHERE email = $1 ORDER BY updated_at DESC', [email]);
+            return res.json(result.rows.map((row) => ({
+                id: row.id,
+                kind: row.kind,
+                name: row.name,
+                ...parseJson(row.payload, {}),
+                createdAt: row.createdAt,
+                updatedAt: row.updatedAt,
+            })));
+        }
+        if (idea === 'usage-daily') {
+            const result = await pgQuery(connection, `SELECT substr(created_at, 1, 10) AS day, COUNT(*)::int AS requests, SUM(input_tokens + output_tokens)::int AS tokens FROM usage_events WHERE email = $1 GROUP BY day ORDER BY day DESC LIMIT 30`, [email]);
+            return res.json(result.rows);
+        }
+        if (idea === 'model-bookmarks') {
+            const result = await pgQuery(connection, 'SELECT model_id AS "modelId", label, created_at AS "createdAt" FROM storage_model_bookmarks WHERE email = $1 ORDER BY created_at DESC', [email]);
+            return res.json(result.rows);
+        }
+        if (idea === 'attachments') {
+            const result = await pgQuery(connection, `SELECT id, conversation_id AS "conversationId", message_index AS "messageIndex", file_name AS "fileName", mime_type AS "mimeType", substr(content, 1, 120) AS preview, created_at AS "createdAt" FROM storage_message_attachments WHERE email = $1 ORDER BY created_at DESC`, [email]);
+            return res.json(result.rows);
+        }
+        if (idea === 'training-runs') {
+            const result = await pgQuery(connection, 'SELECT id, config, metrics, created_at AS "createdAt" FROM storage_training_runs WHERE email = $1 ORDER BY created_at DESC LIMIT 50', [email]);
+            return res.json(result.rows.map((row) => ({
+                id: row.id,
+                config: parseJson(row.config, {}),
+                metrics: parseJson(row.metrics, {}),
+                createdAt: row.createdAt,
+            })));
+        }
+    }
+    const items = listByIdea(connection.database, req.user.email, idea);
     return res.json(items);
 };
 
-const createStorageIdea = (req, res) => {
+const createStorageIdea = async (req, res) => {
     const idea = String(req.params.idea || '');
     const email = req.user.email;
-    const database = req.app.locals.db.database;
+    const connection = req.app.locals.db;
+    const database = connection.database;
     const now = new Date().toISOString();
 
     if (idea === 'chat-history' || idea === 'usage-daily') {
@@ -226,7 +292,11 @@ const createStorageIdea = (req, res) => {
         const content = String(req.body.content || '').trim();
         if (!content) return res.status(400).json({ message: 'Prompt content is required.' });
         const id = newId('prompt');
-        database.prepare('INSERT INTO storage_favorite_prompts (id, email, title, content, created_at) VALUES (?, ?, ?, ?, ?)').run(id, email, title, content, now);
+        if (isPostgresConnection(connection)) {
+            await pgQuery(connection, 'INSERT INTO storage_favorite_prompts (id, email, title, content, created_at) VALUES ($1, $2, $3, $4, $5)', [id, email, title, content, now]);
+        } else {
+            database.prepare('INSERT INTO storage_favorite_prompts (id, email, title, content, created_at) VALUES (?, ?, ?, ?, ?)').run(id, email, title, content, now);
+        }
         return res.status(201).json({ id, title, content, createdAt: now });
     }
 
@@ -238,10 +308,15 @@ const createStorageIdea = (req, res) => {
             routerMode: String(req.body.routerMode || 'balanced').slice(0, 32),
             responseLanguage: String(req.body.responseLanguage || 'auto').slice(0, 16),
         };
-        database.prepare(
-            `INSERT INTO storage_chat_settings (email, settings, updated_at) VALUES (?, ?, ?)
-             ON CONFLICT(email) DO UPDATE SET settings = excluded.settings, updated_at = excluded.updated_at`
-        ).run(email, JSON.stringify(settings), now);
+        if (isPostgresConnection(connection)) {
+            await pgQuery(connection, `INSERT INTO storage_chat_settings (email, settings, updated_at) VALUES ($1, $2, $3)
+                 ON CONFLICT (email) DO UPDATE SET settings = EXCLUDED.settings, updated_at = EXCLUDED.updated_at`, [email, JSON.stringify(settings), now]);
+        } else {
+            database.prepare(
+                `INSERT INTO storage_chat_settings (email, settings, updated_at) VALUES (?, ?, ?)
+                 ON CONFLICT(email) DO UPDATE SET settings = excluded.settings, updated_at = excluded.updated_at`,
+            ).run(email, JSON.stringify(settings), now);
+        }
         return res.status(201).json({ ...settings, updatedAt: now });
     }
 
@@ -252,9 +327,13 @@ const createStorageIdea = (req, res) => {
         delete payload.kind;
         delete payload.name;
         const id = newId('build');
-        database.prepare(
-            'INSERT INTO storage_builder_projects (id, email, kind, name, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        ).run(id, email, kind, name, JSON.stringify(payload), now, now);
+        if (isPostgresConnection(connection)) {
+            await pgQuery(connection, 'INSERT INTO storage_builder_projects (id, email, kind, name, payload, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)', [id, email, kind, name, JSON.stringify(payload), now, now]);
+        } else {
+            database.prepare(
+                'INSERT INTO storage_builder_projects (id, email, kind, name, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            ).run(id, email, kind, name, JSON.stringify(payload), now, now);
+        }
         return res.status(201).json({ id, kind, name, ...payload, createdAt: now, updatedAt: now });
     }
 
@@ -262,10 +341,15 @@ const createStorageIdea = (req, res) => {
         const modelId = String(req.body.modelId || '').trim().slice(0, 64);
         if (!modelId) return res.status(400).json({ message: 'modelId is required.' });
         const label = String(req.body.label || modelId).trim().slice(0, 120);
-        database.prepare(
-            `INSERT INTO storage_model_bookmarks (email, model_id, label, created_at) VALUES (?, ?, ?, ?)
-             ON CONFLICT(email, model_id) DO UPDATE SET label = excluded.label`
-        ).run(email, modelId, label, now);
+        if (isPostgresConnection(connection)) {
+            await pgQuery(connection, `INSERT INTO storage_model_bookmarks (email, model_id, label, created_at) VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (email, model_id) DO UPDATE SET label = EXCLUDED.label`, [email, modelId, label, now]);
+        } else {
+            database.prepare(
+                `INSERT INTO storage_model_bookmarks (email, model_id, label, created_at) VALUES (?, ?, ?, ?)
+                 ON CONFLICT(email, model_id) DO UPDATE SET label = excluded.label`,
+            ).run(email, modelId, label, now);
+        }
         return res.status(201).json({ modelId, label, createdAt: now });
     }
 
@@ -277,11 +361,17 @@ const createStorageIdea = (req, res) => {
         const conversationId = req.body.conversationId ? String(req.body.conversationId).slice(0, 64) : null;
         const messageIndex = Number.isFinite(Number(req.body.messageIndex)) ? Number(req.body.messageIndex) : null;
         const mimeType = req.body.mimeType ? String(req.body.mimeType).slice(0, 120) : 'text/plain';
-        database.prepare(
-            `INSERT INTO storage_message_attachments
-             (id, email, conversation_id, message_index, file_name, mime_type, content, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-        ).run(id, email, conversationId, messageIndex, fileName, mimeType, content, now);
+        if (isPostgresConnection(connection)) {
+            await pgQuery(connection, `INSERT INTO storage_message_attachments
+                 (id, email, conversation_id, message_index, file_name, mime_type, content, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [id, email, conversationId, messageIndex, fileName, mimeType, content, now]);
+        } else {
+            database.prepare(
+                `INSERT INTO storage_message_attachments
+                 (id, email, conversation_id, message_index, file_name, mime_type, content, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            ).run(id, email, conversationId, messageIndex, fileName, mimeType, content, now);
+        }
         return res.status(201).json({
             id,
             conversationId,
@@ -297,22 +387,31 @@ const createStorageIdea = (req, res) => {
         const config = req.body.config && typeof req.body.config === 'object' ? req.body.config : {};
         const metrics = req.body.metrics && typeof req.body.metrics === 'object' ? req.body.metrics : {};
         const id = newId('train');
-        database.prepare(
-            'INSERT INTO storage_training_runs (id, email, config, metrics, created_at) VALUES (?, ?, ?, ?, ?)'
-        ).run(id, email, JSON.stringify(config), JSON.stringify(metrics), now);
+        if (isPostgresConnection(connection)) {
+            await pgQuery(connection, 'INSERT INTO storage_training_runs (id, email, config, metrics, created_at) VALUES ($1, $2, $3, $4, $5)', [id, email, JSON.stringify(config), JSON.stringify(metrics), now]);
+        } else {
+            database.prepare(
+                'INSERT INTO storage_training_runs (id, email, config, metrics, created_at) VALUES (?, ?, ?, ?, ?)',
+            ).run(id, email, JSON.stringify(config), JSON.stringify(metrics), now);
+        }
         return res.status(201).json({ id, config, metrics, createdAt: now });
     }
 
     return res.status(400).json({ message: 'Unknown storage idea.' });
 };
 
-const deleteStorageIdea = (req, res) => {
+const deleteStorageIdea = async (req, res) => {
     const idea = String(req.params.idea || '');
     const id = String(req.params.id || '');
     const email = req.user.email;
-    const database = req.app.locals.db.database;
+    const connection = req.app.locals.db;
+    const database = connection.database;
 
     if (idea === 'chat-history') {
+        if (isPostgresConnection(connection)) {
+            const result = await pgQuery(connection, 'DELETE FROM conversations WHERE id = $1 AND email = $2', [id, email]);
+            return result.rowCount ? res.json({ message: 'Deleted' }) : res.status(404).json({ message: 'Not found' });
+        }
         const result = database.prepare('DELETE FROM conversations WHERE id = ? AND email = ?').run(id, email);
         return result.changes ? res.json({ message: 'Deleted' }) : res.status(404).json({ message: 'Not found' });
     }
@@ -326,6 +425,10 @@ const deleteStorageIdea = (req, res) => {
 
     if (idea === 'model-bookmarks') {
         const modelId = id;
+        if (isPostgresConnection(connection)) {
+            const result = await pgQuery(connection, 'DELETE FROM storage_model_bookmarks WHERE email = $1 AND model_id = $2', [email, modelId]);
+            return result.rowCount ? res.json({ message: 'Deleted' }) : res.status(404).json({ message: 'Not found' });
+        }
         const result = database.prepare('DELETE FROM storage_model_bookmarks WHERE email = ? AND model_id = ?').run(email, modelId);
         return result.changes ? res.json({ message: 'Deleted' }) : res.status(404).json({ message: 'Not found' });
     }
@@ -337,16 +440,25 @@ const deleteStorageIdea = (req, res) => {
     const table = tables[idea];
     if (!table) return res.status(400).json({ message: 'Unknown storage idea.' });
 
+    if (isPostgresConnection(connection)) {
+        const result = await pgQuery(connection, `DELETE FROM ${table} WHERE id = $1 AND email = $2`, [id, email]);
+        return result.rowCount ? res.json({ message: 'Deleted' }) : res.status(404).json({ message: 'Not found' });
+    }
     const result = database.prepare(`DELETE FROM ${table} WHERE id = ? AND email = ?`).run(id, email);
     return result.changes ? res.json({ message: 'Deleted' }) : res.status(404).json({ message: 'Not found' });
 };
 
-const recordTrainingRun = (database, email, config, metrics) => {
+const recordTrainingRun = async (connection, email, config, metrics) => {
     const now = new Date().toISOString();
     const id = newId('train');
-    database.prepare(
-        'INSERT INTO storage_training_runs (id, email, config, metrics, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(id, email, JSON.stringify(config || {}), JSON.stringify(metrics || {}), now);
+    const payload = [id, email, JSON.stringify(config || {}), JSON.stringify(metrics || {}), now];
+    if (isPostgresConnection(connection)) {
+        await pgQuery(connection, 'INSERT INTO storage_training_runs (id, email, config, metrics, created_at) VALUES ($1, $2, $3, $4, $5)', payload);
+    } else {
+        connection.database.prepare(
+            'INSERT INTO storage_training_runs (id, email, config, metrics, created_at) VALUES (?, ?, ?, ?, ?)',
+        ).run(...payload);
+    }
     return id;
 };
 

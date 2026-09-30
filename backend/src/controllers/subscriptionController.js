@@ -9,6 +9,8 @@ const {
     repairLegacyPlanRow,
     resolveStoredPlanKey,
 } = require('../billing/subscriptionLifecycle');
+const { getCreditStatusCoreAsync } = require('../billing/creditStatusAsync');
+const { authLog } = require('../authHelpers');
 
 function readUsageCount(database, normalizedEmail) {
     const row = database.database.prepare('SELECT used FROM usage WHERE email = ?').get(normalizedEmail);
@@ -69,10 +71,13 @@ const getCreditStatusCore = (database, email) => {
     };
 };
 
-const getSubscriptionSummary = (req, res) => {
+const getSubscriptionSummary = async (req, res) => {
+    authLog('SUBSCRIPTION_ROUTE_START');
+    const startedAt = Date.now();
     try {
-        const status = getCreditStatusCore(req.app.locals.db, req.user.email);
+        const status = await getCreditStatusCoreAsync(req.app.locals.db, req.user.email);
         const checkoutFlags = buildCheckoutInfo();
+        authLog('SUBSCRIPTION_ROUTE_SUCCESS', { durationMs: Date.now() - startedAt });
         return res.json({
             ...checkoutFlags,
             ...status,
@@ -81,9 +86,10 @@ const getSubscriptionSummary = (req, res) => {
             manageTestSubscription: wayforpayTestModeEnabled() && status.hasSubscription && status.paymentProvider === 'wayforpay',
         });
     } catch (error) {
-        if (process.env.NODE_ENV !== 'test') {
-            console.log('[SUBSCRIPTION] STATUS_FAILED', { reason: 'SUBSCRIPTION_READ_ERROR' });
-        }
+        authLog('SUBSCRIPTION_ROUTE_FAILED', {
+            durationMs: Date.now() - startedAt,
+            code: error.code || 'unknown',
+        });
         return res.status(500).json({
             code: 'SUBSCRIPTION_UNAVAILABLE',
             message: 'Could not load subscription status. Please try again.',
@@ -91,15 +97,21 @@ const getSubscriptionSummary = (req, res) => {
     }
 };
 
-const cancelTestSubscriptionHandler = (req, res) => {
+const { cancelTestSubscriptionAsync } = require('../billing/subscriptionsAsync');
+const { isPostgresConnection } = require('../db/postgresHttpReads');
+
+const cancelTestSubscriptionHandler = async (req, res) => {
     if (!wayforpayTestModeEnabled()) {
         return res.status(403).json({ message: 'Test subscription cancel is only available in WAYFORPAY_TEST_MODE.' });
     }
-    const result = cancelTestSubscription(req.app.locals.db, req.user.email);
+    const connection = req.app.locals.db;
+    const result = isPostgresConnection(connection)
+        ? await cancelTestSubscriptionAsync(connection, req.user.email)
+        : cancelTestSubscription(connection, req.user.email);
     if (!result.ok) {
         return res.status(result.status).json({ message: result.message });
     }
-    const status = getCreditStatusCore(req.app.locals.db, req.user.email);
+    const status = await getCreditStatusCoreAsync(req.app.locals.db, req.user.email);
     return res.json({
         ...status,
         message: 'Test subscription ended. Your account is on the Free plan.',
@@ -108,6 +120,7 @@ const cancelTestSubscriptionHandler = (req, res) => {
 
 module.exports = {
     getCreditStatusCore,
+    getCreditStatusCoreAsync,
     getSubscriptionSummary,
     cancelTestSubscriptionHandler,
 };
