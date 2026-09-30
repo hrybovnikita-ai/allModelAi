@@ -1,6 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { apiFetch } from '../../lib/api';
-import { clearAllSessionData } from '../../lib/session';
+import { performLogout } from '../../lib/session';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import {
   DASHBOARD_NAV_DESKTOP_MAIN,
@@ -13,10 +12,8 @@ export default function DashboardWorkspaceNav({ user, onAuthError, onDeleteAccou
 
   const signOut = async () => {
     try {
-      const response = await apiFetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-      if (!response.ok) throw new Error('Could not sign out. Try again.');
-      clearAllSessionData();
-      navigate('/login', { replace: true });
+      await performLogout();
+      navigate('/', { replace: true });
     } catch (error) {
       onAuthError?.(error.message);
     }

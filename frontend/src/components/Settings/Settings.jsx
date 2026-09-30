@@ -1,7 +1,6 @@
 import SocialConnections from './SocialConnections';
 import { useState } from 'react';
-import { clearAllSessionData } from '../../lib/session';
-import { apiFetch } from '../../lib/api';
+import { performLogout } from '../../lib/session';
 import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
 import { LANGUAGES } from '../../lib/languages';
 import { useLanguage } from '../../lib/useLanguage';
@@ -48,10 +47,8 @@ export default function Settings() {
   };
   const logout = async () => {
     try {
-      const response = await apiFetch('/api/auth/logout', { method: 'POST' });
-      if (!response.ok) throw new Error('Could not sign out. Please retry.');
-      clearAllSessionData();
-      navigate('/login', { replace: true });
+      await performLogout();
+      navigate('/', { replace: true });
     } catch (error) {
       setNotice(error.message);
     }

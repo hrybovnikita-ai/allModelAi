@@ -192,7 +192,7 @@ export default function StorageHub() {
     }
   };
 
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/" replace />;
 
   return (
     <main className="storage-hub-page" lang="en">

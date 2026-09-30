@@ -2,9 +2,12 @@ import { resolveAuthApiUrl } from './authApi.js';
 import { isCapacitorNative, nativeClientHeaders, usesRemoteApiOrigin } from './apiBase.js';
 import { readJsonBody } from './httpJson.js';
 
+const SESSION_CLEARED_EVENT = 'allmodelai:session-cleared';
+
 let verifiedSession = null;
 let pendingSession = null;
 let sessionGeneration = 0;
+let logoutInProgress = false;
 /** Client-side hint only; server HttpOnly cookie is the source of truth. */
 const cacheDuration = 30 * 60 * 1000;
 export {
@@ -158,10 +161,64 @@ export async function confirmSession(user) {
 /**
  * Clears session data from both localStorage and sessionStorage.
  */
+export function isLogoutInProgress() {
+  return logoutInProgress;
+}
+
+export function subscribeSessionCleared(onCleared) {
+  if (typeof globalThis.addEventListener !== 'function') {
+    return () => {};
+  }
+  const handler = () => onCleared();
+  globalThis.addEventListener(SESSION_CLEARED_EVENT, handler);
+  return () => globalThis.removeEventListener(SESSION_CLEARED_EVENT, handler);
+}
+
+function dispatchSessionCleared() {
+  if (typeof globalThis.dispatchEvent === 'function') {
+    globalThis.dispatchEvent(new Event(SESSION_CLEARED_EVENT));
+  }
+}
+
 export function clearAllSessionData() {
-  sessionGeneration++;
+  sessionGeneration += 1;
   verifiedSession = null;
+  pendingSession = null;
   const storage = getStorage();
   storage.removeItem('allmodelai_user');
   clearNativeSessionToken();
+  dispatchSessionCleared();
+}
+
+/**
+ * Invalidates the HttpOnly session on the server, then clears client session hints.
+ * Treats missing/expired sessions as a successful sign-out.
+ */
+export async function performLogout() {
+  if (logoutInProgress) {
+    return { ok: true, skipped: true };
+  }
+  logoutInProgress = true;
+  try {
+    const response = await fetch(resolveAuthApiUrl('logout'), {
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        ...nativeClientHeaders(),
+        ...nativeSessionHeaders(),
+      },
+    });
+    if (!response.ok && response.status !== 401 && response.status !== 404) {
+      throw new Error('Could not sign out. Try again.');
+    }
+    clearAllSessionData();
+    return { ok: true };
+  } catch (error) {
+    logoutInProgress = false;
+    throw error;
+  } finally {
+    logoutInProgress = false;
+  }
 }
