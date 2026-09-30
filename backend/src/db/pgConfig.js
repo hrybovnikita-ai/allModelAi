@@ -146,12 +146,23 @@ function buildSslForMode(sslMode) {
     }
 }
 
-function getPgPoolConfig(connectionString) {
+function sharedPoolOptions() {
+    return {
+        connectionTimeoutMillis: Number(process.env.DATABASE_CONNECTION_TIMEOUT_MS || 10_000),
+        idleTimeoutMillis: Number(process.env.DATABASE_IDLE_TIMEOUT_MS || 30_000),
+        keepAlive: process.env.DATABASE_KEEP_ALIVE !== 'false',
+        maxUses: Number(process.env.DATABASE_POOL_MAX_USES || 7500),
+    };
+}
+
+function getPgPoolConfig(connectionString, overrides = {}) {
     if (isLocalPostgres(connectionString) && process.env.DATABASE_SSL !== 'true') {
         return {
             connectionString: stripSslQueryParams(connectionString),
             max: Number(process.env.DATABASE_POOL_MAX || 10),
             sslMode: 'disable',
+            ...sharedPoolOptions(),
+            ...overrides,
         };
     }
 
@@ -161,6 +172,8 @@ function getPgPoolConfig(connectionString) {
         connectionString: stripSslQueryParams(connectionString),
         max: Number(process.env.DATABASE_POOL_MAX || 10),
         sslMode,
+        ...sharedPoolOptions(),
+        ...overrides,
     };
 
     if (ssl !== undefined) {
@@ -170,9 +183,19 @@ function getPgPoolConfig(connectionString) {
     return config;
 }
 
-function createPgPool(connectionString) {
-    const { sslMode, ...poolConfig } = getPgPoolConfig(connectionString);
+function createPgPool(connectionString, overrides = {}) {
+    const { sslMode, ...poolConfig } = getPgPoolConfig(connectionString, overrides);
     return new Pool(poolConfig);
+}
+
+/** Isolated pool for auth/session async queries (not shared with deasync PostgresSyncDatabase). */
+function createAuthPgPool(connectionString) {
+    const queryTimeoutMs = Number(process.env.DATABASE_QUERY_TIMEOUT_MS || 15_000);
+    return createPgPool(connectionString, {
+        max: Number(process.env.DATABASE_AUTH_POOL_MAX || 4),
+        query_timeout: queryTimeoutMs,
+        statement_timeout: queryTimeoutMs,
+    });
 }
 
 function redactSecrets(text) {
@@ -250,6 +273,7 @@ async function verifyPostgresConnection(pool) {
 module.exports = {
     SSL_QUERY_PARAMS,
     buildSslForMode,
+    createAuthPgPool,
     createPgPool,
     describePgFailure,
     formatSafePgFailure,

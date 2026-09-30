@@ -12,6 +12,7 @@ const frontendOrigin = (req) => publicAppOrigin(req);
 const crypto = require('node:crypto');
 const { hashPassword, verifyPassword } = require('../password');
 const { loadAuthUserByEmailAsync } = require('../authUser');
+const { describePgPoolStats, isPgTimeoutError, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
 const {
     insertAuthSession,
     syncLoginUserName,
@@ -255,7 +256,8 @@ const loginUser = async (req, res) => {
         });
     };
 
-    authLog('LOGIN_USER_LOOKUP_START');
+    const lookupPool = resolvePostgresAsyncPool(req.app.locals.db);
+    authLog('LOGIN_USER_LOOKUP_START', describePgPoolStats(lookupPool));
     const lookupStartedAt = Date.now();
     let user;
     try {
@@ -263,12 +265,20 @@ const loginUser = async (req, res) => {
         authLog('LOGIN_USER_LOOKUP_SUCCESS', {
             durationMs: Date.now() - lookupStartedAt,
             found: Boolean(user),
+            ...describePgPoolStats(lookupPool),
         });
     } catch (error) {
         authLog('LOGIN_USER_LOOKUP_FAILED', {
             durationMs: Date.now() - lookupStartedAt,
             code: error.code || 'unknown',
+            ...describePgPoolStats(lookupPool),
         });
+        if (isPgTimeoutError(error)) {
+            return res.status(503).json({
+                code: 'DATABASE_UNAVAILABLE',
+                message: 'Database is busy. Please wait a moment and try again.',
+            });
+        }
         return res.status(500).json({
             message: 'Could not complete sign-in. Please try again.',
         });

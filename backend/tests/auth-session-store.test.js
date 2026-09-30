@@ -6,6 +6,7 @@ const path = require('node:path');
 const request = require('supertest');
 const { insertAuthSession, syncLoginUserName } = require('../src/authSessionStore');
 const { hashPassword } = require('../src/password');
+const { pgQueryText, pgQueryValues } = require('./pgQueryArgs');
 
 process.env.NODE_ENV = 'test';
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'allmodelai-auth-session-'));
@@ -15,16 +16,18 @@ const app = require('../app');
 test('insertAuthSession uses async pool.query after await on postgres engine', async () => {
     let queryCalls = 0;
     const mockPool = {
-        query: async (text, values) => {
+        query: async (configOrText, values) => {
+            const text = pgQueryText(configOrText);
+            const queryValues = pgQueryValues(configOrText, values);
             queryCalls += 1;
             assert.match(text, /INSERT INTO auth_sessions/i);
-            assert.equal(values.length, 3);
+            assert.equal(queryValues.length, 3);
             return { rowCount: 1, rows: [] };
         },
     };
     await Promise.resolve();
     await insertAuthSession(
-        { engine: 'postgres', database: { pool: mockPool } },
+        { engine: 'postgres', pgAsyncPool: mockPool, database: { pool: mockPool } },
         'test-token-hash',
         9,
         Date.now() + 60_000,
@@ -72,7 +75,7 @@ test('insertAuthSession propagates postgres errors for login error handling', as
     };
     await assert.rejects(
         () => insertAuthSession(
-            { engine: 'postgres', database: { pool: mockPool } },
+            { engine: 'postgres', pgAsyncPool: mockPool, database: { pool: mockPool } },
             'hash',
             1,
             Date.now() + 1000,
@@ -84,10 +87,12 @@ test('insertAuthSession propagates postgres errors for login error handling', as
 test('syncLoginUserName uses async pool.query for postgres after await', async () => {
     let updated = false;
     const mockPool = {
-        query: async (text, values) => {
+        query: async (configOrText, values) => {
+            const text = pgQueryText(configOrText);
+            const queryValues = pgQueryValues(configOrText, values);
             assert.match(text, /UPDATE users SET name/i);
-            assert.equal(values[0], 'New Name');
-            assert.equal(values[1], 9);
+            assert.equal(queryValues[0], 'New Name');
+            assert.equal(queryValues[1], 9);
             updated = true;
             return { rowCount: 1, rows: [] };
         },
@@ -95,7 +100,7 @@ test('syncLoginUserName uses async pool.query for postgres after await', async (
     await Promise.resolve();
     const account = { id: 9, name: 'Old' };
     const result = await syncLoginUserName(
-        { engine: 'postgres', database: { pool: mockPool } },
+        { engine: 'postgres', pgAsyncPool: mockPool, database: { pool: mockPool } },
         account,
         'New Name',
         [],

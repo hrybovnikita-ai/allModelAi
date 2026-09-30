@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
 const { hashPassword } = require('../src/password');
+const { pgQueryText, pgQueryValues } = require('./pgQueryArgs');
 
 process.env.NODE_ENV = 'test';
 
@@ -11,21 +12,23 @@ function createMockPostgresPool(initialUser) {
 
     return {
         sessions,
-        query: async (text, values) => {
+        query: async (configOrText, values) => {
+            const text = pgQueryText(configOrText);
+            const queryValues = pgQueryValues(configOrText, values);
             await Promise.resolve();
             if (/INSERT INTO auth_sessions/i.test(text)) {
-                sessions.set(values[0], { userId: values[1], expiresAt: Number(values[2]) });
+                sessions.set(queryValues[0], { userId: queryValues[1], expiresAt: Number(queryValues[2]) });
                 return { rowCount: 1, rows: [] };
             }
             if (/FROM users/i.test(text) && /lower\(trim\(email\)\)/i.test(text)) {
-                if (values[0] === userRow.email) {
+                if (queryValues[0] === userRow.email) {
                     return { rows: [userRow], rowCount: 1 };
                 }
                 return { rows: [], rowCount: 0 };
             }
             if (/auth_sessions JOIN users/i.test(text)) {
-                const session = sessions.get(values[0]);
-                if (!session || session.expiresAt <= Number(values[1])) {
+                const session = sessions.get(queryValues[0]);
+                if (!session || session.expiresAt <= Number(queryValues[1])) {
                     return { rows: [], rowCount: 0 };
                 }
                 if (session.userId !== userRow.id) {
@@ -42,7 +45,7 @@ function createMockPostgresPool(initialUser) {
                 };
             }
             if (/UPDATE users SET name/i.test(text)) {
-                userRow.name = values[0];
+                userRow.name = queryValues[0];
                 return { rowCount: 1, rows: [] };
             }
             throw new Error(`Unexpected postgres query: ${text.slice(0, 96)}`);
@@ -66,6 +69,7 @@ test('auth login, session, and model status complete sequentially on postgres as
     const originalDb = app.locals.db;
     app.locals.db = {
         engine: 'postgres',
+        pgAsyncPool: mockPool,
         database: { pool: mockPool },
     };
 
@@ -123,7 +127,8 @@ test('getSession postgres path uses pool.query only (no database.prepare)', asyn
     let prepareCalls = 0;
     let poolQueries = 0;
     const mockPool = {
-        query: async (text) => {
+        query: async (configOrText) => {
+            const text = pgQueryText(configOrText);
             poolQueries += 1;
             assert.match(text, /auth_sessions JOIN users/i);
             return {
@@ -141,6 +146,7 @@ test('getSession postgres path uses pool.query only (no database.prepare)', asyn
     const originalDb = app.locals.db;
     app.locals.db = {
         engine: 'postgres',
+        pgAsyncPool: mockPool,
         database: {
             pool: mockPool,
             prepare() {

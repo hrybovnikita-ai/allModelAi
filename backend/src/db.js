@@ -4,7 +4,7 @@ const Database = require('better-sqlite3');
 const { ensureStorageIdeasSchema } = require('./storageIdeasSchema');
 const { createConnectionApi } = require('./db/connectionApi');
 const { connectPostgresSync } = require('./db/postgresSync');
-const { formatSafePgFailure } = require('./db/pgConfig');
+const { createAuthPgPool, formatSafePgFailure } = require('./db/pgConfig');
 const {
     getDatabaseEngine,
     resolveDatabaseUrl,
@@ -66,8 +66,14 @@ const connectDatabase = () => {
             filePath: 'postgresql',
             configuredFrom: resolvedPostgres.source,
         });
+        connection.pgAsyncPool = createAuthPgPool(resolvedPostgres.url);
         const originalClose = connection.close.bind(connection);
         connection.close = () => {
+            const authPool = connection.pgAsyncPool;
+            connection.pgAsyncPool = undefined;
+            if (authPool) {
+                void authPool.end().catch(() => {});
+            }
             originalClose();
             connection = undefined;
         };

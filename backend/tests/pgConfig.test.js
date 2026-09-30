@@ -38,6 +38,26 @@ test('URL sslmode=verify-full without CA falls back to require TLS config', () =
     assert.deepEqual(config.ssl, { rejectUnauthorized: false });
 });
 
+test('getPgPoolConfig sets connection and idle timeouts for remote postgres', () => {
+    delete process.env.DATABASE_CONNECTION_TIMEOUT_MS;
+    delete process.env.DATABASE_IDLE_TIMEOUT_MS;
+    const config = getPgPoolConfig(remoteUrl);
+    assert.equal(config.connectionTimeoutMillis, 10_000);
+    assert.equal(config.idleTimeoutMillis, 30_000);
+    assert.equal(config.keepAlive, true);
+});
+
+test('createAuthPgPool uses smaller max pool size by default', () => {
+    const { createAuthPgPool } = require('../src/db/pgConfig');
+    delete process.env.DATABASE_AUTH_POOL_MAX;
+    delete process.env.DATABASE_QUERY_TIMEOUT_MS;
+    const pool = createAuthPgPool(remoteUrl);
+    assert.equal(pool.options.max, 4);
+    assert.equal(pool.options.query_timeout, 15_000);
+    assert.equal(pool.options.statement_timeout, 15_000);
+    pool.end().catch(() => {});
+});
+
 test('getPgPoolConfig require mode encrypts without URL sslmode override', () => {
     delete process.env.DATABASE_SSL_MODE;
     delete process.env.DATABASE_SSL_CA_FILE;

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const request = require('supertest');
 const { loadAuthUserByEmailAsync } = require('../src/authUser');
 const { hashPassword } = require('../src/password');
+const { pgQueryText, pgQueryValues } = require('./pgQueryArgs');
 
 process.env.NODE_ENV = 'test';
 
@@ -18,15 +19,17 @@ test('loadAuthUserByEmailAsync resolves after await without blocking (postgres p
     };
     let queryCount = 0;
     const mockPool = {
-        query: async (text, values) => {
+        query: async (configOrText, values) => {
+            const text = pgQueryText(configOrText);
+            const queryValues = pgQueryValues(configOrText, values);
             queryCount += 1;
             await Promise.resolve();
             assert.match(text, /lower\(trim\(email\)\)/i);
-            const row = rows[values[0]];
+            const row = rows[queryValues[0]];
             return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
         },
     };
-    const connection = { engine: 'postgres', database: { pool: mockPool } };
+    const connection = { engine: 'postgres', pgAsyncPool: mockPool, database: { pool: mockPool } };
 
     await Promise.resolve();
     const first = await loadAuthUserByEmailAsync(connection, 'user@example.com');
@@ -59,11 +62,13 @@ test('three sequential POST /api/auth/login succeed on postgres async path', asy
     let lookupCalls = 0;
     let sessionInserts = 0;
     const mockPool = {
-        query: async (text, values) => {
+        query: async (configOrText, values) => {
+            const text = pgQueryText(configOrText);
+            const queryValues = pgQueryValues(configOrText, values);
             await Promise.resolve();
             if (/FROM users/i.test(text) && /lower\(trim\(email\)\)/i.test(text)) {
                 lookupCalls += 1;
-                if (values[0] === email) {
+                if (queryValues[0] === email) {
                     return { rows: [userRow], rowCount: 1 };
                 }
                 return { rows: [], rowCount: 0 };
@@ -73,7 +78,7 @@ test('three sequential POST /api/auth/login succeed on postgres async path', asy
                 return { rowCount: 1, rows: [] };
             }
             if (/UPDATE users SET name/i.test(text)) {
-                userRow.name = values[0];
+                userRow.name = queryValues[0];
                 return { rowCount: 1, rows: [] };
             }
             throw new Error(`Unexpected postgres query: ${text.slice(0, 80)}`);
@@ -84,6 +89,7 @@ test('three sequential POST /api/auth/login succeed on postgres async path', asy
     const originalDb = app.locals.db;
     app.locals.db = {
         engine: 'postgres',
+        pgAsyncPool: mockPool,
         database: { pool: mockPool },
     };
 

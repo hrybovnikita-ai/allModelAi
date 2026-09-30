@@ -1,4 +1,5 @@
 const { mapAuthUserRow } = require('./authPasswordHash');
+const { queryPgPool, resolvePostgresAsyncPool } = require('./db/pgPoolQuery');
 
 const AUTH_USER_BY_EMAIL_SQLITE = `
         SELECT
@@ -46,8 +47,9 @@ function loadAuthUserByEmail(database, normalizedEmail) {
 async function loadAuthUserByEmailAsync(connection, normalizedEmail) {
     if (!connection || !normalizedEmail) return null;
     const { engine, database } = resolveDbConnection(connection);
-    if (engine === 'postgres' && database?.pool) {
-        const result = await database.pool.query(AUTH_USER_BY_EMAIL_PG, [normalizedEmail]);
+    const asyncPool = resolvePostgresAsyncPool(connection);
+    if (engine === 'postgres' && asyncPool) {
+        const result = await queryPgPool(asyncPool, AUTH_USER_BY_EMAIL_PG, [normalizedEmail]);
         return mapAuthUserRow(result.rows[0]);
     }
     return loadAuthUserByEmail(database, normalizedEmail);

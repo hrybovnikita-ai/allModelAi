@@ -1,10 +1,13 @@
 const { hashToken, readSessionToken } = require('../sessionAuth');
+const { queryPgPool, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
 
 async function lookupSessionUser(dbConnection, tokenHash, nowMs) {
     const engine = dbConnection.engine || 'sqlite';
     const database = dbConnection.database;
-    if (engine === 'postgres' && database?.pool) {
-        const result = await database.pool.query(
+    const asyncPool = resolvePostgresAsyncPool(dbConnection);
+    if (engine === 'postgres' && asyncPool) {
+        const result = await queryPgPool(
+            asyncPool,
             `SELECT users.id, users.name, users.email, users.avatar_url AS avatar
              FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id
              WHERE token_hash = $1 AND expires_at > $2`,

@@ -1,7 +1,8 @@
 /**
- * Auth session persistence. PostgreSQL uses async pool.query on the login path because
- * deasync + pg after an awaited scrypt verify can stall the event loop in production.
+ * Auth session persistence. PostgreSQL uses the isolated pgAsyncPool + queryPgPool because
+ * the primary pool is shared with PostgresSyncDatabase/deasync and can deadlock or exhaust.
  */
+const { queryPgPool, resolvePostgresAsyncPool } = require('./db/pgPoolQuery');
 
 function resolveDb(connection) {
     if (!connection) {
@@ -15,8 +16,10 @@ function resolveDb(connection) {
 
 async function insertAuthSession(connection, tokenHash, userId, expiresAt) {
     const { engine, database } = resolveDb(connection);
-    if (engine === 'postgres' && database?.pool) {
-        await database.pool.query(
+    const asyncPool = resolvePostgresAsyncPool(connection);
+    if (engine === 'postgres' && asyncPool) {
+        await queryPgPool(
+            asyncPool,
             'INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)',
             [tokenHash, userId, expiresAt],
         );
@@ -33,8 +36,10 @@ async function syncLoginUserName(connection, account, safeName, usersCache) {
     }
     account.name = safeName;
     const { engine, database } = resolveDb(connection);
-    if (engine === 'postgres' && database?.pool) {
-        await database.pool.query(
+    const asyncPool = resolvePostgresAsyncPool(connection);
+    if (engine === 'postgres' && asyncPool) {
+        await queryPgPool(
+            asyncPool,
             'UPDATE users SET name = $1 WHERE id = $2',
             [account.name, account.id],
         );

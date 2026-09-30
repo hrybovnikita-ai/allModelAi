@@ -53,22 +53,42 @@ function createCache({ url = process.env.REDIS_URL, client, now = Date.now } = {
         async close() { memory.clear(); if (redis?.isOpen) redis.destroy(); },
     };
 }
+const CACHE_MIDDLEWARE_TIMEOUT_MS = Number(process.env.CACHE_MIDDLEWARE_TIMEOUT_MS || 500);
+
 // Use only for public responses that are identical for every visitor.
 function cachePublicResponse(key, ttl = 30) {
     return async (req, res, next) => {
+        let forwarded = false;
+        const forward = () => {
+            if (forwarded || res.headersSent) return;
+            forwarded = true;
+            next();
+        };
         try {
-            const cache = req.app.locals.cache;
-            const cached = await cache.get(key);
-            res.setHeader('X-Cache', cached === null ? 'MISS' : 'HIT');
-            if (cached !== null) return res.json(cached);
-            const json = res.json.bind(res);
-            res.json = (body) => {
-                if (res.statusCode === 200) void cache.set(key, body, ttl);
-                return json(body);
-            };
-            return next();
+            await Promise.race([
+                (async () => {
+                    const cache = req.app.locals.cache;
+                    const cached = await cache.get(key);
+                    if (res.headersSent) return;
+                    res.setHeader('X-Cache', cached === null ? 'MISS' : 'HIT');
+                    if (cached !== null) {
+                        forwarded = true;
+                        res.json(cached);
+                        return;
+                    }
+                    const json = res.json.bind(res);
+                    res.json = (body) => {
+                        if (res.statusCode === 200) void cache.set(key, body, ttl);
+                        return json(body);
+                    };
+                    forward();
+                })(),
+                new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Cache middleware timeout')), CACHE_MIDDLEWARE_TIMEOUT_MS);
+                }),
+            ]);
         } catch {
-            return next();
+            forward();
         }
     };
 }
