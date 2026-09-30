@@ -75,6 +75,16 @@ test('PostgreSQL login succeeds with imported scrypt hash column mapping', async
         });
     assert.equal(missing.status, 401);
 
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const again = await request(app)
+            .post('/api/auth/login')
+            .send({
+                email: 'hrybovnikita@gmail.com',
+                password,
+            });
+        assert.equal(again.status, 200, `sequential login attempt ${attempt}: ${again.body?.message}`);
+    }
+
 });
 
 test('loadAuthUserByEmail uses normalized email lookup', () => {

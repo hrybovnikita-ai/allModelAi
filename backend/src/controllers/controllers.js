@@ -11,7 +11,7 @@ const { buildCheckoutInfo, stripeCheckoutEnabled } = require('../payments/checko
 const frontendOrigin = (req) => publicAppOrigin(req);
 const crypto = require('node:crypto');
 const { hashPassword, verifyPassword } = require('../password');
-const { loadAuthUserByEmail } = require('../authUser');
+const { loadAuthUserByEmailAsync } = require('../authUser');
 const {
     insertAuthSession,
     syncLoginUserName,
@@ -241,8 +241,6 @@ const loginUser = async (req, res) => {
     const safeName = defaultLoginName(normalizedEmail, name);
     const remember = req.body.rememberMe !== false && req.body.rememberMe !== 'false';
 
-    const db = req.app.locals.db.database;
-
     const finishLogin = async (account) => {
         const sessionToken = await setSession(req, res, account, remember);
         authLog('SESSION_DB_INSERT_SUCCESS');
@@ -255,7 +253,24 @@ const loginUser = async (req, res) => {
         });
     };
 
-    const user = loadAuthUserByEmail(db, normalizedEmail);
+    authLog('LOGIN_USER_LOOKUP_START');
+    const lookupStartedAt = Date.now();
+    let user;
+    try {
+        user = await loadAuthUserByEmailAsync(req.app.locals.db, normalizedEmail);
+        authLog('LOGIN_USER_LOOKUP_SUCCESS', {
+            durationMs: Date.now() - lookupStartedAt,
+            found: Boolean(user),
+        });
+    } catch (error) {
+        authLog('LOGIN_USER_LOOKUP_FAILED', {
+            durationMs: Date.now() - lookupStartedAt,
+            code: error.code || 'unknown',
+        });
+        return res.status(500).json({
+            message: 'Could not complete sign-in. Please try again.',
+        });
+    }
 
     if (!user) {
         authLog('Login rejected', { reason: 'USER_NOT_FOUND' });
