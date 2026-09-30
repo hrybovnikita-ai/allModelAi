@@ -76,6 +76,7 @@ const sendWelcomeEmail = async (user) => {
 const setSession = async (req, res, user, remember = true) => {
     const expiresAt = Date.now() + (remember ? sessionDuration : 1000 * 60 * 60 * 8);
     const token = createSessionToken(user.id, expiresAt);
+    authLog('SESSION_DB_INSERT_START');
     await insertAuthSession(req.app.locals.db, hashToken(token), user.id, expiresAt);
     res.cookie(sessionCookie, token, { ...sessionCookieOptions(req), ...(remember ? { maxAge: sessionDuration } : {}) });
     return token;
@@ -221,6 +222,7 @@ const registerUser = async (req, res) => {
 };
 
 const loginUser = async (req, res) => {
+    authLog('LOGIN_CONTROLLER_ENTERED');
     authLog('Login request received');
     const { name, email, password } = req.body;
 
@@ -383,17 +385,29 @@ const { lookupSessionUser } = require('../middleware/auth');
 const getSession = async (req, res) => {
     const token = readSessionToken(req);
     if (!token) return res.status(401).json({ message: 'No active session' });
+    authLog('SESSION_LOOKUP_START');
+    const lookupStartedAt = Date.now();
     try {
         const user = await lookupSessionUser(req.app.locals.db, hashToken(token), Date.now());
+        authLog('SESSION_LOOKUP_SUCCESS', {
+            durationMs: Date.now() - lookupStartedAt,
+            found: Boolean(user),
+        });
         if (!user) return res.status(401).json({ message: 'Session expired' });
-        const avatarRow = req.app.locals.db.database.prepare(
-            'SELECT avatar_url AS avatar FROM users WHERE id = ?',
-        ).get(user.id);
-        return res.status(200).json({ user: { ...user, avatar: avatarRow?.avatar || null } });
+        authLog('SESSION_RESPONSE_SENT');
+        return res.status(200).json({
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                avatar: user.avatar || null,
+            },
+        });
     } catch (error) {
-        if (process.env.NODE_ENV !== 'test') {
-            console.log('[AUTH] SESSION_READ_FAILED', { reason: 'SESSION_READ_ERROR' });
-        }
+        authLog('SESSION_LOOKUP_FAILED', {
+            durationMs: Date.now() - lookupStartedAt,
+            code: error.code || 'unknown',
+        });
         return res.status(500).json({ message: 'Could not read your session. Please try again.' });
     }
 };
@@ -537,23 +551,30 @@ const { resolveImageProvider } = require('../pollinations');
 const { providerAvailabilityForRouter, buildProviderSnapshot, resolveAvailableSmartModel } = require('../providerHealth');
 
 const getModelStatus = (_req, res) => {
-    const availability = providerAvailabilityForRouter();
-    const image = resolveImageProvider();
-    const providers = buildProviderSnapshot();
-    return res.status(200).json({
-        updatedAt: new Date().toISOString(),
-        variants: modelVariants,
-        imageGeneration: {
-            provider: image.provider,
-            configured: image.provider !== 'none',
-            pollinations: image.provider === 'pollinations',
-        },
-        models: {
-            ...availability,
-            cloudflare: Boolean(((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID) || availability.others),
-        },
-        providers,
-    });
+    authLog('MODELS_STATUS_START');
+    try {
+        const availability = providerAvailabilityForRouter();
+        const image = resolveImageProvider();
+        const providers = buildProviderSnapshot();
+        authLog('MODELS_STATUS_RESPONSE_SENT');
+        return res.status(200).json({
+            updatedAt: new Date().toISOString(),
+            variants: modelVariants,
+            imageGeneration: {
+                provider: image.provider,
+                configured: image.provider !== 'none',
+                pollinations: image.provider === 'pollinations',
+            },
+            models: {
+                ...availability,
+                cloudflare: Boolean(((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID) || availability.others),
+            },
+            providers,
+        });
+    } catch (error) {
+        authLog('MODELS_STATUS_FAILED', { code: error.code || 'unknown' });
+        return res.status(500).json({ message: 'Could not load model availability. Please try again.' });
+    }
 };
 
 const getProviderHealth = async (req, res) => {

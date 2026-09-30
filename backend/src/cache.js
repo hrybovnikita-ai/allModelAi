@@ -19,10 +19,26 @@ function createCache({ url = process.env.REDIS_URL, client, now = Date.now } = {
     return {
         async get(key) {
             if (redis?.isReady) {
-                try { const value = await bounded(redis.get(key)); if (value !== null) return JSON.parse(value); } catch { /* fallback */ }
+                try {
+                    const value = await bounded(redis.get(key));
+                    if (value !== null) {
+                        try {
+                            return JSON.parse(value);
+                        } catch {
+                            return null;
+                        }
+                    }
+                } catch { /* fallback */ }
             }
             const entry = memory.get(key);
-            if (entry && entry.expires > now()) return JSON.parse(entry.value);
+            if (entry && entry.expires > now()) {
+                try {
+                    return JSON.parse(entry.value);
+                } catch {
+                    memory.delete(key);
+                    return null;
+                }
+            }
             memory.delete(key);
             return null;
         },
@@ -40,16 +56,20 @@ function createCache({ url = process.env.REDIS_URL, client, now = Date.now } = {
 // Use only for public responses that are identical for every visitor.
 function cachePublicResponse(key, ttl = 30) {
     return async (req, res, next) => {
-        const cache = req.app.locals.cache;
-        const cached = await cache.get(key);
-        res.setHeader('X-Cache', cached === null ? 'MISS' : 'HIT');
-        if (cached !== null) return res.json(cached);
-        const json = res.json.bind(res);
-        res.json = (body) => {
-            if (res.statusCode === 200) void cache.set(key, body, ttl);
-            return json(body);
-        };
-        return next();
+        try {
+            const cache = req.app.locals.cache;
+            const cached = await cache.get(key);
+            res.setHeader('X-Cache', cached === null ? 'MISS' : 'HIT');
+            if (cached !== null) return res.json(cached);
+            const json = res.json.bind(res);
+            res.json = (body) => {
+                if (res.statusCode === 200) void cache.set(key, body, ttl);
+                return json(body);
+            };
+            return next();
+        } catch {
+            return next();
+        }
     };
 }
 module.exports = { createCache, cachePublicResponse };

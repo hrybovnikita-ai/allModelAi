@@ -74,6 +74,7 @@ router.post('/auth/firebase/challenge', socialAuth.browserRequest, socialAuth.ch
 router.post('/auth/firebase', socialAuth.browserRequest, socialAuth.exchange);
 router.get('/auth/connections', socialAuth.connections);
 const { cachePublicResponse } = require('../cache');
+const { logAuthStage } = require('../authRouteStages');
 
 // Local PyTorch AI Learning Engine routes
 router.get('/ai-python/status', getPyTorchStatus);
@@ -93,17 +94,17 @@ router.post('/ai-python/reset', requireAuth, resetPyTorchModel);
 router.get('/system/health', getSystemHealth);
 
 router.post('/auth/register', registerUser);
-router.post('/auth/login', loginUser);
+router.post('/auth/login', logAuthStage('AUTH_ROUTE_ENTERED'), loginUser);
 router.post('/auth/quick-social', quickSocialLogin);
 router.get('/auth/:provider/accounts', getSocialAccounts);
 router.post('/auth/social', socialLogin);
 router.get('/auth/google', startGoogleAuth);
 router.get('/auth/google/callback', googleCallback);
-router.get('/auth/session', getSession);
+router.get('/auth/session', logAuthStage('SESSION_ROUTE_ENTERED'), getSession);
 router.post('/auth/logout', logout);
 router.post('/auth/password-reset/request', requestPasswordReset);
 router.post('/auth/password-reset/confirm', confirmPasswordReset);
-router.get('/status/models', cachePublicResponse('allmodelai:public:model-status:v1'), getModelStatus);
+router.get('/status/models', logAuthStage('MODELS_STATUS_ROUTE_ENTERED'), cachePublicResponse('allmodelai:public:model-status:v1'), getModelStatus);
 router.get('/health/providers', cachePublicResponse('allmodelai:public:provider-health:v1'), getProviderHealth);
 router.get('/health', health);
 router.get('/community/users', getCommunityUsers);

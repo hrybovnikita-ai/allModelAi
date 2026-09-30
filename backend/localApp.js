@@ -12,6 +12,18 @@ const fs = require('fs');
 const app = express();
 configureTrustProxy(app);
 app.use(createCredentialedCorsMiddleware());
+app.use('/api', (req, res, next) => {
+    const path = req.path;
+    if (
+        path === '/auth/login'
+        || path === '/auth/session'
+        || path === '/status/models'
+    ) {
+        const { authLog } = require('./src/authHelpers');
+        authLog('REQUEST_ENTERED_EXPRESS', { method: req.method, path });
+    }
+    next();
+});
 require('./src/sessionToken').signingKey();
 app.locals.cache = require('./src/cache').createCache();
 app.locals.db = connectDatabase();
