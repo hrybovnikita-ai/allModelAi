@@ -1,0 +1,24 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://allmodelai-backend.onrender.com/api/:path*"
+    },
+    {
+      "source": "/auth/:path*",
+      "destination": "https://allmodelai-backend.onrender.com/auth/:path*"
+    },
+    {
+      "source": "/((?!api/|auth/).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    }
+  ]
+}

@@ -5,6 +5,13 @@ const stripTrailingSlash = (value) => String(value || '').replace(/\/$/, '');
 /** Baked at build time for Capacitor (`VITE_API_BASE_URL` in `.env.capacitor`). */
 const ENV_API_BASE = stripTrailingSlash(import.meta.env?.VITE_API_BASE_URL);
 
+/** Optional split-deploy fallback when the SPA is on Vercel and /api is not proxied. */
+const ENV_REMOTE_API_FALLBACK = stripTrailingSlash(
+  import.meta.env?.VITE_REMOTE_API_FALLBACK
+    || import.meta.env?.VITE_RENDER_API_ORIGIN
+    || '',
+);
+
 /** Default host loopback for Android emulator when native (override port via env). */
 export const DEFAULT_CAPACITOR_NATIVE_API_ORIGIN = stripTrailingSlash(
   import.meta.env?.VITE_NATIVE_API_URL
@@ -116,6 +123,24 @@ export function getApiBase() {
   return '';
 }
 
+/** True when Vite dev server should keep relative /api paths (local proxy). */
+export function isViteDevServerHost(location = typeof window !== 'undefined' ? window.location : null) {
+  if (!location) return false;
+  const hostname = String(location.hostname || '').toLowerCase();
+  const port = String(location.port || '');
+  return (hostname === 'localhost' || hostname === '127.0.0.1')
+    && (port === '5173' || port === '4173');
+}
+
+/**
+ * Browser page origin for same-origin API calls (Vercel /api rewrite → Render).
+ * Prefer this over hardcoded production URLs so preview domains work.
+ */
+export function getBrowserApiOrigin() {
+  if (typeof window === 'undefined' || !window.location?.origin) return '';
+  return stripTrailingSlash(window.location.origin);
+}
+
 /** Public site origin for OAuth redirects (Firebase authorized domains). */
 export function getPublicAppOrigin() {
   const configured = stripTrailingSlash(import.meta.env?.VITE_PUBLIC_APP_URL || '');
@@ -162,6 +187,24 @@ export function resolveApiUrl(path) {
   if (needsAbsolute) {
     const base = getApiBase() || DEFAULT_CAPACITOR_NATIVE_API_ORIGIN;
     return `${base}${normalized}`;
+  }
+
+  const remoteBase = getApiBase();
+  if (remoteBase) {
+    return `${remoteBase}${normalized}`;
+  }
+
+  if (isViteDevServerHost()) {
+    return normalized;
+  }
+
+  const sameOrigin = getBrowserApiOrigin();
+  if (sameOrigin) {
+    return `${sameOrigin}${normalized}`;
+  }
+
+  if (ENV_REMOTE_API_FALLBACK) {
+    return `${ENV_REMOTE_API_FALLBACK}${normalized}`;
   }
 
   return normalized;

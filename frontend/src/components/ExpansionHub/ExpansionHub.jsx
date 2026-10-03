@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useOutletContext, Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import './ExpansionHub.css';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
+import { resolveApiUrl } from '../../lib/apiBase';
 
 const modules=[['workflow','Workflow Builder','Connect repeatable AI steps'],['marketplace','Model Marketplace','Install agents and templates'],['meetings','Meeting Assistant','Turn transcripts into action'],['collaboration','Live Collaboration','Work together with roles'],['memory','Memory Graph','Explore connected knowledge'],['versions','Prompt Versions','Compare and restore revisions'],['security','Security Center','Scan prompts and content'],['local','Local Models','Manage your Ollama connection'],['research','Research Agent','Build cited research reports'],['developer','Developer API','Keys, SDK examples, and usage']];
 const marketplace=[{name:'Security Reviewer',kind:'agent',model:'deepseek',description:'Reviews code for security and correctness.',content:'Act as a senior application security reviewer. Identify vulnerabilities, explain impact, and propose safe patches.'},{name:'Research Brief',kind:'prompt',model:'smart',description:'Produces a structured, cited research brief.',content:'Research {{topic}}. Include dates, competing viewpoints, inline citations, and a concise source list.'},{name:'Product Strategist',kind:'agent',model:'claude',description:'Turns product ideas into plans and experiments.',content:'Act as a pragmatic product strategist. Clarify the user, problem, risks, metrics, and smallest useful experiment.'}];
 const steps=['Input','Research','Draft','Review','Final answer'];
-async function api(url,options={}){const response=await fetch(url,{credentials:'include',...options});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||'Request failed');return data;}
+async function api(url,options={}){const response=await fetch(resolveApiUrl(url),{credentials:'include',...options});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.message||'Request failed');return data;}
 const post=(url,body)=>api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 
 export default function ExpansionHub(){

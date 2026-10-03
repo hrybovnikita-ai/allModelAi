@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
+import { resolveApiUrl } from '../../lib/apiBase';
 import './InfoPage.css';
 
 const pages = {
@@ -16,7 +17,7 @@ export function InfoPage({ type }) {
 
 export function ApiDocs() {
   const [testResult, setTestResult] = useState('');
-  const testApi = async () => { const response = await fetch('/api/status/models'); setTestResult(response.ok ? 'API is online and ready.' : 'API returned an error.'); };
+  const testApi = async () => { const response = await fetch(resolveApiUrl('/api/status/models')); setTestResult(response.ok ? 'API is online and ready.' : 'API returned an error.'); };
   return <main className="info-page api-page"><nav><Link to="/">← AllModelAI</Link><Link to="/dashboard">Dashboard</Link></nav><article><span>Developer tools</span><h1>AllModelAI API</h1><p>One endpoint for chat, model status, saved conversations, and workspace tools.</p><pre><code>{`POST /api/chat
 Content-Type: application/json
 

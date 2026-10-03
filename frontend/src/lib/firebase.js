@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { initializeAuth, inMemoryPersistence, browserPopupRedirectResolver } from 'firebase/auth';
+import { getPublicAppOrigin } from './apiBase.js';
 
 const CONFIG_ENV_KEYS = {
   apiKey: 'VITE_FIREBASE_API_KEY',
@@ -24,7 +25,43 @@ export function getFirebaseConfigEnvKeys() {
   return { ...CONFIG_ENV_KEYS };
 }
 
+/** Origin Firebase OAuth runs on (current tab, not a hardcoded deploy URL). */
+export function getFirebaseOAuthOrigin() {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return getPublicAppOrigin();
+}
+
+/**
+ * Ensures OAuth uses the live page origin and surfaces preview/custom-domain setup hints.
+ */
+export function assertFirebaseOAuthEnvironment() {
+  if (typeof window === 'undefined') return;
+  const oauthOrigin = getFirebaseOAuthOrigin();
+  if (!oauthOrigin) return;
+
+  const configuredPublic = stripPublicOrigin(getPublicAppOrigin());
+  const livePublic = stripPublicOrigin(oauthOrigin);
+  if (configuredPublic && livePublic && configuredPublic !== livePublic) {
+    console.info(
+      `[AllModelAI] OAuth origin is ${livePublic} (VITE_PUBLIC_APP_URL is ${configuredPublic}). `
+      + 'Ensure this host is listed in Firebase Authorized domains.',
+    );
+  }
+}
+
+function stripPublicOrigin(value) {
+  try {
+    return String(value || '').replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+}
+
 export function getSocialAuth() {
+  assertFirebaseOAuthEnvironment();
+
   const missing = Object.entries(config)
     .filter(([, value]) => !String(value || '').trim())
     .map(([key]) => CONFIG_ENV_KEYS[key] || key);

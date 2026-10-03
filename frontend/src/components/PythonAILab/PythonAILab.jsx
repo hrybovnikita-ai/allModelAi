@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
+import { resolveApiUrl } from '../../lib/apiBase';
 import './PythonAILab.css';
 
 const SAMPLE_PROMPTS = [
@@ -161,7 +162,7 @@ export default function PythonAILab() {
       return undefined;
     }
 
-    const source = new EventSource('/api/ai-python/train/stream', { withCredentials: true });
+    const source = new EventSource(resolveApiUrl('/api/ai-python/train/stream'), { withCredentials: true });
     trainStreamRef.current = source;
     source.onmessage = (event) => {
       try {

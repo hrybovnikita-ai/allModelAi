@@ -30,7 +30,9 @@ export function socialError(error) {
     'auth/cancelled-popup-request': 'Another sign-in window is open. Complete it or try again.',
     'auth/popup-blocked': 'Your browser blocked the sign-in window. Allow popups, or you will be redirected automatically.',
     'auth/network-request-failed': 'Could not reach the provider. Check your connection and retry.',
-    'auth/unauthorized-domain': 'This website domain is not authorized in Firebase Authentication. Contact the administrator.',
+    'auth/unauthorized-domain': typeof window !== 'undefined'
+      ? `This domain (${window.location.hostname}) is not authorized for Firebase OAuth. Add it under Firebase Authentication → Settings → Authorized domains.`
+      : 'This website domain is not authorized in Firebase Authentication. Contact the administrator.',
     'auth/operation-not-allowed': 'This provider is not enabled in Firebase Authentication yet.',
     'auth/account-exists-with-different-credential': 'Sign in with your original provider. To connect another provider, use Settings > Connected accounts.',
     'auth/invalid-credential': 'The provider credential is invalid or expired. Try signing in again.',

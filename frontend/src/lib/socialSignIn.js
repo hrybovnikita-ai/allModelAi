@@ -10,7 +10,7 @@ import {
   sendEmailVerification,
   signOut,
 } from 'firebase/auth';
-import { getSocialAuth } from './firebase.js';
+import { getFirebaseOAuthOrigin, getSocialAuth } from './firebase.js';
 import { isCapacitorNative } from './apiBase.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
 
@@ -112,6 +112,9 @@ async function signInWithProvider(auth, name, options) {
 }
 
 export async function socialSignIn(name, options = {}) {
+  if (typeof window !== 'undefined' && !getFirebaseOAuthOrigin()) {
+    throw new Error('Sign-in requires a browser origin. Open AllModelAI from your site URL, not a file:// link.');
+  }
   const auth = getSocialAuth();
   pendingLink = null;
 
