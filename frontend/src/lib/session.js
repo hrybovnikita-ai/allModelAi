@@ -173,6 +173,18 @@ export async function confirmSession(user) {
     } catch {
       /* fall through to trusted login payload */
     }
+    if (getNativeSessionToken()) {
+      return rememberSession(user);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      const retryAfterToken = await restoreSession({ force: true });
+      if (matchesUser(retryAfterToken)) {
+        return retryAfterToken;
+      }
+    } catch {
+      /* fall through */
+    }
     return rememberSession(user);
   }
 

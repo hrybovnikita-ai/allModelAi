@@ -121,9 +121,10 @@ function LoginForm({
         },
       });
     } catch (requestError) {
-      if (requestError.code === 'PASSWORD_SETUP_REQUIRED') {
+      if (requestError.code === 'PASSWORD_SETUP_REQUIRED' && !signingUp) {
         setError(
-          'This account uses social sign-in. Continue with Google, Apple, or Facebook below.',
+          requestError.message ||
+            'This account has no password yet. Use social sign-in or reset your password.',
         );
       } else if (requestError.code === 'SOCIAL_ACCOUNT_EXISTS') {
         setError(requestError.message);
@@ -132,10 +133,12 @@ function LoginForm({
           requestError.message ||
             'An account with this email already exists. Sign in instead.',
         );
-      } else if (requestError.code === 'PASSWORD_SETUP_REQUIRED' && !signingUp) {
+      } else if (
+        !signingUp
+        && requestError.message?.toLowerCase().includes('could not be verified')
+      ) {
         setError(
-          requestError.message ||
-            'This account has no password yet. Use social sign-in or reset your password.',
+          'Sign-in reached the server but your session could not be verified. Check that VITE_API_BASE_URL points to your Render backend and that Render allows cross-site cookies (COOKIE_SAME_SITE=none, COOKIE_SECURE=true, FRONTEND_ORIGIN).',
         );
       } else if (requestError.status === 401 && !signingUp) {
         setError('Incorrect email or password');

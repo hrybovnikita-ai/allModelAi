@@ -168,8 +168,11 @@ export function resolveApiUrl(path) {
 }
 
 export function nativeClientHeaders() {
-  if (requiresAbsoluteApiBase() || usesRemoteApiOrigin()) {
+  if (isCapacitorNative()) {
     return { 'X-AllModelAI-Client': 'capacitor' };
+  }
+  if (requiresAbsoluteApiBase() || usesRemoteApiOrigin()) {
+    return { 'X-AllModelAI-Client': 'web' };
   }
   return {};
 }

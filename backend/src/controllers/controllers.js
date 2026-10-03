@@ -12,6 +12,7 @@ const frontendOrigin = (req) => publicAppOrigin(req);
 const crypto = require('node:crypto');
 const { hashPassword, verifyPassword } = require('../password');
 const { loadAuthUserByEmailAsync } = require('../authUser');
+const { getDatabaseEngine } = require('../db/provider');
 const { describePgPoolStats, isPgTimeoutError, resolvePostgresAsyncPool, queryPgPool } = require('../db/pgPoolQuery');
 const {
     insertAuthSession,
@@ -248,9 +249,11 @@ const registerUser = async (req, res) => {
         });
     }
     syncUserCache(newUser);
+    authLog(`DATABASE provider ${getDatabaseEngine()}`);
     const persisted = await loadAuthUserByEmailAsync(connection, normalizedEmail);
     const hashPresent = Boolean(persisted?.passwordHash);
     authLog('REGISTER_USER_PERSISTED', { userId: newUser.id, hashPresent });
+    authLog(`REGISTER passwordHash exists ${hashPresent}`);
     if (!hashPresent) {
         return res.status(500).json({
             code: 'REGISTRATION_STORAGE_FAILED',
@@ -275,7 +278,7 @@ const registerUser = async (req, res) => {
 
 const loginUser = async (req, res) => {
     authLog('LOGIN_CONTROLLER_ENTERED');
-    authLog('Login request received');
+    authLog(`DATABASE provider ${getDatabaseEngine()}`);
     const { name, email, password } = req.body;
 
     if (!email || !password) {
@@ -287,8 +290,7 @@ const loginUser = async (req, res) => {
     }
 
     const normalizedEmail = normalizeLoginEmail(email);
-    authLog(`LOGIN_REQUEST email=${normalizedEmail}`);
-    authLog('Normalized email', { email: normalizedEmail });
+    authLog(`LOGIN email normalized=${normalizedEmail}`);
     if (!isValidEmail(normalizedEmail)) {
         return res.status(400).json({ message: 'Enter a valid email address' });
     }
@@ -339,14 +341,13 @@ const loginUser = async (req, res) => {
         });
     }
 
-    authLog(`USER_FOUND ${Boolean(user)}`, user ? { userId: user.id } : undefined);
+    authLog(`LOGIN user found ${Boolean(user)}`, user ? { userId: user.id } : undefined);
     if (!user) {
         authLog('Login rejected', { reason: 'USER_NOT_FOUND' });
         return res.status(401).json({ message: 'Incorrect email or password' });
     }
 
-    authLog('SQL user found: true', { userId: user.id });
-    authLog(`Password hash present: ${Boolean(user.passwordHash)}`);
+    authLog(`LOGIN passwordHash exists ${Boolean(user.passwordHash)}`);
 
     if (!user.passwordHash) {
         authLog('Login rejected', { reason: 'PASSWORD_HASH_MISSING' });
@@ -363,21 +364,19 @@ const loginUser = async (req, res) => {
         authLog('Login rejected', { reason: 'PASSWORD_VERIFY_ERROR', code: error.code || 'unknown' });
         return res.status(401).json({ message: 'Incorrect email or password' });
     }
-    authLog(`PASSWORD_VERIFIED ${passwordMatches}`);
+    authLog(`LOGIN password verified ${passwordMatches}`);
     if (!passwordMatches) {
         authLog('Login rejected', { reason: 'PASSWORD_MISMATCH' });
         return res.status(401).json({ message: 'Incorrect email or password' });
     }
 
-    authLog('PASSWORD_VERIFIED');
     try {
         const synced = explicitLoginName
             ? await syncLoginUserName(req.app.locals.db, user, explicitLoginName, users)
             : user;
-        authLog('USER_SYNC_SUCCESS');
         authLog('SESSION_CREATED pending');
         const response = await finishLogin(synced);
-        authLog('SESSION_CREATED true');
+        authLog('LOGIN session created true');
         return response;
     } catch (error) {
         const code = safeSessionErrorCode(error);

@@ -59,12 +59,16 @@ function handleCommonDashboardQueries(text, queryValues, ctx) {
     if (/auth_sessions JOIN users/i.test(text)) {
         const session = sessions.get(queryValues[0]);
         if (!session || session.expiresAt <= Number(queryValues[1])) return { rows: [], rowCount: 0 };
+        let account = session.userId === userRow.id
+            ? userRow
+            : [...extraUsers.values()].find((row) => row.id === session.userId);
+        if (!account) return { rows: [], rowCount: 0 };
         return {
             rows: [{
-                id: userRow.id,
-                name: userRow.name,
-                email: userRow.email,
-                avatar: userRow.avatar_url || null,
+                id: account.id,
+                name: account.name,
+                email: account.email,
+                avatar: account.avatar_url || null,
             }],
             rowCount: 1,
         };
