@@ -131,7 +131,7 @@ async function buildCreditStatusPostgres(connection, email) {
     const storedPlanKey = detail ? resolveStoredPlanKey(detail.plan) : 'free';
     const plan = detailActive ? storedPlanKey : 'free';
     const developerEmails = () => new Set(
-        String(process.env.DEVELOPER_EMAILS || 'hrybovnikita@gmail.com')
+        String(process.env.DEVELOPER_EMAILS || '')
             .split(',')
             .map((item) => item.trim().toLowerCase())
             .filter(Boolean),

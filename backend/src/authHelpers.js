@@ -14,14 +14,8 @@ function normalizeEmail(email) {
     return email.trim().toLowerCase();
 }
 
-/** Maps common login typos to the canonical account email (same person, one SQLite row). */
-const LOGIN_EMAIL_ALIASES = new Map([
-    ['hrybownikita@gmail.com', 'hrybovnikita@gmail.com'],
-]);
-
 function normalizeLoginEmail(email) {
-    const normalized = normalizeEmail(email);
-    return LOGIN_EMAIL_ALIASES.get(normalized) || normalized;
+    return normalizeEmail(email);
 }
 
 function isValidEmail(email) {
@@ -82,9 +76,6 @@ function authLog(message, meta = {}) {
 
 function defaultLoginName(normalizedEmail, name) {
     if (typeof name === 'string' && name.trim()) return name.trim();
-    if (normalizedEmail === 'hrybovnikita@gmail.com' || normalizedEmail === 'hrybownikita@gmail.com') {
-        return 'Nikita Hrybov';
-    }
     return normalizedEmail.split('@')[0];
 }
 

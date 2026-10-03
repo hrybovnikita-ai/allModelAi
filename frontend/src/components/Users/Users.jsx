@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import { resolveApiUrl } from '../../lib/apiBase';
+import { parseCommunityUsersPayload } from '../../lib/communityUsers';
 import './Users.css';
 
 const userComments = {
@@ -26,16 +27,36 @@ export default function Users() {
         setLoading(true);
         setError('');
 
-        const response = await axios.get('/api/community/users', {
+        const url = resolveApiUrl('/api/users');
+        const response = await fetch(url, {
           signal: controller.signal,
-          withCredentials: true,
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
         });
 
-        setUsers(Array.isArray(response.data) ? response.data : []);
+        const text = await response.text();
+        let data = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          data = null;
+        }
+
+        if (!response.ok) {
+          throw new Error(data?.message || `Could not load community members (${response.status}).`);
+        }
+
+        const list = parseCommunityUsersPayload(data);
+        if (!list) {
+          throw new Error(
+            'The server returned an unexpected response. Check VITE_API_BASE_URL and that /api/users is reachable.',
+          );
+        }
+
+        setUsers(list);
       } catch (requestError) {
-        if (requestError.code !== 'ERR_CANCELED') {
-          const apiMessage = requestError.response?.data?.message;
-          setError(apiMessage || 'Could not reach the AllModelAI API. Please try again shortly.');
+        if (requestError.name !== 'AbortError') {
+          setError(requestError.message || 'Could not reach the AllModelAI API. Please try again shortly.');
         }
       } finally {
         setLoading(false);
@@ -71,7 +92,7 @@ export default function Users() {
               </div>
               <div>
                 <h3>{user.name}</h3>
-                <a href={`mailto:${user.email}`}>{user.email}</a>
+                <p className="user-member-label">AllModelAI member</p>
               </div>
               <span className="user-id">#{String(user.id).padStart(2, '0')}</span>
             </article>

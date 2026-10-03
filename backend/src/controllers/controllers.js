@@ -12,7 +12,7 @@ const frontendOrigin = (req) => publicAppOrigin(req);
 const crypto = require('node:crypto');
 const { hashPassword, verifyPassword } = require('../password');
 const { loadAuthUserByEmailAsync } = require('../authUser');
-const { describePgPoolStats, isPgTimeoutError, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
+const { describePgPoolStats, isPgTimeoutError, resolvePostgresAsyncPool, queryPgPool } = require('../db/pgPoolQuery');
 const {
     insertAuthSession,
     syncLoginUserName,
@@ -40,7 +40,23 @@ function nativeSessionFields(req, token) {
     if (token && shouldIssueNativeSessionToken(req)) return { nativeSessionToken: token };
     return {};
 }
-const publicUser = ({ passwordHash, ...user }) => user;
+const publicUser = ({ passwordHash, password_hash, ...user }) => user;
+
+function syncUserCache(user) {
+    if (!user?.id || !user?.email) return;
+    const index = users.findIndex((item) => item.id === user.id);
+    const entry = {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        passwordHash: user.passwordHash ?? user.password_hash ?? null,
+    };
+    if (index >= 0) {
+        users[index] = entry;
+    } else {
+        users.push(entry);
+    }
+}
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
 })[character]);
@@ -157,7 +173,15 @@ const saveUsers = (connection) => {
         return;
     }
     const data = connection.read();
-    data.users = users;
+    const dbUsersById = new Map((data.users || []).map((row) => [row.id, row]));
+    data.users = users.map((user) => ({
+        ...user,
+        passwordHash:
+            user.passwordHash
+            ?? user.password_hash
+            ?? dbUsersById.get(user.id)?.passwordHash
+            ?? null,
+    }));
     connection.write(data);
 };
 
@@ -223,7 +247,16 @@ const registerUser = async (req, res) => {
             message: 'An account with this email already exists. Sign in instead.',
         });
     }
-    users.push(newUser);
+    syncUserCache(newUser);
+    const persisted = await loadAuthUserByEmailAsync(connection, normalizedEmail);
+    const hashPresent = Boolean(persisted?.passwordHash);
+    authLog('REGISTER_USER_PERSISTED', { userId: newUser.id, hashPresent });
+    if (!hashPresent) {
+        return res.status(500).json({
+            code: 'REGISTRATION_STORAGE_FAILED',
+            message: 'Your account could not be saved. Please try again.',
+        });
+    }
     const sessionToken = await setSession(req, res, newUser, parseRememberMe(req.body?.rememberMe));
     let welcomeEmail = { sent: false, reason: 'not_configured' };
     try {
@@ -254,13 +287,17 @@ const loginUser = async (req, res) => {
     }
 
     const normalizedEmail = normalizeLoginEmail(email);
+    authLog(`LOGIN_REQUEST email=${normalizedEmail}`);
     authLog('Normalized email', { email: normalizedEmail });
     if (!isValidEmail(normalizedEmail)) {
         return res.status(400).json({ message: 'Enter a valid email address' });
     }
 
-    const safeName = defaultLoginName(normalizedEmail, name);
     const remember = req.body.rememberMe !== false && req.body.rememberMe !== 'false';
+    const explicitLoginName =
+        typeof name === 'string' && name.trim()
+            ? defaultLoginName(normalizedEmail, name)
+            : null;
 
     const finishLogin = async (account) => {
         const sessionToken = await setSession(req, res, account, remember);
@@ -302,6 +339,7 @@ const loginUser = async (req, res) => {
         });
     }
 
+    authLog(`USER_FOUND ${Boolean(user)}`, user ? { userId: user.id } : undefined);
     if (!user) {
         authLog('Login rejected', { reason: 'USER_NOT_FOUND' });
         return res.status(401).json({ message: 'Incorrect email or password' });
@@ -325,7 +363,7 @@ const loginUser = async (req, res) => {
         authLog('Login rejected', { reason: 'PASSWORD_VERIFY_ERROR', code: error.code || 'unknown' });
         return res.status(401).json({ message: 'Incorrect email or password' });
     }
-    authLog(`Password verification: ${passwordMatches ? 'success' : 'failed'}`);
+    authLog(`PASSWORD_VERIFIED ${passwordMatches}`);
     if (!passwordMatches) {
         authLog('Login rejected', { reason: 'PASSWORD_MISMATCH' });
         return res.status(401).json({ message: 'Incorrect email or password' });
@@ -333,9 +371,14 @@ const loginUser = async (req, res) => {
 
     authLog('PASSWORD_VERIFIED');
     try {
-        const synced = await syncLoginUserName(req.app.locals.db, user, safeName, users);
+        const synced = explicitLoginName
+            ? await syncLoginUserName(req.app.locals.db, user, explicitLoginName, users)
+            : user;
         authLog('USER_SYNC_SUCCESS');
-        return await finishLogin(synced);
+        authLog('SESSION_CREATED pending');
+        const response = await finishLogin(synced);
+        authLog('SESSION_CREATED true');
+        return response;
     } catch (error) {
         const code = safeSessionErrorCode(error);
         authLog('SESSION_DB_INSERT_FAILED', { reason: code });
@@ -374,9 +417,12 @@ const socialLogin = async (req, res) => {
 };
 
 const quickSocialLogin = async (req, res) => {
+    if (process.env.NODE_ENV === 'production' || process.env.VERCEL || process.env.ENABLE_DEMO_SOCIAL_AUTH !== 'true') {
+        return res.status(404).json({ message: 'Demo quick social sign-in is disabled. Use Continue with Google, Apple, or Facebook.' });
+    }
     try {
-        const { provider = 'Google', name = 'Nikita Hrybov', email = 'hrybovnikita@gmail.com', avatar, rememberMe = true } = req.body || {};
-        if (!email) {
+        const { provider = 'Google', name, email, avatar, rememberMe = true } = req.body || {};
+        if (!email || typeof email !== 'string' || !email.trim()) {
             return res.status(400).json({ message: 'Email is required' });
         }
         const normalizedEmail = String(email).trim().toLowerCase();
@@ -396,9 +442,7 @@ const quickSocialLogin = async (req, res) => {
                 user.avatar = avatar;
             }
         }
-        if (!users.find((item) => item.id === user.id)) {
-            users.push(user);
-        }
+        syncUserCache(user);
 
         await setSession(req, res, user, rememberMe !== false && rememberMe !== 'false');
         return res.status(200).json({
@@ -471,13 +515,57 @@ const getUsers = (req, res) => {
     res.status(200).json(users.map(publicUser));
 };
 
-const getCommunityUsers = (_req, res) => {
-    const communityUsers = users
-        .filter((user) => user.id >= 1 && user.id <= 8)
-        .map(({ id, name, email }) => ({ id, name, email }));
+function mapPublicCommunityUser(row) {
+    if (!row || row.id == null) {
+        return null;
+    }
+    const name = String(row.name || '').trim();
+    return {
+        id: row.id,
+        name: name || 'AllModelAI member',
+    };
+}
 
-    return res.status(200).json(communityUsers);
+const getPublicUsers = async (req, res) => {
+    try {
+        const connection = req.app.locals.db;
+        let rows;
+        if (isPostgresConnection(connection)) {
+            const pool = resolvePostgresAsyncPool(connection);
+            if (!pool) {
+                return res.status(503).json({
+                    message: 'Community directory is temporarily unavailable.',
+                });
+            }
+            const result = await queryPgPool(
+                pool,
+                `SELECT id, name
+                 FROM users
+                 WHERE COALESCE(trim(name), '') <> ''
+                 ORDER BY id ASC
+                 LIMIT 50`,
+                [],
+            );
+            rows = result.rows;
+        } else {
+            rows = connection.database.prepare(
+                `SELECT id, name
+                 FROM users
+                 WHERE trim(name) <> ''
+                 ORDER BY id ASC
+                 LIMIT 50`,
+            ).all();
+        }
+        const publicUsers = rows.map(mapPublicCommunityUser).filter(Boolean);
+        authLog('PUBLIC_USERS_LIST', { count: publicUsers.length });
+        return res.status(200).json({ users: publicUsers });
+    } catch (error) {
+        authLog('PUBLIC_USERS_LIST_FAILED', { code: error.code || 'unknown' });
+        return res.status(500).json({ message: 'Could not load community members.' });
+    }
 };
+
+const getCommunityUsers = (req, res) => getPublicUsers(req, res);
 
 const getUserById = (req, res) => {
     const id = Number(req.params.id);
@@ -568,25 +656,31 @@ const deleteUser = (req, res) => {
 
 const deleteAccount = async (req, res) => {
     const email = req.user.email;
-
-    const index = users.findIndex((user) => user.email.toLowerCase() === email);
-    if (index === -1) return res.status(404).json({ message: 'Account not found' });
-
-    const [deletedUser] = users.splice(index, 1);
+    const userId = req.user.id;
     const connection = req.app.locals.db;
+    const deletedUser = publicUser(req.user);
+
     if (isPostgresConnection(connection)) {
-        await deleteAccountPostgresAsync(connection, { userId: deletedUser.id, email });
+        await deleteAccountPostgresAsync(connection, { userId, email });
     } else {
+        const db = connection.database;
+        const existing = db.prepare('SELECT id FROM users WHERE id = ? AND lower(trim(email)) = ?').get(userId, email.toLowerCase());
+        if (!existing) return res.status(404).json({ message: 'Account not found' });
+        db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(userId);
+        db.prepare('DELETE FROM account_access_modes WHERE email = ?').run(email);
+        db.prepare('DELETE FROM users WHERE id = ?').run(userId);
         const data = connection.read();
-        data.users = users;
         data.conversations = (data.conversations || []).filter((conversation) => conversation.email !== email);
         data.purchases = (data.purchases || []).filter((purchase) => purchase.email !== email);
         if (data.subscriptions) delete data.subscriptions[email];
         if (data.usage) delete data.usage[email];
+        data.users = (data.users || []).filter((user) => user.id !== userId);
         connection.write(data);
-        connection.database.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(deletedUser.id);
-        connection.database.prepare('DELETE FROM account_access_modes WHERE email = ?').run(email);
     }
+
+    const cacheIndex = users.findIndex((user) => user.id === userId);
+    if (cacheIndex >= 0) users.splice(cacheIndex, 1);
+
     res.clearCookie(sessionCookie, sessionCookieOptions(req));
 
     return res.status(200).json({ message: 'Account deleted successfully', user: deletedUser });
@@ -594,7 +688,7 @@ const deleteAccount = async (req, res) => {
 
 const creditLimits = Object.fromEntries(Object.entries(subscriptionPlans).map(([key, plan]) => [key, plan.limit]));
 const creditLimitsEnabled = () => process.env.ENFORCE_CREDIT_LIMITS === 'true';
-const developerEmails = () => new Set(String(process.env.DEVELOPER_EMAILS || 'hrybovnikita@gmail.com').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean));
+const developerEmails = () => new Set(String(process.env.DEVELOPER_EMAILS || '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean));
 
 const { getCreditStatusCore, getCreditStatusCoreAsync } = require('./subscriptionController');
 const getCreditStatus = (database, email) => getCreditStatusCore(database, email);
@@ -2544,6 +2638,7 @@ module.exports = {
     getSession,
     logout,
     getCommunityUsers,
+    getPublicUsers,
     getUsers,
     getUserById,
     createUser,

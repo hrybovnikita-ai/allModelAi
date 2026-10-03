@@ -48,6 +48,12 @@ function createMockPostgresPool(initialUser) {
                 userRow.name = queryValues[0];
                 return { rowCount: 1, rows: [] };
             }
+            if (/SELECT id,\s*name(\s*,\s*email)?\s*FROM users/i.test(text)) {
+                return {
+                    rows: [{ id: userRow.id, name: userRow.name, email: userRow.email }],
+                    rowCount: 1,
+                };
+            }
             throw new Error(`Unexpected postgres query: ${text.slice(0, 96)}`);
         },
     };
@@ -110,7 +116,8 @@ test('auth login, session, and model status complete sequentially on postgres as
 
         const community = await request(app).get('/api/community/users').timeout(deadline);
         assert.equal(community.status, 200);
-        assert.ok(Array.isArray(community.body));
+        assert.ok(Array.isArray(community.body.users));
+        assert.ok(community.body.users.length >= 1);
 
         const checkout = await request(app).get('/api/payments/checkout-info').timeout(deadline);
         assert.equal(checkout.status, 200);

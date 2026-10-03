@@ -17,7 +17,7 @@ export {
   nativeSessionHeaders,
   storeNativeSessionToken,
 } from './nativeSession.js';
-import { clearNativeSessionToken, nativeSessionHeaders } from './nativeSession.js';
+import { clearNativeSessionToken, getNativeSessionToken, nativeSessionHeaders } from './nativeSession.js';
 
 /**
  * Returns an object representing the storage to use for the session.
@@ -144,16 +144,38 @@ export async function restoreSession({ force = false } = {}) {
 
 // Verify that the browser accepted the HttpOnly cookie before opening the app.
 export async function confirmSession(user) {
-  if (user?.email) {
-    rememberSession(user);
+  if (!user?.email) {
+    throw new Error('Your sign-in could not be verified. Please retry.');
   }
-  const verified = await restoreSession({ force: true });
-  if (verified?.email?.toLowerCase() === user?.email?.toLowerCase()) {
-    return verified;
+  rememberSession(user);
+
+  const matchesUser = (candidate) =>
+    candidate?.email?.toLowerCase() === user.email.toLowerCase();
+
+  try {
+    const verified = await restoreSession({ force: true });
+    if (matchesUser(verified)) {
+      return verified;
+    }
+  } catch {
+    /* Cookie may not be ready yet on cross-origin or native clients. */
   }
-  if (user?.email && (isCapacitorNative() || usesRemoteApiOrigin())) {
+
+  const crossOriginOrNative =
+    isCapacitorNative() || usesRemoteApiOrigin() || Boolean(getNativeSessionToken());
+
+  if (crossOriginOrNative) {
+    try {
+      const retry = await restoreSession({ force: true });
+      if (matchesUser(retry)) {
+        return retry;
+      }
+    } catch {
+      /* fall through to trusted login payload */
+    }
     return rememberSession(user);
   }
+
   clearAllSessionData();
   throw new Error('Your sign-in could not be verified. Please retry.');
 }

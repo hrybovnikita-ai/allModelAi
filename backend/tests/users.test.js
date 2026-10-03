@@ -142,7 +142,7 @@ describe('accounts, teams, and sharing', () => {
         async () => {
 
             const anonymousResponse = await request(app)
-                .get('/api/users');
+                .get('/api/admin/users');
 
             assert.equal(
                 anonymousResponse.status,
@@ -150,7 +150,7 @@ describe('accounts, teams, and sharing', () => {
             );
 
             const adminWithoutSession = await request(app)
-                .get('/api/users')
+                .get('/api/admin/users')
                 .set(
                     'x-admin-key',
                     'test-admin'
@@ -162,7 +162,7 @@ describe('accounts, teams, and sharing', () => {
             );
 
             const ownerAdminResponse = await owner
-                .get('/api/users')
+                .get('/api/admin/users')
                 .set(
                     'x-admin-key',
                     'test-admin'
@@ -180,7 +180,7 @@ describe('accounts, teams, and sharing', () => {
     // =========================
 
     test(
-        'publishes only seeded community profiles',
+        'publishes registered community profiles from the database',
         async () => {
 
             const response = await request(app)
@@ -191,29 +191,25 @@ describe('accounts, teams, and sharing', () => {
                 200
             );
 
-            assert.equal(
-                response.body.length,
-                8
-            );
+            assert.ok(Array.isArray(response.body.users));
+            assert.ok(response.body.users.length >= 2);
 
             assert.deepEqual(
-                Object.keys(
-                    response.body[0]
-                ).sort(),
-                [
-                    'email',
-                    'id',
-                    'name'
-                ]
+                Object.keys(response.body.users[0]).sort(),
+                ['id', 'name'],
             );
 
             assert.equal(
-                response.body.some(
-                    (user) =>
-                        user.email ===
-                        'owner@example.com'
-                ),
-                false
+                response.body.users.some((user) => user.name === 'Owner'),
+                true,
+            );
+            assert.equal(
+                response.body.users.some((user) => user.name === 'Viewer'),
+                true,
+            );
+            assert.equal(
+                response.body.users.some((user) => Object.prototype.hasOwnProperty.call(user, 'email')),
+                false,
             );
         }
     );
@@ -223,16 +219,14 @@ describe('accounts, teams, and sharing', () => {
     // =========================
 
     test(
-        'signs in a seeded user without exposing the password hash',
+        'signs in a registered user without exposing the password hash',
         async () => {
 
             const response = await request(app)
                 .post('/api/auth/login')
                 .send({
-                    email:
-                        'alice.johnson@gmail.com',
-                    password:
-                        'AliceAI1!'
+                    email: 'owner@example.com',
+                    password: 'Secret123!',
                 });
 
             assert.equal(
@@ -242,7 +236,7 @@ describe('accounts, teams, and sharing', () => {
 
             assert.equal(
                 response.body.user.email,
-                'alice.johnson@gmail.com'
+                'owner@example.com'
             );
 
             assert.equal(

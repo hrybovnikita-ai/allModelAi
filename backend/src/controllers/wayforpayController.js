@@ -42,7 +42,7 @@ const PAYMENT_STATUS = {
 };
 
 const developerEmails = () => new Set(
-    String(process.env.DEVELOPER_EMAILS || 'hrybovnikita@gmail.com')
+    String(process.env.DEVELOPER_EMAILS || '')
         .split(',')
         .map((item) => item.trim().toLowerCase())
         .filter(Boolean),

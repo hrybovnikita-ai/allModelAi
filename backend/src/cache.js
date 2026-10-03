@@ -78,7 +78,15 @@ function cachePublicResponse(key, ttl = 30) {
                     }
                     const json = res.json.bind(res);
                     res.json = (body) => {
-                        if (res.statusCode === 200) void cache.set(key, body, ttl);
+                        if (res.statusCode === 200) {
+                            const emptyCommunityList =
+                                key.includes('community-users')
+                                && Array.isArray(body?.users)
+                                && body.users.length === 0;
+                            if (!emptyCommunityList) {
+                                void cache.set(key, body, ttl);
+                            }
+                        }
                         return json(body);
                     };
                     forward();

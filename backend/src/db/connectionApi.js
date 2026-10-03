@@ -159,7 +159,7 @@ function createConnectionApi(database, meta = {}) {
                             email =
                                 excluded.email,
                             password_hash =
-                                excluded.password_hash
+                                COALESCE(excluded.password_hash, users.password_hash)
                     `);
 
                 const insertPurchase =

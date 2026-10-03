@@ -10,6 +10,7 @@ const {
     getSession,
     logout,
     getCommunityUsers,
+    getPublicUsers,
     getUsers,
     getUserById,
     createUser,
@@ -101,12 +102,14 @@ router.post('/auth/social', socialLogin);
 router.get('/auth/google', startGoogleAuth);
 router.get('/auth/google/callback', googleCallback);
 router.get('/auth/session', logAuthStage('SESSION_ROUTE_ENTERED'), getSession);
+router.get('/auth/me', logAuthStage('SESSION_ROUTE_ENTERED'), getSession);
 router.post('/auth/logout', logout);
 router.post('/auth/password-reset/request', requestPasswordReset);
 router.post('/auth/password-reset/confirm', confirmPasswordReset);
 router.get('/status/models', logAuthStage('MODELS_STATUS_ROUTE_ENTERED'), cachePublicResponse('allmodelai:public:model-status:v1'), getModelStatus);
 router.get('/health/providers', cachePublicResponse('allmodelai:public:provider-health:v1'), getProviderHealth);
 router.get('/health', health);
+router.get('/users', getPublicUsers);
 router.get('/community/users', getCommunityUsers);
 router.get('/admin/stats', getAdminStats);
 router.get('/share/:token', getSharedConversation);
@@ -183,11 +186,11 @@ router.delete('/webhooks/:id', requireAuth, deleteWebhook);
 router.get('/privacy/export', requireAuth, privacyExport);
 router.post('/auth/verify/request', requireAuth, requestEmailVerification);
 router.post('/auth/verify/confirm', requireAuth, confirmEmailVerification);
-router.get('/users', requireAuth, requireAdmin, getUsers);
-router.get('/users/:id', requireAuth, requireAdmin, getUserById);
-router.post('/users', requireAuth, requireAdmin, createUser);
-router.put('/users/:id', requireAuth, requireAdmin, updateUser);
-router.patch('/users/:id', requireAuth, requireAdmin, patchUser);
-router.delete('/users/:id', requireAuth, requireAdmin, deleteUser);
+router.get('/admin/users', requireAuth, requireAdmin, getUsers);
+router.get('/admin/users/:id', requireAuth, requireAdmin, getUserById);
+router.post('/admin/users', requireAuth, requireAdmin, createUser);
+router.put('/admin/users/:id', requireAuth, requireAdmin, updateUser);
+router.patch('/admin/users/:id', requireAuth, requireAdmin, patchUser);
+router.delete('/admin/users/:id', requireAuth, requireAdmin, deleteUser);
 
 module.exports = router;

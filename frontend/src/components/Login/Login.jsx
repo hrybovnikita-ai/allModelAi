@@ -78,15 +78,6 @@ function LoginForm({
       }
       payload = { ...validation.payload, rememberMe };
     } else {
-      const trimmedName = String(raw.name || '').trim();
-      if (!trimmedName) {
-        setError('Please enter your name.');
-        return;
-      }
-      if (trimmedName.length < 2 || trimmedName.length > 100) {
-        setError('Name must be between 2 and 100 characters.');
-        return;
-      }
       if (!String(raw.email || '').trim()) {
         setError('Please enter your email address.');
         return;
@@ -96,7 +87,6 @@ function LoginForm({
         return;
       }
       payload = {
-        name: trimmedName,
         email: String(raw.email).trim().toLowerCase(),
         password: raw.password,
         rememberMe,
@@ -142,9 +132,18 @@ function LoginForm({
           requestError.message ||
             'An account with this email already exists. Sign in instead.',
         );
+      } else if (requestError.code === 'PASSWORD_SETUP_REQUIRED' && !signingUp) {
+        setError(
+          requestError.message ||
+            'This account has no password yet. Use social sign-in or reset your password.',
+        );
+      } else if (requestError.status === 401 && !signingUp) {
+        setError('Incorrect email or password');
       } else if (requestError.message?.includes('Failed to fetch')) {
         setError(
-          'Registration service is temporarily unavailable. Please try again.',
+          signingUp
+            ? 'Registration service is temporarily unavailable. Please try again.'
+            : 'Could not reach the authentication server. Check your connection or API configuration.',
         );
       } else {
         setError(
@@ -212,16 +211,18 @@ function LoginForm({
         </p>
 
         <form className="login-form" onSubmit={handleSubmit}>
-          <label>
-            <span>Name</span>
-            <input
-              name="name"
-              type="text"
-              placeholder="Your name"
-              autoComplete="name"
-              required
-            />
-          </label>
+          {signingUp && (
+            <label>
+              <span>Name</span>
+              <input
+                name="name"
+                type="text"
+                placeholder="Your name"
+                autoComplete="name"
+                required
+              />
+            </label>
+          )}
 
           <label>
             <span>Email</span>

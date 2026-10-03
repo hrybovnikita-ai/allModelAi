@@ -1,3 +1,15 @@
+function normalizeHashValue(value) {
+    if (value == null) return null;
+    if (typeof value === 'string') {
+        return value.length ? value : null;
+    }
+    if (Buffer.isBuffer(value)) {
+        const text = value.toString('utf8');
+        return text.length ? text : null;
+    }
+    return null;
+}
+
 function extractPasswordHash(row) {
     if (!row || typeof row !== 'object') {
         return null;
@@ -6,7 +18,7 @@ function extractPasswordHash(row) {
         ?? row.passwordHash
         ?? row.passwordhash
         ?? null;
-    return typeof value === 'string' && value.length ? value : null;
+    return normalizeHashValue(value);
 }
 
 function classifyPasswordHashType(passwordHash) {

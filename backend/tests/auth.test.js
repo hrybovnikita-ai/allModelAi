@@ -90,33 +90,29 @@ test('concurrent registrations cannot create duplicate accounts', async () => {
   assert.deepEqual(results.map((result) => result.status).sort(), [201, 409]);
 });
 
-test('known login email typos map to the canonical address', async () => {
+test('login email normalization trims and lowercases only', async () => {
   const { normalizeLoginEmail } = require('../src/authHelpers');
-  assert.equal(normalizeLoginEmail('  hrybownikita@gmail.com '), 'hrybovnikita@gmail.com');
+  assert.equal(normalizeLoginEmail('  Alice@Example.COM '), 'alice@example.com');
 });
 
-test('production login accepts a typo email when the canonical account exists', async () => {
-  const previous = process.env.NODE_ENV;
-  process.env.NODE_ENV = 'production';
-  const password = 'TypoAliasPass1';
-  try {
-    assert.equal((await request(app).post('/api/auth/register').send({
-      name: 'Alias Owner',
-      email: 'hrybovnikita@gmail.com',
-      password,
-    })).status, 201);
-    const login = await request(app).post('/api/auth/login').send({
-      email: 'hrybownikita@gmail.com',
-      password,
-    });
-    assert.equal(login.status, 200);
-    assert.equal(login.body.user.email, 'hrybovnikita@gmail.com');
-  } finally {
-    app.locals.db.database.prepare('DELETE FROM users WHERE lower(email) = ?').run('hrybovnikita@gmail.com');
-    const index = users.findIndex((item) => item.email.toLowerCase() === 'hrybovnikita@gmail.com');
-    if (index !== -1) users.splice(index, 1);
-    process.env.NODE_ENV = previous;
-  }
+test('login does not map one email address to another', async () => {
+  const password = 'ExactEmailPass1';
+  const canonical = 'exact-owner@example.com';
+  const typo = 'exact-ownr@example.com';
+  assert.equal((await request(app).post('/api/auth/register').send({
+    name: 'Exact Owner',
+    email: canonical,
+    password,
+  })).status, 201);
+  assert.equal((await request(app).post('/api/auth/login').send({
+    email: typo,
+    password,
+  })).status, 401);
+  const agent = request.agent(app);
+  assert.equal((await agent.post('/api/auth/login').send({ email: canonical, password })).status, 200);
+  app.locals.db.database.prepare('DELETE FROM users WHERE lower(email) = ?').run(canonical);
+  const index = users.findIndex((item) => item.email.toLowerCase() === canonical);
+  if (index !== -1) users.splice(index, 1);
 });
 
 test('production login does not auto-register unknown accounts', async () => {

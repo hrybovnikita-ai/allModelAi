@@ -59,8 +59,9 @@ if (storedData.users.length) {
         app.locals.db.write(storedData);
     }
 } else {
-    storedData.users = users;
-    app.locals.db.write(storedData);
+    // Do not run legacy connection.write() with an empty user list — it wipes
+    // purchases/subscriptions/conversations and can null password_hash on upsert.
+    users.splice(0, users.length);
 }
 
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), stripeWebhook);

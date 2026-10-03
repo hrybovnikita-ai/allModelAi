@@ -7,14 +7,9 @@ import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 export default function SocialAuthModal({ provider, onClose, onSuccess, rememberMe = true }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [customMode, setCustomMode] = useState(false);
-  const [customName, setCustomName] = useState('Nikita Hrybov');
-  const [customEmail, setCustomEmail] = useState('hrybovnikita@gmail.com');
-
-  const defaultUser = {
-    name: 'Nikita Hrybov',
-    email: 'hrybovnikita@gmail.com',
-  };
+  const [customMode, setCustomMode] = useState(true);
+  const [customName, setCustomName] = useState('');
+  const [customEmail, setCustomEmail] = useState('');
 
   const handleSignIn = async (accountData) => {
     if (loading) return;
@@ -23,8 +18,8 @@ export default function SocialAuthModal({ provider, onClose, onSuccess, remember
     try {
       const payload = {
         provider,
-        name: accountData?.name || customName || defaultUser.name,
-        email: accountData?.email || customEmail || defaultUser.email,
+        name: accountData?.name || customName,
+        email: accountData?.email || customEmail,
         rememberMe,
       };
 
@@ -86,24 +81,6 @@ export default function SocialAuthModal({ provider, onClose, onSuccess, remember
 
             {!customMode ? (
               <div className="google-accounts-list">
-                {/* Detected Account Card */}
-                <button
-                  type="button"
-                  className="google-account-item"
-                  onClick={() => handleSignIn(defaultUser)}
-                  disabled={loading}
-                >
-                  <div className="google-avatar-circle">N</div>
-                  <div className="google-account-info">
-                    <span className="google-account-name">{defaultUser.name}</span>
-                    <span className="google-account-email">{defaultUser.email}</span>
-                  </div>
-                  {loading && <span className="google-spinner"></span>}
-                </button>
-
-                <div className="google-divider"></div>
-
-                {/* Use another account option */}
                 <button
                   type="button"
                   className="google-account-item secondary"
@@ -275,34 +252,32 @@ export default function SocialAuthModal({ provider, onClose, onSuccess, remember
 
             {error && <div className="fb-error">{error}</div>}
 
-            <div className="fb-account-card">
-              <div className="fb-avatar">N</div>
-              <div className="fb-account-meta">
-                <strong>{defaultUser.name}</strong>
-                <span>{defaultUser.email}</span>
-              </div>
-            </div>
+            <label className="fb-field">
+              <span>Name</span>
+              <input
+                type="text"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="Your name"
+              />
+            </label>
+            <label className="fb-field">
+              <span>Email</span>
+              <input
+                type="email"
+                value={customEmail}
+                onChange={(e) => setCustomEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </label>
 
             <button
               type="button"
               className="fb-btn-continue"
-              onClick={() => handleSignIn(defaultUser)}
-              disabled={loading}
+              onClick={() => handleSignIn({ name: customName, email: customEmail })}
+              disabled={loading || !customEmail.trim()}
             >
-              {loading ? 'Signing in...' : 'Continue as Nikita'}
-            </button>
-
-            <div className="fb-or-divider">
-              <span>or</span>
-            </div>
-
-            <button
-              type="button"
-              className="fb-btn-other"
-              onClick={() => handleSignIn({ name: 'Facebook User', email: 'facebook.user@example.com' })}
-              disabled={loading}
-            >
-              Log into another account
+              {loading ? 'Signing in...' : 'Continue'}
             </button>
 
             <p className="fb-privacy-footer">
