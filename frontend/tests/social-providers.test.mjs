@@ -15,8 +15,9 @@ test('login UI references GitHub social sign-in', async () => {
   assert.doesNotMatch(login, /Facebook/);
 });
 
-test('socialSignIn uses Firebase GitHub OAuth provider', async () => {
+test('socialSignIn uses Firebase GithubAuthProvider', async () => {
   const source = await readFile(new URL('../src/lib/socialSignIn.js', import.meta.url), 'utf8');
-  assert.match(source, /OAuthProvider\('github\.com'\)/);
+  assert.match(source, /GithubAuthProvider/);
+  assert.match(source, /new GithubAuthProvider\(\)/);
   assert.doesNotMatch(source, /FacebookAuthProvider/);
 });

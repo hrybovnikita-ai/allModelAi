@@ -25,6 +25,11 @@ export function getFirebaseConfigEnvKeys() {
   return { ...CONFIG_ENV_KEYS };
 }
 
+/** True when all VITE_FIREBASE_* web config values required for social sign-in are set. */
+export function isFirebaseSocialConfigured() {
+  return Object.values(config).every((value) => String(value || '').trim());
+}
+
 /** Origin Firebase OAuth runs on (current tab, not a hardcoded deploy URL). */
 export function getFirebaseOAuthOrigin() {
   if (typeof window !== 'undefined' && window.location?.origin) {

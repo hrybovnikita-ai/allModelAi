@@ -1,5 +1,6 @@
 import {
   GoogleAuthProvider,
+  GithubAuthProvider,
   OAuthProvider,
   signInWithPopup,
   signInWithRedirect,
@@ -37,10 +38,7 @@ function providerFor(name) {
     return provider;
   }
   if (name === 'GitHub') {
-    const provider = new OAuthProvider('github.com');
-    provider.addScope('user:email');
-    provider.addScope('read:user');
-    return provider;
+    return new GithubAuthProvider();
   }
   throw new Error('Unsupported provider.');
 }
@@ -130,7 +128,9 @@ export async function socialSignIn(name, options = {}) {
     if (options?.link && error.code === 'auth/account-exists-with-different-credential') {
       const credential = name === 'Google'
         ? GoogleAuthProvider.credentialFromError(error)
-        : OAuthProvider.credentialFromError(error);
+        : name === 'GitHub'
+          ? GithubAuthProvider.credentialFromError(error)
+          : OAuthProvider.credentialFromError(error);
       if (credential) {
         pendingLink = {
           credential,
