@@ -25,6 +25,11 @@ const server = app.listen(PORT, HOST, () => {
     try {
         const providerHealth = require('./src/providerHealth');
         providerHealth.logStartupConfig();
+        const { warmFirebaseAdmin, isFirebaseAdminConfigured } = require('./src/firebaseAdmin');
+        if (isFirebaseAdminConfigured()) {
+            const ready = warmFirebaseAdmin();
+            console.log(`[CONFIG] firebase admin sdk: ${ready ? 'ready' : 'initialization failed (see [AUTH] logs)'}`);
+        }
         if (process.env.DISABLE_PROVIDER_PROBE_WARMUP !== 'true') {
             setImmediate(() => providerHealth.warmProviderProbes());
         }

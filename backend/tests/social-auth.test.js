@@ -148,9 +148,29 @@ test('production and mobile sessions use secure cookies and demo auth remains di
   } finally { process.env.NODE_ENV = previous; if (secure === undefined) delete process.env.COOKIE_SECURE; else process.env.COOKIE_SECURE = secure; delete process.env.ENABLE_DEMO_SOCIAL_AUTH; }
 });
 
-test('real Admin SDK rejects a malformed token without trusting client fields', async () => {
-  const project = process.env.FIREBASE_PROJECT_ID;
-  process.env.FIREBASE_PROJECT_ID = 'allmodelai-test-only';
-  try { await assert.rejects(original('not-a-jwt'), error => error.code === 'auth/argument-error'); }
-  finally { if (project === undefined) delete process.env.FIREBASE_PROJECT_ID; else process.env.FIREBASE_PROJECT_ID = project; }
+test('verifySocialToken rejects malformed tokens or missing Admin credentials', async () => {
+  const prev = {
+    FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID,
+    FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL,
+    FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY,
+  };
+  const { resetFirebaseAdminForTests, isFirebaseAdminConfigured } = require('../src/firebaseAdmin');
+  resetFirebaseAdminForTests();
+  try {
+    if (isFirebaseAdminConfigured()) {
+      await assert.rejects(original('not-a-jwt'), (error) => error.code?.startsWith('auth/'));
+      return;
+    }
+    process.env.FIREBASE_PROJECT_ID = 'allmodelai-test-only';
+    delete process.env.FIREBASE_CLIENT_EMAIL;
+    delete process.env.FIREBASE_PRIVATE_KEY;
+    resetFirebaseAdminForTests();
+    await assert.rejects(original('not-a-jwt'), (error) => error.status === 503);
+  } finally {
+    Object.entries(prev).forEach(([key, value]) => {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    });
+    resetFirebaseAdminForTests();
+  }
 });

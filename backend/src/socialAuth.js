@@ -181,10 +181,18 @@ async function exchange(req, res) {
         }
         return res.json(payload);
     } catch (error) {
-        const status = error.status || (error.code?.startsWith('auth/') ? 401 : 503);
+        const firebaseAuthError = typeof error.code === 'string' && error.code.startsWith('auth/');
+        const status = error.status || (firebaseAuthError ? 401 : 503);
+        if (!error.status && !firebaseAuthError) {
+            console.error('[AUTH] POST /api/auth/firebase failed:', error.code || 'UNKNOWN', error.message);
+        }
         return res.status(status).json({
-            code: error.status ? error.code : 'SOCIAL_AUTH_FAILED',
-            message: error.status ? error.message : status === 401 ? 'Provider credentials are invalid, expired or revoked. Sign in again.' : 'Social sign-in is unavailable. Check server configuration or try again later.',
+            code: error.status ? error.code : (firebaseAuthError ? error.code : 'SOCIAL_AUTH_FAILED'),
+            message: error.status
+                ? error.message
+                : firebaseAuthError
+                    ? 'Provider credentials are invalid, expired or revoked. Sign in again.'
+                    : 'Social sign-in is unavailable. Check server configuration or try again later.',
         });
     }
 }
