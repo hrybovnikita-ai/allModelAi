@@ -20,5 +20,6 @@ test('socialSignIn uses Firebase GithubAuthProvider', async () => {
   assert.match(source, /GithubAuthProvider/);
   assert.match(source, /new GithubAuthProvider\(\)/);
   assert.match(source, /addScope\('user:email'\)/);
+  assert.match(source, /resolveGitHubSignInEmail/);
   assert.doesNotMatch(source, /FacebookAuthProvider/);
 });

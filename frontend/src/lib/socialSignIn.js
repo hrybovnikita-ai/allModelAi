@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth';
 import { getFirebaseOAuthOrigin, getSocialAuth } from './firebase.js';
 import { isCapacitorNative } from './apiBase.js';
+import { resolveGitHubSignInEmail } from './githubEmail.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
 import { SOCIAL_PROVIDER_LABELS } from './socialProviders.js';
 
@@ -46,15 +47,59 @@ function providerFor(name) {
   throw new Error('Unsupported provider.');
 }
 
+function isGitHubUser(result) {
+  return result?.user?.providerData?.some((entry) => entry.providerId === 'github.com');
+}
+
+function githubAccessTokenFromCredential(credential) {
+  return credential?.accessToken || null;
+}
+
+async function resolveGitHubSignInContext(result, credential) {
+  const accessToken = githubAccessTokenFromCredential(credential)
+    || (result ? GithubAuthProvider.credentialFromResult(result)?.accessToken : null);
+  if (!accessToken) return { githubAccessToken: null, githubEmail: null };
+  const githubEmail = await resolveGitHubSignInEmail(accessToken);
+  return { githubAccessToken: accessToken, githubEmail };
+}
+
 async function complete(result, options) {
-  if (!result.user.emailVerified) {
+  const githubContext = options.githubAccessToken && options.githubEmail
+    ? { githubAccessToken: options.githubAccessToken, githubEmail: options.githubEmail }
+    : null;
+
+  let exchangeExtras = { ...options };
+  if (isGitHubUser(result)) {
+    const resolved = githubContext || await resolveGitHubSignInContext(result);
+    if (resolved.githubEmail) {
+      exchangeExtras = { ...exchangeExtras, ...resolved };
+    } else if (!result.user.email || !result.user.emailVerified) {
+      throw Object.assign(
+        new Error('GitHub did not share a verified email. Add and verify an email in GitHub Settings, then retry.'),
+        { code: 'auth/missing-email' },
+      );
+    }
+  }
+
+  if (!isGitHubUser(result) && !result.user.emailVerified) {
     await sendEmailVerification(result.user);
     throw Object.assign(
       new Error('Verify your email with the provider, then try again.'),
       { code: 'auth/email-not-verified' },
     );
   }
-  return exchangeSocialSession(await result.user.getIdToken(true), options);
+
+  return exchangeSocialSession(await result.user.getIdToken(true), exchangeExtras);
+}
+
+async function completeGitHubAccessTokenOnly(options) {
+  const accessToken = options.githubAccessToken;
+  const githubEmail = options.githubEmail || await resolveGitHubSignInEmail(accessToken);
+  return exchangeSocialSession(null, {
+    ...options,
+    githubAccessToken: accessToken,
+    githubEmail,
+  });
 }
 
 function saveRedirectIntent(name, options = {}) {
@@ -93,6 +138,41 @@ export function cancelSocialLink() {
   pendingLink = null;
 }
 
+async function signInGitHubPopup(auth) {
+  const provider = providerFor('GitHub');
+  try {
+    const result = await signInWithPopup(auth, provider);
+    const credential = GithubAuthProvider.credentialFromResult(result);
+    const context = await resolveGitHubSignInContext(result, credential);
+    return { result, ...context };
+  } catch (error) {
+    if (error.code === 'auth/missing-email') {
+      const credential = GithubAuthProvider.credentialFromError(error);
+      const accessToken = githubAccessTokenFromCredential(credential);
+      if (!accessToken) throw error;
+      const githubEmail = await resolveGitHubSignInEmail(accessToken);
+      try {
+        const result = await signInWithCredential(auth, credential);
+        return {
+          result,
+          githubAccessToken: accessToken,
+          githubEmail,
+        };
+      } catch (retryError) {
+        if (retryError.code === 'auth/missing-email') {
+          return {
+            githubOnly: true,
+            githubAccessToken: accessToken,
+            githubEmail,
+          };
+        }
+        throw retryError;
+      }
+    }
+    throw error;
+  }
+}
+
 async function signInWithProvider(auth, name, options) {
   const provider = providerFor(name);
   if (isCapacitorNative()) {
@@ -101,6 +181,9 @@ async function signInWithProvider(auth, name, options) {
     return { redirected: true };
   }
   try {
+    if (name === 'GitHub') {
+      return signInGitHubPopup(auth);
+    }
     const result = await signInWithPopup(auth, provider);
     return { result };
   } catch (error) {
@@ -126,7 +209,20 @@ export async function socialSignIn(name, options = {}) {
       return { redirected: true };
     }
     const challenge = await prepareSocialSession(options);
-    return await complete(signInOutcome.result, { ...options, challenge });
+    if (signInOutcome.githubOnly) {
+      return await completeGitHubAccessTokenOnly({
+        ...options,
+        challenge,
+        githubAccessToken: signInOutcome.githubAccessToken,
+        githubEmail: signInOutcome.githubEmail,
+      });
+    }
+    return await complete(signInOutcome.result, {
+      ...options,
+      challenge,
+      githubAccessToken: signInOutcome.githubAccessToken,
+      githubEmail: signInOutcome.githubEmail,
+    });
   } catch (error) {
     if (options?.link && error.code === 'auth/account-exists-with-different-credential') {
       const credential = name === 'Google'
@@ -189,8 +285,22 @@ export async function completeSocialRedirect() {
     link: Boolean(pending?.link),
   };
   const challenge = await prepareSocialSession(options);
+  const pendingName = pending?.name;
+  let githubAccessToken = null;
+  let githubEmail = null;
+  if (pendingName === 'GitHub') {
+    const credential = GithubAuthProvider.credentialFromResult(redirectResult);
+    const context = await resolveGitHubSignInContext(redirectResult, credential);
+    githubAccessToken = context.githubAccessToken;
+    githubEmail = context.githubEmail;
+  }
   try {
-    return await complete(redirectResult, { ...options, challenge });
+    return await complete(redirectResult, {
+      ...options,
+      challenge,
+      githubAccessToken,
+      githubEmail,
+    });
   } finally {
     await signOut(auth).catch(() => {});
   }

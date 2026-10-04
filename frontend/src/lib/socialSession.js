@@ -16,10 +16,23 @@ async function post(path, body) {
 export function prepareSocialSession({ link = false } = {}) {
   return post('firebase/challenge', { intent: link ? 'link' : 'login' });
 }
-export async function exchangeSocialSession(idToken, { link = false, rememberMe = true, challenge } = {}) {
+export async function exchangeSocialSession(idToken, {
+  link = false,
+  rememberMe = true,
+  challenge,
+  githubAccessToken,
+  githubEmail,
+} = {}) {
   const intent = link ? 'link' : 'login';
   const { state } = challenge || await prepareSocialSession({ link });
-  const data = await post('firebase', { idToken, state, intent, rememberMe });
+  const body = { state, intent, rememberMe };
+  if (idToken) body.idToken = idToken;
+  if (githubAccessToken) body.githubAccessToken = githubAccessToken;
+  if (githubEmail) body.githubEmail = githubEmail;
+  if (!body.idToken && !body.githubAccessToken) {
+    throw Object.assign(new Error('Could not complete social sign-in. Please retry.'), { code: 'SOCIAL_AUTH_FAILED' });
+  }
+  const data = await post('firebase', body);
   applyAuthResponsePayload(data);
   return confirmSession(data.user);
 }

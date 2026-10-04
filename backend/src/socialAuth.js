@@ -7,6 +7,7 @@ const { shouldIssueNativeSessionToken } = require('./sessionCookie');
 const users = require('./data/data');
 const { normalizeLoginEmail } = require('./authHelpers');
 const { isPostgresConnection } = require('./db/postgresHttpReads');
+const githubSocialEmail = require('./githubSocialEmail');
 const {
     exchangeSocialAuthAsync,
     getSessionOwnerUserIdAsync,
@@ -85,10 +86,34 @@ function identity(claims) {
     return { provider, subject: subjects[0], email, name: String(claims.name || email.split('@')[0]).slice(0, 100), avatar };
 }
 
+function githubSubjectFromClaims(claims) {
+    const provider = claims.firebase?.sign_in_provider;
+    if (provider !== 'github.com') return null;
+    const subjects = claims.firebase?.identities?.[provider];
+    if (!Array.isArray(subjects) || subjects.length !== 1) return null;
+    return typeof subjects[0] === 'string' ? subjects[0] : null;
+}
+
+function claimsNeedGitHubEmailResolution(claims) {
+    if (claims.firebase?.sign_in_provider !== 'github.com') return false;
+    const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
+    if (!email || claims.email_verified !== true) return true;
+    return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 async function exchange(req, res) {
     try {
-        const { idToken, state, intent } = req.body;
-        if (typeof idToken !== 'string' || idToken.length > 20000 || typeof state !== 'string' || !/^[a-f0-9]{64}$/.test(state) || req.cookies?.[stateCookie] !== state) {
+        const { state, intent } = req.body;
+        const idToken = typeof req.body.idToken === 'string' ? req.body.idToken.trim() : '';
+        const githubAccessToken = typeof req.body.githubAccessToken === 'string' ? req.body.githubAccessToken.trim() : '';
+        if (
+            (!idToken && !githubAccessToken)
+            || idToken.length > 20000
+            || githubAccessToken.length > 512
+            || typeof state !== 'string'
+            || !/^[a-f0-9]{64}$/.test(state)
+            || req.cookies?.[stateCookie] !== state
+        ) {
             throw fail(400, 'INVALID_REQUEST', 'Sign-in could not be verified. Please retry.');
         }
         const connection = req.app.locals.db;
@@ -100,7 +125,24 @@ async function exchange(req, res) {
             pending = connection.database.prepare('SELECT * FROM social_auth_challenges WHERE state_hash = ? AND expires_at > ?').get(hash(state), nowMs);
         }
         if (!pending || pending.intent !== (intent === 'link' ? 'link' : 'login')) throw fail(403, 'INVALID_STATE', 'Sign-in expired. Please retry.');
-        const profile = identity(await admin.verifySocialToken(idToken));
+        if (pending.intent === 'link' && !idToken) {
+            throw fail(400, 'INVALID_REQUEST', 'Linking requires signing in with your provider first.');
+        }
+
+        let profile;
+        if (idToken) {
+            const claims = await admin.verifySocialToken(idToken);
+            const provider = claims.firebase?.sign_in_provider;
+            if (provider === 'github.com' && githubAccessToken) {
+                profile = await githubSocialEmail.profileFromGitHubAccessToken(githubAccessToken, githubSubjectFromClaims(claims));
+            } else if (provider === 'github.com' && claimsNeedGitHubEmailResolution(claims)) {
+                throw fail(403, 'VERIFIED_EMAIL_REQUIRED', 'GitHub did not share a verified email. Try signing in again.');
+            } else {
+                profile = identity(claims);
+            }
+        } else {
+            profile = await githubSocialEmail.profileFromGitHubAccessToken(githubAccessToken);
+        }
         const canonicalEmail = normalizeLoginEmail(profile.email);
 
         let result;

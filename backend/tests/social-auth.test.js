@@ -9,7 +9,9 @@ process.env.FRONTEND_ORIGIN = 'http://localhost:5173';
 process.env.DB_FILE = path.join(os.tmpdir(), `allmodelai-social-${process.pid}-${Date.now()}.sqlite`);
 const app = require('../app');
 const admin = require('../src/firebaseAdmin');
+const githubSocialEmail = require('../src/githubSocialEmail');
 const db = app.locals.db.database;
+const originalGitHubProfile = githubSocialEmail.profileFromGitHubAccessToken;
 const verified = new Map();
 // Mock only the external verification boundary. Real credentials are never used by tests.
 const original = admin.verifySocialToken;
@@ -17,7 +19,12 @@ admin.verifySocialToken = async token => {
   if (!verified.has(token)) throw Object.assign(new Error('Rejected'), { code: 'auth/id-token-expired' });
   return verified.get(token);
 };
-after(() => { admin.verifySocialToken = original; app.locals.db.close(); fs.rmSync(process.env.DB_FILE, { force: true }); });
+after(() => {
+    admin.verifySocialToken = original;
+    githubSocialEmail.profileFromGitHubAccessToken = originalGitHubProfile;
+    app.locals.db.close();
+    fs.rmSync(process.env.DB_FILE, { force: true });
+});
 function token(key, overrides = {}) {
   verified.set(key, { uid: `firebase-${key}`, auth_time: Math.floor(Date.now() / 1000), email: `${key}@example.com`, email_verified: true,
     name: 'Provider User', picture: 'https://example.com/avatar.png', firebase: { sign_in_provider: 'google.com', identities: { 'google.com': [key] } }, ...overrides });
@@ -123,6 +130,30 @@ test('link challenge is invalid after logout, even with the provider token', asy
   const result = await post(agent, '/api/auth/firebase', { idToken: token('link-second'), state: challenge.body.state, intent: 'link' });
   assert.equal(result.status, 401);
 });
+test('GitHub access token exchange creates a session when Firebase omits email', async () => {
+    githubSocialEmail.profileFromGitHubAccessToken = async () => ({
+        provider: 'github.com',
+        subject: 'github-noreply-user',
+        email: 'github-noreply-user+noreply@users.noreply.github.com',
+        name: 'Private GitHub',
+        avatar: 'https://example.com/github.png',
+    });
+    const agent = request.agent(app);
+    const challenge = await post(agent, '/api/auth/firebase/challenge', {});
+    assert.equal(challenge.status, 200);
+    const result = await post(agent, '/api/auth/firebase', {
+        githubAccessToken: 'gho_test_only',
+        state: challenge.body.state,
+    });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.equal(result.body.user.email, 'github-noreply-user+noreply@users.noreply.github.com');
+    assert.equal(
+        db.prepare('SELECT count(*) AS n FROM social_identities WHERE provider = ? AND subject = ?').get('github.com', 'github-noreply-user').n,
+        1,
+    );
+    githubSocialEmail.profileFromGitHubAccessToken = originalGitHubProfile;
+});
+
 test('Apple and GitHub use their own stable identities', async () => {
   for (const provider of ['apple.com', 'github.com']) {
     const value = token(provider, { firebase: { sign_in_provider: provider, identities: { [provider]: ['same-subject'] } } });
