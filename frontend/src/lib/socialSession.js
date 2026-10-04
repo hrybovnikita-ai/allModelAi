@@ -38,6 +38,7 @@ export function socialError(error) {
     'auth/invalid-credential': 'The provider credential is invalid or expired. Try signing in again.',
     'auth/web-storage-unsupported': 'This browser blocks the storage needed by the provider. Open this site in your regular browser and retry.',
     'auth/email-not-verified': 'Your provider email is not verified yet. Verify it with the provider, then try again.',
+    'auth/missing-email': 'GitHub did not share an email address. In GitHub → Settings → Emails, add and verify a primary email (or allow email visibility for OAuth), then try again.',
     INVALID_STATE: 'Sign-in expired. Please try again.',
     VERIFIED_EMAIL_REQUIRED: 'A verified email is required from your provider.',
     IDENTITY_CONFLICT: 'This provider account is already linked to another AllModelAI user.',

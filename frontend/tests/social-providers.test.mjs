@@ -19,5 +19,6 @@ test('socialSignIn uses Firebase GithubAuthProvider', async () => {
   const source = await readFile(new URL('../src/lib/socialSignIn.js', import.meta.url), 'utf8');
   assert.match(source, /GithubAuthProvider/);
   assert.match(source, /new GithubAuthProvider\(\)/);
+  assert.match(source, /addScope\('user:email'\)/);
   assert.doesNotMatch(source, /FacebookAuthProvider/);
 });

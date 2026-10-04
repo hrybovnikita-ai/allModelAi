@@ -38,7 +38,10 @@ function providerFor(name) {
     return provider;
   }
   if (name === 'GitHub') {
-    return new GithubAuthProvider();
+    const provider = new GithubAuthProvider();
+    provider.addScope('user:email');
+    provider.addScope('read:user');
+    return provider;
   }
   throw new Error('Unsupported provider.');
 }
