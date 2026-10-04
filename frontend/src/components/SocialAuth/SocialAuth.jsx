@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import apiClient from '../../lib/apiClient';
 import './SocialAuth.css';
 
-const providerColors = { google: '#4285f4', apple: '#111827', facebook: '#1877f2' };
+const providerColors = { google: '#4285f4', apple: '#111827', github: '#24292f' };
 
 export default function SocialAuth() {
   const { provider = '' } = useParams();

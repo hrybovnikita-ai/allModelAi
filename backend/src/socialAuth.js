@@ -17,7 +17,7 @@ const {
     purgeExpiredSocialChallengesAsync,
 } = require('./db/postgresHttpSocial');
 
-const providers = new Set(['google.com', 'apple.com', 'facebook.com']);
+const providers = new Set(['google.com', 'apple.com', 'github.com']);
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const stateCookie = 'allmodelai_social_state';
 const fail = (status, code, message) => Object.assign(new Error(message), { status, code });
@@ -71,7 +71,7 @@ function identity(claims) {
     const provider = claims.firebase?.sign_in_provider;
     const subjects = claims.firebase?.identities?.[provider];
     if (!providers.has(provider) || !Array.isArray(subjects) || subjects.length !== 1 || typeof subjects[0] !== 'string' || !subjects[0] || subjects[0].length > 512) {
-        throw fail(401, 'INVALID_IDENTITY', 'Use Google, Apple or Facebook to sign in.');
+        throw fail(401, 'INVALID_IDENTITY', 'Use Google, Apple, or GitHub to sign in.');
     }
     if (!Number.isFinite(claims.auth_time) || claims.auth_time * 1000 < Date.now() - 300000 || claims.auth_time * 1000 > Date.now() + 30000) {
         throw fail(401, 'RECENT_LOGIN_REQUIRED', 'Sign in to your provider again, then retry.');

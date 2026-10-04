@@ -234,7 +234,7 @@ const registerUser = async (req, res) => {
         if (!hasPassword && socialOnly) {
             return res.status(409).json({
                 code: 'SOCIAL_ACCOUNT_EXISTS',
-                message: 'An account with this email already exists through Google, Apple, or Facebook. Continue with that provider below, or sign in if you already linked a password.',
+                message: 'An account with this email already exists through Google, Apple, or GitHub. Continue with that provider below, or sign in if you already linked a password.',
             });
         }
         return res.status(409).json({
@@ -388,7 +388,7 @@ const loginUser = async (req, res) => {
     }
 };
 
-const providerNames = { google: 'Google', apple: 'Apple', facebook: 'Facebook' };
+const providerNames = { google: 'Google', apple: 'Apple', github: 'GitHub' };
 
 const getSocialAccounts = (req, res) => {
     if (process.env.NODE_ENV === 'production' || process.env.VERCEL || process.env.ENABLE_DEMO_SOCIAL_AUTH !== 'true') return res.status(404).json({ message: 'Demo social accounts are disabled. Use Google OAuth.' });
@@ -417,7 +417,7 @@ const socialLogin = async (req, res) => {
 
 const quickSocialLogin = async (req, res) => {
     if (process.env.NODE_ENV === 'production' || process.env.VERCEL || process.env.ENABLE_DEMO_SOCIAL_AUTH !== 'true') {
-        return res.status(404).json({ message: 'Demo quick social sign-in is disabled. Use Continue with Google, Apple, or Facebook.' });
+        return res.status(404).json({ message: 'Demo quick social sign-in is disabled. Use Continue with Google, Apple, or GitHub.' });
     }
     try {
         const { provider = 'Google', name, email, avatar, rememberMe = true } = req.body || {};

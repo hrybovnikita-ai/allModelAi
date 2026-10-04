@@ -48,6 +48,9 @@ function providerCatalog() {
             keys: ['FIREBASE_PROJECT_ID'],
             also: ['FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY'],
         },
+        githubOAuth: {
+            keys: ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
+        },
         stripe: {
             keys: ['STRIPE_SECRET_KEY'],
         },

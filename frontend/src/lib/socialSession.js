@@ -47,7 +47,7 @@ export function socialError(error) {
   if (error.code && messages[error.code]) return messages[error.code];
   const providerHint = String(error.message || '');
   if (/apple/i.test(providerHint)) return "We couldn't complete Apple sign-in. Please try again.";
-  if (/facebook/i.test(providerHint)) return 'Facebook authentication failed. Please try again.';
+  if (/github/i.test(providerHint)) return 'GitHub authentication failed. Please try again.';
   if (/google/i.test(providerHint)) return 'Google sign-in was cancelled.';
   return error.message || 'Social sign-in failed. Please retry.';
 }

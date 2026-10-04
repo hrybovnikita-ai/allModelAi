@@ -123,8 +123,8 @@ test('link challenge is invalid after logout, even with the provider token', asy
   const result = await post(agent, '/api/auth/firebase', { idToken: token('link-second'), state: challenge.body.state, intent: 'link' });
   assert.equal(result.status, 401);
 });
-test('Apple and Facebook use their own stable identities', async () => {
-  for (const provider of ['apple.com', 'facebook.com']) {
+test('Apple and GitHub use their own stable identities', async () => {
+  for (const provider of ['apple.com', 'github.com']) {
     const value = token(provider, { firebase: { sign_in_provider: provider, identities: { [provider]: ['same-subject'] } } });
     assert.equal((await login(request.agent(app), value)).status, 200);
   }

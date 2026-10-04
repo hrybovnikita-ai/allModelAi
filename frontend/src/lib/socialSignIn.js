@@ -1,6 +1,5 @@
 import {
   GoogleAuthProvider,
-  FacebookAuthProvider,
   OAuthProvider,
   signInWithPopup,
   signInWithRedirect,
@@ -13,12 +12,13 @@ import {
 import { getFirebaseOAuthOrigin, getSocialAuth } from './firebase.js';
 import { isCapacitorNative } from './apiBase.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
+import { SOCIAL_PROVIDER_LABELS } from './socialProviders.js';
 
 const REDIRECT_STORAGE_KEY = 'allmodelai_social_redirect';
 
 let pendingLink = null;
 
-export const SOCIAL_PROVIDERS = ['Google', 'Apple', 'Facebook'];
+export const SOCIAL_PROVIDERS = SOCIAL_PROVIDER_LABELS;
 
 export function providerLabel(name) {
   return name;
@@ -36,9 +36,10 @@ function providerFor(name) {
     provider.addScope('name');
     return provider;
   }
-  if (name === 'Facebook') {
-    const provider = new FacebookAuthProvider();
-    provider.addScope('email');
+  if (name === 'GitHub') {
+    const provider = new OAuthProvider('github.com');
+    provider.addScope('user:email');
+    provider.addScope('read:user');
     return provider;
   }
   throw new Error('Unsupported provider.');
@@ -129,9 +130,7 @@ export async function socialSignIn(name, options = {}) {
     if (options?.link && error.code === 'auth/account-exists-with-different-credential') {
       const credential = name === 'Google'
         ? GoogleAuthProvider.credentialFromError(error)
-        : name === 'Facebook'
-          ? FacebookAuthProvider.credentialFromError(error)
-          : OAuthProvider.credentialFromError(error);
+        : OAuthProvider.credentialFromError(error);
       if (credential) {
         pendingLink = {
           credential,

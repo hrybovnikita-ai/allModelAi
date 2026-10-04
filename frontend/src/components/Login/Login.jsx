@@ -12,7 +12,7 @@ import './Login.css';
 const PROVIDER_ICONS = {
   Google: 'https://cdn.simpleicons.org/google',
   Apple: 'https://cdn.simpleicons.org/apple/ffffff',
-  Facebook: 'https://cdn.simpleicons.org/facebook/1877F2',
+  GitHub: 'https://cdn.simpleicons.org/github/ffffff',
 };
 
 export default function Login(props) {
