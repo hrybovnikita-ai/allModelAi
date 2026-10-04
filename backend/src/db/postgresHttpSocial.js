@@ -130,7 +130,7 @@ async function exchangeSocialAuthAsync(connection, {
         }
         await queryPgClient(
             client,
-            'UPDATE users SET email_verified = 1 WHERE id = $1 AND email_verified IS NOT 1',
+            'UPDATE users SET email_verified = 1 WHERE id = $1 AND email_verified <> 1',
             [userId],
         );
 

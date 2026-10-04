@@ -27,6 +27,12 @@ function wrapPoolWithTransaction(basePool) {
 function handleCommonDashboardQueries(text, queryValues, ctx) {
     const { sessions, userRow, extraUsers = new Map() } = ctx;
 
+    if (/\bIS NOT 1\b/i.test(text) || /\bIS 1\b/i.test(text)) {
+        const err = new Error('42601 syntax error at or near "1"');
+        err.code = '42601';
+        throw err;
+    }
+
     if (/INSERT INTO auth_sessions/i.test(text)) {
         sessions.set(queryValues[0], { userId: queryValues[1], expiresAt: Number(queryValues[2]) });
         return { rowCount: 1, rows: [] };
@@ -79,14 +85,27 @@ function handleCommonDashboardQueries(text, queryValues, ctx) {
     }
     if (/INSERT INTO users/i.test(text) && /RETURNING id/i.test(text)) {
         const id = userRow.id + extraUsers.size + 100;
+        const hasAvatarColumn = /avatar_url/i.test(text);
         const row = {
             id,
             name: queryValues[0],
             email: queryValues[1],
-            password_hash: queryValues[2],
-            avatar_url: null,
+            password_hash: hasAvatarColumn ? null : queryValues[2],
+            avatar_url: hasAvatarColumn ? (queryValues[2] || null) : null,
+            email_verified: hasAvatarColumn ? 1 : 1,
         };
-        extraUsers.set(row.email, row);
+        extraUsers.set(String(row.email).toLowerCase(), row);
+        if (hasAvatarColumn && /RETURNING id, name, email, avatar_url AS avatar/i.test(text)) {
+            return {
+                rows: [{
+                    id: row.id,
+                    name: row.name,
+                    email: row.email,
+                    avatar: row.avatar_url,
+                }],
+                rowCount: 1,
+            };
+        }
         return { rows: [{ id }], rowCount: 1 };
     }
     if (/FROM subscription_details/i.test(text)) {
@@ -133,6 +152,96 @@ function handleCommonDashboardQueries(text, queryValues, ctx) {
         return { rowCount: 0, rows: [] };
     }
     if (/INSERT INTO subscriptions/i.test(text)) {
+        return { rowCount: 1, rows: [] };
+    }
+    if (ctx.socialChallenges && /INSERT INTO social_auth_challenges/i.test(text)) {
+        ctx.socialChallenges.set(queryValues[0], {
+            state_hash: queryValues[0],
+            intent: queryValues[1],
+            session_hash: queryValues[2],
+            user_id: queryValues[3],
+            expires_at: Number(queryValues[4]),
+        });
+        return { rowCount: 1, rows: [] };
+    }
+    if (ctx.socialChallenges && /FROM social_auth_challenges/i.test(text)) {
+        const row = ctx.socialChallenges.get(queryValues[0]);
+        if (!row || row.expires_at <= Number(queryValues[1])) {
+            return { rows: [], rowCount: 0 };
+        }
+        return { rows: [row], rowCount: 1 };
+    }
+    if (ctx.socialChallenges && /DELETE FROM social_auth_challenges/i.test(text)) {
+        const had = ctx.socialChallenges.has(queryValues[0]);
+        if (had) ctx.socialChallenges.delete(queryValues[0]);
+        return { rowCount: had ? 1 : 0, rows: [] };
+    }
+    if (ctx.socialIdentities && /INSERT INTO social_identities/i.test(text)) {
+        ctx.socialIdentities.set(`${queryValues[0]}:${queryValues[1]}`, {
+            provider: queryValues[0],
+            subject: queryValues[1],
+            user_id: queryValues[2],
+        });
+        return { rowCount: 1, rows: [] };
+    }
+    if (ctx.socialIdentities && /FROM social_identities/i.test(text)) {
+        if (/WHERE provider = \$1 AND subject = \$2/i.test(text)) {
+            const row = ctx.socialIdentities.get(`${queryValues[0]}:${queryValues[1]}`);
+            return row ? { rows: [{ user_id: row.user_id }], rowCount: 1 } : { rows: [], rowCount: 0 };
+        }
+        if (/WHERE user_id = \$1 AND provider = \$2/i.test(text)) {
+            const row = [...ctx.socialIdentities.values()].find(
+                (item) => item.user_id === queryValues[0] && item.provider === queryValues[1],
+            );
+            return row ? { rows: [{ subject: row.subject }], rowCount: 1 } : { rows: [], rowCount: 0 };
+        }
+        return { rows: [], rowCount: 0 };
+    }
+    if (/UPDATE users SET email_verified = 1/i.test(text)) {
+        const id = queryValues[0];
+        const account = id === userRow.id
+            ? userRow
+            : [...extraUsers.values()].find((row) => row.id === id);
+        if (account) account.email_verified = 1;
+        return { rowCount: 1, rows: [] };
+    }
+    if (/FROM users/i.test(text) && /WHERE id = \$1/i.test(text) && /avatar_url AS avatar/i.test(text)) {
+        const id = queryValues[0];
+        const account = id === userRow.id
+            ? userRow
+            : [...extraUsers.values()].find((row) => row.id === id);
+        if (!account) return { rows: [], rowCount: 0 };
+        return {
+            rows: [{
+                id: account.id,
+                name: account.name,
+                email: account.email,
+                avatar: account.avatar_url || null,
+            }],
+            rowCount: 1,
+        };
+    }
+    if (/FROM users/i.test(text) && /WHERE id = \$1/i.test(text) && /password_hash AS "passwordHash"/i.test(text)) {
+        const id = queryValues[0];
+        const account = id === userRow.id
+            ? userRow
+            : [...extraUsers.values()].find((row) => row.id === id);
+        if (!account) return { rows: [], rowCount: 0 };
+        return {
+            rows: [{
+                id: account.id,
+                name: account.name,
+                email: account.email,
+                passwordHash: account.password_hash ?? null,
+            }],
+            rowCount: 1,
+        };
+    }
+    if (/UPDATE users SET avatar_url = COALESCE\(avatar_url, \$1\) WHERE id = \$2/i.test(text)) {
+        const account = queryValues[1] === userRow.id
+            ? userRow
+            : [...extraUsers.values()].find((row) => row.id === queryValues[1]);
+        if (account && !account.avatar_url) account.avatar_url = queryValues[0];
         return { rowCount: 1, rows: [] };
     }
     if (/FROM social_identities/i.test(text)) {
@@ -261,14 +370,15 @@ function handleConversationSelect(text, queryValues, ctx) {
     return { rows: [], rowCount: 0 };
 }
 
-function createPostgresHttpMockPool(initialUser, { trackChat = false } = {}) {
+function createPostgresHttpMockPool(initialUser, { trackChat = false, trackSocial = false } = {}) {
     const sessions = new Map();
-    const userRow = { ...initialUser };
+    const userRow = { ...initialUser, email_verified: initialUser.email_verified ?? 0 };
     const extraUsers = new Map();
     const ctx = {
         sessions,
         userRow,
         extraUsers,
+        ...(trackSocial ? { socialChallenges: new Map(), socialIdentities: new Map() } : {}),
         ...(trackChat
             ? {
                 conversations: [],
@@ -283,6 +393,7 @@ function createPostgresHttpMockPool(initialUser, { trackChat = false } = {}) {
     const basePool = {
         sessions,
         userRow,
+        extraUsers,
         ...(trackChat
             ? {
                 conversations: ctx.conversations,
