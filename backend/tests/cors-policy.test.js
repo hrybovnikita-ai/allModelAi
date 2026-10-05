@@ -6,7 +6,11 @@ const path = require('node:path');
 const request = require('supertest');
 const {
     ALL_MODEL_AI_VERCEL_PRODUCTION,
+    ALL_MODEL_AI_CUSTOM_PRODUCTION,
+    ALL_MODEL_AI_WWW_PRODUCTION,
+    ALL_MODEL_AI_BUILTIN_PRODUCTION_ORIGINS,
     CORS_ALLOWED_METHODS,
+    isAllModelAiProductionWebOrigin,
     isAllModelAiVercelProjectOrigin,
     isAllowedOrigin,
 } = require('../src/corsPolicy');
@@ -19,6 +23,30 @@ const app = require('../app');
 after(() => {
     app.locals.db.close();
     fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test('builtin production web origins include custom domain, www, and Vercel', () => {
+    assert.deepEqual(ALL_MODEL_AI_BUILTIN_PRODUCTION_ORIGINS, [
+        ALL_MODEL_AI_CUSTOM_PRODUCTION,
+        ALL_MODEL_AI_WWW_PRODUCTION,
+        ALL_MODEL_AI_VERCEL_PRODUCTION,
+    ]);
+    assert.equal(isAllModelAiProductionWebOrigin(ALL_MODEL_AI_CUSTOM_PRODUCTION), true);
+    assert.equal(isAllModelAiProductionWebOrigin(ALL_MODEL_AI_WWW_PRODUCTION), true);
+    assert.equal(isAllModelAiProductionWebOrigin(ALL_MODEL_AI_VERCEL_PRODUCTION), true);
+    assert.equal(isAllModelAiProductionWebOrigin('https://evil.example'), false);
+});
+
+test('allows custom production domain origins with credentials', async () => {
+    for (const origin of [ALL_MODEL_AI_CUSTOM_PRODUCTION, ALL_MODEL_AI_WWW_PRODUCTION]) {
+        const response = await request(app)
+            .get('/api/health')
+            .set('Origin', origin);
+        assert.equal(response.status, 200, origin);
+        assert.equal(response.headers['access-control-allow-origin'], origin);
+        assert.equal(response.headers['access-control-allow-credentials'], 'true');
+        assert.notEqual(response.headers['access-control-allow-origin'], '*');
+    }
 });
 
 test('allows production AllModelAI Vercel origin with credentials', async () => {

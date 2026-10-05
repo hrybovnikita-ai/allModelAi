@@ -3,6 +3,16 @@ const cors = require('cors');
 /** Production Vercel site for AllModelAI (split deploy). */
 const ALL_MODEL_AI_VERCEL_PRODUCTION = 'https://all-model-ai.vercel.app';
 
+/** Custom production domains on Vercel (apex + www). */
+const ALL_MODEL_AI_CUSTOM_PRODUCTION = 'https://all-model-ai.com';
+const ALL_MODEL_AI_WWW_PRODUCTION = 'https://www.all-model-ai.com';
+
+const ALL_MODEL_AI_BUILTIN_PRODUCTION_ORIGINS = [
+    ALL_MODEL_AI_CUSTOM_PRODUCTION,
+    ALL_MODEL_AI_WWW_PRODUCTION,
+    ALL_MODEL_AI_VERCEL_PRODUCTION,
+];
+
 const CORS_ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
 
 const CORS_ALLOWED_HEADERS = [
@@ -27,7 +37,7 @@ const BUILTIN_NATIVE_ORIGINS = [
 ];
 
 const BUILTIN_FRONTEND_ORIGINS = [
-    ALL_MODEL_AI_VERCEL_PRODUCTION,
+    ...ALL_MODEL_AI_BUILTIN_PRODUCTION_ORIGINS,
 ];
 
 const originHost = (origin) => {
@@ -44,6 +54,11 @@ const normalizeOrigin = (origin) => String(origin || '').trim().replace(/\/$/, '
  * HTTPS Vercel preview deployments for the all-model-ai project.
  * Matches production and branch previews such as all-model-ai-git-main-*.vercel.app.
  */
+function isAllModelAiProductionWebOrigin(origin) {
+    const normalized = normalizeOrigin(origin);
+    return ALL_MODEL_AI_BUILTIN_PRODUCTION_ORIGINS.includes(normalized);
+}
+
 function isAllModelAiVercelProjectOrigin(origin) {
     const normalized = normalizeOrigin(origin);
     if (!/^https:\/\//i.test(normalized)) {
@@ -91,6 +106,7 @@ function isAllowedOrigin(origin, req) {
     if (!origin) return true;
     const normalized = normalizeOrigin(origin);
     if (isNativeAppOrigin(normalized)) return true;
+    if (isAllModelAiProductionWebOrigin(normalized)) return true;
     if (isAllModelAiVercelProjectOrigin(normalized)) return true;
     if (configuredOrigins().includes(normalized)) return true;
     const host = String(req?.get?.('x-forwarded-host') || req?.get?.('host') || '').split(',')[0].trim();
@@ -121,9 +137,13 @@ function createCredentialedCorsMiddleware() {
 
 module.exports = {
     ALL_MODEL_AI_VERCEL_PRODUCTION,
+    ALL_MODEL_AI_CUSTOM_PRODUCTION,
+    ALL_MODEL_AI_WWW_PRODUCTION,
+    ALL_MODEL_AI_BUILTIN_PRODUCTION_ORIGINS,
     CORS_ALLOWED_METHODS,
     CORS_ALLOWED_HEADERS,
     configuredOrigins,
+    isAllModelAiProductionWebOrigin,
     isAllModelAiVercelProjectOrigin,
     isAllowedOrigin,
     isNativeAppOrigin,

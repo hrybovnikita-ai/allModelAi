@@ -17,14 +17,16 @@ services:
         value: 0.0.0.0
       - key: COOKIE_SECURE
         value: "true"
+      - key: COOKIE_SAME_SITE
+        value: none
       - key: DATABASE_URL
         sync: false
       - key: DB_FILE
         value: /app/backend/storage/database.sqlite
       - key: PUBLIC_URL
-        value: https://all-model-ai.vercel.app
+        value: https://all-model-ai.com
       - key: FRONTEND_ORIGIN
-        value: https://all-model-ai.vercel.app
+        value: https://all-model-ai.com,https://www.all-model-ai.com,https://all-model-ai.vercel.app
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENROUTER_API_KEY
