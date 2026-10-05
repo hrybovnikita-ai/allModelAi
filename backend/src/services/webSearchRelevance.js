@@ -1,6 +1,8 @@
 /**
- * Query preservation and source relevance for public web search (Bing/DDG/Wikipedia/Tavily).
+ * Concept-based source relevance for web search.
  */
+
+const { extractSearchIntent } = require('./webSearchQueryBuilder');
 
 const STOP_WORDS = new Set([
     'the', 'best', 'for', 'me', 'find', 'a', 'an', 'is', 'are', 'what', 'how', 'tell', 'show', 'get',
@@ -8,22 +10,20 @@ const STOP_WORDS = new Set([
     'сколько', 'стоит', 'стоимость', 'скажи', 'найди', 'покажи', 'скільки', 'коштує',
 ]);
 
-/** Map canonical topic tokens to surface forms (Latin + Cyrillic). */
 const TOKEN_ALIASES = {
-    kyiv: ['kyiv', 'kiev', 'киев', 'київ', 'kiyv'],
-    warsaw: ['warsaw', 'варшава', 'warszawa'],
-    train: ['train', 'rail', 'railway', 'поезд', 'поїзд', 'потяг', 'zug', 'intercity'],
-    delay: ['delay', 'delayed', 'late', 'задерж', 'затрим', 'opóźn', 'opozn'],
-    compensation: ['compensation', 'refund', 'компенсац', 'возмещ', 'passenger rights', 'права пассаж'],
-    ukrzaliznytsia: ['ukrzaliznytsia', 'укрзал', 'uz.gov', 'uz.ua'],
-    pkp: ['pkp', 'intercity.pl'],
+    kyiv: ['kyiv', 'kiev', 'киев', 'київ'],
+    warsaw: ['warsaw', 'варшава', 'warszawa', 'central'],
+    train: ['train', 'rail', 'railway', 'поезд', 'поезда', 'поїзд', 'потяг', 'intercity'],
+    delay: ['delay', 'delayed', 'late', 'задерж', 'затрим', 'opóźn'],
+    compensation: ['compensation', 'refund', 'компенсац', 'возмещ', 'passenger', 'rights'],
+    weather: ['weather', 'forecast', 'погод', 'temperature'],
+    python: ['python', 'guido', 'rossum'],
 };
 
-const SPORTS_MARKERS = /\b(nba|nfl|mlb|nhl|wizards|lakers|celtics|basketball|playoffs|touchdown|quarterback|soccer league standings)\b/i;
-
-const RAIL_MARKERS = /\b(поезд|поїзд|train|rail|pkp|intercity|ukrzaliznytsia|укрзал|залізниц|railway|маршрут)\b|->|→/i;
-
-const LOCATION_MARKERS = /\b(kyiv|kiev|киев|київ|warsaw|варшава|warszawa|ukraine|poland|украин|польщ)\b/i;
+const SPORTS_MARKERS = /\b(nba|nfl|mlb|nhl|wizards|lakers|celtics|basketball|playoffs)\b/i;
+const ENCYCLOPEDIA_DOMAINS = /(^|\.)wikipedia\.org$|(^|\.)britannica\.com$|(^|\.)wikivoyage\.org$/i;
+const GEOGRAPHY_TITLE = /\b(city|capital|history|facts|points of interest|geography|population|map)\b/i;
+const OPERATIONAL_MARKERS = /\b(train|rail|delay|compensation|passenger|schedule|ticket|intercity|pkp|ukrzaliznytsia|weather|forecast|price|news|regulation)\b/i;
 
 const tokenize = (text) => [...new Set(String(text || '').toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || [])];
 
@@ -33,7 +33,7 @@ const expandTokens = (tokens) => {
     const expanded = new Set(tokens);
     tokens.forEach((token) => {
         Object.entries(TOKEN_ALIASES).forEach(([canonical, forms]) => {
-            if (forms.some((form) => form.includes(token) || token.includes(form) || form === token)) {
+            if (forms.some((form) => form === token || token.includes(form) || form.includes(token))) {
                 expanded.add(canonical);
                 forms.forEach((form) => expanded.add(form));
             }
@@ -42,15 +42,25 @@ const expandTokens = (tokens) => {
     return [...expanded];
 };
 
+const intentConceptTokens = (intent) => {
+    const tokens = new Set();
+    const { concepts } = intent;
+    concepts.locations.forEach((loc) => meaningfulTokens(loc).forEach((t) => tokens.add(t)));
+    if (concepts.route) {
+        meaningfulTokens(`${concepts.route.from} ${concepts.route.to}`).forEach((t) => tokens.add(t));
+    }
+    concepts.transport.forEach((t) => tokens.add(t));
+    concepts.topics.forEach((t) => tokens.add(t));
+    expandTokens([...tokens]).forEach((t) => tokens.add(t));
+    return [...tokens];
+};
+
 const detectQueryProfile = (userQuestion) => {
-    const text = String(userQuestion || '');
-    const lower = text.toLowerCase();
+    const intent = extractSearchIntent(userQuestion);
     return {
-        isTravelRail: RAIL_MARKERS.test(lower) || (LOCATION_MARKERS.test(lower) && /delay|задерж|затрим|schedule|распис|компенсац|ticket|бilet|квиток/i.test(lower)),
-        mentionsSports: SPORTS_MARKERS.test(lower),
-        isCompensationOrDelay: /задерж|delay|compensation|компенсац|refund|passenger rights|опоздан|late train/i.test(lower),
-        isProductPrice: /iphone|айфон|macbook|subscription|подписк|\$\d|usd price/i.test(lower),
-        needsRecency: /today|сегодня|сейчас|current|latest|202[4-9]|актуал|новост|news/i.test(lower),
+        ...intent,
+        isProductPrice: /iphone|айфон|macbook|subscription|\$\d/i.test(intent.raw),
+        needsRecency: intent.isNews || intent.isOperationalCurrent || intent.isWeather,
     };
 };
 
@@ -63,47 +73,79 @@ const countTokenOverlap = (queryTokens, blob) => {
     return hits;
 };
 
-const isClearlyUnrelated = (userQuestion, source) => {
-    const profile = detectQueryProfile(userQuestion);
-    const blob = `${source.title} ${source.excerpt} ${source.domain} ${source.url}`.toLowerCase();
-    const queryTokens = meaningfulTokens(userQuestion);
-    const overlap = countTokenOverlap(queryTokens, blob);
+const countConceptOverlap = (intent, blob) => {
+    const concepts = intentConceptTokens(intent);
+    let hits = 0;
+    concepts.forEach((token) => {
+        if (token.length >= 3 && blob.includes(token)) hits += 1;
+    });
+    return { hits, total: concepts.length };
+};
 
-    if (profile.isTravelRail && !profile.mentionsSports && SPORTS_MARKERS.test(blob)) {
-        return true;
-    }
+const isGeographyEncyclopediaNoise = (source, intent) => {
+    if (!intent.isOperationalCurrent || intent.isGeneralKnowledge) return false;
+    const domain = String(source.domain || '').toLowerCase();
+    const title = String(source.title || '');
+    const blob = `${title} ${source.excerpt || ''}`.toLowerCase();
 
-    if (queryTokens.length >= 2 && overlap === 0) {
-        if (profile.isTravelRail && SPORTS_MARKERS.test(blob)) return true;
-        if (/news\.google\.com/i.test(source.url) && overlap === 0) return true;
-    }
+    if (!ENCYCLOPEDIA_DOMAINS.test(domain)) return false;
+    if (OPERATIONAL_MARKERS.test(blob)) return false;
 
-    if (profile.isTravelRail && overlap === 0 && !/(rail|train|pkp|intercity|ukr|uz\.|ec\.europa|passenger|transport|ztm|polregio|eurostar)/i.test(blob)) {
-        return true;
-    }
+    const { hits, total } = countConceptOverlap(intent, blob);
+    const locationOnly = intent.concepts.locations.some((loc) => {
+        const locToken = loc.split(/\s+/)[0].toLowerCase();
+        return title.toLowerCase().includes(locToken) && !OPERATIONAL_MARKERS.test(blob);
+    });
+
+    if (locationOnly && hits <= 2 && total >= 4) return true;
+    if (GEOGRAPHY_TITLE.test(blob) && !OPERATIONAL_MARKERS.test(blob)) return true;
+    if (/^[\p{L}\s-]+ (- Wikipedia| \| Britannica)$/u.test(title) && !OPERATIONAL_MARKERS.test(blob)) return true;
 
     return false;
 };
 
-const authorityBonusFor = (domain, url, profile) => {
+const isClearlyUnrelated = (userQuestion, source) => {
+    const intent = extractSearchIntent(userQuestion);
+    const blob = `${source.title} ${source.excerpt} ${source.domain} ${source.url}`.toLowerCase();
+
+    if (isGeographyEncyclopediaNoise(source, intent)) return true;
+
+    if (intent.isTravelRail && SPORTS_MARKERS.test(blob)) return true;
+
+    const { hits, total } = countConceptOverlap(intent, blob);
+    if (intent.isOperationalCurrent && total >= 4 && hits < 2) return true;
+
+    if (intent.isTravelRail && hits < 2 && !OPERATIONAL_MARKERS.test(blob)) return true;
+
+    if (intent.isWeather && !/weather|forecast|temperature|погод|meteo/i.test(blob)) return true;
+
+    return false;
+};
+
+const authorityBonusFor = (domain, url, intent) => {
     let bonus = 0;
     const host = String(domain || '').toLowerCase();
     const full = `${host} ${url}`.toLowerCase();
 
-    if (profile.isTravelRail) {
-        if (/uz\.gov|ukrzaliznytsia|ukraine\.ua|intercity\.pl|pkp\.pl|ec\.europa\.eu|transport\.gov|rail/i.test(full)) bonus += 40;
+    if (intent.isTravelRail || intent.concepts.transport.includes('train')) {
+        if (/intercity\.pl|pkp\.pl|uz\.gov|ukrzaliznytsia|ec\.europa\.eu|rail/i.test(full)) bonus += 45;
     }
-    if (/\.gov(\.|$)|\.edu(\.|$)/i.test(host)) bonus += 30;
-    if (/(^|\.)wikipedia\.org$/i.test(host)) bonus += 15;
-    if (/(^|\.)reuters\.com$|(^|\.)bbc\.(com|co\.uk)$/i.test(host)) bonus += 12;
+    if (intent.isWeather && /meteo|weather\.gov|accuweather|weather\.com/i.test(full)) bonus += 25;
+    if (intent.isNews && /reuters\.|bbc\.|apnews\.|techcrunch\.|theverge\./i.test(full)) bonus += 22;
+    if (/\.gov(\.|$)|\.edu(\.|$)/i.test(host)) bonus += 28;
+
+    if (ENCYCLOPEDIA_DOMAINS.test(host)) {
+        if (intent.isGeneralKnowledge) bonus += 18;
+        else if (intent.isOperationalCurrent) bonus -= 35;
+    }
 
     return bonus;
 };
 
-const MIN_RELEVANCE_SCORE = 42;
+const MIN_RELEVANCE_SCORE = 48;
 
 const scoreSourceRelevance = (userQuestion, source, rankIndex = 0) => {
-    const profile = detectQueryProfile(userQuestion);
+    const intent = extractSearchIntent(userQuestion);
     const queryTokens = meaningfulTokens(userQuestion);
     const blob = `${source.title} ${source.excerpt} ${source.domain}`.toLowerCase();
 
@@ -111,41 +153,60 @@ const scoreSourceRelevance = (userQuestion, source, rankIndex = 0) => {
         return { score: -100, relevanceScore: 0 };
     }
 
-    const overlap = countTokenOverlap(queryTokens, blob);
-    let score = Math.max(0, 24 - rankIndex * 2);
-    score += Math.min(overlap * 14, 56);
+    const tokenOverlap = countTokenOverlap(queryTokens, blob);
+    const concept = countConceptOverlap(intent, blob);
+
+    let score = Math.max(0, 20 - rankIndex * 2);
+    score += Math.min(tokenOverlap * 10, 40);
+    score += Math.min(concept.hits * 12, 48);
+
+    if (intent.isOperationalCurrent && concept.total >= 3 && concept.hits < 2) {
+        score -= 55;
+    }
 
     if (typeof source.score === 'number' && source.score > 0) {
-        score += Math.min(source.score * 20, 25);
+        score += Math.min(source.score * 18, 22);
     }
 
-    const relevanceRatio = queryTokens.length ? overlap / Math.max(queryTokens.length, 3) : 0;
-    if (queryTokens.length >= 2 && overlap < 1) {
-        score -= 40;
-    } else if (relevanceRatio >= 0.25) {
-        score += 12;
+    if (concept.hits >= 2 || tokenOverlap >= 2) {
+        score += authorityBonusFor(source.domain, source.url, intent);
     }
 
-    if (relevanceRatio >= 0.15 || overlap >= 2) {
-        score += authorityBonusFor(source.domain, source.url, profile);
-    }
-
-    if (SPORTS_MARKERS.test(blob) && profile.isTravelRail && !profile.mentionsSports) {
-        score -= 80;
+    if (ENCYCLOPEDIA_DOMAINS.test(source.domain || '') && intent.isOperationalCurrent && !intent.isGeneralKnowledge) {
+        score -= 45;
     }
 
     const relevanceScore = Math.max(0, Math.min(100, Math.round(score)));
     return { score, relevanceScore };
 };
 
+const averageRelevance = (sources) => {
+    if (!sources.length) return 0;
+    return sources.reduce((sum, s) => sum + (s.relevanceScore || 0), 0) / sources.length;
+};
+
+const needsSearchRetry = (rankedSources, intent) => {
+    if (!intent.isOperationalCurrent && !intent.isTravelRail && !intent.isWeather && !intent.isNews) {
+        return false;
+    }
+    if (!rankedSources.length) return true;
+    if (averageRelevance(rankedSources) < 52) return true;
+    if (rankedSources.every((s) => ENCYCLOPEDIA_DOMAINS.test(s.domain || ''))) return true;
+    return false;
+};
+
 module.exports = {
     MIN_RELEVANCE_SCORE,
+    averageRelevance,
     authorityBonusFor,
+    countConceptOverlap,
     countTokenOverlap,
     detectQueryProfile,
     expandTokens,
     isClearlyUnrelated,
+    isGeographyEncyclopediaNoise,
     meaningfulTokens,
+    needsSearchRetry,
     scoreSourceRelevance,
     tokenize,
 };

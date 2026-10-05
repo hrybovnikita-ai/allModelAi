@@ -10,8 +10,14 @@ const {
     detectQueryProfile,
     isClearlyUnrelated,
     meaningfulTokens,
+    needsSearchRetry,
     scoreSourceRelevance,
 } = require('./webSearchRelevance');
+const {
+    buildIntentAwareSearchQueries,
+    extractSearchIntent,
+    isQueryDegenerate,
+} = require('./webSearchQueryBuilder');
 
 const USER_AGENT = 'Mozilla/5.0 (compatible; AllModelAI/1.0; +https://allmodelai.local)';
 
@@ -115,101 +121,9 @@ const needsCurrentInformation = (prompt) => {
     return /research|latest|source|news|find|citation|исслед|источник|новост|найди|price|pricing|cost|how much|today|weather|current|release date|available now|сколько|цена|стоим|погод|сегодня|актуал|сейчас|курс|exchange rate|stock|последн|новин/i.test(text);
 };
 
-const buildSearchQuery = (userQuestion) => {
-    let query = String(userQuestion || '').trim();
-    const lower = query.toLowerCase();
-    const profile = detectQueryProfile(userQuestion);
+const buildSearchQuery = (userQuestion) => buildIntentAwareSearchQueries(userQuestion).primary;
 
-    query = query
-        .replace(/^(please|can you|could you|tell me|find me|search for|look up|show me|what is|what's|how much is|how much does|скажи|найди|покажи|сколько стоит)\s+/i, '')
-        .replace(/[?!.]+$/g, '')
-        .trim();
-
-    const isPriceQuery = /price|pricing|cost|how much|сколько|стоим|цена|usd|\$/i.test(lower);
-    const isDelayOrCompensationQuery = profile.isCompensationOrDelay;
-    const iphoneMatch = lower.match(/iphone\s*(\d+\s*)?(pro\s*)?(max|plus|mini)?/i);
-    if (iphoneMatch || /айфон/i.test(lower)) {
-        const modelParts = [];
-        if (/18|19|17|16|15/i.test(lower)) {
-            const gen = lower.match(/iphone\s*(\d+)/i)?.[1] || lower.match(/(\d+)\s*pro/i)?.[1];
-            if (gen) modelParts.push(`iPhone ${gen}`);
-        }
-        if (/pro\s*max/i.test(lower)) modelParts.push('Pro Max');
-        else if (/pro/i.test(lower)) modelParts.push('Pro');
-        else if (/plus/i.test(lower)) modelParts.push('Plus');
-        else if (/mini/i.test(lower)) modelParts.push('mini');
-
-        const modelName = modelParts.length ? modelParts.join(' ') : 'iPhone';
-        if (isPriceQuery) {
-            return `${modelName} official price USD United States Apple store ${new Date().getFullYear()}`;
-        }
-        return `${modelName} Apple official specifications ${new Date().getFullYear()}`;
-    }
-
-    if (isPriceQuery && !isDelayOrCompensationQuery && !profile.isTravelRail && profile.isProductPrice
-        && !/\b(usd|dollar|\$|price|pricing)\b/i.test(query)) {
-        query = `${query} price USD`;
-    }
-
-    if (/weather|погод/i.test(lower) && !/today|forecast|сегодня/i.test(lower)) {
-        query = `${query} weather forecast today`;
-    }
-
-    if (profile.needsRecency && /news|новост/i.test(lower)) {
-        query = `${query} ${new Date().getFullYear()}`;
-    }
-
-    if (profile.isTravelRail) {
-        const year = new Date().getFullYear();
-        if (profile.isCompensationOrDelay) {
-            return `${query} train delay passenger compensation PKP Intercity Ukrzaliznytsia ${year}`.slice(0, 280);
-        }
-        return `${query} train schedule rail ${year}`.slice(0, 280);
-    }
-
-    const intent = detectQueryIntent(userQuestion);
-    const year = new Date().getFullYear();
-
-    if (intent.isPythonWebFrameworks) {
-        return `best Python web application frameworks Django Flask FastAPI comparison ${year}`;
-    }
-
-    if (intent.isCoding) {
-        query = query
-            .replace(/\bweb\b/gi, 'web development')
-            .replace(/\bframeworks?\b/gi, 'software framework')
-            .replace(/\bthe\b/gi, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-        if (intent.languages.python) {
-            return `${query} Python programming ${year}`.slice(0, 280);
-        }
-        return `${query} programming developer guide ${year}`.slice(0, 280);
-    }
-
-    return query.slice(0, 280);
-};
-
-const buildAlternateSearchQueries = (userQuestion) => {
-    const primary = buildSearchQuery(userQuestion);
-    const intent = detectQueryIntent(userQuestion);
-    const profile = detectQueryProfile(userQuestion);
-    const alternates = [];
-
-    if (profile.isTravelRail) {
-        alternates.push('Kyiv Warsaw train delay compensation PKP Intercity Ukrzaliznytsia passenger rights');
-        alternates.push('Киев Варшава поезд задержка компенсация Укрзалізниця PKP');
-    }
-
-    if (intent.isPythonWebFrameworks) {
-        alternates.push('Django vs Flask vs FastAPI Python web framework');
-        alternates.push('top Python backend web frameworks developer survey');
-    } else if (intent.isCoding && intent.languages.python) {
-        alternates.push(`${meaningfulTokens(userQuestion).slice(0, 6).join(' ')} Python tutorial`);
-    }
-
-    return [...new Set([primary, ...alternates.filter(Boolean)])].slice(0, 4);
-};
+const buildAlternateSearchQueries = (userQuestion) => buildIntentAwareSearchQueries(userQuestion).queries;
 
 const isOffTopicSource = (userQuestion, source) => {
     const intent = detectQueryIntent(userQuestion);
@@ -360,13 +274,59 @@ const logWebSearch = (message, details = {}) => {
     const safe = {};
     Object.entries(details).forEach(([key, value]) => {
         if (value === undefined || value === null) return;
-        if (key === 'query') {
-            safe.query = String(value).slice(0, 160);
+        if (key === 'query' || key === 'original_question' || key === 'generated_query') {
+            safe[key] = String(value).slice(0, 160);
             return;
         }
         safe[key] = value;
     });
     console.log(`[WEB_SEARCH] ${message}${Object.keys(safe).length ? ` ${JSON.stringify(safe)}` : ''}`);
+};
+
+const runSearchProviders = async (userQuestion, searchQueries) => {
+    let rawSources = [];
+    let provider = 'public';
+    const intent = extractSearchIntent(userQuestion);
+
+    if (isTavilyConfigured()) {
+        for (const candidateQuery of searchQueries) {
+            rawSources.push(...await searchTavilySafe(candidateQuery));
+            if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
+        }
+        if (rawSources.length) provider = 'tavily';
+    }
+
+    if (rankSources(userQuestion, rawSources, 3).length < 2) {
+        for (const candidateQuery of searchQueries) {
+            const bingResults = await searchBing(candidateQuery);
+            rawSources.push(...bingResults);
+            if (provider === 'public' && bingResults.length) provider = 'bing';
+            if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
+        }
+    }
+
+    if (rankSources(userQuestion, rawSources, 3).length < 2) {
+        for (const candidateQuery of searchQueries) {
+            const ddgResults = await searchDuckDuckGo(candidateQuery);
+            rawSources.push(...ddgResults);
+            if (ddgResults.length && provider === 'public') provider = 'duckduckgo';
+            if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
+        }
+    }
+
+    const allowWikipedia = intent.isGeneralKnowledge || (!intent.isOperationalCurrent && !intent.isTravelRail);
+    if (allowWikipedia && rankSources(userQuestion, rawSources, 2).length < 1) {
+        try {
+            const wikiQuery = searchQueries[0];
+            const wikiResults = await searchWikipedia(wikiQuery);
+            rawSources.push(...wikiResults);
+            if (wikiResults.length && provider === 'public') provider = 'wikipedia';
+        } catch (wikiError) {
+            logWebSearch('wikipedia skipped', { reason: wikiError.message });
+        }
+    }
+
+    return { rawSources, provider };
 };
 
 const isPublicWebSearchAvailable = () => true;
@@ -386,62 +346,47 @@ const searchTavilySafe = async (searchQuery) => {
 };
 
 const collectWebSources = async (userQuestion, onStatus) => {
-    const searchQueries = buildAlternateSearchQueries(userQuestion);
+    const bundle = buildIntentAwareSearchQueries(userQuestion);
+    let searchQueries = bundle.queries.filter((q) => !isQueryDegenerate(q, bundle.intent));
+    if (!searchQueries.length) searchQueries = [bundle.primary];
     const searchQuery = searchQueries[0];
+
+    logWebSearch('start', {
+        original_question: userQuestion,
+        generated_query: searchQuery,
+    });
     onStatus?.('searching', { query: searchQuery });
 
     let rawSources = [];
     let provider = 'public';
+    let retried = false;
+    let ranked = [];
 
     try {
-        if (isTavilyConfigured()) {
-            for (const candidateQuery of searchQueries) {
-                rawSources.push(...await searchTavilySafe(candidateQuery));
-                if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
-            }
-            if (rawSources.length) provider = 'tavily';
+        ({ rawSources, provider } = await runSearchProviders(userQuestion, searchQueries));
+        ranked = rankSources(userQuestion, rawSources, 8);
+
+        if (needsSearchRetry(ranked, bundle.intent) && bundle.retryQueries.length) {
+            retried = true;
+            logWebSearch('retry', { retry: true, generated_query: bundle.retryQueries[0] });
+            const retryResult = await runSearchProviders(userQuestion, bundle.retryQueries);
+            rawSources.push(...retryResult.rawSources);
+            if (retryResult.provider !== 'public') provider = retryResult.provider;
+            ranked = rankSources(userQuestion, rawSources, 8);
         }
 
-        if (rankSources(userQuestion, rawSources, 3).length < 2) {
-            for (const candidateQuery of searchQueries) {
-                const bingResults = await searchBing(candidateQuery);
-                rawSources.push(...bingResults);
-                if (provider === 'public' && bingResults.length) provider = 'bing';
-                if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
-            }
-        }
-
-        if (rankSources(userQuestion, rawSources, 3).length < 2) {
-            for (const candidateQuery of searchQueries) {
-                const ddgResults = await searchDuckDuckGo(candidateQuery);
-                rawSources.push(...ddgResults);
-                if (ddgResults.length && provider === 'public') provider = 'duckduckgo';
-                if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
-            }
-        }
-
-        if (rankSources(userQuestion, rawSources, 2).length < 1) {
-            try {
-                const wikiResults = await searchWikipedia(searchQuery);
-                rawSources.push(...wikiResults);
-                if (wikiResults.length && provider === 'public') provider = 'wikipedia';
-            } catch (wikiError) {
-                logWebSearch('wikipedia skipped', { reason: wikiError.message });
-            }
-        }
+        logWebSearch('completed', {
+            provider,
+            generated_query: searchQuery,
+            result_count: rawSources.length,
+            relevant_result_count: ranked.length,
+            retry: retried,
+            tavilyConfigured: isTavilyConfigured(),
+        });
     } catch (error) {
         console.error('[WEB SEARCH]', error.message);
         throw error;
     }
-
-    const ranked = rankSources(userQuestion, rawSources, 8);
-    logWebSearch('completed', {
-        provider,
-        query: searchQuery,
-        results: rawSources.length,
-        relevant: ranked.length,
-        tavilyConfigured: isTavilyConfigured(),
-    });
 
     onStatus?.('found', { count: ranked.length, query: searchQuery });
 
@@ -481,6 +426,8 @@ Instructions:
 - Prefer authoritative and recent sources when they agree.
 - If reliable sources disagree, explain the disagreement briefly.
 - If the requested information is not confirmed in the sources, say clearly that it is not confirmed — do not invent facts.
+- Do NOT invent current prices, compensation amounts, schedules, delay policies, or live weather when sources do not support them.
+- If sources are empty or only tangentially related, answer cautiously and state that reliable current web evidence was not found.
 - Cite sources inline using [1], [2], etc. matching the numbered search results above when making factual claims.
 - Reply in the same language as the user's question (English → English, Russian → Russian, Ukrainian → Ukrainian).
 - Start with a concise direct answer, then add brief supporting context if helpful.
@@ -667,6 +614,8 @@ module.exports = {
     needsCurrentInformation,
     buildSearchQuery,
     buildAlternateSearchQueries,
+    buildIntentAwareSearchQueries,
+    extractSearchIntent,
     collectWebSources,
     rankSources,
     buildSynthesisPrompt,
