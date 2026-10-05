@@ -17,8 +17,7 @@
     "db:import-sqlite": "node scripts/import-sqlite.js",
     "providers:check": "node scripts/check-providers.js",
     "stripe:check": "node scripts/stripe-check.js",
-    "stripe:sync": "node scripts/sync-stripe-publishable.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "stripe:sync": "node scripts/sync-stripe-publishable.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -36,8 +35,6 @@
     "stripe": "^22.6.0"
   },
   "devDependencies": {
-    "supertest": "^7.1.4",
-    "typescript": "^5.9.3",
-    "@types/node": "^22.19.1"
+    "supertest": "^7.1.4"
   }
 }
