@@ -7,3 +7,5 @@ assert.equal(
 );
 assert.equal(isCompleteCreditStatus({ requestsRemaining: 5, plan: 'free' }), true);
 assert.equal(isCompleteCreditStatus({ plan: 'free' }), false);
+assert.equal(isCompleteCreditStatus({ isOwner: true, role: 'owner' }), true);
+assert.equal(normalizeCreditStatus({ isOwner: true, role: 'owner' })?.ownerUnlimited, true);

@@ -144,24 +144,26 @@ export default function Dashboard() {
               <div className="dashboard-subscription-head">
                 <div>
                   <span>Current plan</span>
-                  <strong>{formatSubscriptionPlanLabel(creditStatus)}</strong>
+                  <strong>{creditStatus.isOwner ? 'Owner' : formatSubscriptionPlanLabel(creditStatus)}</strong>
                 </div>
                 <div>
-                  <span>Requests remaining</span>
-                  <strong>{Number(creditStatus.remaining).toLocaleString()}</strong>
+                  <span>{creditStatus.isOwner ? 'Usage' : 'Requests remaining'}</span>
+                  <strong>{creditStatus.isOwner ? 'Unlimited' : Number(creditStatus.remaining).toLocaleString()}</strong>
                 </div>
                 <div>
                   <span>Subscription status</span>
-                  <strong>{subscriptionStatusLabel(creditStatus)}</strong>
+                  <strong>{creditStatus.isOwner ? 'Owner' : subscriptionStatusLabel(creditStatus)}</strong>
                 </div>
-                {creditStatus.expiresAtLabel && (
+                {!creditStatus.isOwner && creditStatus.expiresAtLabel && (
                   <div>
                     <span>Renews/Expires</span>
                     <strong>{creditStatus.expiresAtLabel}</strong>
                   </div>
                 )}
               </div>
-              <div className="usage-track"><i style={{ width: `${Math.min((creditStatus.used / creditStatus.limit) * 100, 100)}%` }} /></div>
+              {!creditStatus.isOwner && creditStatus.limit != null && (
+                <div className="usage-track"><i style={{ width: `${Math.min((creditStatus.used / creditStatus.limit) * 100, 100)}%` }} /></div>
+              )}
               <div className="dashboard-subscription-actions">
                 <button type="button" className="dashboard-sub-manage" onClick={() => setManageSubOpen(true)}>Manage subscription</button>
                 <Link to="/checkout?plan=pro">Upgrade plan</Link>

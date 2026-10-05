@@ -531,7 +531,9 @@ export default function Chat() {
     return modelStatus[statusKey] !== false;
   };
 
-  const modelAllowed = (slug) => slug === 'smart' || Boolean(creditStatus?.models?.includes('all') || creditStatus?.models?.includes(slug));
+  const modelAllowed = (slug) => slug === 'smart'
+    || creditStatus?.isOwner
+    || Boolean(creditStatus?.models?.includes('all') || creditStatus?.models?.includes(slug));
 
   const changeAccessMode = async (mode) => {
     if (!creditStatus?.isDeveloper || isSending || accessModeSaving) return;
@@ -2080,9 +2082,11 @@ export default function Chat() {
               <small>
                 {accessModeSaving
                   ? t('Saving…')
-                  : creditStatus.isDeveloper && creditStatus.mode === 'developer'
-                    ? t('All models')
-                    : t('5 free models')}
+                  : creditStatus.isOwner
+                    ? t('Owner · Unlimited')
+                    : creditStatus.isDeveloper && creditStatus.mode === 'developer'
+                      ? t('All models')
+                      : t('5 free models')}
                 {!creditStatus.isDeveloper && !creditStatus.hasSubscription && (
                   <button type="button" className="access-subscribe-inline" onClick={openPlusSubscription}>
                     {t('Subscription')} ↗

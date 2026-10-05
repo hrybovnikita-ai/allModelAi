@@ -1,0 +1,4 @@
+-- Owner role for unlimited in-app AI access (application quota bypass only).
+-- Assign manually in production, for example:
+-- UPDATE users SET role = 'owner' WHERE lower(email) = lower('you@example.com');
+-- Never set role from client requests; auth middleware reads users.role from the database.

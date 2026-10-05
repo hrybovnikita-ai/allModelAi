@@ -45,9 +45,45 @@ test('Smart Router returns 503 when no AI provider is configured', async () => {
             messages: [{ role: 'user', content: 'hello' }],
         });
         assert.equal(response.status, 503);
-        assert.match(response.body.message, /temporarily unavailable/i);
+        assert.equal(response.body.code, 'NO_AI_PROVIDERS');
+        assert.match(response.body.message, /GEMINI_API_KEY|ALLMODELAI_OPENROUTER_API_KEY|OPENROUTER_API_KEY/i);
     } finally {
         process.env.GEMINI_API_KEY = previous.GEMINI;
+        process.env.OPENROUTER_API_KEY = previous.OR;
+    }
+});
+
+test('Smart Router answers when only OpenRouter is configured', async () => {
+    const previous = {
+        GEMINI: process.env.GEMINI_API_KEY,
+        OR: process.env.OPENROUTER_API_KEY,
+    };
+    delete process.env.GEMINI_API_KEY;
+    process.env.OPENROUTER_API_KEY = 'test-gateway-only';
+    global.fetch = async (url) => {
+        if (String(url).includes('openrouter.ai')) {
+            const encoder = new TextEncoder();
+            return new Response(new ReadableStream({
+                start(controller) {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: 'OpenRouter answer' } }] })}\n\n`));
+                    controller.close();
+                },
+            }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+        }
+        return new Response('{}', { status: 404 });
+    };
+    try {
+        const response = await agent.post('/api/chat').send({
+            model: 'smart',
+            temporary: true,
+            messages: [{ role: 'user', content: 'hello from smart router' }],
+        });
+        assert.equal(response.status, 200);
+        assert.match(response.text, /OpenRouter answer/);
+    } finally {
+        global.fetch = originalFetch;
+        if (previous.GEMINI === undefined) delete process.env.GEMINI_API_KEY;
+        else process.env.GEMINI_API_KEY = previous.GEMINI;
         process.env.OPENROUTER_API_KEY = previous.OR;
     }
 });

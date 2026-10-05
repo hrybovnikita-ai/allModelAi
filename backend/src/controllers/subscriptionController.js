@@ -10,6 +10,8 @@ const {
     resolveStoredPlanKey,
 } = require('../billing/subscriptionLifecycle');
 const { getCreditStatusCoreAsync } = require('../billing/creditStatusAsync');
+const { applyOwnerAccess } = require('../billing/accessControl');
+const { readUserRoleSync } = require('../billing/userRole');
 const { authLog } = require('../authHelpers');
 
 function readUsageCount(database, normalizedEmail) {
@@ -51,7 +53,7 @@ const getCreditStatusCore = (database, email) => {
         hasPaidSubscription: hasSubscription,
     });
 
-    return {
+    const base = {
         email: normalizedEmail,
         plan,
         limit,
@@ -59,7 +61,7 @@ const getCreditStatusCore = (database, email) => {
         remaining,
         billingInterval,
         periodEnd: detailActive ? detail.periodEnd : null,
-        models: fullAccess ? ['all'] : subscriptionPlans.free.models,
+        models: fullAccess ? ['all'] : (subscriptionPlans[plan]?.models || subscriptionPlans.free.models),
         enforced: !fullAccess && creditLimitsEnabled(),
         isDeveloper,
         hasSubscription,
@@ -69,6 +71,8 @@ const getCreditStatusCore = (database, email) => {
         active: Boolean(detailActive && hasSubscription),
         ...subscriptionView,
     };
+    const role = readUserRoleSync(database, normalizedEmail);
+    return applyOwnerAccess(base, role);
 };
 
 const getSubscriptionSummary = async (req, res) => {

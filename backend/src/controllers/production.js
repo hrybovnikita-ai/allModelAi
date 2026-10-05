@@ -55,7 +55,8 @@ async function audit(req, action, targetType, targetId, metadata = {}) {
 const health = async (req, res) => {
     const connection = req.app.locals.db;
     const engine = connection.engine || getDatabaseEngine();
-    const checks = { database: false, openai: Boolean(process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY), openrouter: Boolean(process.env.OPENROUTER_API_KEY || process.env.API_KEY), email: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM), payments: Boolean(process.env.STRIPE_SECRET_KEY) || Boolean(process.env.WAYFORPAY_SECRET_KEY?.trim() && process.env.WAYFORPAY_MERCHANT_ACCOUNT?.trim()), monitoring: Boolean(process.env.SENTRY_DSN) };
+    const { isOpenRouterConfigured } = require('../openRouterConfig');
+    const checks = { database: false, openai: Boolean(process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY), openrouter: isOpenRouterConfigured(), email: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM), payments: Boolean(process.env.STRIPE_SECRET_KEY) || Boolean(process.env.WAYFORPAY_SECRET_KEY?.trim() && process.env.WAYFORPAY_MERCHANT_ACCOUNT?.trim()), monitoring: Boolean(process.env.SENTRY_DSN) };
     try {
         if (isPostgresConnection(connection)) {
             await pingPostgresAsync(connection);

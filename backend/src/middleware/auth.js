@@ -13,7 +13,7 @@ async function lookupSessionUser(dbConnection, tokenHash, nowMs) {
     if (engine === 'postgres' && asyncPool) {
         const result = await queryPgPool(
             asyncPool,
-            `SELECT users.id, users.name, users.email, users.avatar_url AS avatar
+            `SELECT users.id, users.name, users.email, users.avatar_url AS avatar, users.role
              FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id
              WHERE token_hash = $1 AND expires_at > $2`,
             [tokenHash, nowMs],
@@ -21,7 +21,7 @@ async function lookupSessionUser(dbConnection, tokenHash, nowMs) {
         return result.rows[0] || null;
     }
     return database.prepare(`
-        SELECT users.id, users.name, users.email, users.avatar_url AS avatar
+        SELECT users.id, users.name, users.email, users.avatar_url AS avatar, users.role
         FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id
         WHERE token_hash = ? AND expires_at > ?
     `).get(tokenHash, nowMs) || null;

@@ -29,6 +29,8 @@ services:
         value: https://all-model-ai.com,https://www.all-model-ai.com,https://all-model-ai.vercel.app
       - key: OPENAI_API_KEY
         sync: false
+      - key: ALLMODELAI_OPENROUTER_API_KEY
+        sync: false
       - key: OPENROUTER_API_KEY
         sync: false
       - key: GEMINI_API_KEY

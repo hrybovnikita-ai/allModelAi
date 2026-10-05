@@ -81,9 +81,11 @@ export async function checkChatResponse(response) {
       : data.message || 'Could not connect to the AI server. Please try again.');
   error.status = response.status;
   error.sessionExpired = sessionExpired;
+  if (data.code) error.code = data.code;
   if (isLoggerEnabled()) {
     logger.apiError('Chat request failed', {
       status: response.status,
+      code: data.code,
       message: data.message || error.message,
       sessionExpired,
     });

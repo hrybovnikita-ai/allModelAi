@@ -5,6 +5,8 @@ const {
     canonicalPlanSlug,
 } = require('./subscriptionLifecycle');
 const { queryPgPool, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
+const { applyOwnerAccess } = require('./accessControl');
+const { readUserRoleAsync } = require('./userRole');
 
 function mapSubscriptionDetailRow(row) {
     if (!row) return null;
@@ -154,7 +156,7 @@ async function buildCreditStatusPostgres(connection, email) {
         hasPaidSubscription: hasSubscription,
     });
 
-    return {
+    const base = {
         email: normalizedEmail,
         plan,
         limit,
@@ -162,7 +164,7 @@ async function buildCreditStatusPostgres(connection, email) {
         remaining,
         billingInterval,
         periodEnd: detailActive ? detail.periodEnd : null,
-        models: fullAccess ? ['all'] : subscriptionPlans.free.models,
+        models: fullAccess ? ['all'] : (subscriptionPlans[plan]?.models || subscriptionPlans.free.models),
         enforced: !fullAccess && creditLimitsEnabled(),
         isDeveloper,
         hasSubscription,
@@ -172,6 +174,8 @@ async function buildCreditStatusPostgres(connection, email) {
         active: Boolean(detailActive && hasSubscription),
         ...subscriptionView,
     };
+    const role = await readUserRoleAsync(connection, normalizedEmail);
+    return applyOwnerAccess(base, role);
 }
 
 async function getCreditStatusCoreAsync(connection, email) {

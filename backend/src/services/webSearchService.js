@@ -3,6 +3,8 @@
  * Search uses public Bing RSS, DuckDuckGo HTML, and Wikipedia — no frontend API keys.
  */
 
+const { getOpenRouterApiKey } = require('../openRouterConfig');
+
 const USER_AGENT = 'Mozilla/5.0 (compatible; AllModelAI/1.0; +https://allmodelai.local)';
 
 const STOP_WORDS = new Set([
@@ -412,7 +414,7 @@ Instructions:
 - Do not begin with "Web search completed" or similar meta commentary.`;
 };
 
-const resolveAiKey = () => process.env.OPENROUTER_API_KEY || process.env.API_KEY || process.env.GEMINI_API_KEY;
+const resolveAiKey = () => getOpenRouterApiKey() || process.env.GEMINI_API_KEY?.trim();
 
 const providerModels = {
     smart: 'google/gemini-2.5-flash',
@@ -479,7 +481,7 @@ const consumeSseStream = async (apiResponse, res, useGeminiDirect) => {
 };
 
 const requestOpenRouterStream = async (prompt, modelSlug, timeoutMs) => {
-    const gatewayKey = process.env.OPENROUTER_API_KEY || process.env.API_KEY;
+    const gatewayKey = getOpenRouterApiKey();
     if (!gatewayKey?.trim()) return null;
     const gatewayModel = providerModels[modelSlug] || providerModels.gemini;
     return fetch('https://openrouter.ai/api/v1/chat/completions', {

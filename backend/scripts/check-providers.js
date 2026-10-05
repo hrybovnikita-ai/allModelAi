@@ -2,10 +2,12 @@ const path = require('node:path');
 try { process.loadEnvFile(path.join(__dirname, '..', '.env')); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
 
+const { getOpenRouterApiKey } = require('../src/openRouterConfig');
+
 // Read-only checks: never print credentials, response bodies or request URLs.
 const env = process.env;
 const checks = [
-    ['OpenRouter', env.OPENROUTER_API_KEY || env.API_KEY, 'https://openrouter.ai/api/v1/key'],
+    ['OpenRouter', getOpenRouterApiKey(), 'https://openrouter.ai/api/v1/key'],
     ['OpenAI', env.OPENAI_API_KEY || env.OPEN_AI_API_KEY, 'https://api.openai.com/v1/models'],
     ['xAI', env.XAI_API_KEY || env.GROK_API_KEY, 'https://api.x.ai/v1/models'],
     ['Anthropic', env.CLAUDE_API_KEY, 'https://api.anthropic.com/v1/models', 'anthropic'],

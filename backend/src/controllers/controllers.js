@@ -754,6 +754,17 @@ const {
 const { resolveImageProvider } = require('../pollinations');
 
 const { providerAvailabilityForRouter, buildProviderSnapshot, resolveAvailableSmartModel } = require('../providerHealth');
+const {
+    buildNoAiProvidersPayload,
+    findRoutedModelWithApiKey,
+    logSmartRouter,
+    openRouterKey,
+} = require('../chatProviderRuntime');
+const {
+    checkUsageLimit,
+    hasModelAccess,
+    resolveOpenRouterModelId,
+} = require('../billing/accessControl');
 
 const getModelStatus = (_req, res) => {
     authLog('MODELS_STATUS_START');
@@ -1214,7 +1225,8 @@ const previewRouter = async (req, res) => {
         route.model = 'gemini';
         route.reason = 'Smart Router picked Gemini from models available in User mode.';
     }
-    const previewAvailable = resolveAvailableSmartModel(route.model, modelAllowedPreview);
+    const previewAvailable = findRoutedModelWithApiKey(route.model, modelAllowedPreview)
+        || resolveAvailableSmartModel(route.model, modelAllowedPreview);
     if (previewAvailable && previewAvailable !== route.model) {
         route.model = previewAvailable;
         route.reason = `${route.reason} (switched to an available provider.)`;
@@ -1282,20 +1294,34 @@ const createChatResponse = async (req, res) => {
     const hasAttachedImage = normalizedInputMessages.some((m) => Boolean(m.image || m.imageUrl));
     const routeDecision = chooseSmartRoute(latestPrompt, routerMode, hasAttachedImage);
     const creditStatus = await getCreditStatusAsync(req.app.locals.db, userEmail);
-    const modelAllowed = (slug) => creditStatus.models.includes('all') || creditStatus.models.includes(slug) || slug === 'ai_python';
-    if (model !== 'smart' && !modelAllowed(model)) return res.status(403).json({ message: 'Эта модель доступна по подписке или в режиме Developer. Выберите одну из пяти моделей User.' });
+    const usageGate = checkUsageLimit(creditStatus);
+    if (!usageGate.allowed) {
+        return res.status(usageGate.status).json({ message: usageGate.message, code: usageGate.code });
+    }
+    const modelAllowed = (slug) => hasModelAccess(creditStatus, slug);
+    if (model !== 'smart' && !modelAllowed(model)) {
+        return res.status(403).json({
+            message: `${model} is not included in your current plan. Upgrade for premium models.`,
+            code: 'MODEL_NOT_ALLOWED',
+        });
+    }
     if (model === 'smart' && !modelAllowed(routeDecision.model)) {
         routeDecision.model = 'gemini';
         routeDecision.reason = 'Smart Router picked Gemini from models available in User mode.';
     }
     if (model === 'smart') {
-        const available = resolveAvailableSmartModel(routeDecision.model, modelAllowed);
+        const preferred = routeDecision.model;
+        const available = findRoutedModelWithApiKey(preferred, modelAllowed);
         if (!available) {
-            return res.status(503).json({ message: 'AI services are temporarily unavailable. Please try again.' });
+            logSmartRouter('no configured provider available', { preferred });
+            return res.status(503).json(buildNoAiProvidersPayload());
         }
-        if (available !== routeDecision.model) {
+        if (available !== preferred) {
+            logSmartRouter('fallback provider', { preferred, selected: available });
             routeDecision.model = available;
-            routeDecision.reason = `${routeDecision.reason} (switched to an available provider.)`;
+            routeDecision.reason = `${routeDecision.reason} (switched to a configured provider.)`;
+        } else {
+            logSmartRouter('selected provider', { provider: available, category: routeDecision.category });
         }
     }
     const routedModel = model === 'smart' ? routeDecision.model : model;
@@ -1383,7 +1409,7 @@ const createChatResponse = async (req, res) => {
 
     // Prefer the shared OpenRouter connection for Claude when it is configured.
     // This keeps Claude available when a direct Anthropic account has no credits.
-    const gatewayKey = process.env.OPENROUTER_API_KEY || process.env.API_KEY;
+    const gatewayKey = openRouterKey();
     const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
     const xaiKey = (process.env.XAI_API_KEY || process.env.GROK_API_KEY)?.trim();
     const directKimiKey = process.env.KIMI_PROVIDER === 'openrouter' ? undefined : process.env.KIMI_API_KEY?.trim();
@@ -1400,19 +1426,13 @@ const createChatResponse = async (req, res) => {
     let isCloudflare = routedModel === 'cloudflare' && hasCloudflareDirect;
     const cloudflareKey = process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY;
     let apiKey = isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isCloudflare ? cloudflareKey : gatewayKey;
+    const usesDirectProvider = Boolean(isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isCloudflare);
     if (!apiKey) {
-        const provider = routedModel === 'grok' ? 'Grok (set XAI_API_KEY or OPENROUTER_API_KEY)' : isClaude ? 'Claude' : isGemini ? 'Gemini' : isKimi ? 'Kimi' : isMistral ? 'Mistral (set MISTRAL_API_KEY or OPENROUTER_API_KEY)' : isCloudflare ? 'Cloudflare' : 'OpenRouter';
-        return res.status(503).json({ message: 'AI services are temporarily unavailable. Please try again.' });
+        logSmartRouter('provider failed', { provider: routedModel, reason: 'missing_api_key' });
+        return res.status(503).json(buildNoAiProvidersPayload());
     }
     if (!providerModels[routedModel]) {
         return res.status(400).json({ message: 'Unsupported AI model' });
-    }
-
-    if (creditStatus.enforced && creditStatus.used >= creditStatus.limit) {
-        return res.status(429).json({ message: `Your ${creditStatus.plan} plan has reached its request limit. Choose a larger plan to continue.` });
-    }
-    if (creditStatus.enforced && !creditStatus.models.includes('all') && !creditStatus.models.includes(model) && model !== 'smart') {
-        return res.status(403).json({ message: `${model} is not included in your current plan. Upgrade your model access to use it.` });
     }
 
     const connection = req.app.locals.db;
@@ -1620,7 +1640,17 @@ const createChatResponse = async (req, res) => {
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : {
-                model: routedModel === 'grok' ? grokModel : routedModel === 'cloudflare' ? (selectedVariant?.gateway || providerModels.llama) : providerModels[routedModel],
+                model: resolveOpenRouterModelId({
+                    access: creditStatus,
+                    requestedModel: model,
+                    routedModel,
+                    gatewayModel: routedModel === 'grok'
+                        ? grokModel
+                        : routedModel === 'cloudflare'
+                            ? (selectedVariant?.gateway || providerModels.llama)
+                            : providerModels[routedModel],
+                    usesDirectProvider,
+                }),
                 stream: !isCloudflare,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
@@ -1648,6 +1678,9 @@ const createChatResponse = async (req, res) => {
             });
             fallbackUsed = apiResponse.ok;
             fallbackModel = 'gemini';
+            if (apiResponse.ok) {
+                logSmartRouter('fallback provider', { from: routedModel, to: 'gemini', via: 'direct' });
+            }
             if (!apiResponse.ok) upstreamError = null;
         }
         // Gateway fallback through OpenRouter
@@ -1667,13 +1700,20 @@ const createChatResponse = async (req, res) => {
                     signal: requestSignal(),
                     headers: { Authorization: `Bearer ${gatewayKey.trim()}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        model: providerModels[candidate],
+                        model: resolveOpenRouterModelId({
+                            access: creditStatus,
+                            requestedModel: model,
+                            routedModel: candidate,
+                            gatewayModel: providerModels[candidate],
+                            usesDirectProvider: false,
+                        }),
                         stream: true,
                         max_tokens: outputTokenLimit,
                         messages: [{ role: 'system', content: `${systemPrompt} The requested ${routedModel} provider is temporarily unavailable; provide the best equivalent answer without mentioning the outage.` }, ...standardInput],
                     }),
                 });
                 if (apiResponse.ok) {
+                    logSmartRouter('fallback provider', { from: routedModel, to: candidate, via: 'openrouter' });
                     fallbackUsed = true;
                     fallbackModel = candidate;
                     isOpenAI = false;
@@ -1699,10 +1739,15 @@ const createChatResponse = async (req, res) => {
                 : apiResponse.status === 401 || apiResponse.status === 403 ? 'The selected AI service rejected the server credentials or model access.'
                 : apiResponse.status === 504 ? 'The AI provider took too long to respond. Try again or choose another configured model.'
                 : 'The selected AI service could not answer. Retry or check the model configuration.';
+            logSmartRouter('provider failed', { provider: routedModel, status: apiResponse.status, billing: billingError });
             console.error('[AI API]', apiResponse.status, billingError ? 'billing_or_quota' : 'upstream_error');
-            return res.status(apiResponse.status === 401 ? 502 : apiResponse.status).json({ message });
+            return res.status(apiResponse.status === 401 ? 502 : apiResponse.status).json({ message, code: billingError ? 'AI_BILLING' : 'AI_UPSTREAM' });
         }
 
+        logSmartRouter('request success provider', {
+            provider: fallbackUsed ? fallbackModel : routedModel,
+            fallback: Boolean(fallbackUsed),
+        });
         res.status(200);
         res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
         res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -1803,12 +1848,12 @@ const createChatResponse = async (req, res) => {
                             model,
                             savedMessages,
                             title: createConversationTitle(savedMessages),
-                            bumpUsage: !temporary,
+                            bumpUsage: !temporary && !creditStatus.isOwner,
                         });
                         return;
                     }
                     chatConnection.database.prepare('INSERT INTO usage_events (email,model,input_tokens,output_tokens,latency_ms,fallback_used,estimated_cost,created_at) VALUES (?,?,?,?,?,?,?,?)').run(userEmail, actualUsageModel, inputTokens, outputTokens, Date.now() - requestStartedAt, fallbackUsed ? 1 : 0, estimatedCost, createdAt);
-                    if (temporary) return;
+                    if (temporary || creditStatus.isOwner) return;
                     const normalizedEmail = String(userEmail).trim().toLowerCase();
                     bumpUsageCount(chatConnection.database, normalizedEmail);
                     const data = chatConnection.read();
@@ -1858,7 +1903,7 @@ const analyzeVision = async (req, res) => {
         return res.status(400).json({ message: 'An image or screenshot is required' });
     }
 
-    const gatewayKey = process.env.OPENROUTER_API_KEY || process.env.API_KEY;
+    const gatewayKey = openRouterKey();
     const geminiKey = process.env.GEMINI_API_KEY?.trim();
     const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
 
@@ -1907,7 +1952,7 @@ const analyzeVision = async (req, res) => {
 
         const apiKey = gatewayKey || openAIKey;
         if (!apiKey) {
-            return res.status(503).json({ message: 'No Vision AI API key configured (set GEMINI_API_KEY or OPENROUTER_API_KEY).' });
+            return res.status(503).json({ message: 'No Vision AI API key configured (set GEMINI_API_KEY or ALLMODELAI_OPENROUTER_API_KEY / OPENROUTER_API_KEY).' });
         }
 
         const model = gatewayKey ? 'google/gemini-2.5-flash' : (process.env.OPENAI_MODEL || 'gpt-4o-mini');
@@ -2581,7 +2626,7 @@ const improvePrompt = async (req, res) => {
     if (!prompt || !prompt.trim()) {
         return res.status(400).json({ message: 'Prompt is required' });
     }
-    const apiKey = process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY || process.env.API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY?.trim() || openRouterKey();
     if (!apiKey) {
         return res.status(503).json({ message: 'Gemini or OpenRouter API key is not configured' });
     }

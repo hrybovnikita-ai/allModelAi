@@ -4,6 +4,7 @@
 
 const { TavilyError, searchTavily } = require('./tavilyClient');
 const webSearchService = require('./webSearchService');
+const { getOpenRouterApiKey } = require('../openRouterConfig');
 
 const DEPTH_PROFILES = {
     quick: {
@@ -93,7 +94,7 @@ const resolveLlmKey = () => webSearchService.resolveAiKey();
 
 const completeLlmJson = async (prompt) => {
     const timeoutMs = 45000;
-    const gatewayKey = process.env.OPENROUTER_API_KEY || process.env.API_KEY;
+    const gatewayKey = getOpenRouterApiKey();
     if (gatewayKey?.trim()) {
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',

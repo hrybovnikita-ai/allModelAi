@@ -1,3 +1,5 @@
+const { getOpenRouterApiKey, OPENROUTER_KEY_ENV_NAMES } = require('./openRouterConfig');
+
 const configured = (name) => Boolean(String(process.env[name] || '').trim());
 
 function maskConfigured(name) {
@@ -22,7 +24,7 @@ function providerCatalog() {
             defaultModel: 'claude-sonnet-4-20250514',
         },
         openrouter: {
-            keys: ['OPENROUTER_API_KEY', 'API_KEY'],
+            keys: [...OPENROUTER_KEY_ENV_NAMES],
             modelEnv: 'OPENROUTER_MODEL',
             defaultModel: 'openrouter/auto',
         },
@@ -113,7 +115,7 @@ async function probeGemini() {
 }
 
 async function probeOpenRouter() {
-    const key = (process.env.OPENROUTER_API_KEY || process.env.API_KEY || '').trim();
+    const key = getOpenRouterApiKey();
     if (!key) return { status: 'missing_configuration' };
     try {
         const response = await fetch('https://openrouter.ai/api/v1/models', {
@@ -161,6 +163,12 @@ function logStartupConfig() {
         const state = isProviderConfigured(entry) ? 'configured' : 'missing';
         console.log(`[CONFIG] ${id}: ${state}`);
     });
+    try {
+        const { logAiProviderStatus } = require('./chatProviderRuntime');
+        logAiProviderStatus();
+    } catch (error) {
+        console.warn('[CONFIG] AI provider status log skipped:', error.message);
+    }
 }
 
 function getCachedProbeStatus(providerId) {
@@ -244,8 +252,10 @@ async function warmProviderProbes() {
 }
 
 module.exports = {
+    SMART_ROUTE_FALLBACK_ORDER,
     buildProviderHealth,
     buildProviderSnapshot,
+    isRoutedModelAvailable,
     logStartupConfig,
     providerAvailabilityForRouter,
     resolveAvailableSmartModel,
