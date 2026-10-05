@@ -128,9 +128,12 @@ const extractDomain = (url) => {
     }
 };
 
+const isTavilyConfigured = () => Boolean(getApiKey());
+
 module.exports = {
     TavilyError,
     getApiKey,
+    isTavilyConfigured,
     searchTavily,
     extractDomain,
 };

@@ -1,3 +1,5 @@
+import { shouldShowWebSearchCompleted, shouldShowWebSearchUnavailable } from '../../lib/webSearchUi.js';
+
 function faviconUrl(domain) {
   if (!domain) return null;
   return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
@@ -35,11 +37,19 @@ export function WebSearchStatus({ status, count, deepResearch, label }) {
   );
 }
 
-export default function WebSources({ sources = [], complete = false, deepResearch = false }) {
+export default function WebSources({ sources = [], complete = false, deepResearch = false, unavailable = false }) {
+  if (shouldShowWebSearchUnavailable(unavailable)) {
+    return (
+      <p className="web-search-unavailable" role="status">
+        Web search unavailable — response generated without live web results.
+      </p>
+    );
+  }
   if (!sources.length) return null;
+  const showCompleteHeading = shouldShowWebSearchCompleted(complete, sources.length);
   return (
     <section className={`web-sources ${deepResearch ? 'deep-research-sources' : ''}`} aria-label="Sources">
-      {complete && (
+      {showCompleteHeading && (
         <p className="web-sources-heading">{deepResearch ? '🔎 Deep Research complete' : '🌐 Web search completed'}</p>
       )}
       <h4 className="web-sources-title">Sources</h4>

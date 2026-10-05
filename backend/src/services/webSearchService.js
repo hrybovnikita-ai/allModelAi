@@ -4,6 +4,14 @@
  */
 
 const { getOpenRouterApiKey } = require('../openRouterConfig');
+const { isTavilyConfigured, searchTavily } = require('./tavilyClient');
+const {
+    MIN_RELEVANCE_SCORE,
+    detectQueryProfile,
+    isClearlyUnrelated,
+    meaningfulTokens,
+    scoreSourceRelevance,
+} = require('./webSearchRelevance');
 
 const USER_AGENT = 'Mozilla/5.0 (compatible; AllModelAI/1.0; +https://allmodelai.local)';
 
@@ -85,7 +93,7 @@ const extractDomain = (url) => {
 
 const tokenize = (text) => [...new Set(String(text || '').toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || [])];
 
-const meaningfulTokens = (text) => tokenize(text).filter((token) => !STOP_WORDS.has(token));
+const localMeaningfulTokens = (text) => tokenize(text).filter((token) => !STOP_WORDS.has(token));
 
 const detectQueryIntent = (text) => {
     const lower = String(text || '').toLowerCase();
@@ -110,6 +118,7 @@ const needsCurrentInformation = (prompt) => {
 const buildSearchQuery = (userQuestion) => {
     let query = String(userQuestion || '').trim();
     const lower = query.toLowerCase();
+    const profile = detectQueryProfile(userQuestion);
 
     query = query
         .replace(/^(please|can you|could you|tell me|find me|search for|look up|show me|what is|what's|how much is|how much does|скажи|найди|покажи|сколько стоит)\s+/i, '')
@@ -117,6 +126,7 @@ const buildSearchQuery = (userQuestion) => {
         .trim();
 
     const isPriceQuery = /price|pricing|cost|how much|сколько|стоим|цена|usd|\$/i.test(lower);
+    const isDelayOrCompensationQuery = profile.isCompensationOrDelay;
     const iphoneMatch = lower.match(/iphone\s*(\d+\s*)?(pro\s*)?(max|plus|mini)?/i);
     if (iphoneMatch || /айфон/i.test(lower)) {
         const modelParts = [];
@@ -136,7 +146,8 @@ const buildSearchQuery = (userQuestion) => {
         return `${modelName} Apple official specifications ${new Date().getFullYear()}`;
     }
 
-    if (isPriceQuery && !/\b(usd|dollar|\$|price|pricing)\b/i.test(query)) {
+    if (isPriceQuery && !isDelayOrCompensationQuery && !profile.isTravelRail && profile.isProductPrice
+        && !/\b(usd|dollar|\$|price|pricing)\b/i.test(query)) {
         query = `${query} price USD`;
     }
 
@@ -144,8 +155,16 @@ const buildSearchQuery = (userQuestion) => {
         query = `${query} weather forecast today`;
     }
 
-    if (/latest|recent|today|current|сегодня|последн|актуал/i.test(lower) && !/news|новост/i.test(lower)) {
-        query = `${query} latest news ${new Date().getFullYear()}`;
+    if (profile.needsRecency && /news|новост/i.test(lower)) {
+        query = `${query} ${new Date().getFullYear()}`;
+    }
+
+    if (profile.isTravelRail) {
+        const year = new Date().getFullYear();
+        if (profile.isCompensationOrDelay) {
+            return `${query} train delay passenger compensation PKP Intercity Ukrzaliznytsia ${year}`.slice(0, 280);
+        }
+        return `${query} train schedule rail ${year}`.slice(0, 280);
     }
 
     const intent = detectQueryIntent(userQuestion);
@@ -174,7 +193,13 @@ const buildSearchQuery = (userQuestion) => {
 const buildAlternateSearchQueries = (userQuestion) => {
     const primary = buildSearchQuery(userQuestion);
     const intent = detectQueryIntent(userQuestion);
+    const profile = detectQueryProfile(userQuestion);
     const alternates = [];
+
+    if (profile.isTravelRail) {
+        alternates.push('Kyiv Warsaw train delay compensation PKP Intercity Ukrzaliznytsia passenger rights');
+        alternates.push('Киев Варшава поезд задержка компенсация Укрзалізниця PKP');
+    }
 
     if (intent.isPythonWebFrameworks) {
         alternates.push('Django vs Flask vs FastAPI Python web framework');
@@ -183,7 +208,7 @@ const buildAlternateSearchQueries = (userQuestion) => {
         alternates.push(`${meaningfulTokens(userQuestion).slice(0, 6).join(' ')} Python tutorial`);
     }
 
-    return [...new Set([primary, ...alternates])].slice(0, 3);
+    return [...new Set([primary, ...alternates.filter(Boolean)])].slice(0, 4);
 };
 
 const isOffTopicSource = (userQuestion, source) => {
@@ -209,40 +234,28 @@ const isOffTopicSource = (userQuestion, source) => {
 };
 
 const scoreSource = (userQuestion, source, rankIndex) => {
-    const queryTokens = meaningfulTokens(userQuestion);
-    const blob = `${source.title} ${source.excerpt} ${source.domain}`.toLowerCase();
-    let score = Math.max(0, 30 - rankIndex * 2);
-
-    if (isOffTopicSource(userQuestion, source)) {
+    if (isOffTopicSource(userQuestion, source) || isClearlyUnrelated(userQuestion, source)) {
         return -100;
     }
 
-    queryTokens.forEach((token) => {
-        if (blob.includes(token)) score += token.length > 5 ? 12 : 8;
-    });
-
+    let { score, relevanceScore } = scoreSourceRelevance(userQuestion, source, rankIndex);
     const domain = source.domain || extractDomain(source.url);
-    [...AUTHORITY_BONUS, ...TECH_AUTHORITY_BONUS].forEach((entry) => {
+    [...TECH_AUTHORITY_BONUS].forEach((entry) => {
         const pattern = entry.pattern || entry;
         const bonus = entry.bonus || 18;
-        if (pattern.test(domain) || pattern.test(source.url)) score += bonus;
+        if (relevanceScore >= 25 && (pattern.test(domain) || pattern.test(source.url))) {
+            score += bonus;
+        }
     });
+    source.relevanceScore = Math.max(0, Math.min(100, relevanceScore));
 
     if (LOW_QUALITY_PATTERNS.some((pattern) => pattern.test(source.url) || pattern.test(source.title) || pattern.test(source.domain))) {
-        score -= 50;
+        return score - 50;
     }
 
     if (/youtube\.com|youtu\.be/i.test(source.url) && !/video|review|hands.?on|tutorial|обзор/i.test(userQuestion)) {
-        score -= 15;
+        return score - 15;
     }
-
-    const matchedTopicTokens = queryTokens.filter((token) => blob.includes(token)).length;
-    if (queryTokens.length >= 2 && matchedTopicTokens < 2) {
-        score -= 25;
-    }
-
-    if (source.excerpt && source.excerpt.length < 40) score -= 5;
-    if (source.excerpt && source.excerpt.length > 80) score += 4;
 
     return score;
 };
@@ -261,14 +274,18 @@ const dedupeSources = (sources) => {
 };
 
 const rankSources = (userQuestion, sources, limit = 6) => dedupeSources(sources)
-    .map((source, index) => ({ ...source, score: scoreSource(userQuestion, source, index) }))
-    .filter((source) => source.score > 10 && source.title && source.url)
+    .map((source, index) => {
+        const score = scoreSource(userQuestion, source, index);
+        return { ...source, score, relevanceScore: source.relevanceScore ?? 0 };
+    })
+    .filter((source) => source.score >= MIN_RELEVANCE_SCORE && source.title && source.url && /^https?:\/\//i.test(source.url))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map((source, index) => ({
         ...source,
         rank: index + 1,
         excerpt: String(source.excerpt || '').slice(0, 320),
+        snippet: String(source.excerpt || '').slice(0, 320),
     }));
 
 const searchBing = async (searchQuery) => {
@@ -339,53 +356,109 @@ const searchWikipedia = async (searchQuery) => {
         }));
 };
 
+const logWebSearch = (message, details = {}) => {
+    const safe = {};
+    Object.entries(details).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+        if (key === 'query') {
+            safe.query = String(value).slice(0, 160);
+            return;
+        }
+        safe[key] = value;
+    });
+    console.log(`[WEB_SEARCH] ${message}${Object.keys(safe).length ? ` ${JSON.stringify(safe)}` : ''}`);
+};
+
+const isPublicWebSearchAvailable = () => true;
+
+const isWebSearchConfigured = () => isTavilyConfigured() || isPublicWebSearchAvailable();
+
+const searchTavilySafe = async (searchQuery) => {
+    if (!isTavilyConfigured()) return [];
+    try {
+        const results = await searchTavily({ query: searchQuery, maxResults: 8, searchDepth: 'basic' });
+        logWebSearch('provider=tavily configured=true', { query: searchQuery, results: results.length });
+        return results;
+    } catch (error) {
+        logWebSearch('provider=tavily configured=true fallback=public', { reason: error.code || error.name || 'error' });
+        return [];
+    }
+};
+
 const collectWebSources = async (userQuestion, onStatus) => {
     const searchQueries = buildAlternateSearchQueries(userQuestion);
     const searchQuery = searchQueries[0];
     onStatus?.('searching', { query: searchQuery });
 
     let rawSources = [];
+    let provider = 'public';
+
     try {
-        for (const candidateQuery of searchQueries) {
-            const bingResults = await searchBing(candidateQuery);
-            rawSources.push(...bingResults);
-            if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
+        if (isTavilyConfigured()) {
+            for (const candidateQuery of searchQueries) {
+                rawSources.push(...await searchTavilySafe(candidateQuery));
+                if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
+            }
+            if (rawSources.length) provider = 'tavily';
         }
 
         if (rankSources(userQuestion, rawSources, 3).length < 2) {
             for (const candidateQuery of searchQueries) {
-                rawSources.push(...await searchDuckDuckGo(candidateQuery));
+                const bingResults = await searchBing(candidateQuery);
+                rawSources.push(...bingResults);
+                if (provider === 'public' && bingResults.length) provider = 'bing';
+                if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
+            }
+        }
+
+        if (rankSources(userQuestion, rawSources, 3).length < 2) {
+            for (const candidateQuery of searchQueries) {
+                const ddgResults = await searchDuckDuckGo(candidateQuery);
+                rawSources.push(...ddgResults);
+                if (ddgResults.length && provider === 'public') provider = 'duckduckgo';
                 if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
             }
         }
 
         if (rankSources(userQuestion, rawSources, 2).length < 1) {
-            rawSources.push(...await searchWikipedia(searchQuery));
+            try {
+                const wikiResults = await searchWikipedia(searchQuery);
+                rawSources.push(...wikiResults);
+                if (wikiResults.length && provider === 'public') provider = 'wikipedia';
+            } catch (wikiError) {
+                logWebSearch('wikipedia skipped', { reason: wikiError.message });
+            }
         }
     } catch (error) {
         console.error('[WEB SEARCH]', error.message);
         throw error;
     }
 
-    let ranked = rankSources(userQuestion, rawSources, 8);
-
-    if (!ranked.length && rawSources.length) {
-        ranked = dedupeSources(rawSources)
-            .slice(0, 4)
-            .map((source, index) => ({
-                ...source,
-                rank: index + 1,
-                excerpt: String(source.excerpt || '').slice(0, 320),
-            }));
-    }
+    const ranked = rankSources(userQuestion, rawSources, 8);
+    logWebSearch('completed', {
+        provider,
+        query: searchQuery,
+        results: rawSources.length,
+        relevant: ranked.length,
+        tavilyConfigured: isTavilyConfigured(),
+    });
 
     onStatus?.('found', { count: ranked.length, query: searchQuery });
 
     if (ranked.length) {
         onStatus?.('reading', { count: ranked.length });
+    } else {
+        onStatus?.('no_sources', { query: searchQuery });
     }
 
-    return { searchQuery, sources: ranked };
+    return {
+        searchQuery,
+        sources: ranked,
+        provider,
+        webSearchAvailable: isWebSearchConfigured(),
+        webSearchPerformed: true,
+        webSearchComplete: ranked.length > 0,
+    };
 };
 
 const buildSynthesisPrompt = (userQuestion, sources) => {
@@ -593,6 +666,7 @@ const writeSse = (res, payload) => {
 module.exports = {
     needsCurrentInformation,
     buildSearchQuery,
+    buildAlternateSearchQueries,
     collectWebSources,
     rankSources,
     buildSynthesisPrompt,
@@ -600,6 +674,8 @@ module.exports = {
     writeSse,
     resolveAiKey,
     extractDomain,
+    isWebSearchConfigured,
+    isTavilyConfigured,
     searchBing,
     searchDuckDuckGo,
     searchWikipedia,

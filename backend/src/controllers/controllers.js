@@ -1451,6 +1451,7 @@ const createChatResponse = async (req, res) => {
     };
     const knowledgeContext = knowledge.length ? `\nKnowledge base excerpts (cite them as [KB1], [KB2]):\n${knowledge.map((item, index) => `[KB${index + 1}] ${item.name}: ${item.excerpt}`).join('\n')}` : '';
     let webSourcesForResponse = [];
+    let webSearchMeta = { webSearchComplete: false, webSearchPerformed: false };
     const webSearchFlag = req.body.webSearch;
     const shouldAugmentWithWeb = (webSearchFlag === true || (webSearchFlag === 'auto' && webSearchService.needsCurrentInformation(latestPrompt)))
         && !hasAttachedImage
@@ -1460,11 +1461,16 @@ const createChatResponse = async (req, res) => {
         try {
             const collected = await webSearchService.collectWebSources(latestPrompt);
             webSourcesForResponse = collected.sources;
+            webSearchMeta = {
+                webSearchComplete: collected.webSearchComplete === true,
+                webSearchPerformed: collected.webSearchPerformed === true,
+            };
             if (webSourcesForResponse.length) {
                 webContextBlock = `\n\nLive web search results (use as evidence; cite as [1], [2], etc.; do NOT dump raw snippets):\n${webSourcesForResponse.map((source) => `[${source.rank}] ${source.title} (${source.domain}): ${source.excerpt}`).join('\n')}\nAnswer the user's question directly using these sources when relevant. Prefer authoritative sources. If information is unconfirmed, say so. Reply in the user's language.`;
             }
         } catch (webError) {
             console.error('[CHAT WEB SEARCH]', webError.message);
+            webSearchMeta = { webSearchComplete: false, webSearchPerformed: false };
         }
     }
     const customInstructions = String(systemInstructions || '').trim().slice(0, 2000);
@@ -1757,8 +1763,26 @@ const createChatResponse = async (req, res) => {
         const freeTierModels = new Set(['gemini', 'cloudflare']);
         res.write(`data: ${JSON.stringify({ unlimited: creditStatus.unlimited, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:selectedVariant ? ((isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isCloudflare) ? selectedVariant.direct : selectedVariant.gateway) : fallbackUsed ? providerModels[fallbackModel] : providerModels[routedModel], routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, knowledgeSources:knowledge.map(({id,name,excerpt,score})=>({id,name,excerpt,score})), costTier:freeTierModels.has(fallbackUsed ? fallbackModel : routedModel)?'free-allowance':'paid' })}\n\n`);
         if (fallbackUsed) res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: fallbackModel })}\n\n`);
-        if (webSourcesForResponse.length) {
-            res.write(`data: ${JSON.stringify({ webSources: webSourcesForResponse.map(({ rank, title, url, domain, excerpt }) => ({ rank, title, url, domain, excerpt: String(excerpt || '').slice(0, 200) })), webSearchComplete: true })}\n\n`);
+        if (shouldAugmentWithWeb) {
+            if (webSourcesForResponse.length) {
+                res.write(`data: ${JSON.stringify({
+                    webSources: webSourcesForResponse.map(({ rank, title, url, domain, excerpt, relevanceScore }) => ({
+                        rank,
+                        title,
+                        url,
+                        domain,
+                        excerpt: String(excerpt || '').slice(0, 200),
+                        relevanceScore: relevanceScore ?? null,
+                    })),
+                    webSearchComplete: true,
+                })}\n\n`);
+            } else if (webSearchMeta.webSearchPerformed) {
+                res.write(`data: ${JSON.stringify({
+                    webSources: [],
+                    webSearchComplete: false,
+                    webSearchStatus: 'no_sources',
+                })}\n\n`);
+            }
         }
 
         if (isCloudflare) {
@@ -2198,14 +2222,15 @@ const webResearchAnswer = async (req, res) => {
         }
 
         webSearchService.writeSse(res, {
-            webSources: sources.slice(0, 6).map(({ rank, title, url, domain, excerpt }, index) => ({
+            webSources: sources.slice(0, 6).map(({ rank, title, url, domain, excerpt, relevanceScore }, index) => ({
                 rank: index + 1,
                 title,
                 url,
                 domain,
                 excerpt: String(excerpt || '').slice(0, 200),
+                relevanceScore: relevanceScore ?? null,
             })),
-            webSearchComplete: Boolean(assistantText),
+            webSearchComplete: Boolean(assistantText && sources.length),
             searchQuery,
         });
         res.write('data: [DONE]\n\n');
