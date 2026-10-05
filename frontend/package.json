@@ -28,7 +28,13 @@
     "prismjs": "^1.30.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.9.1"
+    "react-router-dom": "^7.9.1",
+    "sharp": "^0.34.5"
+  },
+  "optionalDependencies": {
+    "@img/sharp-linux-x64": "0.34.5",
+    "@img/sharp-linuxmusl-x64": "0.34.5",
+    "@img/sharp-win32-x64": "0.34.5"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
@@ -40,7 +46,6 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.7.0",
-    "sharp": "^0.34.5",
     "typescript": "^5.9.3",
     "vite": "^8.2.0",
     "vite-plugin-pwa": "^1.3.0"
