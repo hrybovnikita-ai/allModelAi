@@ -16,12 +16,26 @@ test('desktop Chrome does not prefer redirect sign-in', () => {
   assert.equal(shouldPreferGoogleRedirectSignIn(desktopChrome), false);
 });
 
-test('social sign-in wires global redirect recovery', async () => {
+test('redirect recovery has a single bootstrap pipeline', async () => {
   const { readFile } = await import('node:fs/promises');
+  const main = await readFile(new URL('../src/main.jsx', import.meta.url), 'utf8');
   const app = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8');
   const signIn = await readFile(new URL('../src/lib/socialSignIn.js', import.meta.url), 'utf8');
-  assert.match(app, /SocialAuthRedirectHandler/);
-  assert.match(signIn, /getRedirectResult/);
-  assert.match(signIn, /onAuthStateChanged/);
-  assert.match(signIn, /resumePendingSocialRedirect/);
+  const recovery = await readFile(new URL('../src/lib/googleRedirectRecovery.js', import.meta.url), 'utf8');
+
+  assert.match(main, /runGoogleRedirectRecovery\('MainBootstrap'\)/);
+  assert.match(app, /GoogleRedirectRecoveryGate/);
+  assert.doesNotMatch(app, /SocialAuthRedirectHandler/);
+  assert.match(signIn, /signInWithRedirect/);
+  assert.doesNotMatch(signIn, /CALLBACK_START_PATH/);
+  assert.doesNotMatch(signIn, /beginGoogleRedirectFromCallback/);
+  assert.match(recovery, /bootstrapGoogleRedirectRecovery/);
+  assert.match(signIn, /runGoogleRedirectRecoveryPipeline/);
+  assert.match(signIn, /awaiting-google-return/);
+});
+
+test('desktop popup flow remains in socialSignIn', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const signIn = await readFile(new URL('../src/lib/socialSignIn.js', import.meta.url), 'utf8');
+  assert.match(signIn, /signInWithPopup/);
 });

@@ -8,8 +8,10 @@ import { applyDeviceProfile } from './lib/deviceProfile.js'
 import { installNativeFetchInterceptor } from './lib/nativeFetch.js'
 import { initPwaInstallPrompt } from './lib/pwaInstall.js'
 import { initServiceWorker } from './lib/serviceWorker.js'
+import { runGoogleRedirectRecovery } from './lib/socialSignIn.js'
 
 installNativeFetchInterceptor()
+void runGoogleRedirectRecovery('MainBootstrap')
 
 function readAppearance() {
   try { return JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}') || {} }

@@ -1,11 +1,24 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ensureFirebaseSocialConfigLoaded } from '../../lib/loadFirebaseConfig';
-import { navigateAfterSocialLogin, resumePendingSocialRedirect } from '../../lib/socialSignIn';
+import { awaitGoogleRedirectRecovery, navigateAfterSocialLogin, peekRedirectIntent } from '../../lib/socialSignIn';
 import { socialError } from '../../lib/socialSession';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import './SocialAuth.css';
 
+export function consumeStoredSocialAuthError() {
+  try {
+    const message = sessionStorage.getItem('allmodelai_social_error');
+    if (message) {
+      sessionStorage.removeItem('allmodelai_social_error');
+      return message;
+    }
+  } catch {
+    /* ignore */
+  }
+  return '';
+}
+
+/** UI shell only — redirect recovery runs in App bootstrap / shared pipeline. */
 export default function SocialAuthCallback() {
   const navigate = useNavigate();
   const [message, setMessage] = useState('Finishing sign-in…');
@@ -15,12 +28,16 @@ export default function SocialAuthCallback() {
     let active = true;
     (async () => {
       try {
+        if (!peekRedirectIntent()) {
+          if (!active) return;
+          setError('No pending Google sign-in was found. Try again from the login page.');
+          return;
+        }
         setMessage('Authenticating with your provider…');
-        await ensureFirebaseSocialConfigLoaded();
-        const user = await resumePendingSocialRedirect();
+        const user = await awaitGoogleRedirectRecovery('SocialAuthCallback');
         if (!active) return;
         if (!user) {
-          setError('No sign-in result was returned. Try again from the login page.');
+          setError('Google sign-in could not be completed. Try again from the login page.');
           return;
         }
         setMessage('Signing you in…');
@@ -30,6 +47,7 @@ export default function SocialAuthCallback() {
         setError(socialError(err));
       }
     })();
+
     return () => {
       active = false;
     };

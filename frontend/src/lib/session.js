@@ -1,6 +1,7 @@
 import { resolveAuthApiUrl } from './authApi.js';
 import { isCapacitorNative, nativeClientHeaders, usesRemoteApiOrigin } from './apiBase.js';
 import { isMobileWebSafari } from './socialSignInEnv.js';
+import { socialAuthDebug } from './socialAuthDiagnostics.js';
 import { readJsonBody } from './httpJson.js';
 
 const SESSION_CLEARED_EVENT = 'allmodelai:session-cleared';
@@ -156,6 +157,7 @@ export async function confirmSession(user) {
   try {
     const verified = await restoreSession({ force: true });
     if (matchesUser(verified)) {
+      socialAuthDebug('SESSION_CONFIRMED', { source: 'restoreSession' });
       return verified;
     }
   } catch {
@@ -177,6 +179,7 @@ export async function confirmSession(user) {
       try {
         const retry = await restoreSession({ force: true });
         if (matchesUser(retry)) {
+          socialAuthDebug('SESSION_CONFIRMED', { source: 'restoreSession-retry' });
           return retry;
         }
       } catch {
@@ -184,8 +187,10 @@ export async function confirmSession(user) {
       }
     }
     if (getNativeSessionToken() || isMobileWebSafari()) {
+      socialAuthDebug('SESSION_CONFIRMED', { source: 'native-or-mobile-trusted' });
       return rememberSession(user);
     }
+    socialAuthDebug('SESSION_CONFIRMED', { source: 'trusted-login-payload' });
     return rememberSession(user);
   }
 

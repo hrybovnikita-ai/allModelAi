@@ -11,6 +11,13 @@ test('firebase config documents VITE_ environment variable names', async () => {
   });
 });
 
+test('firebase auth uses browserLocalPersistence for redirect compatibility', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/lib/firebase.js', import.meta.url), 'utf8');
+  assert.match(source, /indexedDBLocalPersistence/);
+  assert.doesNotMatch(source, /inMemoryPersistence/);
+});
+
 test('runtime firebase config from API merges when Vite env is empty', async () => {
   const {
     applyRuntimeFirebaseConfig,

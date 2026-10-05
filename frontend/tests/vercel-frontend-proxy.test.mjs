@@ -10,8 +10,11 @@ const vercelConfig = JSON.parse(fs.readFileSync(path.join(frontendRoot, 'vercel.
 test('frontend vercel.json proxies /api to Render before SPA fallback', () => {
   const rewrites = vercelConfig.rewrites;
   assert.ok(Array.isArray(rewrites) && rewrites.length >= 2);
-  const apiRule = rewrites[0];
-  assert.match(String(apiRule.source), /^\/api\//);
+  const authRule = rewrites.find((rule) => String(rule.source).includes('/__/auth/'));
+  assert.ok(authRule, 'expected Firebase auth handler proxy');
+  assert.match(String(authRule.destination), /firebaseapp\.com\/__\/auth\//);
+  const apiRule = rewrites.find((rule) => String(rule.source).startsWith('/api/'));
+  assert.ok(apiRule, 'expected /api proxy rule');
   assert.match(String(apiRule.destination), /^https:\/\/allmodelai-backend\.onrender\.com\/api\//);
   const spaRule = rewrites.find((rule) => String(rule.destination) === '/index.html');
   assert.ok(spaRule, 'expected SPA fallback to index.html');

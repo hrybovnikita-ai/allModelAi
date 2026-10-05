@@ -7,7 +7,7 @@ import { authPost } from '../../lib/authApi';
 import { validateRegistrationForm } from '../../lib/authValidation';
 import { getMissingFirebaseConfigKeys, isFirebaseSocialConfigured } from '../../lib/firebase';
 import { ensureFirebaseSocialConfigLoaded } from '../../lib/loadFirebaseConfig';
-import { consumeStoredSocialAuthError } from '../SocialAuth/SocialAuthRedirectHandler';
+import { consumeStoredSocialAuthError } from '../SocialAuth/GoogleRedirectRecoveryGate';
 import { socialSignIn } from '../../lib/socialSignIn';
 import { socialError } from '../../lib/socialSession';
 import './Login.css';
