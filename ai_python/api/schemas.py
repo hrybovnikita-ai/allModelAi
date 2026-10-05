@@ -36,3 +36,13 @@ class ImportBundleRequest(BaseModel):
 
 class OpenAiAugmentRequest(BaseModel):
     samples_per_class: Optional[int] = 2
+
+
+class LabTrainRequest(BaseModel):
+    learning_rate: Optional[float] = 0.01
+    epochs: Optional[int] = 500
+    initial_weight: Optional[float] = 0.0
+    initial_bias: Optional[float] = 0.0
+    seed: Optional[int] = 42
+    data_points: Optional[int] = 40
+    snapshot_every: Optional[int] = 10

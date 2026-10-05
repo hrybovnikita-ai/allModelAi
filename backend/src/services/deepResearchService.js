@@ -279,14 +279,7 @@ const emitStage = (res, stage, extra = {}) => {
     });
 };
 
-const mapSourcesForClient = (sources) => sources.map(({ rank, title, url, domain, excerpt, publishedDate }) => ({
-    rank,
-    title,
-    url,
-    domain,
-    excerpt: String(excerpt || '').slice(0, 280),
-    publishedDate: publishedDate || null,
-}));
+const mapSourcesForClient = (sources) => webSearchService.mapSourcesForClient(sources);
 
 const runDeepResearch = async (res, { query, modelSlug = 'gemini', depth, timeRange }) => {
     const profile = DEPTH_PROFILES[normalizeDepth(depth)];

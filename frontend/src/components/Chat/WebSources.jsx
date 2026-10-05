@@ -1,4 +1,5 @@
 import { shouldShowWebSearchCompleted, shouldShowWebSearchUnavailable } from '../../lib/webSearchUi.js';
+import { isSafeHttpUrl } from '../../lib/citationLinks.js';
 
 function faviconUrl(domain) {
   if (!domain) return null;
@@ -54,23 +55,27 @@ export default function WebSources({ sources = [], complete = false, deepResearc
       )}
       <h4 className="web-sources-title">Sources</h4>
       <ul className="web-sources-list">
-        {sources.map((source) => (
-          <li key={source.url || source.rank}>
-            <a href={source.url} target="_blank" rel="noopener noreferrer" className="web-source-card">
+        {sources.map((source) => {
+          const citationId = source.citationId ?? source.rank;
+          const href = isSafeHttpUrl(source.url) ? source.url : undefined;
+          return (
+          <li key={source.url || citationId} id={`web-source-${citationId}`}>
+            <a href={href} target="_blank" rel="noopener noreferrer" className="web-source-card">
               <span className="web-source-favicon" aria-hidden="true">
                 {source.domain ? (
                   <img src={faviconUrl(source.domain)} alt="" width="20" height="20" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
                 ) : '🌐'}
               </span>
               <span className="web-source-meta">
-                <strong>{source.title || source.domain || 'Source'}</strong>
+                <strong>[{citationId}] {source.title || source.domain || 'Source'}</strong>
                 <span className="web-source-title">{source.domain || 'Source'}</span>
                 {source.publishedDate && <small>{source.publishedDate}</small>}
               </span>
               <span className="web-source-open" aria-hidden="true">Open source ↗</span>
             </a>
           </li>
-        ))}
+          );
+        })}
       </ul>
     </section>
   );

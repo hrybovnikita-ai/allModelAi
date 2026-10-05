@@ -48,6 +48,55 @@ def _handle_json_command(raw_json: str) -> None:
         elif action == "reset":
             trainer.reset_model()
             print(json.dumps({"status": "reset"}))
+        elif action == "labs_lessons":
+            from lessons.catalog import list_catalog
+
+            print(json.dumps(list_catalog()))
+        elif action == "lab_linear_regression_train":
+            from lessons.linear_regression_lab import train_linear_regression
+
+            print(
+                json.dumps(
+                    train_linear_regression(
+                        learning_rate=float(cmd_data.get("learningRate", cmd_data.get("learning_rate", 0.01))),
+                        epochs=int(cmd_data.get("epochs", 500)),
+                        initial_weight=float(cmd_data.get("initialWeight", cmd_data.get("initial_weight", 0))),
+                        initial_bias=float(cmd_data.get("initialBias", cmd_data.get("initial_bias", 0))),
+                        seed=int(cmd_data.get("seed", 42)),
+                        data_points=int(cmd_data.get("dataPoints", cmd_data.get("data_points", 40))),
+                        snapshot_every=int(cmd_data.get("snapshotEvery", cmd_data.get("snapshot_every", 10))),
+                    )
+                )
+            )
+        elif action == "lab_gradient_descent_train":
+            from lessons.linear_regression_lab import train_linear_regression
+
+            out = train_linear_regression(
+                learning_rate=float(cmd_data.get("learningRate", cmd_data.get("learning_rate", 0.01))),
+                epochs=int(cmd_data.get("epochs", 500)),
+                initial_weight=float(cmd_data.get("initialWeight", cmd_data.get("initial_weight", 0))),
+                initial_bias=float(cmd_data.get("initialBias", cmd_data.get("initial_bias", 0))),
+                seed=int(cmd_data.get("seed", 42)),
+                data_points=int(cmd_data.get("dataPoints", cmd_data.get("data_points", 40))),
+                snapshot_every=int(cmd_data.get("snapshotEvery", cmd_data.get("snapshot_every", 10))),
+            )
+            if out.get("ok"):
+                out["lab"] = "gradient_descent"
+            print(json.dumps(out))
+        elif action == "lab_pytorch_train":
+            from lessons.pytorch_linear_lab import train_pytorch_linear
+
+            print(
+                json.dumps(
+                    train_pytorch_linear(
+                        learning_rate=float(cmd_data.get("learningRate", cmd_data.get("learning_rate", 0.01))),
+                        epochs=int(cmd_data.get("epochs", 200)),
+                        seed=int(cmd_data.get("seed", 42)),
+                        data_points=int(cmd_data.get("dataPoints", cmd_data.get("data_points", 40))),
+                        snapshot_every=int(cmd_data.get("snapshotEvery", cmd_data.get("snapshot_every", 10))),
+                    )
+                )
+            )
         else:
             print(json.dumps({"error": f"Unknown action: {action}"}))
     except Exception as exc:

@@ -18,6 +18,13 @@ const {
     extractSearchIntent,
     isQueryDegenerate,
 } = require('./webSearchQueryBuilder');
+const { computeAuthorityScore, combineRelevanceAndAuthority } = require('./webSourceAuthority');
+const {
+    buildCitationInstructions,
+    finalizeRankedSources,
+    formatSourceContextForModel,
+    mapSourcesForClient,
+} = require('./webSourceCitations');
 
 const USER_AGENT = 'Mozilla/5.0 (compatible; AllModelAI/1.0; +https://allmodelai.local)';
 
@@ -187,20 +194,26 @@ const dedupeSources = (sources) => {
     return [...seen.values()];
 };
 
-const rankSources = (userQuestion, sources, limit = 6) => dedupeSources(sources)
-    .map((source, index) => {
+const rankSources = (userQuestion, sources, limit = 6) => {
+    const intent = extractSearchIntent(userQuestion);
+    const enriched = dedupeSources(sources).map((source, index) => {
         const score = scoreSource(userQuestion, source, index);
-        return { ...source, score, relevanceScore: source.relevanceScore ?? 0 };
-    })
-    .filter((source) => source.score >= MIN_RELEVANCE_SCORE && source.title && source.url && /^https?:\/\//i.test(source.url))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((source, index) => ({
-        ...source,
-        rank: index + 1,
-        excerpt: String(source.excerpt || '').slice(0, 320),
-        snippet: String(source.excerpt || '').slice(0, 320),
-    }));
+        const relevanceScore = source.relevanceScore ?? 0;
+        const relevancePassed = score >= MIN_RELEVANCE_SCORE;
+        const authority = computeAuthorityScore(source, intent);
+        const combinedScore = combineRelevanceAndAuthority(relevanceScore, authority.authorityScore, relevancePassed);
+        return {
+            ...source,
+            ...authority,
+            score,
+            relevanceScore,
+            combinedScore,
+            excerpt: String(source.excerpt || '').slice(0, 320),
+            snippet: String(source.excerpt || source.snippet || '').slice(0, 320),
+        };
+    });
+    return finalizeRankedSources(userQuestion, enriched, limit);
+};
 
 const searchBing = async (searchQuery) => {
     const response = await fetch(`https://www.bing.com/search?format=rss&q=${encodeURIComponent(searchQuery)}`, {
@@ -406,29 +419,33 @@ const collectWebSources = async (userQuestion, onStatus) => {
     };
 };
 
+const assignCitationIdsFromRanked = (sources) => sources.map((source, index) => ({
+    ...source,
+    citationId: source.citationId ?? source.rank ?? (index + 1),
+    rank: source.citationId ?? source.rank ?? (index + 1),
+}));
+
 const buildSynthesisPrompt = (userQuestion, sources) => {
-    const sourceBlock = sources.length
-        ? sources.map((source) => `[${source.rank}] ${source.title}\nDomain: ${source.domain}\nURL: ${source.url}\nExcerpt: ${source.excerpt}`).join('\n\n')
-        : 'No web sources were retrieved.';
+    const numbered = sources.length ? assignCitationIdsFromRanked(sources) : [];
+    const sourceBlock = formatSourceContextForModel(numbered);
+    const citationRules = buildCitationInstructions(numbered.length);
 
     return `You are answering a user using live web search results.
 
 User question:
 ${userQuestion}
 
-Search results (use as evidence only — do NOT dump them verbatim):
+${citationRules}
+
+Search results (evidence only — do NOT dump verbatim):
 ${sourceBlock}
 
 Instructions:
 - Answer the user's actual question directly in a natural, helpful tone.
 - Do NOT paste raw search snippets or list URLs as the main answer.
-- Ignore irrelevant or low-quality sources.
-- Prefer authoritative and recent sources when they agree.
-- If reliable sources disagree, explain the disagreement briefly.
-- If the requested information is not confirmed in the sources, say clearly that it is not confirmed — do not invent facts.
-- Do NOT invent current prices, compensation amounts, schedules, delay policies, or live weather when sources do not support them.
-- If sources are empty or only tangentially related, answer cautiously and state that reliable current web evidence was not found.
-- Cite sources inline using [1], [2], etc. matching the numbered search results above when making factual claims.
+- Ignore irrelevant or low-quality sources even if they appear in the list.
+- Prefer official_operator, government_regulator, and international_public sourceTypes for policy and numeric claims.
+- If reliable sources disagree, explain briefly.
 - Reply in the same language as the user's question (English → English, Russian → Russian, Ukrainian → Ukrainian).
 - Start with a concise direct answer, then add brief supporting context if helpful.
 - Do not begin with "Web search completed" or similar meta commentary.`;
@@ -619,6 +636,8 @@ module.exports = {
     collectWebSources,
     rankSources,
     buildSynthesisPrompt,
+    mapSourcesForClient,
+    formatSourceContextForModel,
     streamAiAnswer,
     writeSse,
     resolveAiKey,

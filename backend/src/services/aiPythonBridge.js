@@ -537,6 +537,25 @@ async function resetModel() {
     return runSingleShotCmd('reset');
 }
 
+async function runLabCommand(action, payload = {}) {
+    const cmdPayload = {
+        action,
+        learningRate: payload.learning_rate ?? payload.learningRate,
+        learning_rate: payload.learning_rate ?? payload.learningRate,
+        epochs: payload.epochs,
+        initialWeight: payload.initial_weight ?? payload.initialWeight,
+        initial_weight: payload.initial_weight ?? payload.initialWeight,
+        initialBias: payload.initial_bias ?? payload.initialBias,
+        initial_bias: payload.initial_bias ?? payload.initialBias,
+        seed: payload.seed,
+        dataPoints: payload.data_points ?? payload.dataPoints,
+        data_points: payload.data_points ?? payload.dataPoints,
+        snapshotEvery: payload.snapshot_every ?? payload.snapshotEvery,
+        snapshot_every: payload.snapshot_every ?? payload.snapshotEvery,
+    };
+    return runSingleShotCmd(action, cmdPayload);
+}
+
 module.exports = {
     ensureServerRunning,
     isServerHealthy,
@@ -554,5 +573,7 @@ module.exports = {
     importModelBundle,
     saveModelSlot,
     getTrainStreamUrl,
+    runLabCommand,
+    runSingleShotCmd,
     PYTHON_BASE_URL,
 };

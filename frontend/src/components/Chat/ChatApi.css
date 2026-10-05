@@ -431,6 +431,9 @@
 .web-source-title{display:block;color:#9ca3af;font-size:.68rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .web-source-meta small{color:#6b7280;font-size:.6rem}
 .web-source-open{color:#60a5fa;font-size:.85rem}
+.inline-citation{display:inline-block;margin:0 1px;padding:0 4px;border-radius:4px;background:rgba(124,92,255,.22);color:#c4b5fd;font-size:.82em;font-weight:700;text-decoration:none;vertical-align:baseline}
+.inline-citation:hover{background:rgba(124,92,255,.38);color:#e9d5ff}
+.inline-citation-invalid{background:rgba(75,85,99,.35);color:#9ca3af;cursor:default}
 .selected-skill-icon.web{background:#1677ff;box-shadow:0 0 16px #1677ff55}
 .streaming-response p{animation:chat-answer-reveal .22s ease-out both}
 @keyframes chat-message-enter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}@keyframes chat-answer-reveal{from{opacity:.55;filter:blur(1px)}to{opacity:1;filter:none}}

@@ -392,6 +392,9 @@ export default function PythonAILab() {
           <span className="brand-tag">AI Learning Lab</span>
         </div>
         <div className="py-lab-nav">
+          <Link to="/ai-training" className="py-btn-nav">
+            AI Training Course
+          </Link>
           <Link to="/chat?model=ai_python" className="py-btn-nav">
             Open in Chat
           </Link>

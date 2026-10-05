@@ -64,6 +64,8 @@ import UsageAnalytics from "./components/UsageAnalytics/UsageAnalytics";
 import EverydayAI from "./components/EverydayAI/EverydayAI";
 import EverydayCards from "./components/EverydayAI/EverydayCards";
 import PythonAILab from "./components/PythonAILab/PythonAILab";
+import AiTrainingHub from "./components/AiTraining/AiTrainingHub";
+import LessonPage from "./components/AiTraining/LessonPage";
 import StorageHub from "./components/StorageHub/StorageHub";
 
 function HomePage() {
@@ -162,6 +164,8 @@ export default function App() {
       <Route path="/explore" element={<ModelExplorer />} />
       <Route path="/python-ai" element={<PythonAILab />} />
       <Route path="/ai-python" element={<PythonAILab />} />
+      <Route path="/ai-training" element={<AiTrainingHub />} />
+      <Route path="/ai-training/:lessonId" element={<LessonPage />} />
       <Route path="/shared/:token" element={<SharedConversation />} />
       <Route path="/login" element={<AuthPage mode="signin" />} />
       <Route path="/register" element={<AuthPage mode="signup" />} />

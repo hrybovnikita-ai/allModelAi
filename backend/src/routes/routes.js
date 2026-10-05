@@ -57,6 +57,20 @@ const {
     savePyTorchModelSlot,
     getSystemHealth,
 } = require('../controllers/aiPythonController');
+const { postDeepSeekChat } = require('../controllers/deepseekChatController');
+const {
+    getLessons,
+    getLessonById,
+    getProgress,
+    patchProgress,
+    getExperiments,
+    trainLinearRegression,
+    trainGradientDescent,
+    trainPytorchLab,
+    postTutor,
+    getTutorStatus,
+    researchLessonTopic,
+} = require('../controllers/aiTrainingController');
 const {
     createWayforpayPayment,
     completeMockWayforpayPayment,
@@ -92,6 +106,17 @@ router.post('/ai-python/openai/augment', requireAuth, augmentPyTorchDataset);
 router.post('/ai-python/train', requireAuth, startPyTorchTraining);
 router.post('/ai-python/predict', requireAuth, predictPyTorch);
 router.post('/ai-python/reset', requireAuth, resetPyTorchModel);
+router.get('/ai-training/lessons', getLessons);
+router.get('/ai-training/lessons/:id', getLessonById);
+router.get('/ai-training/progress', requireAuth, getProgress);
+router.patch('/ai-training/progress/:lessonId', requireAuth, patchProgress);
+router.get('/ai-training/experiments', requireAuth, getExperiments);
+router.post('/ai-training/linear-regression/train', requireAuth, trainLinearRegression);
+router.post('/ai-training/gradient-descent/train', requireAuth, trainGradientDescent);
+router.post('/ai-training/pytorch/train', requireAuth, trainPytorchLab);
+router.post('/ai-training/tutor', requireAuth, postTutor);
+router.get('/ai-training/tutor/status', getTutorStatus);
+router.post('/ai-training/research', requireAuth, researchLessonTopic);
 router.get('/system/health', getSystemHealth);
 
 router.post('/auth/register', registerUser);
@@ -115,6 +140,7 @@ router.get('/admin/stats', getAdminStats);
 router.get('/share/:token', getSharedConversation);
 
 router.delete('/auth/account', requireAuth, deleteAccount);
+router.post('/chat/deepseek', requireAuth, postDeepSeekChat);
 router.post('/chat', requireAuth, createChatResponse);
 router.post('/apps/generate', requireAuth, prepareAppGeneration, createChatResponse);
 router.post('/chat/improve-prompt', requireAuth, improvePrompt);

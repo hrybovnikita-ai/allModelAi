@@ -19,10 +19,21 @@ try:
     from api.schemas import (
         DatasetSampleRequest,
         ImportBundleRequest,
+        LabTrainRequest,
         OpenAiAugmentRequest,
         PredictRequest,
         TrainRequest,
     )
+    from lessons.catalog import get_lesson, list_catalog
+    from lessons.limits import (
+        MAX_EPOCHS,
+        MAX_LEARNING_RATE,
+        MAX_DATA_POINTS,
+        MIN_EPOCHS,
+        MIN_LEARNING_RATE,
+    )
+    from lessons.linear_regression_lab import train_linear_regression
+    from lessons.pytorch_linear_lab import train_pytorch_linear
     from services.openai_llm import get_openai_status
 
     FASTAPI_AVAILABLE = True
@@ -135,5 +146,83 @@ def create_app(trainer: "TrainingManager") -> Optional[Any]:
     @app.post("/models/slot/{slot_id}")
     def save_slot(slot_id: str):
         return trainer.save_ab_slot(slot_id.lower())
+
+    def _validate_lab(req: LabTrainRequest) -> dict[str, Any]:
+        lr = float(req.learning_rate if req.learning_rate is not None else 0.01)
+        epochs = int(req.epochs if req.epochs is not None else 500)
+        if not (MIN_LEARNING_RATE <= lr <= MAX_LEARNING_RATE):
+            return {"ok": False, "error": "learning_rate out of allowed range"}
+        if not (MIN_EPOCHS <= epochs <= MAX_EPOCHS):
+            return {"ok": False, "error": "epochs out of allowed range"}
+        data_points = int(req.data_points or 40)
+        if data_points < 8 or data_points > MAX_DATA_POINTS:
+            return {"ok": False, "error": "data_points out of allowed range"}
+        return {
+            "ok": True,
+            "learning_rate": lr,
+            "epochs": epochs,
+            "initial_weight": float(req.initial_weight or 0.0),
+            "initial_bias": float(req.initial_bias or 0.0),
+            "seed": int(req.seed or 42),
+            "data_points": data_points,
+            "snapshot_every": max(1, min(int(req.snapshot_every or 10), 100)),
+        }
+
+    @app.get("/labs/lessons")
+    def labs_lessons():
+        return list_catalog()
+
+    @app.get("/labs/lessons/{lesson_id}")
+    def labs_lesson_detail(lesson_id: str):
+        lesson = get_lesson(lesson_id)
+        if not lesson:
+            return {"error": "Lesson not found", "ok": False}
+        return {"ok": True, "lesson": lesson}
+
+    @app.post("/labs/linear-regression/train")
+    def labs_linear_regression_train(req: LabTrainRequest):
+        validated = _validate_lab(req)
+        if not validated.get("ok"):
+            return validated
+        return train_linear_regression(
+            learning_rate=validated["learning_rate"],
+            epochs=validated["epochs"],
+            initial_weight=validated["initial_weight"],
+            initial_bias=validated["initial_bias"],
+            seed=validated["seed"],
+            data_points=validated["data_points"],
+            snapshot_every=validated["snapshot_every"],
+        )
+
+    @app.post("/labs/gradient-descent/train")
+    def labs_gradient_descent_train(req: LabTrainRequest):
+        validated = _validate_lab(req)
+        if not validated.get("ok"):
+            return validated
+        result = train_linear_regression(
+            learning_rate=validated["learning_rate"],
+            epochs=validated["epochs"],
+            initial_weight=validated["initial_weight"],
+            initial_bias=validated["initial_bias"],
+            seed=validated["seed"],
+            data_points=validated["data_points"],
+            snapshot_every=validated["snapshot_every"],
+        )
+        if result.get("ok"):
+            result["lab"] = "gradient_descent"
+        return result
+
+    @app.post("/labs/pytorch/train")
+    def labs_pytorch_train(req: LabTrainRequest):
+        validated = _validate_lab(req)
+        if not validated.get("ok"):
+            return validated
+        return train_pytorch_linear(
+            learning_rate=validated["learning_rate"],
+            epochs=validated["epochs"],
+            seed=validated["seed"],
+            data_points=validated["data_points"],
+            snapshot_every=validated["snapshot_every"],
+        )
 
     return app

@@ -1466,7 +1466,8 @@ const createChatResponse = async (req, res) => {
                 webSearchPerformed: collected.webSearchPerformed === true,
             };
             if (webSourcesForResponse.length) {
-                webContextBlock = `\n\nLive web search results (use as evidence; cite as [1], [2], etc.; do NOT dump raw snippets):\n${webSourcesForResponse.map((source) => `[${source.rank}] ${source.title} (${source.domain}): ${source.excerpt}`).join('\n')}\nAnswer the user's question directly using these sources when relevant. Prefer authoritative sources. If information is unconfirmed, say so. Reply in the user's language.`;
+                const { formatSourceContextForModel, buildCitationInstructions } = require('../services/webSourceCitations');
+                webContextBlock = `\n\n${buildCitationInstructions(webSourcesForResponse.length)}\n\nLive web search results:\n${formatSourceContextForModel(webSourcesForResponse)}\nAnswer using ONLY these citation IDs when stating facts. If unconfirmed, say so. Reply in the user's language.`;
             }
         } catch (webError) {
             console.error('[CHAT WEB SEARCH]', webError.message);
@@ -1766,13 +1767,13 @@ const createChatResponse = async (req, res) => {
         if (shouldAugmentWithWeb) {
             if (webSourcesForResponse.length) {
                 res.write(`data: ${JSON.stringify({
-                    webSources: webSourcesForResponse.map(({ rank, title, url, domain, excerpt, relevanceScore }) => ({
+                    webSources: webSearchService.mapSourcesForClient(webSourcesForResponse).map(({ citationId, rank, title, url, domain, excerpt }) => ({
+                        citationId,
                         rank,
                         title,
                         url,
                         domain,
                         excerpt: String(excerpt || '').slice(0, 200),
-                        relevanceScore: relevanceScore ?? null,
                     })),
                     webSearchComplete: true,
                 })}\n\n`);
@@ -2222,14 +2223,7 @@ const webResearchAnswer = async (req, res) => {
         }
 
         webSearchService.writeSse(res, {
-            webSources: sources.slice(0, 6).map(({ rank, title, url, domain, excerpt, relevanceScore }, index) => ({
-                rank: index + 1,
-                title,
-                url,
-                domain,
-                excerpt: String(excerpt || '').slice(0, 200),
-                relevanceScore: relevanceScore ?? null,
-            })),
+            webSources: webSearchService.mapSourcesForClient(sources.slice(0, 6)),
             webSearchComplete: Boolean(assistantText && sources.length),
             searchQuery,
         });

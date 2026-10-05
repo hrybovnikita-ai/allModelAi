@@ -14,6 +14,7 @@ import { logger, timingElapsed, timingNow } from '../../lib/logger';
 import { clearAllSessionData } from '../../lib/session';
 import SessionRecovery from './SessionRecovery';
 import WebSources, { WebSearchStatus } from './WebSources';
+import { buildCitationSourceMap, isSafeHttpUrl, scrollToSourceCard, splitCitationSegments } from '../../lib/citationLinks.js';
 import './Chat.css';
 import './ChatApi.css';
 import './ChatDarkViolet.css';
@@ -100,7 +101,7 @@ function CodeBlock({ language, code }) {
   </section>;
 }
 
-function InlineText({ children }) {
+function InlineFormattedText({ children }) {
   const tokens = String(children).split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
   return tokens.map((token, index) => {
     if (token.startsWith('`') && token.endsWith('`')) return <code className="inline-code" key={index}>{token.slice(1, -1)}</code>;
@@ -109,13 +110,46 @@ function InlineText({ children }) {
   });
 }
 
-function TextBlock({ value }) {
+function InlineText({ children, citationMap }) {
+  const raw = String(children);
+  if (!citationMap?.size) return <InlineFormattedText>{raw}</InlineFormattedText>;
+
+  return splitCitationSegments(raw).map((segment, index) => {
+    const cite = segment.match(/^\[(\d+)\]$/);
+    if (!cite) return <InlineFormattedText key={`t-${index}`}>{segment}</InlineFormattedText>;
+
+    const id = Number(cite[1]);
+    const source = citationMap.get(id);
+    if (source && isSafeHttpUrl(source.url)) {
+      return (
+        <a
+          key={`c-${index}`}
+          href={source.url}
+          className="inline-citation"
+          title={source.title || source.domain || `Source ${id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(event) => {
+            event.preventDefault();
+            scrollToSourceCard(id);
+            globalThis.open(source.url, '_blank', 'noopener,noreferrer');
+          }}
+        >
+          [{id}]
+        </a>
+      );
+    }
+    return <span key={`c-${index}`} className="inline-citation inline-citation-invalid" title="Citation unavailable">[{id}]</span>;
+  });
+}
+
+function TextBlock({ value, citationMap }) {
   const lines = value.trim().split(/\r?\n/);
   const elements = [];
   let list = [];
   const flushList = () => {
     if (!list.length) return;
-    elements.push(<ul key={`list-${elements.length}`}>{list.map((item, index) => <li key={index}><InlineText>{item}</InlineText></li>)}</ul>);
+    elements.push(<ul key={`list-${elements.length}`}>{list.map((item, index) => <li key={index}><InlineText citationMap={citationMap}>{item}</InlineText></li>)}</ul>);
     list = [];
   };
 
@@ -126,16 +160,17 @@ function TextBlock({ value }) {
     const heading = line.match(/^\s*(#{1,3})\s+(.+)/);
     if (heading) {
       const Tag = `h${Math.min(heading[1].length + 2, 5)}`;
-      elements.push(<Tag key={index}><InlineText>{heading[2]}</InlineText></Tag>);
+      elements.push(<Tag key={index}><InlineText citationMap={citationMap}>{heading[2]}</InlineText></Tag>);
     } else if (line.trim()) {
-      elements.push(<p key={index}><InlineText>{line}</InlineText></p>);
+      elements.push(<p key={index}><InlineText citationMap={citationMap}>{line}</InlineText></p>);
     }
   });
   flushList();
   return elements;
 }
 
-function MessageContent({ text, streaming }) {
+function MessageContent({ text, streaming, citationSources }) {
+  const citationMap = useMemo(() => buildCitationSourceMap(citationSources), [citationSources]);
   const parts = [];
   const codePattern = /```([\w.+#-]*)[\t ]*\r?\n([\s\S]*?)```/g;
   let lastIndex = 0;
@@ -167,7 +202,7 @@ function MessageContent({ text, streaming }) {
   return <div className="message-content">
     {parts.map((part, index) => part.type === 'code'
       ? <CodeBlock language={part.language} code={part.value} key={`code-${index}`} />
-      : part.value.trim() && <TextBlock value={part.value} key={`text-${index}`} />)}
+      : part.value.trim() && <TextBlock value={part.value} citationMap={citationMap} key={`text-${index}`} />)}
     {streaming && <i className="stream-cursor" aria-hidden="true" />}
   </div>;
 }
@@ -1974,7 +2009,7 @@ export default function Chat() {
           </div>)}
           </div>
         </div>
-        <nav className="sidebar-links" aria-label={t("Chat navigation")}><Link to="/dashboard" onClick={() => logger.action('Open: Dashboard', { path: '/dashboard' })}>⌂ <span>{t("Dashboard")}</span></Link><Link to="/python-ai" onClick={() => logger.action('Open: AI Training Lab', { path: '/python-ai' })}>⚡ <span>{t("AI Training")}</span></Link><Link to="/ai-platform" onClick={() => logger.action('Open: AI Platform', { path: '/ai-platform' })}>34 <span>{t("AI Platform")}</span></Link><Link to="/app-builder" onClick={() => logger.action('Open: App Builder', { path: '/app-builder' })}>&lt;/&gt; <span>App Builder</span></Link><Link to="/studio" onClick={() => logger.action('Open: Workspace Studio', { path: '/studio' })}>✦ <span>{t("Workspace Studio")}</span></Link><Link to="/control-center" onClick={() => logger.action('Open: Control Center', { path: '/control-center' })}>⌘ <span>{t("Control Center")}</span></Link><Link to="/models/gpt" onClick={() => logger.action('Open: Model library', { path: '/models/gpt' })}>▦ <span>{t("Model library")}</span></Link></nav>
+        <nav className="sidebar-links" aria-label={t("Chat navigation")}><Link to="/dashboard" onClick={() => logger.action('Open: Dashboard', { path: '/dashboard' })}>⌂ <span>{t("Dashboard")}</span></Link><Link to="/ai-training" onClick={() => logger.action('Open: AI Training', { path: '/ai-training' })}>⚡ <span>{t("AI Training")}</span></Link><Link to="/ai-platform" onClick={() => logger.action('Open: AI Platform', { path: '/ai-platform' })}>34 <span>{t("AI Platform")}</span></Link><Link to="/app-builder" onClick={() => logger.action('Open: App Builder', { path: '/app-builder' })}>&lt;/&gt; <span>App Builder</span></Link><Link to="/studio" onClick={() => logger.action('Open: Workspace Studio', { path: '/studio' })}>✦ <span>{t("Workspace Studio")}</span></Link><Link to="/control-center" onClick={() => logger.action('Open: Control Center', { path: '/control-center' })}>⌘ <span>{t("Control Center")}</span></Link><Link to="/models/gpt" onClick={() => logger.action('Open: Model library', { path: '/models/gpt' })}>▦ <span>{t("Model library")}</span></Link></nav>
         <section className="sidebar-theme-settings collapsed" aria-label={t("Theme settings")}><button type="button" className="chat-settings-trigger" onClick={() => goTo('/chat/settings', 'Settings')}><span className="settings-gear" aria-hidden="true">⚙</span><span><strong>{t("Settings")}</strong><small>{themePreference} · {chatTextColors.find(([,color])=>color===textColor)?.[0]||'Custom'} message</small></span><b>›</b></button></section>
         <div className="chat-profile">
           <span className="chat-profile-avatar" aria-hidden="true">{user.name?.charAt(0) || user.email.charAt(0)}</span>
@@ -2201,7 +2236,7 @@ export default function Chat() {
             const editing = message.role === 'user' && editingMessageIndex === index;
             const liked = messageLikes[index];
             const feedback = messageFeedback[index];
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} /> : <p>{text}</p>)}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} citationSources={message.webSources} /> : <p>{text}</p>)}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
 {message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} />}{message.imageUrl && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || 'hd', aspectRatio: message.imageAspect || '1:1' }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{text && !activelyStreaming && !editing && <div className="message-actions">
               {message.role === 'assistant' ? (
                 <>
