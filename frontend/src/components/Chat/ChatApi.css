@@ -431,6 +431,8 @@
 .web-source-title{display:block;color:#9ca3af;font-size:.68rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .web-source-meta small{color:#6b7280;font-size:.6rem}
 .web-source-open{color:#60a5fa;font-size:.85rem}
+.chat-inline-link{color:#a5b4fc;text-decoration:underline;text-underline-offset:2px}
+.chat-inline-link:hover{color:#e9d5ff}
 .inline-citation{display:inline-block;margin:0 1px;padding:0 4px;border-radius:4px;background:rgba(124,92,255,.22);color:#c4b5fd;font-size:.82em;font-weight:700;text-decoration:none;vertical-align:baseline}
 .inline-citation:hover{background:rgba(124,92,255,.38);color:#e9d5ff}
 .inline-citation-invalid{background:rgba(75,85,99,.35);color:#9ca3af;cursor:default}

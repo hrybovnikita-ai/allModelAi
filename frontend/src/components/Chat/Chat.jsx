@@ -15,6 +15,7 @@ import { clearAllSessionData } from '../../lib/session';
 import SessionRecovery from './SessionRecovery';
 import WebSources, { WebSearchStatus } from './WebSources';
 import { buildCitationSourceMap, isSafeHttpUrl, scrollToSourceCard, splitCitationSegments } from '../../lib/citationLinks.js';
+import { splitRichTextSegments } from '../../lib/chatMessageLinks.js';
 import './Chat.css';
 import './ChatApi.css';
 import './ChatDarkViolet.css';
@@ -102,11 +103,28 @@ function CodeBlock({ language, code }) {
 }
 
 function InlineFormattedText({ children }) {
-  const tokens = String(children).split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
-  return tokens.map((token, index) => {
-    if (token.startsWith('`') && token.endsWith('`')) return <code className="inline-code" key={index}>{token.slice(1, -1)}</code>;
-    if (token.startsWith('**') && token.endsWith('**')) return <strong key={index}>{token.slice(2, -2)}</strong>;
-    return token;
+  const segments = splitRichTextSegments(String(children));
+  return segments.map((segment, index) => {
+    if (segment.type === 'link') {
+      return (
+        <a
+          key={`lnk-${index}`}
+          href={segment.url}
+          className="chat-inline-link"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {segment.label}
+        </a>
+      );
+    }
+    const tokens = segment.value.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+    return tokens.map((token, tokenIndex) => {
+      const key = `${index}-${tokenIndex}`;
+      if (token.startsWith('`') && token.endsWith('`')) return <code className="inline-code" key={key}>{token.slice(1, -1)}</code>;
+      if (token.startsWith('**') && token.endsWith('**')) return <strong key={key}>{token.slice(2, -2)}</strong>;
+      return token;
+    });
   });
 }
 

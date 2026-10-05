@@ -92,6 +92,9 @@ const extractSearchIntent = (userQuestion) => {
     if (/python|javascript|django|flask|programming|framework/i.test(lower)) {
         concepts.topics.push('technology');
     }
+    if (/\b(books?|courses?|tutorials?|resources|learn(?:ing)?|documentation|docs)\b/i.test(lower)) {
+        concepts.topics.push('learning_resources');
+    }
 
     if (/openai|anthropic|google ai|gemini gpt/i.test(lower)) concepts.entities.push('OpenAI');
 

@@ -2,3 +2,10 @@
 .env.*
 !.env.example
 storage/
+secrets/
+*.service-account.json
+firebase-service-account.json
+# Firebase Admin private key
+secrets/
+firebase-service-account.json
+*firebase-adminsdk*.json

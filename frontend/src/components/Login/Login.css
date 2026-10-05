@@ -98,6 +98,7 @@
   font-size: .82rem;
 }
 .login-socials { display: grid; gap: 10px; }
+.login-socials--single { justify-items: stretch; }
 .login-social-btn {
   position: relative;
   display: flex;
@@ -128,15 +129,6 @@
 }
 .login-social-btn:disabled { cursor: wait; opacity: .72; }
 .login-social-btn img { width: 18px; height: 18px; object-fit: contain; flex-shrink: 0; }
-.login-social-btn--github {
-  background: #24292f;
-  border-color: #30363d;
-  color: #f0f6fc;
-}
-.login-social-btn--github:hover:not(:disabled) {
-  background: #2f363d;
-  border-color: #484f58;
-}
 .login-social-config-hint {
   margin: 0;
   padding: 10px 12px;

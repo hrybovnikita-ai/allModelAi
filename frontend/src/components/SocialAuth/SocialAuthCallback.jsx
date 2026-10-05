@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ensureFirebaseSocialConfigLoaded } from '../../lib/loadFirebaseConfig';
 import { completeSocialRedirect } from '../../lib/socialSignIn';
 import { socialError } from '../../lib/socialSession';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
@@ -15,6 +16,7 @@ export default function SocialAuthCallback() {
     (async () => {
       try {
         setMessage('Authenticating with your provider…');
+        await ensureFirebaseSocialConfigLoaded();
         const user = await completeSocialRedirect();
         if (!active) return;
         if (!user) {

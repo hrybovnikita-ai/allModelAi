@@ -9,28 +9,70 @@ const CONFIG_ENV_KEYS = {
   appId: 'VITE_FIREBASE_APP_ID',
 };
 
-const viteEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
-
-// Public web configuration only. Admin credentials must never have a VITE_ prefix.
-const config = {
-  apiKey: viteEnv.VITE_FIREBASE_API_KEY,
-  authDomain: viteEnv.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: viteEnv.VITE_FIREBASE_PROJECT_ID,
-  appId: viteEnv.VITE_FIREBASE_APP_ID,
-};
-
+let runtimeFirebaseConfig = null;
 let auth;
+
+function readViteFirebaseEnv() {
+  const viteEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
+  return {
+    apiKey: viteEnv.VITE_FIREBASE_API_KEY,
+    authDomain: viteEnv.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: viteEnv.VITE_FIREBASE_PROJECT_ID,
+    appId: viteEnv.VITE_FIREBASE_APP_ID,
+  };
+}
+
+export function isUsableFirebaseConfigValue(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return false;
+  if (/^(your[-_]?|replace|changeme|xxx+|test)$/i.test(trimmed)) return false;
+  if (/^your[-_]?(project|firebase|api|app)[-_]?/i.test(trimmed)) return false;
+  return true;
+}
+
+function pickField(envValue, runtimeValue) {
+  if (isUsableFirebaseConfigValue(envValue)) return String(envValue).trim();
+  if (isUsableFirebaseConfigValue(runtimeValue)) return String(runtimeValue).trim();
+  return '';
+}
+
+export function getEffectiveFirebaseConfig() {
+  const fromEnv = readViteFirebaseEnv();
+  const runtime = runtimeFirebaseConfig || {};
+  return {
+    apiKey: pickField(fromEnv.apiKey, runtime.apiKey),
+    authDomain: pickField(fromEnv.authDomain, runtime.authDomain),
+    projectId: pickField(fromEnv.projectId, runtime.projectId),
+    appId: pickField(fromEnv.appId, runtime.appId),
+  };
+}
+
+export function applyRuntimeFirebaseConfig(config) {
+  if (!config || typeof config !== 'object') return;
+  runtimeFirebaseConfig = {
+    apiKey: config.apiKey,
+    authDomain: config.authDomain,
+    projectId: config.projectId,
+    appId: config.appId,
+  };
+}
 
 export function getFirebaseConfigEnvKeys() {
   return { ...CONFIG_ENV_KEYS };
 }
 
-/** True when all VITE_FIREBASE_* web config values required for social sign-in are set. */
-export function isFirebaseSocialConfigured() {
-  return Object.values(config).every((value) => String(value || '').trim());
+export function getMissingFirebaseConfigKeys() {
+  const config = getEffectiveFirebaseConfig();
+  return Object.entries(CONFIG_ENV_KEYS)
+    .filter(([field]) => !isUsableFirebaseConfigValue(config[field]))
+    .map(([, envName]) => envName);
 }
 
-/** Origin Firebase OAuth runs on (current tab, not a hardcoded deploy URL). */
+export function isFirebaseSocialConfigured() {
+  const config = getEffectiveFirebaseConfig();
+  return Object.values(config).every((value) => isUsableFirebaseConfigValue(value));
+}
+
 export function getFirebaseOAuthOrigin() {
   if (typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin;
@@ -38,9 +80,6 @@ export function getFirebaseOAuthOrigin() {
   return getPublicAppOrigin();
 }
 
-/**
- * Ensures OAuth uses the live page origin and surfaces preview/custom-domain setup hints.
- */
 export function assertFirebaseOAuthEnvironment() {
   if (typeof window === 'undefined') return;
   const oauthOrigin = getFirebaseOAuthOrigin();
@@ -67,20 +106,18 @@ function stripPublicOrigin(value) {
 export function getSocialAuth() {
   assertFirebaseOAuthEnvironment();
 
-  const missing = Object.entries(config)
-    .filter(([, value]) => !String(value || '').trim())
-    .map(([key]) => CONFIG_ENV_KEYS[key] || key);
+  const config = getEffectiveFirebaseConfig();
+  const missing = getMissingFirebaseConfigKeys();
 
   if (missing.length) {
     throw new Error(
-      `Social sign-in is not configured. Add ${missing.join(', ')} to your Vercel project environment variables, then redeploy the frontend production build.`,
+      `Google sign-in is not configured. Set ${missing.join(', ')} in frontend/.env or server FIREBASE_WEB_* variables, then restart.`,
     );
   }
 
   if (!auth) {
     const app = getApps().find((item) => item.name === 'allmodelai-social')
       || initializeApp(config, 'allmodelai-social');
-    // Firebase only proves identity; AllModelAI keeps the durable HttpOnly session.
     auth = initializeAuth(app, {
       persistence: inMemoryPersistence,
       popupRedirectResolver: browserPopupRedirectResolver,

@@ -108,11 +108,14 @@ const tokenize = (text) => [...new Set(String(text || '').toLowerCase().match(/[
 
 const localMeaningfulTokens = (text) => tokenize(text).filter((token) => !STOP_WORDS.has(token));
 
+const { classifyChatIntent } = require('./chatIntent');
+
 const detectQueryIntent = (text) => {
     const lower = String(text || '').toLowerCase();
+    const chatIntent = classifyChatIntent(text);
     return {
         isPythonWebFrameworks: /python/i.test(lower) && /framework|library|django|flask|fastapi|starlette|tornado|pyramid|bottle|web\s+(dev|app|development|framework)/i.test(lower),
-        isCoding: /python|javascript|typescript|react|node|django|flask|fastapi|framework|library|api|backend|frontend|programming|code|developer/i.test(lower),
+        isCoding: chatIntent.coding,
         isPrice: /price|pricing|cost|how much|сколько|стоим|цена|usd|\$/i.test(lower),
         isWeather: /weather|погод/i.test(lower),
         isNews: /latest|news|today|current|новост|сегодня|актуал/i.test(lower),
@@ -124,8 +127,8 @@ const detectQueryIntent = (text) => {
 };
 
 const needsCurrentInformation = (prompt) => {
-    const text = String(prompt || '').toLowerCase();
-    return /research|latest|source|news|find|citation|исслед|источник|новост|найди|price|pricing|cost|how much|today|weather|current|release date|available now|сколько|цена|стоим|погод|сегодня|актуал|сейчас|курс|exchange rate|stock|последн|новин/i.test(text);
+    const { needsWebSearchForPrompt } = require('./chatIntent');
+    return needsWebSearchForPrompt(prompt);
 };
 
 const buildSearchQuery = (userQuestion) => buildIntentAwareSearchQueries(userQuestion).primary;

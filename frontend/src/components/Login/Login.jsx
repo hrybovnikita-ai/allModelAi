@@ -5,21 +5,13 @@ import { useNavigate } from 'react-router-dom';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { authPost } from '../../lib/authApi';
 import { validateRegistrationForm } from '../../lib/authValidation';
-import { isFirebaseSocialConfigured } from '../../lib/firebase';
-import { socialSignIn, SOCIAL_PROVIDERS } from '../../lib/socialSignIn';
+import { getMissingFirebaseConfigKeys, isFirebaseSocialConfigured } from '../../lib/firebase';
+import { ensureFirebaseSocialConfigLoaded } from '../../lib/loadFirebaseConfig';
+import { socialSignIn } from '../../lib/socialSignIn';
 import { socialError } from '../../lib/socialSession';
 import './Login.css';
 
-const GITHUB_ICON = (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M12 0C5.37 0 0 5.373 0 12c0 5.303 3.438 9.8 8.205 11.387.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.73.083-.73 1.205.085 1.84 1.237 1.84 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.605-2.665-.303-5.466-1.332-5.466-5.93 0-1.31.468-2.38 1.236-3.22-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23a11.5 11.5 0 0 1 3.003-.404c1.02.005 2.047.138 3.003.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.91 1.235 3.22 0 4.61-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222 0 1.606-.015 2.896-.015 3.286 0 .315.21.694.825.576C20.565 21.795 24 17.298 24 12c0-6.627-5.373-12-12-12z" />
-  </svg>
-);
-
-const PROVIDER_ICONS = {
-  Google: 'https://cdn.simpleicons.org/google',
-  Apple: 'https://cdn.simpleicons.org/apple/ffffff',
-};
+const GOOGLE_ICON = 'https://cdn.simpleicons.org/google';
 
 export default function Login(props) {
   return <LoginForm {...props} />;
@@ -42,13 +34,45 @@ function LoginForm({
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [successNotice, setSuccessNotice] = useState('');
-  const firebaseSocialReady = isFirebaseSocialConfigured();
+  const [firebaseSocialReady, setFirebaseSocialReady] = useState(() => isFirebaseSocialConfigured());
+  const [firebaseConfigChecked, setFirebaseConfigChecked] = useState(() => isFirebaseSocialConfigured());
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (isFirebaseSocialConfigured()) {
+        if (active) {
+          setFirebaseSocialReady(true);
+          setFirebaseConfigChecked(true);
+        }
+        return;
+      }
+      const ready = await ensureFirebaseSocialConfigLoaded();
+      if (active) {
+        setFirebaseSocialReady(ready);
+        setFirebaseConfigChecked(true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSocialSignIn = async (provider) => {
     if (submitting || socialBusy) return;
     setError('');
     setSocialBusy(provider);
     try {
+      if (!firebaseSocialReady) {
+        const ready = await ensureFirebaseSocialConfigLoaded();
+        setFirebaseSocialReady(ready);
+        setFirebaseConfigChecked(true);
+        if (!ready) {
+          throw new Error(
+            `Google sign-in is not configured. Set ${getMissingFirebaseConfigKeys().join(', ')} in frontend/.env or FIREBASE_WEB_* on the backend.`,
+          );
+        }
+      }
       const outcome = await socialSignIn(provider, { rememberMe });
       if (outcome?.redirected) {
         return;
@@ -354,38 +378,28 @@ function LoginForm({
           <span>or</span>
         </div>
 
-        <div className="login-socials" role="group" aria-label="Social sign-in">
-          {!firebaseSocialReady && (
+        <div className="login-socials login-socials--single" role="group" aria-label="Social sign-in">
+          {firebaseConfigChecked && !firebaseSocialReady && (
             <p className="login-social-config-hint" role="status">
-              Social sign-in requires VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN,
-              VITE_FIREBASE_PROJECT_ID, and VITE_FIREBASE_APP_ID in your deployment environment.
+              {import.meta.env.DEV
+                ? `Google sign-in is not configured. Set ${getMissingFirebaseConfigKeys().join(', ')} in frontend/.env or FIREBASE_WEB_* on the backend, then restart dev servers.`
+                : 'Google sign-in is unavailable. Use email and password, or try again later.'}
             </p>
           )}
-          {SOCIAL_PROVIDERS.map((provider) => {
-            const busy = socialBusy === provider;
-            const icon = provider === 'GitHub'
-              ? GITHUB_ICON
-              : <img src={PROVIDER_ICONS[provider]} alt="" />;
-            return (
-              <button
-                type="button"
-                key={provider}
-                className={`login-social-btn login-social-btn--${provider.toLowerCase()}`}
-                disabled={socialDisabled || !firebaseSocialReady}
-                aria-busy={busy}
-                title={!firebaseSocialReady ? 'Firebase web configuration is missing' : undefined}
-                onClick={() => handleSocialSignIn(provider)}
-              >
-                {icon}
-                <span>
-                  {busy
-                    ? `Connecting to ${provider}…`
-                    : `Continue with ${provider}`}
-                </span>
-                {busy && <span className="login-social-spinner" aria-hidden="true" />}
-              </button>
-            );
-          })}
+          <button
+            type="button"
+            className="login-social-btn login-social-btn--google"
+            disabled={socialDisabled || !firebaseSocialReady}
+            aria-busy={socialBusy === 'Google'}
+            title={!firebaseSocialReady ? 'Firebase web configuration is missing' : undefined}
+            onClick={() => handleSocialSignIn('Google')}
+          >
+            <img src={GOOGLE_ICON} alt="" />
+            <span>
+              {socialBusy === 'Google' ? 'Connecting to Google…' : 'Continue with Google'}
+            </span>
+            {socialBusy === 'Google' && <span className="login-social-spinner" aria-hidden="true" />}
+          </button>
         </div>
       </section>
     </div>

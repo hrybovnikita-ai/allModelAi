@@ -1,5 +1,12 @@
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
+const {
+    normalizePrivateKey,
+    resolveFirebaseAdminCredentials,
+    isFirebaseAdminConfigured,
+    resetFirebaseAdminCredentialsForTests,
+    describeMissingFirebaseAdminConfig,
+} = require('./firebaseAdminCredentials');
 
 const APP_NAME = 'allmodelai-social';
 
@@ -7,28 +14,14 @@ let authInstance = null;
 let initAttempted = false;
 let initError = null;
 
-function normalizePrivateKey(raw) {
-    if (raw == null || raw === '') return '';
-    let key = String(raw).trim();
-    if (
-        (key.startsWith('"') && key.endsWith('"'))
-        || (key.startsWith("'") && key.endsWith("'"))
-    ) {
-        key = key.slice(1, -1).trim();
+function logFirebaseAdminReady(source) {
+    if (source === 'env') {
+        console.log('[AUTH] Firebase Admin SDK ready (credentials from environment variables).');
+        return;
     }
-    return key.replace(/\\n/g, '\n');
-}
-
-function readFirebaseCredentials() {
-    const projectId = String(process.env.FIREBASE_PROJECT_ID || '').trim();
-    const clientEmail = String(process.env.FIREBASE_CLIENT_EMAIL || '').trim();
-    const privateKey = normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
-    return { projectId, clientEmail, privateKey };
-}
-
-function isFirebaseAdminConfigured() {
-    const { projectId, clientEmail, privateKey } = readFirebaseCredentials();
-    return Boolean(projectId && clientEmail && privateKey);
+    if (source === 'file') {
+        console.log('[AUTH] Firebase Admin SDK ready (credentials from local service account file).');
+    }
 }
 
 function ensureFirebaseAuth() {
@@ -51,21 +44,17 @@ function ensureFirebaseAuth() {
         throw err;
     }
 
-    const { projectId, clientEmail, privateKey } = readFirebaseCredentials();
-    if (!projectId) {
+    const credentials = resolveFirebaseAdminCredentials();
+    if (!credentials) {
+        console.error(`[AUTH] Firebase Admin is not configured. ${describeMissingFirebaseAdminConfig()}`);
         const err = new Error('Social sign-in is not configured on the server.');
         err.status = 503;
         err.code = 'FIREBASE_NOT_CONFIGURED';
         initError = err;
         throw err;
     }
-    if (!clientEmail || !privateKey) {
-        const err = new Error('Social sign-in is not configured on the server.');
-        err.status = 503;
-        err.code = 'FIREBASE_INCOMPLETE_CREDENTIALS';
-        initError = err;
-        throw err;
-    }
+
+    const { projectId, clientEmail, privateKey, source } = credentials;
     if (!privateKey.includes('BEGIN PRIVATE KEY')) {
         console.error('[AUTH] Firebase Admin initialization failed: private key is missing PEM headers');
         const err = new Error('Social sign-in is unavailable. Check Firebase Admin credentials on the server.');
@@ -87,6 +76,7 @@ function ensureFirebaseAuth() {
             }, APP_NAME);
         }
         authInstance = getAuth(app);
+        logFirebaseAdminReady(source);
         return authInstance;
     } catch (error) {
         console.error('[AUTH] Firebase Admin initialization failed:', error.message);
@@ -132,6 +122,7 @@ function resetFirebaseAdminForTests() {
     authInstance = null;
     initAttempted = false;
     initError = null;
+    resetFirebaseAdminCredentialsForTests();
 }
 
 module.exports = {

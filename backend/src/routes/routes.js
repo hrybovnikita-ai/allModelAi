@@ -58,6 +58,7 @@ const {
     getSystemHealth,
 } = require('../controllers/aiPythonController');
 const { postDeepSeekChat } = require('../controllers/deepseekChatController');
+const { getPublicFirebaseConfig } = require('../controllers/publicFirebaseConfigController');
 const {
     getLessons,
     getLessonById,
@@ -134,6 +135,7 @@ router.post('/auth/password-reset/confirm', confirmPasswordReset);
 router.get('/status/models', logAuthStage('MODELS_STATUS_ROUTE_ENTERED'), cachePublicResponse('allmodelai:public:model-status:v1'), getModelStatus);
 router.get('/health/providers', cachePublicResponse('allmodelai:public:provider-health:v1'), getProviderHealth);
 router.get('/health', health);
+router.get('/public/firebase-config', cachePublicResponse('allmodelai:public:firebase-web-config:v1'), getPublicFirebaseConfig);
 router.get('/users', getPublicUsers);
 router.get('/community/users', getCommunityUsers);
 router.get('/admin/stats', getAdminStats);
