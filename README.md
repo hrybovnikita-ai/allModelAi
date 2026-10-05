@@ -10,6 +10,25 @@ Getting Started
 
 Windows (recommended): double-click `start-dev.bat` in the `allModelAi` folder. It starts the API on port **5050** and Vite on **5173**. If you only run `npm run dev` in `frontend`, Vite will show `ECONNREFUSED 127.0.0.1:5050` until the backend is running.
 
+## Four-part architecture
+
+| Layer | Folder | Stack |
+|-------|--------|--------|
+| Frontend | `frontend/` | Vite, React, JS + TS |
+| Backend | `backend/` | Node, Express, JS (+ TS types) |
+| AI Python | `ai_python/` | FastAPI, PyTorch labs |
+| Shared contracts | `typescript/` | `@allmodelai/contracts` (types, Zod, clients) |
+
+Shared types and API contracts live in `typescript/`. See [typescript/README.md](typescript/README.md).
+
+```bash
+npm install          # from allModelAi/ (workspaces)
+npm run build:typescript
+npm run typecheck
+npm run dev:frontend
+npm run dev:backend
+```
+
 Manual setup:
 
 cd backend

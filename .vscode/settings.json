@@ -1,0 +1,12 @@
+{
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  "eslint.workingDirectories": [
+    { "directory": "frontend", "changeProcessCWD": true },
+    { "directory": "backend", "changeProcessCWD": true }
+  ],
+  "python.analysis.extraPaths": ["${workspaceFolder}/ai_python"],
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportMissingModuleSource": "none"
+  }
+}

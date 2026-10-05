@@ -1,4 +1,7 @@
-"""Pydantic request models for the FastAPI service."""
+"""Pydantic request models for the FastAPI service.
+
+JSON shapes are mirrored in allModelAi/typescript (Zod + TS types) for Node/frontend clients.
+"""
 
 from __future__ import annotations
 

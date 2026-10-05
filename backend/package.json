@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "pretest": "npm run build --prefix ../typescript",
     "test": "node --require ./tests/test-preload.js --test tests/*.test.js",
     "check-password": "node scripts/check-password.js",
     "auth:config-check": "node scripts/auth-config-check.js",
@@ -17,9 +18,11 @@
     "db:import-sqlite": "node scripts/import-sqlite.js",
     "providers:check": "node scripts/check-providers.js",
     "stripe:check": "node scripts/stripe-check.js",
-    "stripe:sync": "node scripts/sync-stripe-publishable.js"
+    "stripe:sync": "node scripts/sync-stripe-publishable.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@allmodelai/contracts": "file:../typescript",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.11.1",
     "cookie-parser": "^1.4.7",
@@ -35,6 +38,8 @@
     "stripe": "^22.6.0"
   },
   "devDependencies": {
-    "supertest": "^7.1.4"
+    "supertest": "^7.1.4",
+    "typescript": "^5.9.3",
+    "@types/node": "^22.19.1"
   }
 }

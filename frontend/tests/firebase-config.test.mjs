@@ -18,6 +18,14 @@ test('firebase auth uses browserLocalPersistence for redirect compatibility', as
   assert.doesNotMatch(source, /inMemoryPersistence/);
 });
 
+test('firebase.js does not map production hostname onto authDomain', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../src/lib/firebase.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /return 'all-model-ai\.com'/);
+  assert.doesNotMatch(source, /hostnameFromPublicUrl/);
+  assert.match(source, /VITE_FIREBASE_AUTH_DOMAIN/);
+});
+
 test('runtime firebase config from API merges when Vite env is empty', async () => {
   const {
     applyRuntimeFirebaseConfig,

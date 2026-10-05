@@ -7,7 +7,7 @@ import {
   sendEmailVerification,
   signOut,
 } from 'firebase/auth';
-import { ensureSocialAuthReady, getEffectiveFirebaseConfig, getFirebaseOAuthOrigin, getSocialAuth } from './firebase.js';
+import { ensureSocialAuthReady, getEffectiveFirebaseConfig, getFirebaseOAuthOrigin } from './firebase.js';
 import { isCapacitorNative } from './apiBase.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
 import { SOCIAL_PROVIDER_LABELS } from './socialProviders.js';

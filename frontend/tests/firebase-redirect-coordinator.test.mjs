@@ -1,21 +1,44 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-test('resolveAuthDomainForRuntime uses custom domain on production host', async () => {
-  const { resolveAuthDomainForRuntime } = await import('../src/lib/firebase.js');
-  const previous = global.window;
-  global.window = { location: { hostname: 'all-model-ai.com' } };
+test('resolveAuthDomainForRuntime keeps firebaseapp.com on production website host', async () => {
+  const {
+    resolveAuthDomainForRuntime,
+    applyRuntimeFirebaseConfig,
+    getEffectiveFirebaseConfig,
+  } = await import('../src/lib/firebase.js');
+  const previousWindow = global.window;
+
+  global.window = { location: { hostname: 'all-model-ai.com', origin: 'https://all-model-ai.com' } };
+  applyRuntimeFirebaseConfig({
+    apiKey: 'AIzaSyRuntimeKey123456789012345',
+    authDomain: 'allmodelai.firebaseapp.com',
+    projectId: 'allmodelai',
+    appId: '1:123456789:web:abcdef123456',
+  });
+
   try {
     assert.equal(
-      resolveAuthDomainForRuntime('all-model-ai.com'),
-      'all-model-ai.com',
+      resolveAuthDomainForRuntime('allmodelai.firebaseapp.com'),
+      'allmodelai.firebaseapp.com',
     );
+    assert.equal(getEffectiveFirebaseConfig().authDomain, 'allmodelai.firebaseapp.com');
+  } finally {
+    global.window = previousWindow;
+  }
+});
+
+test('resolveAuthDomainForRuntime does not map website hostname to authDomain', async () => {
+  const { resolveAuthDomainForRuntime } = await import('../src/lib/firebase.js');
+  const previousWindow = global.window;
+  global.window = { location: { hostname: 'www.all-model-ai.com' } };
+  try {
     assert.equal(
       resolveAuthDomainForRuntime('allmodelai.firebaseapp.com'),
-      'all-model-ai.com',
+      'allmodelai.firebaseapp.com',
     );
   } finally {
-    global.window = previous;
+    global.window = previousWindow;
   }
 });
 

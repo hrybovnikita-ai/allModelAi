@@ -1,0 +1,8 @@
+{
+  "files": [],
+  "include": [],
+  "compilerOptions": {
+    "strict": true,
+    "skipLibCheck": true
+  }
+}
