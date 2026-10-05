@@ -3,6 +3,7 @@ export const DASHBOARD_NAV_LINKS = [
   { to: '/chat', label: 'Chat' },
   { to: '/storage', label: 'Storage Hub' },
   { to: '/ai-training', label: 'AI Training Course' },
+  { to: '/ai-learning', label: 'AI Learning Lab' },
   { to: '/python-ai', label: 'PyTorch Lab' },
   { to: '/builder-25', label: 'Developer Toolkit' },
   { to: '/next-20', label: 'Workspace Tools' },

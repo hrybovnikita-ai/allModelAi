@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-test('frontend types barrel re-exports shared contracts', async () => {
-  const source = await readFile(new URL('../src/types/index.ts', import.meta.url), 'utf8');
-  assert.match(source, /@allmodelai\/contracts/);
-  assert.match(source, /ChatMessage/);
-  assert.match(source, /RoutingDecision/);
+test('AiLearningLab calls backend AI learning API (not Python directly)', async () => {
+  const source = await readFile(new URL('../src/components/AiLearning/AiLearningLab.jsx', import.meta.url), 'utf8');
+  assert.match(source, /\/api\/ai\/lessons/);
+  assert.match(source, /\/api\/ai\/train\//);
+  assert.doesNotMatch(source, /5055|VITE_.*PYTHON|OPENAI_API_KEY/);
 });
 
 test('firebase.js keeps authDomain independent from public site hostname', async () => {

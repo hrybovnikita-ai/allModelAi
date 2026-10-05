@@ -73,6 +73,16 @@ const {
     researchLessonTopic,
 } = require('../controllers/aiTrainingController');
 const {
+    getAiLessons,
+    getAiLesson,
+    postTrainLinearRegression,
+    postTrainGradientDescent,
+    postTrainPytorchLinear,
+    postAiPredict,
+    getTrainingJob,
+    getTrainingMetrics,
+} = require('../controllers/aiMlLearningController');
+const {
     createWayforpayPayment,
     completeMockWayforpayPayment,
     completeTestWayforpayCheckout,
@@ -118,6 +128,14 @@ router.post('/ai-training/pytorch/train', requireAuth, trainPytorchLab);
 router.post('/ai-training/tutor', requireAuth, postTutor);
 router.get('/ai-training/tutor/status', getTutorStatus);
 router.post('/ai-training/research', requireAuth, researchLessonTopic);
+router.get('/ai/lessons', getAiLessons);
+router.get('/ai/lessons/:lessonId', getAiLesson);
+router.post('/ai/train/linear-regression', requireAuth, postTrainLinearRegression);
+router.post('/ai/train/gradient-descent', requireAuth, postTrainGradientDescent);
+router.post('/ai/train/pytorch-linear', requireAuth, postTrainPytorchLinear);
+router.post('/ai/predict', requireAuth, postAiPredict);
+router.get('/ai/training/:id', requireAuth, getTrainingJob);
+router.get('/ai/training/:id/metrics', requireAuth, getTrainingMetrics);
 router.get('/system/health', getSystemHealth);
 
 router.post('/auth/register', registerUser);

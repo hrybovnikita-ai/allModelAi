@@ -16,12 +16,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "isolatedModules": true,
-    "types": ["vite/client"],
-    "baseUrl": ".",
-    "paths": {
-      "@allmodelai/contracts": ["../typescript/src/index.ts"],
-      "@allmodelai/contracts/*": ["../typescript/src/*"]
-    }
+    "types": ["vite/client"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx", "src/vite-env.d.ts"],
   "exclude": ["dist", "node_modules"]

@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "allowJs": true,
     "checkJs": false,
     "strict": true,
@@ -10,12 +10,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "types": ["node"],
-    "baseUrl": ".",
-    "paths": {
-      "@allmodelai/contracts": ["../typescript/src/index.ts"],
-      "@allmodelai/contracts/*": ["../typescript/src/*"]
-    }
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "src/**/*.js"],
   "exclude": ["node_modules"]

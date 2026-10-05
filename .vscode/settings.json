@@ -1,4 +1,5 @@
 {
+  "json.schemaDownload.enable": true,
   "typescript.tsdk": "node_modules/typescript/lib",
   "typescript.enablePromptUseWorkspaceTsdk": true,
   "eslint.workingDirectories": [
@@ -6,7 +7,18 @@
     { "directory": "backend", "changeProcessCWD": true }
   ],
   "python.analysis.extraPaths": ["${workspaceFolder}/ai_python"],
+  "python.analysis.autoSearchPaths": true,
   "python.analysis.diagnosticSeverityOverrides": {
     "reportMissingModuleSource": "none"
+  },
+  "files.watcherExclude": {
+    "**/__pycache__/**": true,
+    "**/node_modules/**": true,
+    "**/dist/**": true
+  },
+  "search.exclude": {
+    "**/__pycache__": true,
+    "**/node_modules": true,
+    "**/dist": true
   }
 }

@@ -5,5 +5,18 @@ dist/
 *.log
 backend/storage/
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# IDE (local only; .vscode/settings.json may be shared — do not ignore whole .vscode if team uses it)
+.idea/
+
 .runtime/
 HOME-ACCESS.txt

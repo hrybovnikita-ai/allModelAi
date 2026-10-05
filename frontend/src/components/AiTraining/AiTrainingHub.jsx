@@ -48,6 +48,9 @@ export default function AiTrainingHub() {
           <span className="brand-tag">AI Training</span>
         </div>
         <nav className="py-lab-nav">
+          <Link to="/ai-learning" className="py-btn-nav">
+            AI Learning Lab
+          </Link>
           <Link to="/python-ai" className="py-btn-nav">
             PyTorch Lab
           </Link>

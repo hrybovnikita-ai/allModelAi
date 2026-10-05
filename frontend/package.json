@@ -14,7 +14,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@allmodelai/contracts": "file:../typescript",
     "@capacitor/android": "^8.5.2",
     "@capacitor/cli": "^8.5.2",
     "@capacitor/core": "^8.5.2",
@@ -34,7 +33,10 @@
   "optionalDependencies": {
     "@img/sharp-linux-x64": "0.34.5",
     "@img/sharp-linuxmusl-x64": "0.34.5",
-    "@img/sharp-win32-x64": "0.34.5"
+    "@img/sharp-win32-x64": "0.34.5",
+    "@rolldown/binding-linux-x64-gnu": "1.2.5",
+    "@rolldown/binding-linux-x64-musl": "1.2.5",
+    "@rolldown/binding-win32-x64-msvc": "1.2.5"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",

@@ -2,7 +2,6 @@
   "name": "allmodelai",
   "private": true,
   "workspaces": [
-    "typescript",
     "frontend",
     "backend"
   ],
@@ -13,12 +12,8 @@
     "start": "node backend/server.js",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
-    "dev:typescript": "npm run dev --prefix typescript",
-    "build:typescript": "npm run build --prefix typescript",
-    "typecheck": "npm run build:typescript && npm run typecheck --prefix typescript && npm run typecheck --prefix frontend && npm run typecheck --prefix backend",
-    "test": "npm run test --prefix typescript && npm run test --prefix backend && npm run test --prefix frontend",
-    "test:typescript": "npm run test --prefix typescript",
-    "build": "npm run build:typescript && npm --prefix frontend ci && npm --prefix frontend run build && npm --prefix backend ci --omit=dev",
-    "postinstall": "npm run build --prefix typescript --if-present"
+    "typecheck": "npm run typecheck --prefix frontend && npm run typecheck --prefix backend",
+    "test": "npm run test --prefix backend && npm run test --prefix frontend",
+    "build": "npm --prefix frontend ci && npm --prefix frontend run build && npm --prefix backend ci --omit=dev"
   }
 }

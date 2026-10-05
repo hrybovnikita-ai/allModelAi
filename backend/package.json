@@ -6,7 +6,6 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "pretest": "npm run build --prefix ../typescript",
     "test": "node --require ./tests/test-preload.js --test tests/*.test.js",
     "check-password": "node scripts/check-password.js",
     "auth:config-check": "node scripts/auth-config-check.js",
@@ -22,7 +21,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@allmodelai/contracts": "file:../typescript",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.11.1",
     "cookie-parser": "^1.4.7",

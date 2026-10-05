@@ -225,4 +225,8 @@ def create_app(trainer: "TrainingManager") -> Optional[Any]:
             snapshot_every=validated["snapshot_every"],
         )
 
+    from api.ai_learning_routes import register_ai_learning_routes
+
+    register_ai_learning_routes(app)
+
     return app
