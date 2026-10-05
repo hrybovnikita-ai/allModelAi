@@ -7,6 +7,7 @@ import { authPost } from '../../lib/authApi';
 import { validateRegistrationForm } from '../../lib/authValidation';
 import { getMissingFirebaseConfigKeys, isFirebaseSocialConfigured } from '../../lib/firebase';
 import { ensureFirebaseSocialConfigLoaded } from '../../lib/loadFirebaseConfig';
+import { consumeStoredSocialAuthError } from '../SocialAuth/SocialAuthRedirectHandler';
 import { socialSignIn } from '../../lib/socialSignIn';
 import { socialError } from '../../lib/socialSession';
 import './Login.css';
@@ -36,6 +37,13 @@ function LoginForm({
   const [successNotice, setSuccessNotice] = useState('');
   const [firebaseSocialReady, setFirebaseSocialReady] = useState(() => isFirebaseSocialConfigured());
   const [firebaseConfigChecked, setFirebaseConfigChecked] = useState(() => isFirebaseSocialConfigured());
+
+  useEffect(() => {
+    const storedSocialError = consumeStoredSocialAuthError();
+    if (storedSocialError) {
+      setError(storedSocialError);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;

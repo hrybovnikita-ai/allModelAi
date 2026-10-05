@@ -1,5 +1,6 @@
 import { resolveAuthApiUrl } from './authApi.js';
 import { isCapacitorNative, nativeClientHeaders, usesRemoteApiOrigin } from './apiBase.js';
+import { isMobileWebSafari } from './socialSignInEnv.js';
 import { readJsonBody } from './httpJson.js';
 
 const SESSION_CLEARED_EVENT = 'allmodelai:session-cleared';
@@ -161,29 +162,29 @@ export async function confirmSession(user) {
     /* Cookie may not be ready yet on cross-origin or native clients. */
   }
 
-  const crossOriginOrNative =
-    isCapacitorNative() || usesRemoteApiOrigin() || Boolean(getNativeSessionToken());
+  const lenientSessionConfirm =
+    isCapacitorNative()
+    || usesRemoteApiOrigin()
+    || Boolean(getNativeSessionToken())
+    || isMobileWebSafari();
 
-  if (crossOriginOrNative) {
-    try {
-      const retry = await restoreSession({ force: true });
-      if (matchesUser(retry)) {
-        return retry;
+  if (lenientSessionConfirm) {
+    const retryDelays = isMobileWebSafari() ? [0, 120, 320] : [0];
+    for (const delayMs of retryDelays) {
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
-    } catch {
-      /* fall through to trusted login payload */
+      try {
+        const retry = await restoreSession({ force: true });
+        if (matchesUser(retry)) {
+          return retry;
+        }
+      } catch {
+        /* retry */
+      }
     }
-    if (getNativeSessionToken()) {
+    if (getNativeSessionToken() || isMobileWebSafari()) {
       return rememberSession(user);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    try {
-      const retryAfterToken = await restoreSession({ force: true });
-      if (matchesUser(retryAfterToken)) {
-        return retryAfterToken;
-      }
-    } catch {
-      /* fall through */
     }
     return rememberSession(user);
   }

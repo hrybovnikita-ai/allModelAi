@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ensureFirebaseSocialConfigLoaded } from '../../lib/loadFirebaseConfig';
-import { completeSocialRedirect } from '../../lib/socialSignIn';
+import { navigateAfterSocialLogin, resumePendingSocialRedirect } from '../../lib/socialSignIn';
 import { socialError } from '../../lib/socialSession';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import './SocialAuth.css';
@@ -17,14 +17,14 @@ export default function SocialAuthCallback() {
       try {
         setMessage('Authenticating with your provider…');
         await ensureFirebaseSocialConfigLoaded();
-        const user = await completeSocialRedirect();
+        const user = await resumePendingSocialRedirect();
         if (!active) return;
         if (!user) {
           setError('No sign-in result was returned. Try again from the login page.');
           return;
         }
         setMessage('Signing you in…');
-        navigate('/dashboard', { replace: true, state: { user } });
+        navigateAfterSocialLogin(user, { navigate, replaceDashboard: true });
       } catch (err) {
         if (!active) return;
         setError(socialError(err));

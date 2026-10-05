@@ -24,6 +24,7 @@ import ModelDetails from "./components/ModelDetails/ModelDetails";
 import Chat from "./components/Chat/Chat";
 import Checkout from "./components/Checkout/Checkout";
 import SocialAuthCallback from "./components/SocialAuth/SocialAuthCallback";
+import SocialAuthRedirectHandler from "./components/SocialAuth/SocialAuthRedirectHandler";
 import Workflow from "./components/Workflow/Workflow";
 import Settings from "./components/Settings/Settings";
 import Admin from "./components/Admin/Admin";
@@ -151,7 +152,7 @@ export default function App() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [pathname]);
   return (
-    <><CommandPalette /><CookieConsent /><Routes>
+    <><SocialAuthRedirectHandler /><CommandPalette /><CookieConsent /><Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/auth/callback" element={<SocialAuthCallback />} />
       <Route path="/auth/:provider" element={<SocialAuthCallback />} />

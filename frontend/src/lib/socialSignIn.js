@@ -3,20 +3,25 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
+  onAuthStateChanged,
   signInWithCredential,
   linkWithCredential,
   sendEmailVerification,
   signOut,
 } from 'firebase/auth';
-import { getFirebaseOAuthOrigin, getSocialAuth } from './firebase.js';
+import { getEffectiveFirebaseConfig, getFirebaseOAuthOrigin, getSocialAuth } from './firebase.js';
 import { isCapacitorNative } from './apiBase.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
 import { SOCIAL_PROVIDER_LABELS } from './socialProviders.js';
+import { socialAuthDebug } from './socialAuthDiagnostics.js';
+import { shouldPreferGoogleRedirectSignIn } from './socialSignInEnv.js';
 
 const REDIRECT_STORAGE_KEY = 'allmodelai_social_redirect';
+const REDIRECT_STORAGE_BACKUP_KEY = 'allmodelai_social_redirect_backup';
 const GOOGLE_PROVIDER = 'Google';
 
 let pendingLink = null;
+let redirectExchangePromise = null;
 
 export const SOCIAL_PROVIDERS = SOCIAL_PROVIDER_LABELS;
 
@@ -33,58 +38,129 @@ function providerFor(name) {
   throw new Error('Unsupported provider.');
 }
 
-async function complete(result, options) {
-  if (!result.user.emailVerified) {
-    await sendEmailVerification(result.user);
+async function completeFromFirebaseUser(firebaseUser, options) {
+  if (!firebaseUser.emailVerified) {
+    await sendEmailVerification(firebaseUser);
     throw Object.assign(
       new Error('Verify your email with the provider, then try again.'),
       { code: 'auth/email-not-verified' },
     );
   }
 
-  return exchangeSocialSession(await result.user.getIdToken(true), options);
-}
-
-function saveRedirectIntent(name, options = {}) {
-  sessionStorage.setItem(
-    REDIRECT_STORAGE_KEY,
-    JSON.stringify({
-      name,
-      rememberMe: options.rememberMe !== false,
-      link: Boolean(options.link),
-      expires: Date.now() + 600000,
-    }),
-  );
-}
-
-function readRedirectIntent() {
+  socialAuthDebug('FIREBASE_ID_TOKEN_READY', { provider: GOOGLE_PROVIDER });
+  socialAuthDebug('BACKEND_SESSION_EXCHANGE_STARTED', { intent: options?.link ? 'link' : 'login' });
   try {
-    const raw = sessionStorage.getItem(REDIRECT_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed?.name || parsed.expires < Date.now()) {
-      sessionStorage.removeItem(REDIRECT_STORAGE_KEY);
-      return null;
-    }
-    return parsed;
-  } catch {
-    sessionStorage.removeItem(REDIRECT_STORAGE_KEY);
-    return null;
+    const user = await exchangeSocialSession(await firebaseUser.getIdToken(true), options);
+    socialAuthDebug('BACKEND_SESSION_EXCHANGE_SUCCESS', { email: user?.email });
+    return user;
+  } catch (error) {
+    socialAuthDebug('BACKEND_SESSION_EXCHANGE_FAILED', { code: error.code, message: error.message });
+    throw error;
   }
 }
 
+async function complete(result, options) {
+  return completeFromFirebaseUser(result.user, options);
+}
+
+function saveRedirectIntent(name, options = {}) {
+  const payload = JSON.stringify({
+    name,
+    rememberMe: options.rememberMe !== false,
+    link: Boolean(options.link),
+    expires: Date.now() + 600000,
+  });
+  try {
+    sessionStorage.setItem(REDIRECT_STORAGE_KEY, payload);
+  } catch {
+    /* Safari private mode */
+  }
+  try {
+    localStorage.setItem(REDIRECT_STORAGE_BACKUP_KEY, payload);
+  } catch {
+    /* Storage blocked */
+  }
+}
+
+export function readRedirectIntent() {
+  const sources = [];
+  try {
+    const sessionValue = sessionStorage.getItem(REDIRECT_STORAGE_KEY);
+    if (sessionValue) sources.push(sessionValue);
+  } catch {
+    /* ignore */
+  }
+  try {
+    const backupValue = localStorage.getItem(REDIRECT_STORAGE_BACKUP_KEY);
+    if (backupValue) sources.push(backupValue);
+  } catch {
+    /* ignore */
+  }
+
+  for (const raw of sources) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed?.name || parsed.expires < Date.now()) {
+        continue;
+      }
+      return parsed;
+    } catch {
+      /* try next source */
+    }
+  }
+  clearSocialRedirectIntent();
+  return null;
+}
+
 export function clearSocialRedirectIntent() {
-  sessionStorage.removeItem(REDIRECT_STORAGE_KEY);
+  try {
+    sessionStorage.removeItem(REDIRECT_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.removeItem(REDIRECT_STORAGE_BACKUP_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function cancelSocialLink() {
   pendingLink = null;
 }
 
+function shouldUseRedirectSignIn() {
+  return isCapacitorNative() || shouldPreferGoogleRedirectSignIn();
+}
+
+function logRedirectDomainHint() {
+  if (!import.meta.env?.DEV || typeof window === 'undefined') return;
+  const { authDomain } = getEffectiveFirebaseConfig();
+  const appHost = window.location.hostname;
+  if (authDomain && appHost && !appHost.endsWith('.firebaseapp.com') && authDomain.includes('firebaseapp.com')) {
+    console.info(
+      `[AllModelAI:SocialAuth] App host ${appHost} uses Firebase authDomain ${authDomain}. `
+      + 'Redirect sign-in is supported when the app host is listed under Firebase Authorized domains.',
+    );
+  }
+}
+
 async function signInWithProvider(auth, name, options) {
   const provider = providerFor(name);
-  if (isCapacitorNative()) {
+  if (shouldUseRedirectSignIn()) {
+    logRedirectDomainHint();
+    socialAuthDebug('GOOGLE_REDIRECT_STARTED', {
+      path: typeof window !== 'undefined' ? window.location.pathname : '',
+      mobileSafari: shouldPreferGoogleRedirectSignIn(),
+    });
     saveRedirectIntent(name, options);
+    try {
+      await prepareSocialSession(options);
+    } catch (error) {
+      clearSocialRedirectIntent();
+      throw error;
+    }
+    ensureRedirectReturnPath();
     await signInWithRedirect(auth, provider);
     return { redirected: true };
   }
@@ -93,7 +169,15 @@ async function signInWithProvider(auth, name, options) {
     return { result };
   } catch (error) {
     if (error.code === 'auth/popup-blocked') {
+      socialAuthDebug('GOOGLE_REDIRECT_STARTED', { reason: 'popup-blocked' });
       saveRedirectIntent(name, options);
+      try {
+        await prepareSocialSession(options);
+      } catch (prepareError) {
+        clearSocialRedirectIntent();
+        throw prepareError;
+      }
+      ensureRedirectReturnPath();
       await signInWithRedirect(auth, provider);
       return { redirected: true };
     }
@@ -161,12 +245,74 @@ export async function finishSocialLink(existingProvider) {
   }
 }
 
-export async function completeSocialRedirect() {
+function waitForFirebaseUser(auth, timeoutMs = 8000) {
+  if (auth.currentUser) {
+    socialAuthDebug('FIREBASE_USER_RESTORED', { source: 'currentUser' });
+    return Promise.resolve(auth.currentUser);
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (user, source) => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      clearTimeout(timer);
+      if (user) {
+        socialAuthDebug('FIREBASE_USER_RESTORED', { source });
+      }
+      resolve(user || null);
+    };
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) finish(user, 'onAuthStateChanged');
+    });
+
+    const timer = setTimeout(() => {
+      finish(auth.currentUser, 'timeout');
+    }, timeoutMs);
+  });
+}
+
+async function resolveRedirectFirebaseUser(auth, { allowAuthStateFallback = false } = {}) {
+  const redirectResult = await getRedirectResult(auth).catch((error) => {
+    socialAuthDebug('GOOGLE_REDIRECT_RESULT', { ok: false, code: error?.code });
+    return null;
+  });
+
+  if (redirectResult?.user) {
+    socialAuthDebug('GOOGLE_REDIRECT_RESULT', { ok: true, source: 'getRedirectResult' });
+    return redirectResult;
+  }
+
+  socialAuthDebug('GOOGLE_REDIRECT_RESULT', { ok: false, source: 'empty' });
+  if (!allowAuthStateFallback) {
+    return null;
+  }
+
+  const restoredUser = await waitForFirebaseUser(auth);
+  if (!restoredUser) {
+    return null;
+  }
+  return { user: restoredUser };
+}
+
+function ensureRedirectReturnPath() {
+  if (typeof window === 'undefined') return;
+  if (window.location.pathname.startsWith('/auth/callback')) return;
+  try {
+    window.history.replaceState(null, '', '/auth/callback');
+  } catch {
+    /* ignore */
+  }
+}
+
+async function completeSocialRedirectInternal() {
   const auth = getSocialAuth();
   const pending = readRedirectIntent();
-  const redirectResult = await getRedirectResult(auth).catch(() => null);
-  clearSocialRedirectIntent();
-
+  const redirectResult = await resolveRedirectFirebaseUser(auth, {
+    allowAuthStateFallback: Boolean(pending),
+  });
   if (!redirectResult?.user) {
     return null;
   }
@@ -175,13 +321,56 @@ export async function completeSocialRedirect() {
     rememberMe: pending?.rememberMe !== false,
     link: Boolean(pending?.link),
   };
-  const challenge = await prepareSocialSession(options);
+
   try {
-    return await complete(redirectResult, {
+    const challenge = await prepareSocialSession(options);
+    const user = await complete(redirectResult, {
       ...options,
       challenge,
     });
+    clearSocialRedirectIntent();
+    return user;
+  } catch (error) {
+    socialAuthDebug('BACKEND_SESSION_EXCHANGE_FAILED', { code: error.code, message: error.message });
+    throw error;
   } finally {
     await signOut(auth).catch(() => {});
   }
+}
+
+/**
+ * Call once after returning from Google redirect (any route). Completes backend session at most once.
+ */
+export async function resumePendingSocialRedirect() {
+  if (redirectExchangePromise) {
+    return redirectExchangePromise;
+  }
+
+  const hasIntent = Boolean(readRedirectIntent());
+  const onAuthRoute = typeof window !== 'undefined' && window.location.pathname.startsWith('/auth/');
+  if (!hasIntent && !onAuthRoute) {
+    return null;
+  }
+
+  redirectExchangePromise = completeSocialRedirectInternal()
+    .finally(() => {
+      redirectExchangePromise = null;
+    });
+
+  return redirectExchangePromise;
+}
+
+/** @deprecated Use resumePendingSocialRedirect */
+export async function completeSocialRedirect() {
+  return resumePendingSocialRedirect();
+}
+
+export function navigateAfterSocialLogin(user, { navigate, replaceDashboard = false } = {}) {
+  if (!user?.email) return;
+  socialAuthDebug('DASHBOARD_REDIRECT', { replace: replaceDashboard || shouldPreferGoogleRedirectSignIn() });
+  if (replaceDashboard || shouldPreferGoogleRedirectSignIn()) {
+    window.location.replace('/dashboard');
+    return;
+  }
+  navigate?.('/dashboard', { replace: true, state: { user } });
 }
