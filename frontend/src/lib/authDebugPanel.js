@@ -28,11 +28,17 @@ export function isAuthDebugPanelEnabled() {
 /** Safe auth diagnostics for support (no tokens, cookies, or secrets). */
 export function collectAuthDiagnostics(sessionState = {}) {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
   const intent = peekRedirectIntent();
   const firebase = getEffectiveFirebaseConfig();
+  const apiRouting = prefersSameOriginApi()
+    ? 'same-origin'
+    : (getApiBase() ? 'direct-backend' : 'relative-or-proxy');
   return {
     appVersion: import.meta.env?.VITE_APP_VERSION || import.meta.env?.MODE || 'unknown',
+    buildMode: import.meta.env?.MODE || 'unknown',
     origin,
+    pathname,
     apiBase: getApiBase() || '(same-origin /api)',
     browserApiOrigin: getBrowserApiOrigin(),
     prefersSameOriginApi: prefersSameOriginApi(),
@@ -41,8 +47,11 @@ export function collectAuthDiagnostics(sessionState = {}) {
     firebaseAuthDomain: firebase.authDomain || '(unset)',
     googleAuthMode: shouldPreferGoogleRedirectSignIn() ? 'redirect' : 'popup',
     redirectStorageOk: canUseGoogleRedirectSignIn(),
+    redirectIntent: intent?.phase === 'awaiting-google-return' ? 'YES' : 'NO',
     redirectRecoveryPending: isGoogleRedirectRecoveryPending(),
     redirectIntentPhase: intent?.phase || '(none)',
+    apiRouting,
+    navigationMode: 'SPA',
     sessionProviderStatus: sessionState.status || '(unknown)',
     sessionProviderHasUser: Boolean(sessionState.user?.email),
     serverSessionVerified: sessionState.serverSessionVerified || 'UNKNOWN',

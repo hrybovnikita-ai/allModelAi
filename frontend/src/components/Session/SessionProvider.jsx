@@ -8,6 +8,7 @@ import {
   subscribeSessionCleared,
 } from '../../lib/session.js';
 import { isGoogleRedirectRecoveryPending } from '../../lib/socialSignIn.js';
+import { peekRedirectIntent } from '../../lib/socialRedirectState.js';
 import { socialAuthDebug } from '../../lib/socialAuthDiagnostics.js';
 import { COOKIE_CONSENT_UPDATED_EVENT } from '../../lib/cookieConsent.js';
 
@@ -33,6 +34,14 @@ export function SessionProvider({ children }) {
       return;
     }
     if (isGoogleRedirectRecoveryPending()) {
+      setState((current) => ({
+        status: 'checking-redirect',
+        user: current.user?.email ? current.user : readStoredSessionUser(),
+      }));
+      return;
+    }
+    const redirectIntent = peekRedirectIntent();
+    if (redirectIntent?.phase === 'awaiting-google-return') {
       setState((current) => ({
         status: 'checking-redirect',
         user: current.user?.email ? current.user : readStoredSessionUser(),

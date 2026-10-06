@@ -66,6 +66,9 @@ export function socialError(error) {
     'auth/cancelled-popup-request': 'Another sign-in window is open. Complete it or try again.',
     'auth/popup-blocked': 'Your browser blocked the sign-in window. Allow popups, or you will be redirected automatically.',
     'auth/network-request-failed': 'Could not reach the provider. Check your connection and retry.',
+    'auth/redirect-uri-mismatch':
+      'Google OAuth redirect URI mismatch. Add the exact Firebase handler URL to Google Cloud → Credentials → OAuth client → Authorized redirect URIs (see project docs).',
+    'auth/redirect-operation-pending': 'Google sign-in is already in progress. Wait a moment and try again.',
     'auth/unauthorized-domain': typeof window !== 'undefined'
       ? `This domain (${window.location.hostname}) is not authorized for Firebase OAuth. Add it under Firebase Authentication → Settings → Authorized domains.`
       : 'This website domain is not authorized in Firebase Authentication. Contact the administrator.',
