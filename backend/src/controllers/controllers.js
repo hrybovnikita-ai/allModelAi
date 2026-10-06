@@ -461,8 +461,34 @@ const googleCallback = (req, res) => res.status(410).send('This sign-in callback
 const { lookupSessionUser } = require('../middleware/auth');
 
 const getSession = async (req, res) => {
-    const token = readSessionToken(req);
-    if (!token) return res.status(401).json({ message: 'No active session' });
+    let token = readSessionToken(req);
+    if (!token) {
+        const bearer = String(req.get('authorization') || '').match(/^Bearer\s+(\S+)$/i)?.[1];
+        if (bearer && !/^amai_/i.test(bearer)) {
+            try {
+                const admin = require('../firebaseAdmin');
+                const claims = await admin.verifySocialToken(bearer);
+                const email = normalizeLoginEmail(claims.email);
+                if (email) {
+                    const dbUser = await loadAuthUserByEmailAsync(req.app.locals.db, email);
+                    if (dbUser) {
+                        authLog('SESSION_RESPONSE_SENT', { source: 'firebase-bearer' });
+                        return res.status(200).json({
+                            user: {
+                                id: dbUser.id,
+                                name: dbUser.name,
+                                email: dbUser.email,
+                                avatar: dbUser.avatar || null,
+                            },
+                        });
+                    }
+                }
+            } catch (error) {
+                authLog('SESSION_LOOKUP_FAILED', { source: 'firebase-bearer', code: error.code || 'unknown' });
+            }
+        }
+        return res.status(401).json({ message: 'No active session' });
+    }
     authLog('SESSION_LOOKUP_START');
     const lookupStartedAt = Date.now();
     try {

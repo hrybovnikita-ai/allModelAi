@@ -10,6 +10,7 @@ import {
 } from './apiBase.js';
 import { postJson } from './httpJson.js';
 import { nativeSessionHeaders } from './nativeSession.js';
+import { firebaseSessionFallbackHeaders } from './firebaseSessionFallback.js';
 
 function normalizeAuthPath(path) {
   if (!path) return '/api/auth/session';
@@ -64,6 +65,7 @@ export async function authGet(path, options = {}) {
       Accept: 'application/json',
       ...nativeClientHeaders(),
       ...nativeSessionHeaders(),
+      ...firebaseSessionFallbackHeaders(),
       ...(options.headers || {}),
     },
     ...options,

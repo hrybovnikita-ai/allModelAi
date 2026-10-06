@@ -3,17 +3,20 @@ import assert from 'node:assert/strict';
 import {
   isMobileWebSafari,
   shouldPreferGoogleRedirectSignIn,
+  shouldTryGooglePopupFirst,
 } from '../src/lib/socialSignInEnv.js';
 
-test('iPhone Safari prefers redirect sign-in', () => {
+test('iPhone Safari uses popup-first (redirect is fallback only)', () => {
   const iphoneSafari = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
   assert.equal(isMobileWebSafari(iphoneSafari), true);
-  assert.equal(shouldPreferGoogleRedirectSignIn(iphoneSafari), true);
+  assert.equal(shouldPreferGoogleRedirectSignIn(iphoneSafari), false);
+  assert.equal(shouldTryGooglePopupFirst(iphoneSafari), true);
 });
 
 test('desktop Chrome does not prefer redirect sign-in', () => {
   const desktopChrome = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
   assert.equal(shouldPreferGoogleRedirectSignIn(desktopChrome), false);
+  assert.equal(shouldTryGooglePopupFirst(desktopChrome), true);
 });
 
 test('redirect recovery has a single bootstrap pipeline', async () => {
@@ -27,6 +30,8 @@ test('redirect recovery has a single bootstrap pipeline', async () => {
   assert.match(app, /GoogleRedirectRecoveryGate/);
   assert.doesNotMatch(app, /SocialAuthRedirectHandler/);
   assert.match(signIn, /signInWithRedirect/);
+  assert.match(signIn, /signInWithPopup/);
+  assert.match(signIn, /beginRedirectSignIn/);
   assert.doesNotMatch(signIn, /CALLBACK_START_PATH/);
   assert.doesNotMatch(signIn, /beginGoogleRedirectFromCallback/);
   assert.match(recovery, /bootstrapGoogleRedirectRecovery/);

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logger } from '../../lib/logger';
+import { useSession } from '../Session/SessionProvider';
+import { isGoogleRedirectRecoveryPending } from '../../lib/socialSignIn';
 import './CommandPalette.css';
 
 const commands = [
@@ -18,7 +20,15 @@ const commands = [
   ['Settings','Manage your account','/settings','⚙'],
 ];
 export default function CommandPalette(){
-  const navigate=useNavigate(); const [open,setOpen]=useState(false); const [query,setQuery]=useState('');
+  const navigate=useNavigate();
+  const { authLoading, status, user } = useSession();
+  const [open,setOpen]=useState(false);
+  const [query,setQuery]=useState('');
+  const paletteAllowed = !authLoading
+    && !isGoogleRedirectRecoveryPending()
+    && status === 'authenticated'
+    && Boolean(user?.email);
+  if (!paletteAllowed) return null;
   useEffect(()=>{ const handler=(event)=>{ if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();setOpen(value=>!value)} if(event.key==='Escape')setOpen(false)}; window.addEventListener('keydown',handler); return()=>window.removeEventListener('keydown',handler)},[]);
   const visible=useMemo(()=>commands.filter(item=>`${item[0]} ${item[1]}`.toLowerCase().includes(query.toLowerCase())),[query]);
   if(!open)return <button className="command-fab" onClick={()=>setOpen(true)} title="Command palette">⌘ K</button>;

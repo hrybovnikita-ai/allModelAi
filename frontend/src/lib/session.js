@@ -3,6 +3,8 @@ import { isCapacitorNative, nativeClientHeaders, prefersSameOriginApi, usesRemot
 import { isMobileWebSafari } from './socialSignInEnv.js';
 import { socialAuthDebug } from './socialAuthDiagnostics.js';
 import { readJsonBody } from './httpJson.js';
+import { clearFirebaseIdTokenFallback, firebaseSessionFallbackHeaders } from './firebaseSessionFallback.js';
+import { readCookieConsent, waitForCookieConsentChoice } from './cookieConsent.js';
 
 const SESSION_CLEARED_EVENT = 'allmodelai:session-cleared';
 export const SESSION_UPDATED_EVENT = 'allmodelai:session-updated';
@@ -160,6 +162,9 @@ export function rememberSession(user) {
 }
 
 async function fetchSessionFromServer() {
+  if (typeof document !== 'undefined' && !readCookieConsent()) {
+    await waitForCookieConsentChoice(1500);
+  }
   const response = await fetch(resolveAuthApiUrl('session'), {
     credentials: 'include',
     cache: 'no-store',
@@ -167,6 +172,7 @@ async function fetchSessionFromServer() {
       Accept: 'application/json',
       ...nativeClientHeaders(),
       ...nativeSessionHeaders(),
+      ...firebaseSessionFallbackHeaders(),
     },
   });
   const { data, parseError } = await readJsonBody(response);
@@ -331,6 +337,7 @@ export function clearAllSessionData() {
   const storage = getStorage();
   storage.removeItem('allmodelai_user');
   clearNativeSessionToken();
+  clearFirebaseIdTokenFallback();
   clearFreshLoginMark();
   dispatchSessionCleared();
 }

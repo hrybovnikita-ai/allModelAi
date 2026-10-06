@@ -1,5 +1,6 @@
 import { nativeClientHeaders, resolveApiUrl } from './apiBase.js';
 import { nativeSessionHeaders } from './nativeSession.js';
+import { firebaseSessionFallbackHeaders } from './firebaseSessionFallback.js';
 
 export {
   API_BASE_URL,
@@ -80,6 +81,7 @@ export async function postJson(path, body, options = {}) {
         'Content-Type': 'application/json',
         ...nativeClientHeaders(),
         ...nativeSessionHeaders(),
+        ...firebaseSessionFallbackHeaders(),
         ...options.headers,
       },
       body: JSON.stringify(body),

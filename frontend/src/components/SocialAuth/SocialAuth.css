@@ -10,3 +10,28 @@
 .social-auth-spinner { width: 18px; height: 18px; border: 2px solid rgba(148,163,184,.35); border-top-color: #a5b4fc; border-radius: 50%; animation: social-auth-spin .75s linear infinite; }
 @keyframes social-auth-spin { to { transform: rotate(360deg); } }
 @media (max-width: 480px) { .social-auth-card { padding: 28px 20px; } }
+
+.auth-loading-skeleton,
+.auth-recovery-panel {
+  min-height: 60vh;
+  display: grid;
+  place-content: center;
+  gap: 14px;
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--text-secondary, #94a3b8);
+}
+.auth-loading-skeleton-bar {
+  width: min(320px, 70vw);
+  height: 12px;
+  margin: 0 auto;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #1e293b 0%, #334155 50%, #1e293b 100%);
+  background-size: 200% 100%;
+  animation: auth-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+.auth-loading-skeleton-bar--short { width: min(200px, 50vw); }
+@keyframes auth-skeleton-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}

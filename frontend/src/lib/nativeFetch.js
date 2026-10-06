@@ -10,6 +10,7 @@ import {
   resolveApiUrl,
 } from './apiBase.js';
 import { nativeSessionHeaders } from './nativeSession.js';
+import { firebaseSessionFallbackHeaders } from './firebaseSessionFallback.js';
 
 function resolveFetchUrl(input) {
   if (typeof input === 'string') return input;
@@ -66,7 +67,11 @@ function patchFetch() {
     }
 
     const headers = new Headers(init.headers || {});
-    Object.entries({ ...nativeClientHeaders(), ...nativeSessionHeaders() }).forEach(([key, value]) => {
+    Object.entries({
+      ...nativeClientHeaders(),
+      ...nativeSessionHeaders(),
+      ...firebaseSessionFallbackHeaders(),
+    }).forEach(([key, value]) => {
       headers.set(key, value);
     });
     const nextInit = {

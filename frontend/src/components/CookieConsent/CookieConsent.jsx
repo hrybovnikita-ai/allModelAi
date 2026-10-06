@@ -1,27 +1,25 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  notifyCookieConsentUpdated,
+  readCookieConsent,
+} from '../../lib/cookieConsent';
 import './CookieConsent.css';
 
 const consentCookie = 'allmodelai_cookie_consent';
 const cookieMaxAge = 60 * 60 * 24 * 365;
-
-function readConsent() {
-  return document.cookie
-    .split('; ')
-    .find((item) => item.startsWith(`${consentCookie}=`))
-    ?.split('=')[1] || '';
-}
 
 function saveConsent(value) {
   document.cookie = `${consentCookie}=${value}; Max-Age=${cookieMaxAge}; Path=/; SameSite=Lax${window.location.protocol === 'https:' ? '; Secure' : ''}`;
 }
 
 export default function CookieConsent() {
-  const [visible, setVisible] = useState(() => !readConsent());
+  const [visible, setVisible] = useState(() => !readCookieConsent());
 
   const chooseConsent = (value) => {
     saveConsent(value);
     setVisible(false);
+    notifyCookieConsentUpdated(value);
   };
 
   if (!visible) return null;

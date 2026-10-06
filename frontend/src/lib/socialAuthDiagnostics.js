@@ -49,8 +49,8 @@ const STAGES = new Set([
   'AUTH_PERSISTENCE_READY',
 ]);
 
-/** Safari / redirect recovery tracing (`localStorage.allmodelai_social_auth_debug=1` or DEV). */
-export function authRecoveryLog(message, detail = {}) {
+/** Unified auth tracing (`localStorage.allmodelai_social_auth_debug=1` or DEV). */
+export function authLog(message, detail = {}) {
   if (!isSocialAuthDebugEnabled()) return;
   const safeDetail = { ...detail };
   for (const key of Object.keys(safeDetail)) {
@@ -58,7 +58,15 @@ export function authRecoveryLog(message, detail = {}) {
       delete safeDetail[key];
     }
   }
-  console.info(`[Auth] ${message}`, Object.keys(safeDetail).length ? safeDetail : '');
+  console.info(
+    `[AllModelAI:Auth] ${message}`,
+    Object.keys(safeDetail).length ? safeDetail : '',
+  );
+}
+
+/** @deprecated alias */
+export function authRecoveryLog(message, detail = {}) {
+  authLog(message, detail);
 }
 
 export function socialAuthDebug(stage, detail = {}) {

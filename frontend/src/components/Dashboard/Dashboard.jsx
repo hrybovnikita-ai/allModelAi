@@ -46,7 +46,10 @@ export default function Dashboard() {
   const [manageSubOpen, setManageSubOpen] = useState(false);
 
   const loadSubscription = useCallback(async () => {
-    if (!user?.email) return;
+    if (!user?.email) {
+      setSubscriptionLoad('idle');
+      return;
+    }
     setSubscriptionLoad('loading');
     setSubscriptionError('');
     try {
@@ -75,7 +78,7 @@ export default function Dashboard() {
       setSubscriptionError(error.message || 'Could not load subscription.');
       setSubscriptionLoad('error');
     }
-  }, [user.email]);
+  }, [user?.email]);
 
   useEffect(() => {
     if (!user?.email) return;

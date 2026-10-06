@@ -9,6 +9,7 @@ import {
 } from '../../lib/session.js';
 import { isGoogleRedirectRecoveryPending } from '../../lib/socialSignIn.js';
 import { socialAuthDebug } from '../../lib/socialAuthDiagnostics.js';
+import { COOKIE_CONSENT_UPDATED_EVENT } from '../../lib/cookieConsent.js';
 
 const SessionContext = createContext(null);
 
@@ -92,6 +93,16 @@ export function SessionProvider({ children }) {
     globalThis.addEventListener(SESSION_UPDATED_EVENT, onUpdated);
     return () => globalThis.removeEventListener(SESSION_UPDATED_EVENT, onUpdated);
   }, []);
+
+  useEffect(() => {
+    const onConsent = (event) => {
+      if (event.detail?.value === 'accepted') {
+        void refresh({ force: true });
+      }
+    };
+    globalThis.addEventListener(COOKIE_CONSENT_UPDATED_EVENT, onConsent);
+    return () => globalThis.removeEventListener(COOKIE_CONSENT_UPDATED_EVENT, onConsent);
+  }, [refresh]);
 
   const authLoading = state.status === 'loading'
     || state.status === 'checking-redirect'

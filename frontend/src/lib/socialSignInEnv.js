@@ -15,7 +15,27 @@ export function isMobileWebSafari(userAgent = typeof navigator !== 'undefined' ?
   return /Safari/i.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS/i.test(ua);
 }
 
-/** iPhone/iPad Safari should use redirect sign-in; popups often fail to hand results back to the SPA. */
+/**
+ * Legacy helper: full-page redirect is no longer the default on iOS Safari.
+ * Popup sign-in runs inside the user gesture; redirect is only used as fallback.
+ */
 export function shouldPreferGoogleRedirectSignIn(userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
-  return isMobileWebSafari(userAgent);
+  void userAgent;
+  return false;
+}
+
+/** True when popup should be attempted before redirect (modern iPadOS Safari + desktop). */
+export function shouldTryGooglePopupFirst(userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
+  if (typeof navigator !== 'undefined' && isCapacitorNativeEnv()) return false;
+  void userAgent;
+  return true;
+}
+
+function isCapacitorNativeEnv() {
+  try {
+    if (import.meta.env?.VITE_CAPACITOR_NATIVE === 'true') return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
