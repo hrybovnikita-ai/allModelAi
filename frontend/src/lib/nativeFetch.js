@@ -1,7 +1,9 @@
 import {
   coerceApiUrlToSameOrigin,
   getApiBase,
+  isAllModelAiBackendRequestUrl,
   isCapacitorWebViewHost,
+  isExternalAuthProviderUrl,
   nativeClientHeaders,
   prefersSameOriginApi,
   requiresAbsoluteApiBase,
@@ -9,24 +11,26 @@ import {
 } from './apiBase.js';
 import { nativeSessionHeaders } from './nativeSession.js';
 
-function isApiLikePath(pathname) {
-  return pathname.startsWith('/api') || pathname.startsWith('/auth');
+function resolveFetchUrl(input) {
+  if (typeof input === 'string') return input;
+  if (input instanceof Request) return input.url;
+  return '';
 }
 
-function rewriteRequestUrl(input) {
+function rewriteBackendRequestUrl(input) {
   if (typeof input !== 'string') return input;
 
   const coerced = coerceApiUrlToSameOrigin(input);
   if (coerced !== input) return coerced;
 
-  if (input.startsWith('/') && isApiLikePath(input)) {
+  if (input.startsWith('/api')) {
     return resolveApiUrl(input);
   }
 
   if (/^https?:\/\/localhost(?::\d+)?\//i.test(input)) {
     try {
       const parsed = new URL(input);
-      if (isApiLikePath(parsed.pathname)) {
+      if (parsed.pathname.startsWith('/api')) {
         return resolveApiUrl(`${parsed.pathname}${parsed.search}`);
       }
     } catch {
@@ -44,12 +48,23 @@ function shouldPatchFetch() {
   return requiresAbsoluteApiBase();
 }
 
+function shouldInterceptBackendFetch(url) {
+  if (!url) return false;
+  if (isExternalAuthProviderUrl(url)) return false;
+  return isAllModelAiBackendRequestUrl(url);
+}
+
 function patchFetch() {
   if (typeof window === 'undefined' || window.__allmodelaiFetchPatched) return;
   if (!shouldPatchFetch()) return;
 
   const originalFetch = window.fetch.bind(window);
   window.fetch = (input, init = {}) => {
+    const urlString = resolveFetchUrl(input);
+    if (!shouldInterceptBackendFetch(urlString)) {
+      return originalFetch(input, init);
+    }
+
     const headers = new Headers(init.headers || {});
     Object.entries({ ...nativeClientHeaders(), ...nativeSessionHeaders() }).forEach(([key, value]) => {
       headers.set(key, value);
@@ -61,14 +76,15 @@ function patchFetch() {
     };
 
     if (typeof input === 'string') {
-      return originalFetch(rewriteRequestUrl(input), nextInit);
+      return originalFetch(rewriteBackendRequestUrl(input), nextInit);
     }
 
     if (input instanceof Request) {
-      const rewritten = rewriteRequestUrl(input.url);
+      const rewritten = rewriteBackendRequestUrl(input.url);
       if (rewritten !== input.url) {
         return originalFetch(new Request(rewritten, input), nextInit);
       }
+      return originalFetch(input, nextInit);
     }
 
     return originalFetch(input, nextInit);
@@ -80,6 +96,7 @@ function patchFetch() {
 
 /**
  * Ensures auth/API calls never stay on https://localhost in Capacitor WebView.
+ * Does not modify Firebase or Google provider fetch calls.
  */
 export function installNativeFetchInterceptor() {
   patchFetch();

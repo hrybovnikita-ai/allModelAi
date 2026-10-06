@@ -213,6 +213,12 @@ export async function socialSignIn(name, options = {}) {
       challenge,
     });
   } catch (error) {
+    socialAuthDebug('GOOGLE_AUTH_FAILED', {
+      code: error?.code,
+      message: error?.message,
+      status: error?.status,
+      strategy: shouldUseRedirectSignIn() ? 'redirect' : 'popup',
+    });
     if (options?.link && error.code === 'auth/account-exists-with-different-credential') {
       const credential = GoogleAuthProvider.credentialFromError(error);
       if (credential) {

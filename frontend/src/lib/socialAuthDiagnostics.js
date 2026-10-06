@@ -1,6 +1,16 @@
+function isSocialAuthDebugEnabled() {
+  if (import.meta.env?.DEV) return true;
+  try {
+    return globalThis.localStorage?.getItem('allmodelai_social_auth_debug') === '1';
+  } catch {
+    return false;
+  }
+}
+
 const STAGES = new Set([
   'GOOGLE_AUTH_START',
   'GOOGLE_AUTH_STRATEGY',
+  'GOOGLE_AUTH_FAILED',
   'FIREBASE_REDIRECT_START',
   'FIREBASE_REDIRECT_RETURN',
   'FIREBASE_REDIRECT_RESULT',
@@ -8,6 +18,8 @@ const STAGES = new Set([
   'FIREBASE_ID_TOKEN_READY',
   'BACKEND_CHALLENGE_START',
   'BACKEND_CHALLENGE_SUCCESS',
+  'BACKEND_CHALLENGE_FAILED',
+  'BACKEND_AUTH_API_OK',
   'BACKEND_SESSION_EXCHANGE_START',
   'BACKEND_SESSION_EXCHANGE_SUCCESS',
   'BACKEND_SESSION_EXCHANGE_FAILED',
@@ -28,11 +40,20 @@ const STAGES = new Set([
 ]);
 
 export function socialAuthDebug(stage, detail = {}) {
-  if (!import.meta.env?.DEV || !STAGES.has(stage)) return;
+  if (!isSocialAuthDebugEnabled() || !STAGES.has(stage)) return;
   const safeDetail = { ...detail };
   for (const key of Object.keys(safeDetail)) {
-    if (/token|password|secret|cookie|credential|idtoken|apikey/i.test(key)) {
+    if (/token|password|secret|cookie|credential|idtoken|apikey|authorization/i.test(key)) {
       delete safeDetail[key];
+    }
+  }
+  if (safeDetail.url && typeof safeDetail.url === 'string') {
+    try {
+      const parsed = new URL(safeDetail.url, 'https://localhost');
+      safeDetail.pathname = parsed.pathname;
+      delete safeDetail.url;
+    } catch {
+      delete safeDetail.url;
     }
   }
   console.info(`[AllModelAI:SocialAuth] ${stage}`, safeDetail);

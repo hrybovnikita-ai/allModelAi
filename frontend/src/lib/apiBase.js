@@ -95,6 +95,61 @@ function isApiLikePathname(pathname = '') {
   return pathname.startsWith('/api') || pathname.startsWith('/auth');
 }
 
+function isBackendApiPathname(pathname = '') {
+  return pathname === '/api' || pathname.startsWith('/api/');
+}
+
+const EXTERNAL_AUTH_PROVIDER_SUFFIXES = [
+  'accounts.google.com',
+  'googleapis.com',
+  'google.com',
+  'gstatic.com',
+  'firebaseapp.com',
+  'firebaseio.com',
+  'firebase.google.com',
+  'cloudfunctions.net',
+];
+
+/** Firebase / Google OAuth endpoints must never be rewritten or receive AllModelAI fetch headers. */
+export function isExternalAuthProviderUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const base = typeof window !== 'undefined' ? window.location?.origin : undefined;
+    const parsed = /^https?:\/\//i.test(url) ? new URL(url) : new URL(url, base || 'https://localhost');
+    const host = parsed.hostname.toLowerCase();
+    return EXTERNAL_AUTH_PROVIDER_SUFFIXES.some(
+      (suffix) => host === suffix || host.endsWith(`.${suffix}`),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** True for same-origin or Render URLs that target this app's /api/* backend routes. */
+export function isAllModelAiBackendRequestUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  if (isExternalAuthProviderUrl(url)) return false;
+  try {
+    const base = getBrowserApiOrigin() || (typeof window !== 'undefined' ? window.location?.origin : '');
+    const parsed = /^https?:\/\//i.test(url) ? new URL(url) : new URL(url, base || 'https://localhost');
+    if (!isBackendApiPathname(parsed.pathname)) return false;
+    if (url.startsWith('/')) return true;
+    if (base && parsed.origin === base) return true;
+    if (/\.onrender\.com$/i.test(parsed.hostname)) return true;
+    const envRemote = ENV_API_BASE || ENV_REMOTE_API_FALLBACK;
+    if (envRemote) {
+      try {
+        if (parsed.origin === new URL(envRemote).origin) return true;
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 /** Rewrite accidental cross-origin Render API URLs back to first-party paths on the public site. */
 export function coerceApiUrlToSameOrigin(url) {
   if (!prefersSameOriginApi() || !url) return url;
