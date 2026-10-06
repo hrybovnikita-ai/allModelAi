@@ -35,6 +35,6 @@ test('custom auth domain flag uses hosted site hostname on production web', () =
 test('vercel.json proxies Firebase auth handler under /__/auth', () => {
   const vercel = readFileSync(`${root}vercel.json`, 'utf8');
   assert.match(vercel, /\/__\/auth/);
-  assert.match(vercel, /allmodelai\.firebaseapp\.com\/__\/auth/);
-  assert.match(vercel, /"source": "\/\(\.\*\)"/);
+  assert.match(vercel, /allmodelai\.firebaseapp\.com\/__\/auth\/:path\*/);
+  assert.match(vercel, /"source": "\/__\/auth\/:path\*"/);
 });
