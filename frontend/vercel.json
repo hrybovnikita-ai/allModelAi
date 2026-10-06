@@ -3,19 +3,19 @@
   "buildCommand": "npm run build",
   "rewrites": [
     {
-      "source": "/__/auth/:path*",
-      "destination": "https://allmodelai.firebaseapp.com/__/auth/:path*"
+      "source": "/__/auth/(.*)",
+      "destination": "https://allmodelai.firebaseapp.com/__/auth/$1"
     },
     {
-      "source": "/api/:path*",
-      "destination": "https://allmodelai-backend.onrender.com/api/:path*"
+      "source": "/api/(.*)",
+      "destination": "https://allmodelai-backend.onrender.com/api/$1"
     },
     {
-      "source": "/auth/:path*",
-      "destination": "https://allmodelai-backend.onrender.com/auth/:path*"
+      "source": "/auth/(.*)",
+      "destination": "https://allmodelai-backend.onrender.com/auth/$1"
     },
     {
-      "source": "/((?!api/|auth/).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ],

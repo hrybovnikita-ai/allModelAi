@@ -36,4 +36,5 @@ test('vercel.json proxies Firebase auth handler under /__/auth', () => {
   const vercel = readFileSync(`${root}vercel.json`, 'utf8');
   assert.match(vercel, /\/__\/auth/);
   assert.match(vercel, /allmodelai\.firebaseapp\.com\/__\/auth/);
+  assert.match(vercel, /"source": "\/\(\.\*\)"/);
 });

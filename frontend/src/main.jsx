@@ -10,10 +10,17 @@ import { installNativeFetchInterceptor } from './lib/nativeFetch.js'
 import { initPwaInstallPrompt } from './lib/pwaInstall.js'
 import { initServiceWorker } from './lib/serviceWorker.js'
 import { ensureFirebaseSocialConfigLoaded } from './lib/loadFirebaseConfig.js'
+import { ensureSocialAuthReady } from './lib/firebase.js'
+import { reconcileStaleRedirectIntent } from './lib/socialRedirectState.js'
 import { runGoogleRedirectRecovery } from './lib/socialSignIn.js'
 
 installNativeFetchInterceptor()
-void ensureFirebaseSocialConfigLoaded().then(() => runGoogleRedirectRecovery('MainBootstrap'))
+void ensureFirebaseSocialConfigLoaded()
+  .then(() => ensureSocialAuthReady())
+  .then(() => {
+    reconcileStaleRedirectIntent()
+    return runGoogleRedirectRecovery('MainBootstrap')
+  })
 
 function readAppearance() {
   try { return JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}') || {} }

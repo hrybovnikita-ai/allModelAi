@@ -5,10 +5,14 @@ import { useNavigate } from 'react-router-dom';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { authPost } from '../../lib/authApi';
 import { validateRegistrationForm } from '../../lib/authValidation';
-import { getMissingFirebaseConfigKeys, isFirebaseSocialConfigured } from '../../lib/firebase';
+import { ensureSocialAuthReady, getMissingFirebaseConfigKeys, isFirebaseSocialConfigured } from '../../lib/firebase';
 import { ensureFirebaseSocialConfigLoaded } from '../../lib/loadFirebaseConfig';
 import { consumeStoredSocialAuthError } from '../SocialAuth/GoogleRedirectRecoveryGate';
-import { isGoogleRedirectRecoveryPending, socialSignIn } from '../../lib/socialSignIn';
+import {
+  completeGooglePopupSignIn,
+  isGoogleRedirectRecoveryPending,
+  launchGooglePopupSignIn,
+} from '../../lib/socialSignIn';
 import { socialError } from '../../lib/socialSession';
 import './Login.css';
 
@@ -37,6 +41,7 @@ function LoginForm({
   const [successNotice, setSuccessNotice] = useState('');
   const [firebaseSocialReady, setFirebaseSocialReady] = useState(() => isFirebaseSocialConfigured());
   const [firebaseConfigChecked, setFirebaseConfigChecked] = useState(() => isFirebaseSocialConfigured());
+  const [authReadyForPopup, setAuthReadyForPopup] = useState(false);
 
   useEffect(() => {
     if (isGoogleRedirectRecoveryPending()) {
@@ -52,16 +57,21 @@ function LoginForm({
     let active = true;
     (async () => {
       if (isFirebaseSocialConfigured()) {
+        await ensureSocialAuthReady();
         if (active) {
           setFirebaseSocialReady(true);
           setFirebaseConfigChecked(true);
+          setAuthReadyForPopup(true);
         }
         return;
       }
       const ready = await ensureFirebaseSocialConfigLoaded();
-      if (active) {
-        setFirebaseSocialReady(ready);
-        setFirebaseConfigChecked(true);
+      if (!active) return;
+      setFirebaseSocialReady(ready);
+      setFirebaseConfigChecked(true);
+      if (ready) {
+        await ensureSocialAuthReady();
+        if (active) setAuthReadyForPopup(true);
       }
     })();
     return () => {
@@ -69,33 +79,40 @@ function LoginForm({
     };
   }, []);
 
-  const handleSocialSignIn = async (provider) => {
-    if (submitting || socialBusy) return;
+  const handleSocialSignIn = (provider) => {
+    if (submitting || socialBusy || !authReadyForPopup || !firebaseSocialReady) {
+      if (!firebaseSocialReady && firebaseConfigChecked) {
+        setError(
+          `Google sign-in is not configured. Set ${getMissingFirebaseConfigKeys().join(', ')} in frontend/.env or FIREBASE_WEB_* on the backend.`,
+        );
+      }
+      return;
+    }
     setError('');
     setSocialBusy(provider);
+    let launched;
     try {
-      if (!firebaseSocialReady) {
-        const ready = await ensureFirebaseSocialConfigLoaded();
-        setFirebaseSocialReady(ready);
-        setFirebaseConfigChecked(true);
-        if (!ready) {
-          throw new Error(
-            `Google sign-in is not configured. Set ${getMissingFirebaseConfigKeys().join(', ')} in frontend/.env or FIREBASE_WEB_* on the backend.`,
-          );
-        }
-      }
-      const outcome = await socialSignIn(provider, { rememberMe });
-      if (outcome?.redirected) {
-        return;
-      }
-      const user = outcome;
-      document.activeElement?.blur();
-      navigate('/dashboard', { replace: true, state: { user } });
-    } catch (requestError) {
-      setError(socialError(requestError));
-    } finally {
+      launched = launchGooglePopupSignIn();
+    } catch (launchError) {
       setSocialBusy(null);
+      setError(socialError(launchError));
+      return;
     }
+    const { auth, popupPromise } = launched;
+    void (async () => {
+      try {
+        const outcome = await completeGooglePopupSignIn(auth, popupPromise, provider, { rememberMe });
+        if (outcome?.redirected) {
+          return;
+        }
+        document.activeElement?.blur();
+        navigate('/dashboard', { replace: true, state: { user: outcome } });
+      } catch (requestError) {
+        setError(socialError(requestError));
+      } finally {
+        setSocialBusy(null);
+      }
+    })();
   };
 
   const handleSubmit = async (event) => {
@@ -216,7 +233,7 @@ function LoginForm({
     return () => document.removeEventListener('keydown', closeWithEscape);
   }, [onClose]);
 
-  const socialDisabled = submitting || Boolean(socialBusy);
+  const socialDisabled = submitting || Boolean(socialBusy) || !authReadyForPopup;
 
   const modalTree = (
     <div className="login-overlay" role="presentation">

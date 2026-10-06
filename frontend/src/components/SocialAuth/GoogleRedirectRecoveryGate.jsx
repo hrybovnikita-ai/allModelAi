@@ -5,7 +5,6 @@ import {
   clearSocialRedirectIntent,
   isGoogleRedirectRecoveryPending,
   navigateAfterSocialLogin,
-  peekRedirectIntent,
 } from '../../lib/socialSignIn';
 import { authRecoveryLog } from '../../lib/socialAuthDiagnostics';
 import { socialError } from '../../lib/socialSession';
@@ -27,8 +26,8 @@ export default function GoogleRedirectRecoveryGate() {
 
   useEffect(() => {
     if (startedRef.current) return;
-    const intent = peekRedirectIntent();
-    if (!intent || intent.phase !== 'awaiting-google-return') {
+    if (!isGoogleRedirectRecoveryPending()) {
+      if (recovering) setRecovering(false);
       return undefined;
     }
     startedRef.current = true;

@@ -1,4 +1,4 @@
-import { peekRedirectIntent } from './socialSignIn.js';
+import { isGoogleRedirectRecoveryPending } from './socialRedirectState.js';
 
 let bootstrapPromise = null;
 
@@ -11,8 +11,7 @@ export function bootstrapGoogleRedirectRecovery(runPipeline) {
     return bootstrapPromise;
   }
 
-  const intent = peekRedirectIntent();
-  if (!intent || intent.phase !== 'awaiting-google-return') {
+  if (!isGoogleRedirectRecoveryPending()) {
     bootstrapPromise = Promise.resolve(null);
     return bootstrapPromise;
   }
