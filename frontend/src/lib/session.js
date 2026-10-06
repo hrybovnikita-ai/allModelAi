@@ -257,16 +257,20 @@ export async function confirmSession(user) {
   try {
     const verified = await restoreSession({ force: true });
     if (matchesUser(verified)) {
+      socialAuthDebug('SESSION_CONFIRM_OK', { email: verified.email, source: 'restoreSession' });
       socialAuthDebug('SESSION_CONFIRMED', { source: 'restoreSession' });
       return verified;
     }
+    socialAuthDebug('SESSION_CONFIRM_401', { pathname: '/api/auth/session', phase: 'initial' });
   } catch {
+    socialAuthDebug('SESSION_CONFIRM_401', { pathname: '/api/auth/session', phase: 'error' });
     /* Cookie may not be ready yet on cross-origin or native clients. */
   }
 
   const lenientSessionConfirm =
     isCapacitorNative()
     || usesRemoteApiOrigin()
+    || prefersSameOriginApi()
     || Boolean(getNativeSessionToken())
     || isMobileWebSafari();
 

@@ -56,6 +56,7 @@ export async function exchangeSocialSession(idToken, {
   }
   const data = await post('firebase', body);
   applyAuthResponsePayload(data);
+  socialAuthDebug('BACKEND_SET_SESSION_COMPLETE', { email: data.user?.email });
   return confirmSession(data.user);
 }
 

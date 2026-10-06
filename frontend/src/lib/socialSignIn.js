@@ -8,8 +8,8 @@ import {
   signOut,
 } from 'firebase/auth';
 import { ensureSocialAuthReady, getEffectiveFirebaseConfig, getFirebaseOAuthOrigin } from './firebase.js';
-import { isCapacitorNative } from './apiBase.js';
-import { markFreshLogin } from './session.js';
+import { isCapacitorNative, prefersSameOriginApi } from './apiBase.js';
+import { markFreshLogin, rememberSession } from './session.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
 import { SOCIAL_PROVIDER_LABELS } from './socialProviders.js';
 import { describeRedirectRecoveryFailure, socialAuthDebug } from './socialAuthDiagnostics.js';
@@ -60,6 +60,7 @@ async function completeFromFirebaseUser(firebaseUser, options) {
   try {
     const user = await exchangeSocialSession(await firebaseUser.getIdToken(true), options);
     socialAuthDebug('BACKEND_SESSION_EXCHANGE_SUCCESS', { email: user?.email });
+    socialAuthDebug('BACKEND_SET_SESSION_COMPLETE', { email: user?.email });
     return user;
   } catch (error) {
     socialAuthDebug('BACKEND_SESSION_EXCHANGE_FAILED', { code: error.code, message: error.message });
@@ -347,10 +348,19 @@ export async function completeRedirectSignIn(consumer) {
 
 export function navigateAfterSocialLogin(user, { navigate, replaceDashboard = false } = {}) {
   if (!user?.email) return;
-  const useHardNav = replaceDashboard || shouldPreferGoogleRedirectSignIn() || peekRedirectIntent();
-  socialAuthDebug('DASHBOARD_REDIRECT', { replace: useHardNav });
   markFreshLogin();
+  rememberSession(user);
   clearSocialRedirectIntent();
+
+  const useSpaNav = prefersSameOriginApi() && typeof navigate === 'function';
+  if (useSpaNav) {
+    socialAuthDebug('DASHBOARD_REDIRECT', { mode: 'spa', pathname: '/dashboard' });
+    navigate('/dashboard', { replace: true, state: { user } });
+    return;
+  }
+
+  const useHardNav = replaceDashboard || shouldPreferGoogleRedirectSignIn() || peekRedirectIntent();
+  socialAuthDebug('DASHBOARD_REDIRECT', { mode: 'hard', replace: useHardNav });
   if (useHardNav) {
     window.location.replace('/dashboard');
     return;
