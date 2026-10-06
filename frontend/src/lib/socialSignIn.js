@@ -284,11 +284,13 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
         allowAuthStateFallback: true,
       });
     } catch (error) {
+      clearSocialRedirectIntent();
       socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, code: error?.code, message: error?.message });
       throw error;
     }
 
     if (!redirectResult?.user) {
+      clearSocialRedirectIntent();
       const failure = describeRedirectRecoveryFailure({
         consumer,
         reason: 'redirect-result-null',

@@ -1,5 +1,5 @@
 import { getRedirectResult, onAuthStateChanged } from 'firebase/auth';
-import { socialAuthDebug } from './socialAuthDiagnostics.js';
+import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
 import { isMobileWebSafari } from './socialSignInEnv.js';
 
 let cachedRedirectResult = undefined;
@@ -16,11 +16,18 @@ export function hasRedirectResultBeenConsumed() {
   return redirectResultConsumed;
 }
 
-function waitForAuthStateUser(auth, timeoutMs = isMobileWebSafari() ? 12000 : 5000) {
+function getRedirectResultTimeoutMs() {
+  return isMobileWebSafari() ? 6000 : 12000;
+}
+
+function waitForAuthStateUser(auth, timeoutMs = isMobileWebSafari() ? 8000 : 5000) {
   if (auth.currentUser) {
     socialAuthDebug('FIREBASE_AUTH_STATE_RESTORED', { source: 'currentUser' });
+    authRecoveryLog('Auth state already has currentUser');
     return Promise.resolve(auth.currentUser);
   }
+
+  authRecoveryLog('Waiting for onAuthStateChanged fallback', { timeoutMs });
 
   return new Promise((resolve) => {
     let settled = false;
@@ -31,6 +38,10 @@ function waitForAuthStateUser(auth, timeoutMs = isMobileWebSafari() ? 12000 : 50
       clearTimeout(timer);
       if (user) {
         socialAuthDebug('FIREBASE_AUTH_STATE_RESTORED', { source });
+        socialAuthDebug('AUTH_STATE_USER_FOUND', { source });
+        authRecoveryLog('Auth state user found', { source });
+      } else {
+        authRecoveryLog('Auth state fallback finished without user', { source });
       }
       resolve(user || null);
     };
@@ -44,10 +55,48 @@ function waitForAuthStateUser(auth, timeoutMs = isMobileWebSafari() ? 12000 : 50
 }
 
 /**
+ * WebKit may never settle getRedirectResult after OAuth; race with a timeout then use auth-state fallback.
+ */
+async function settleGetRedirectResult(auth) {
+  const timeoutMs = getRedirectResultTimeoutMs();
+  authRecoveryLog('Checking getRedirectResult...', { timeoutMs });
+
+  let timedOut = false;
+
+  const timeoutPromise = new Promise((resolve) => {
+    setTimeout(() => {
+      timedOut = true;
+      socialAuthDebug('GET_REDIRECT_RESULT_TIMEOUT', { timeoutMs });
+      authRecoveryLog('Timeout triggered', { timeoutMs });
+      resolve(null);
+    }, timeoutMs);
+  });
+
+  const redirectPromise = getRedirectResult(auth)
+    .then((result) => {
+      if (!timedOut) {
+        authRecoveryLog('Result resolved', { hasUser: Boolean(result?.user) });
+      }
+      return result;
+    })
+    .catch((error) => {
+      if (timedOut) {
+        authRecoveryLog('getRedirectResult rejected after timeout (ignored)', { code: error?.code });
+        return null;
+      }
+      throw error;
+    });
+
+  return Promise.race([redirectPromise, timeoutPromise]);
+}
+
+/**
  * Exactly one getRedirectResult() per page load. Subsequent callers reuse cache or auth-state fallback.
+ * Call ensureSocialAuthReady() (persistence) before this on redirect return.
  */
 export async function consumeFirebaseRedirectResult(auth, consumer, { allowAuthStateFallback = false } = {}) {
   socialAuthDebug('GET_REDIRECT_RESULT_BEGIN', { consumer });
+  authRecoveryLog('consumeFirebaseRedirectResult begin', { consumer });
 
   if (cachedRedirectResult !== undefined) {
     if (cachedRedirectResult?.user) {
@@ -67,7 +116,7 @@ export async function consumeFirebaseRedirectResult(auth, consumer, { allowAuthS
   if (!redirectResultInflight) {
     redirectResultInflight = (async () => {
       try {
-        const result = await getRedirectResult(auth);
+        const result = await settleGetRedirectResult(auth);
         redirectResultConsumed = true;
         if (result?.user) {
           cachedRedirectResult = result;
@@ -84,6 +133,7 @@ export async function consumeFirebaseRedirectResult(auth, consumer, { allowAuthS
         redirectResultConsumed = true;
         socialAuthDebug('GET_REDIRECT_RESULT_NULL', { consumer, code: error?.code, message: error?.message });
         socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, code: error?.code });
+        authRecoveryLog('getRedirectResult error', { code: error?.code });
         throw error;
       } finally {
         redirectResultInflight = null;

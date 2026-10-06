@@ -49,6 +49,9 @@ test('redirect coordinator caches inflight and consumed redirect results', async
   assert.match(source, /cachedRedirectResult/);
   assert.match(source, /redirectResultConsumed/);
   assert.match(source, /GET_REDIRECT_RESULT_BEGIN.*consumer/s);
+  assert.match(source, /settleGetRedirectResult/);
+  assert.match(source, /GET_REDIRECT_RESULT_TIMEOUT/);
+  assert.match(source, /Promise\.race/);
 });
 
 test('SocialAuthCallback does not start redirect; gate and bootstrap own recovery', async () => {
@@ -61,6 +64,8 @@ test('SocialAuthCallback does not start redirect; gate and bootstrap own recover
   assert.doesNotMatch(callback, /getRedirectResult/);
   assert.match(callback, /awaitGoogleRedirectRecovery/);
   assert.match(gate, /awaitGoogleRedirectRecovery/);
+  assert.match(gate, /RECOVERY_OVERLAY_SAFETY_MS/);
   assert.match(signIn, /consumeFirebaseRedirectResult/);
   assert.match(signIn, /BACKEND_CHALLENGE_START/);
+  assert.match(signIn, /clearSocialRedirectIntent/);
 });

@@ -7,8 +7,13 @@ import {
   setPersistence,
 } from 'firebase/auth';
 import { ensureFirebaseSocialConfigLoaded } from './loadFirebaseConfig.js';
-import { getPublicAppOrigin } from './apiBase.js';
+import { getBrowserApiOrigin, getPublicAppOrigin, isHostedWebApp } from './apiBase.js';
 import { isMobileWebSafari } from './socialSignInEnv.js';
+import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
+import {
+  isUsableFirebaseConfigValue as isUsableFirebaseConfigValueCore,
+  resolveAuthDomainForRuntime as resolveAuthDomainCore,
+} from './firebaseAuthDomain.js';
 
 const CONFIG_ENV_KEYS = {
   apiKey: 'VITE_FIREBASE_API_KEY',
@@ -31,11 +36,7 @@ function readViteFirebaseEnv() {
 }
 
 export function isUsableFirebaseConfigValue(value) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return false;
-  if (/^(your[-_]?|replace|changeme|xxx+|test)$/i.test(trimmed)) return false;
-  if (/^your[-_]?(project|firebase|api|app)[-_]?/i.test(trimmed)) return false;
-  return true;
+  return isUsableFirebaseConfigValueCore(value);
 }
 
 function pickField(envValue, runtimeValue) {
@@ -44,23 +45,33 @@ function pickField(envValue, runtimeValue) {
   return '';
 }
 
+/** When true, use the live site hostname as authDomain (requires Vercel /__/auth → firebaseapp.com proxy). */
+export function isCustomAuthDomainEnabled() {
+  return import.meta.env?.VITE_FIREBASE_CUSTOM_AUTH_DOMAIN === 'true';
+}
+
+function hostedSiteAuthDomain() {
+  if (typeof window === 'undefined' || !isHostedWebApp()) return '';
+  const origin = getBrowserApiOrigin();
+  if (!origin) return '';
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return '';
+  }
+}
+
 /**
- * Firebase authDomain comes from VITE_FIREBASE_AUTH_DOMAIN / runtime config only.
- * The public site URL (all-model-ai.com) must never replace *.firebaseapp.com.
+ * authDomain must match where /__/auth/handler is served (custom domain + proxy, or *.firebaseapp.com).
+ * Set VITE_FIREBASE_AUTH_DOMAIN=all-model-ai.com in production, or VITE_FIREBASE_CUSTOM_AUTH_DOMAIN=true.
  */
 export function resolveAuthDomainForRuntime(configuredAuthDomain) {
-  const configured = String(configuredAuthDomain || '').trim();
-  if (!isUsableFirebaseConfigValue(configured)) {
-    return configured;
-  }
-
   const viteEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
-  const envDomain = String(viteEnv.VITE_FIREBASE_AUTH_DOMAIN || '').trim();
-  if (isUsableFirebaseConfigValue(envDomain)) {
-    return envDomain;
-  }
-
-  return configured;
+  return resolveAuthDomainCore(configuredAuthDomain, {
+    envAuthDomain: viteEnv.VITE_FIREBASE_AUTH_DOMAIN,
+    customAuthDomainEnabled: isCustomAuthDomainEnabled(),
+    hostedHostname: hostedSiteAuthDomain(),
+  });
 }
 
 export function buildFirebaseClientConfig() {
@@ -180,15 +191,24 @@ export async function ensureSocialAuthReady() {
   authReadyPromise = (async () => {
     await ensureFirebaseSocialConfigLoaded();
     const instance = getSocialAuth();
+    if (import.meta.env?.DEV || import.meta.env?.VITE_FIREBASE_CUSTOM_AUTH_DOMAIN === 'true') {
+      console.info('[AllModelAI:Firebase] authDomain', getEffectiveFirebaseConfig().authDomain);
+    }
     if (isMobileWebSafari()) {
       await setPersistence(instance, browserLocalPersistence);
+      socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: 'browserLocal', safari: true });
     } else {
       try {
         await setPersistence(instance, indexedDBLocalPersistence);
+        socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: 'indexedDB', safari: false });
       } catch {
         await setPersistence(instance, browserLocalPersistence);
+        socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: 'browserLocal', safari: false });
       }
     }
+    authRecoveryLog('Persistence ready before redirect checks', {
+      safari: isMobileWebSafari(),
+    });
     return instance;
   })().catch((error) => {
     authReadyPromise = null;

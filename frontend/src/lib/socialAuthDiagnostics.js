@@ -45,7 +45,21 @@ const STAGES = new Set([
   'BACKEND_SESSION_EXCHANGE_STARTED',
   'GOOGLE_REDIRECT_STARTED',
   'GOOGLE_REDIRECT_RESULT',
+  'GET_REDIRECT_RESULT_TIMEOUT',
+  'AUTH_PERSISTENCE_READY',
 ]);
+
+/** Safari / redirect recovery tracing (`localStorage.allmodelai_social_auth_debug=1` or DEV). */
+export function authRecoveryLog(message, detail = {}) {
+  if (!isSocialAuthDebugEnabled()) return;
+  const safeDetail = { ...detail };
+  for (const key of Object.keys(safeDetail)) {
+    if (/token|password|secret|cookie|credential|idtoken|apikey|authorization/i.test(key)) {
+      delete safeDetail[key];
+    }
+  }
+  console.info(`[Auth] ${message}`, Object.keys(safeDetail).length ? safeDetail : '');
+}
 
 export function socialAuthDebug(stage, detail = {}) {
   if (!isSocialAuthDebugEnabled() || !STAGES.has(stage)) return;

@@ -26,6 +26,11 @@ export default defineConfig(({ mode }) => {
      target: env.API_PROXY_TARGET || 'http://127.0.0.1:5050',
      changeOrigin: true,
    },
+   '/__/auth': {
+     target: 'https://allmodelai.firebaseapp.com',
+     changeOrigin: true,
+     secure: true,
+   },
  }
  return {
   plugins: [
@@ -76,6 +81,7 @@ export default defineConfig(({ mode }) => {
         navigateFallbackDenylist: [
           /^\/api(\/|$)/,
           /^\/auth(\/|$)/,
+          /^\/__\/auth(\/|$)/,
           /\/session(\/|$|\?)/,
           /\/models(\/|$|\?)/,
         ],
