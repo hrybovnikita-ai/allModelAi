@@ -3,6 +3,8 @@ import {
   initializeAuth,
   indexedDBLocalPersistence,
   browserLocalPersistence,
+  browserSessionPersistence,
+  inMemoryPersistence,
   browserPopupRedirectResolver,
   setPersistence,
 } from 'firebase/auth';
@@ -147,6 +149,69 @@ function stripPublicOrigin(value) {
   }
 }
 
+function persistenceChainForInit() {
+  if (isMobileWebSafari()) {
+    return [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence];
+  }
+  return [
+    indexedDBLocalPersistence,
+    browserLocalPersistence,
+    browserSessionPersistence,
+    inMemoryPersistence,
+  ];
+}
+
+function persistenceLabel(persistence) {
+  if (persistence === indexedDBLocalPersistence) return 'indexedDB';
+  if (persistence === browserLocalPersistence) return 'browserLocal';
+  if (persistence === browserSessionPersistence) return 'browserSession';
+  if (persistence === inMemoryPersistence) return 'inMemory';
+  return 'unknown';
+}
+
+function initializeSocialAuth(app) {
+  for (const persistence of persistenceChainForInit()) {
+    try {
+      const instance = initializeAuth(app, {
+        persistence,
+        popupRedirectResolver: browserPopupRedirectResolver,
+      });
+      socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: persistenceLabel(persistence), phase: 'init' });
+      return instance;
+    } catch {
+      /* Safari Private Browsing may reject IndexedDB/localStorage at init */
+    }
+  }
+  const instance = initializeAuth(app, {
+    persistence: inMemoryPersistence,
+    popupRedirectResolver: browserPopupRedirectResolver,
+  });
+  socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: 'inMemory', phase: 'init-fallback' });
+  return instance;
+}
+
+/** local → session → in-memory (Safari Private Browsing safe). */
+export async function applyAuthPersistenceSafely(instance) {
+  const chain = persistenceChainForInit();
+  for (const persistence of chain) {
+    try {
+      await setPersistence(instance, persistence);
+      const label = persistenceLabel(persistence);
+      socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: label, phase: 'setPersistence' });
+      authRecoveryLog('Persistence ready before redirect checks', {
+        persistence: label,
+        safari: isMobileWebSafari(),
+      });
+      return label;
+    } catch {
+      /* try next */
+    }
+  }
+  await setPersistence(instance, inMemoryPersistence);
+  socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: 'inMemory', phase: 'setPersistence-fallback' });
+  return 'inMemory';
+}
+
 export function getSocialAuth() {
   assertFirebaseOAuthEnvironment();
 
@@ -169,13 +234,7 @@ export function getSocialAuth() {
   if (!auth) {
     const app = getApps().find((item) => item.name === 'allmodelai-social')
       || initializeApp(config, 'allmodelai-social');
-    const persistence = isMobileWebSafari()
-      ? browserLocalPersistence
-      : indexedDBLocalPersistence;
-    auth = initializeAuth(app, {
-      persistence,
-      popupRedirectResolver: browserPopupRedirectResolver,
-    });
+    auth = initializeSocialAuth(app);
   }
   return auth;
 }
@@ -194,21 +253,7 @@ export async function ensureSocialAuthReady() {
     if (import.meta.env?.DEV || import.meta.env?.VITE_FIREBASE_CUSTOM_AUTH_DOMAIN === 'true') {
       console.info('[AllModelAI:Firebase] authDomain', getEffectiveFirebaseConfig().authDomain);
     }
-    if (isMobileWebSafari()) {
-      await setPersistence(instance, browserLocalPersistence);
-      socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: 'browserLocal', safari: true });
-    } else {
-      try {
-        await setPersistence(instance, indexedDBLocalPersistence);
-        socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: 'indexedDB', safari: false });
-      } catch {
-        await setPersistence(instance, browserLocalPersistence);
-        socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: 'browserLocal', safari: false });
-      }
-    }
-    authRecoveryLog('Persistence ready before redirect checks', {
-      safari: isMobileWebSafari(),
-    });
+    await applyAuthPersistenceSafely(instance);
     return instance;
   })().catch((error) => {
     authReadyPromise = null;
@@ -221,4 +266,3 @@ export async function ensureSocialAuthReady() {
 export function resetSocialAuthReadyForTests() {
   authReadyPromise = null;
 }
-

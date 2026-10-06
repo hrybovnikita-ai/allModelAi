@@ -11,11 +11,13 @@ test('firebase config documents VITE_ environment variable names', async () => {
   });
 });
 
-test('firebase auth uses browserLocalPersistence for redirect compatibility', async () => {
+test('firebase auth persistence falls back for Safari Private Browsing', async () => {
   const { readFile } = await import('node:fs/promises');
   const source = await readFile(new URL('../src/lib/firebase.js', import.meta.url), 'utf8');
-  assert.match(source, /indexedDBLocalPersistence/);
-  assert.doesNotMatch(source, /inMemoryPersistence/);
+  assert.match(source, /browserLocalPersistence/);
+  assert.match(source, /browserSessionPersistence/);
+  assert.match(source, /inMemoryPersistence/);
+  assert.match(source, /applyAuthPersistenceSafely/);
 });
 
 test('firebase.js does not map production hostname onto authDomain', async () => {

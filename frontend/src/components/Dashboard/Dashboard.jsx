@@ -10,6 +10,7 @@ import './DashboardNav.css';
 import './DashboardFeatureCards.css';
 import './DashboardDarkViolet.css';
 import './DashboardLayout.css';
+import '../SocialAuth/SocialAuth.css';
 import AccountDeleteModal from '../AccountDeleteModal';
 import DashboardResources from './DashboardResources';
 import DashboardWorkspaceNav from './DashboardWorkspaceNav';
@@ -87,11 +88,20 @@ export default function Dashboard() {
   useEffect(() => { if (!user?.email) return; Promise.all([apiFetch(`/api/analytics?email=${encodeURIComponent(user.email)}`).then(r => r.ok ? r.json() : null), apiFetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`).then(r => r.ok ? r.json() : [])]).then(([stats, projects]) => { setAnalytics(stats); setRecentProjects(projects.slice(0, 3)); }).catch(() => {}); }, [user?.email]);
 
 
+  if (!user?.email) {
+    return (
+      <main className="dashboard-page auth-loading-skeleton" role="status" aria-live="polite">
+        <div className="auth-loading-skeleton-bar" aria-hidden="true" />
+        <p>Loading your workspace…</p>
+      </main>
+    );
+  }
+
   const deleteAccount = async () => {
     setIsDeleting(true);
     setDeleteError('');
     try {
-      const response = await apiFetch('/api/auth/account', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email }) });
+      const response = await apiFetch('/api/auth/account', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user?.email }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || 'Could not delete your account.');
       clearAllSessionData();
@@ -114,7 +124,7 @@ export default function Dashboard() {
       {location.state?.subscriptionActivated?.message && (
         <div className="dashboard-email-notice" role="status">{location.state.subscriptionActivated.message}</div>
       )}
-      {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user.email}</div>}
+      {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user?.email}</div>}
       {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}
       {deleteError && !deleteModalOpen && <p role="alert">{deleteError}</p>}
       <section className="dashboard-hero">
