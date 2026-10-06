@@ -25,12 +25,16 @@
 }
 
 .pricing-card {
-  background: var(--dark-card);
-  border-radius: 20px;
-  padding: 40px 30px;
+  background: linear-gradient(165deg, rgba(20, 27, 42, 0.96), rgba(14, 18, 30, 0.98));
+  border-radius: var(--radius-lg, 18px);
+  padding: var(--space-8, 40px) var(--space-7, 30px);
   text-align: center;
-  transition: all 0.3s ease;
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  transition:
+    transform var(--duration-slow, 250ms) var(--ease-out, ease),
+    border-color var(--duration-normal, 200ms),
+    box-shadow var(--duration-normal, 200ms);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  box-shadow: var(--shadow-sm, 0 4px 14px rgba(0, 0, 0, 0.28));
   display: flex;
   flex-direction: column;
   position: relative;

@@ -226,7 +226,9 @@ def create_app(trainer: "TrainingManager") -> Optional[Any]:
         )
 
     from api.ai_learning_routes import register_ai_learning_routes
+    from api.training_lab_routes import register_training_lab_routes
 
     register_ai_learning_routes(app)
+    register_training_lab_routes(app)
 
     return app

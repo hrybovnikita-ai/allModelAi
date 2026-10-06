@@ -1,11 +1,15 @@
 import { installRuntimeErrorOverlay } from './lib/runtimeErrorOverlay.js'
+import { installHooksDevDiagnostics } from './lib/hooksDevDiagnostics.js'
 
 installRuntimeErrorOverlay()
+installHooksDevDiagnostics()
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
+import './styles/design-system.css'
+import './styles/premium-ui.css'
 import './styles/style.css'
 import App from './App.jsx'
 import { SessionProvider } from './components/Session/SessionProvider.jsx'

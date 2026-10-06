@@ -1,0 +1,92 @@
+/**
+ * AllModelAI design tokens — preserves existing brand colors; normalizes spacing, radius, motion.
+ */
+:root {
+  /* Surfaces (aligned with Dark Violet / App.css) */
+  --background: #05070a;
+  --surface: #101016;
+  --surface-elevated: #15151d;
+  --surface-hover: #1b1b26;
+  --surface-glass: rgba(16, 16, 22, 0.82);
+  --border: rgba(148, 163, 184, 0.12);
+  --border-strong: rgba(124, 92, 255, 0.22);
+  --border-active: rgba(157, 123, 255, 0.55);
+
+  /* Text */
+  --text-primary: #eef2ff;
+  --text-secondary: #a8b4c7;
+  --text-muted: #8b8b9a;
+
+  /* Brand purple (unchanged) */
+  --purple: #7c5cff;
+  --purple-soft: #9d7bff;
+  --purple-glow: rgba(124, 92, 255, 0.24);
+  --purple-glow-soft: rgba(124, 92, 255, 0.12);
+  --gradient-primary: linear-gradient(135deg, #6366f1 0%, #7c5cff 48%, #9d7bff 100%);
+
+  /* Legacy aliases */
+  --primary: var(--blue-violet, #6366f1);
+  --dark-bg: var(--background);
+  --dark-card: #141b2a;
+  --dark-card-hover: #1b2538;
+
+  /* Radius */
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
+
+  /* Shadows */
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.38);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.48);
+  --shadow-glow: 0 0 0 1px var(--purple-glow-soft), 0 12px 28px var(--purple-glow-soft);
+
+  /* Blur */
+  --blur-strength: 16px;
+  --blur-strong: 22px;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 0.8, 0.22, 1);
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --duration-slow: 250ms;
+
+  /* Typography */
+  --font-display: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: var(--font-display);
+  --text-caption: 0.72rem;
+  --text-label: 0.78rem;
+  --text-body: 0.9rem;
+  --text-h3: 1.05rem;
+  --text-h2: 1.35rem;
+  --text-h1: clamp(1.65rem, 3vw, 2.15rem);
+
+  /* Chat bridge */
+  --chat-bg: #07070b;
+  --chat-panel: var(--surface);
+  --chat-line: #252530;
+  --chat-muted: var(--text-muted);
+  --chat-accent: var(--purple);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-normal: 0ms;
+    --duration-slow: 0ms;
+  }
+}

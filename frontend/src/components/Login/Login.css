@@ -25,12 +25,16 @@
   width: min(470px, 100%);
   max-height: calc(100vh - 40px);
   overflow: auto;
-  padding: 38px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 20px;
-  background: radial-gradient(circle at 90% 0, rgba(99, 102, 241, 0.24), transparent 34%), #172033;
+  padding: var(--space-8, 38px);
+  border: 1px solid var(--border-strong, rgba(148, 163, 184, 0.24));
+  border-radius: var(--radius-lg, 20px);
+  background:
+    radial-gradient(circle at 90% 0, rgba(99, 102, 241, 0.22), transparent 38%),
+    linear-gradient(165deg, rgba(23, 32, 51, 0.98), rgba(15, 20, 35, 0.98));
   color: var(--text);
-  box-shadow: 0 35px 100px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-lg, 0 35px 100px rgba(0, 0, 0, 0.5));
+  backdrop-filter: blur(var(--blur-strength, 16px));
+  -webkit-backdrop-filter: blur(var(--blur-strength, 16px));
   text-align: left;
   opacity: 1;
   visibility: visible;
@@ -46,8 +50,21 @@
 .login-form { display: grid; gap: 14px; }
 .login-form label { display: grid; gap: 7px; }
 .login-form label span { color: #cbd5e1; font-size: .78rem; font-weight: 700; }
-.login-form input { width: 100%; padding: 13px 14px; border: 1px solid #334155; border-radius: 9px; outline: none; background: #0f172a; color: white; font: inherit; }
-.login-form input:focus { border-color: #818cf8; box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
+.login-form input {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid #334155;
+  border-radius: var(--radius-sm, 10px);
+  outline: none;
+  background: rgba(15, 23, 42, 0.88);
+  color: white;
+  font: inherit;
+  transition: border-color var(--duration-normal, 200ms), box-shadow var(--duration-normal, 200ms);
+}
+.login-form input:focus {
+  border-color: #818cf8;
+  box-shadow: 0 0 0 3px var(--purple-glow-soft, rgba(99, 102, 241, 0.18));
+}
 .password-field { position: relative; display: block; }
 .password-field input { padding-right: 48px; }
 .password-toggle { position: absolute; top: 50%; right: 7px; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; transform: translateY(-50%); border: 0; border-radius: 8px; background: transparent; color: #a5b4fc; font-size: 1.25rem; line-height: 1; cursor: pointer; }
@@ -56,7 +73,26 @@
 .login-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 5px; }
 .login-actions button { padding: 12px; border: 1px solid #475569; border-radius: 9px; background: #263349; color: white; font: inherit; font-weight: 700; cursor: pointer; }
 .login-actions button.active { border-color: var(--primary); background: var(--primary); }
-.login-submit { width: 100%; padding: 13px; border: 0; border-radius: 9px; background: var(--primary); color: white; font: inherit; font-weight: 800; cursor: pointer; }
+.login-submit {
+  width: 100%;
+  padding: 13px;
+  border: 0;
+  border-radius: var(--radius-sm, 10px);
+  background: var(--gradient-primary, var(--primary));
+  color: white;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.28);
+  transition: transform var(--duration-fast, 120ms), box-shadow var(--duration-normal, 200ms), filter var(--duration-normal, 200ms);
+}
+.login-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+.login-submit:active:not(:disabled) {
+  transform: scale(0.98);
+}
 .login-submit:disabled { cursor: wait; opacity: .65; }
 .login-guest { width: 100%; padding: 12px; border: 1px solid #475569; border-radius: 9px; background: transparent; color: #cbd5e1; font: inherit; font-weight: 750; cursor: pointer; }
 .login-guest:hover { border-color: #818cf8; color: #fff; background: rgba(99,102,241,.1); }
@@ -128,7 +164,14 @@
   outline-offset: 2px;
 }
 .login-social-btn:disabled { cursor: wait; opacity: .72; }
-.login-social-btn img { width: 18px; height: 18px; object-fit: contain; flex-shrink: 0; }
+.login-social-btn img,
+.login-social-btn .login-social-google-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: block;
+}
 .login-social-config-hint {
   margin: 0;
   padding: 10px 12px;

@@ -55,11 +55,69 @@ const validateLabTrainBody = (body = {}) => {
     };
 };
 
+const MODEL_LAB_TYPES = new Set(['linear-regression', 'logistic-regression', 'neural-network']);
+const MAX_BATCH_SIZE = Math.min(128, Math.max(8, parseInt(process.env.AI_TRAINING_MAX_BATCH_SIZE || '128', 10)));
+
+const validateModelLabStartBody = (body = {}) => {
+    const modelType = String(body.modelType || body.model_type || '').trim();
+    if (!MODEL_LAB_TYPES.has(modelType)) {
+        return { ok: false, message: 'modelType must be linear-regression, logistic-regression, or neural-network' };
+    }
+    const learningRate = Number(body.learningRate ?? body.learning_rate ?? 0.01);
+    const epochs = parseInt(body.epochs ?? 100, 10);
+    const batchSize = parseInt(body.batchSize ?? body.batch_size ?? 32, 10);
+    const seed = parseInt(body.seed ?? 42, 10);
+    const dataPoints = parseInt(body.dataPoints ?? body.data_points ?? 120, 10);
+
+    if (!Number.isFinite(learningRate) || learningRate < MIN_LEARNING_RATE || learningRate > MAX_LEARNING_RATE) {
+        return { ok: false, message: `learningRate must be between ${MIN_LEARNING_RATE} and ${MAX_LEARNING_RATE}` };
+    }
+    if (!Number.isInteger(epochs) || epochs < MIN_EPOCHS || epochs > MAX_EPOCHS) {
+        return { ok: false, message: `epochs must be between ${MIN_EPOCHS} and ${MAX_EPOCHS}` };
+    }
+    if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > MAX_BATCH_SIZE) {
+        return { ok: false, message: `batchSize must be between 1 and ${MAX_BATCH_SIZE}` };
+    }
+    if (!Number.isInteger(seed) || seed < 0 || seed > 2 ** 30) {
+        return { ok: false, message: 'seed must be a non-negative integer' };
+    }
+    if (!Number.isInteger(dataPoints) || dataPoints < 32 || dataPoints > MAX_DATA_POINTS) {
+        return { ok: false, message: `dataPoints must be between 32 and ${MAX_DATA_POINTS}` };
+    }
+
+    return {
+        ok: true,
+        payload: {
+            modelType,
+            learningRate,
+            epochs,
+            batchSize,
+            seed,
+            dataPoints,
+        },
+    };
+};
+
+const validateModelLabPredictBody = (body = {}) => {
+    const inputs = Array.isArray(body.inputs) ? body.inputs : (Array.isArray(body.x) ? body.x : []);
+    if (!inputs.length || inputs.length > 20) {
+        return { ok: false, message: 'inputs must contain 1-20 numbers' };
+    }
+    const nums = inputs.map((v) => Number(v));
+    if (nums.some((n) => !Number.isFinite(n))) {
+        return { ok: false, message: 'inputs must be finite numbers' };
+    }
+    return { ok: true, payload: { inputs: nums } };
+};
+
 module.exports = {
     validateLabTrainBody,
+    validateModelLabStartBody,
+    validateModelLabPredictBody,
     MAX_EPOCHS,
     MIN_EPOCHS,
     MAX_LEARNING_RATE,
     MIN_LEARNING_RATE,
     MAX_DATA_POINTS,
+    MAX_BATCH_SIZE,
 };

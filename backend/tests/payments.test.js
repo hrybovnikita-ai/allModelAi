@@ -57,6 +57,31 @@ test('Payments: developer mock vs user Stripe checkout', async (t) => {
         assert.match(res.body.message || '', /STRIPE|Payments/i);
     });
 
+    await t.test('POST /api/payments/create-intent rejects invalid plan', async () => {
+        const cookie = await registerAndCookie(`intent-bad-${Date.now()}@example.com`);
+        const res = await request(app)
+            .post('/api/payments/create-intent')
+            .set('Cookie', cookie)
+            .send({ plan: 'developer' });
+        assert.equal(res.status, 400);
+    });
+
+    await t.test('POST /api/payments/create-intent returns 503 when Stripe is not configured', async () => {
+        const cookie = await registerAndCookie(`intent-${Date.now()}@example.com`);
+        const res = await request(app)
+            .post('/api/payments/create-intent')
+            .set('Cookie', cookie)
+            .send({ plan: 'pro' });
+        assert.equal(res.status, 503);
+    });
+
+    await t.test('POST /api/payments/create-intent requires authentication', async () => {
+        const res = await request(app)
+            .post('/api/payments/create-intent')
+            .send({ plan: 'pro' });
+        assert.ok(res.status === 401 || res.status === 403);
+    });
+
     await t.test('POST /api/payments/checkout gives developer access without Stripe for owner email', async () => {
         const registerRes = await request(app)
             .post('/api/auth/register')

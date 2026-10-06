@@ -23,6 +23,7 @@ import Dashboard from "./components/Dashboard/Dashboard";
 import ModelDetails from "./components/ModelDetails/ModelDetails";
 import Chat from "./components/Chat/Chat";
 import Checkout from "./components/Checkout/Checkout";
+import CheckoutSuccess from "./components/Checkout/CheckoutSuccess";
 import SocialAuthCallback from "./components/SocialAuth/SocialAuthCallback";
 import GoogleRedirectRecoveryGate from "./components/SocialAuth/GoogleRedirectRecoveryGate";
 import Workflow from "./components/Workflow/Workflow";
@@ -32,7 +33,6 @@ import ForgotPassword from "./components/ForgotPassword/ForgotPassword";
 import { ApiDocs, InfoPage } from "./components/InfoPage/InfoPage";
 import Studio from "./components/Studio/Studio";
 import CommandPalette from "./components/CommandPalette/CommandPalette";
-import ModelExplorer from "./components/ModelExplorer/ModelExplorer";
 import Arena from "./components/Arena/Arena";
 import ControlCenter from "./components/ControlCenter/ControlCenter";
 import InnovationHub from "./components/InnovationHub/InnovationHub";
@@ -61,6 +61,7 @@ import NextTwelve from "./components/NextTwelve/NextTwelve";
 import CookieConsent from "./components/CookieConsent/CookieConsent";
 import ModelComparison from "./components/ModelComparison/ModelComparison";
 import UsageAnalytics from "./components/UsageAnalytics/UsageAnalytics";
+import ModelExplorer from "./components/ModelExplorer/ModelExplorer";
 
 import EverydayAI from "./components/EverydayAI/EverydayAI";
 import EverydayCards from "./components/EverydayAI/EverydayCards";
@@ -68,6 +69,7 @@ import PythonAILab from "./components/PythonAILab/PythonAILab";
 import AiTrainingHub from "./components/AiTraining/AiTrainingHub";
 import LessonPage from "./components/AiTraining/LessonPage";
 import AiLearningLab from "./components/AiLearning/AiLearningLab";
+import ModelLab from "./components/ModelLab/ModelLab";
 import StorageHub from "./components/StorageHub/StorageHub";
 
 function HomePage() {
@@ -169,9 +171,14 @@ export default function App() {
       <Route path="/ai-training" element={<AiTrainingHub />} />
       <Route path="/ai-training/:lessonId" element={<LessonPage />} />
       <Route path="/ai-learning" element={<AiLearningLab />} />
+      <Route path="/model-lab" element={<ModelLab />} />
       <Route path="/shared/:token" element={<SharedConversation />} />
       <Route path="/login" element={<AuthPage mode="signin" />} />
       <Route path="/register" element={<AuthPage mode="signup" />} />
+      <Route path="/checkout/success" element={<CheckoutSuccess />} />
+      <Route path="/checkout" element={<Checkout />} />
+      <Route path="/checkout/pro" element={<Checkout />} />
+      <Route path="/checkout/enterprise" element={<Checkout />} />
       <Route element={<RequireAuth />}>
       <Route path="/models/:slug" element={<ModelDetails />} />
       <Route path="/prompts" element={<PromptGallery />} />
@@ -180,7 +187,6 @@ export default function App() {
       <Route path="/everyday-ai/:tool" element={<EverydayAI />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/admin" element={<Admin />} />
-      <Route path="/checkout" element={<Checkout />} />
       <Route path="/chat" element={<Chat />} />
       <Route path="/files/:conversationId/:fileId" element={<GeneratedFile />} />
       <Route path="/model-comparison" element={<ModelComparison />} />

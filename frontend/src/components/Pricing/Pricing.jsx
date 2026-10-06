@@ -56,7 +56,7 @@ export default function Pricing() {
             <li>Priority API routing</li>
             <li>Email support</li>
           </ul>
-          <button className="pricing-btn featured-btn" type="button" onClick={() => navigate('/checkout?plan=pro')}>Upgrade to Pro</button>
+          <button className="pricing-btn featured-btn" type="button" onClick={() => navigate('/checkout/pro')}>Upgrade to Pro</button>
         </div>
         <div className="pricing-card">
           <span className="pricing-tier">Enterprise</span>
@@ -68,7 +68,7 @@ export default function Pricing() {
             <li>Custom SLA guarantees</li>
             <li>Self-hosting options</li>
           </ul>
-          <button className="pricing-btn" type="button" onClick={() => navigate('/checkout?plan=plus')}>Choose Power</button>
+          <button className="pricing-btn" type="button" onClick={() => navigate('/checkout/enterprise')}>Choose Power</button>
         </div>
       </div>
     </section>

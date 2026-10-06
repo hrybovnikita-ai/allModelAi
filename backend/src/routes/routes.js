@@ -29,6 +29,8 @@ const {
     deleteChat,
     createPurchase,
     createCheckoutSession,
+    createPaymentIntent,
+    verifyPaymentIntent,
     verifyCheckoutSession,
     mockDeveloperSubscribe,
     getPaymentConfig,
@@ -83,6 +85,14 @@ const {
     getTrainingMetrics,
 } = require('../controllers/aiMlLearningController');
 const {
+    getTrainingHealth,
+    getTrainingModels,
+    postTrainingStart,
+    getTrainingRun,
+    postTrainingPredict,
+    postTrainingOpenAiChat,
+} = require('../controllers/trainingLabController');
+const {
     createWayforpayPayment,
     completeMockWayforpayPayment,
     completeTestWayforpayCheckout,
@@ -136,6 +146,12 @@ router.post('/ai/train/pytorch-linear', requireAuth, postTrainPytorchLinear);
 router.post('/ai/predict', requireAuth, postAiPredict);
 router.get('/ai/training/:id', requireAuth, getTrainingJob);
 router.get('/ai/training/:id/metrics', requireAuth, getTrainingMetrics);
+router.get('/training/health', getTrainingHealth);
+router.get('/training/models', getTrainingModels);
+router.post('/training/start', requireAuth, postTrainingStart);
+router.get('/training/:runId', requireAuth, getTrainingRun);
+router.post('/training/:runId/predict', requireAuth, postTrainingPredict);
+router.post('/training/openai/chat', requireAuth, postTrainingOpenAiChat);
 router.get('/system/health', getSystemHealth);
 
 router.post('/auth/register', registerUser);
@@ -179,6 +195,8 @@ router.post('/payments/wayforpay/mock-complete', requireAuth, completeMockWayfor
 router.post('/payments/wayforpay/test-checkout', requireAuth, completeTestWayforpayCheckout);
 router.get('/payments/wayforpay/status/:orderReference', requireAuth, getWayforpayPaymentStatus);
 router.post('/payments/checkout', requireAuth, createCheckoutSession);
+router.post('/payments/create-intent', requireAuth, createPaymentIntent);
+router.get('/payments/intent/:intentId', requireAuth, verifyPaymentIntent);
 router.post('/payments/mock-subscribe', requireAuth, mockDeveloperSubscribe);
 router.get('/payments/session/:sessionId', requireAuth, verifyCheckoutSession);
 router.get('/credits', requireAuth, getCredits);

@@ -8,6 +8,12 @@ const { subscriptionPlans, normalizePlanKey, periodEndFor } = require('../billin
 const { activateSubscription } = require('../billing/subscriptions');
 const { wayforpayCheckoutAvailable } = require('../wayforpay/config');
 const { buildCheckoutInfo, stripeCheckoutEnabled } = require('../payments/checkoutInfo');
+const {
+    assertStripeCheckoutAllowed,
+    isStripeTestMode,
+    shouldPreferStripeOverWayforpay,
+    stripePriceIdForPlan,
+} = require('../payments/stripeMode');
 const frontendOrigin = (req) => publicAppOrigin(req);
 const crypto = require('node:crypto');
 const { hashPassword, verifyPassword } = require('../password');
@@ -787,6 +793,11 @@ const {
     openRouterKey,
 } = require('../chatProviderRuntime');
 const {
+    isBillingOrQuotaFailure,
+    isTransientCapacityFailure,
+    upstreamErrorMessage,
+} = require('../modelProviderEquivalence');
+const {
     checkUsageLimit,
     hasModelAccess,
     resolveOpenRouterModelId,
@@ -1023,7 +1034,11 @@ const createCheckoutSession = async (req, res) => {
         return res.status(201).json({ developerAccess: true, purchase, redirectUrl: `${frontendOrigin(req)}/checkout?success=developer&plan=developer` });
     }
     if (plan.amount === 0) return res.status(403).json({ message: 'The Developer plan is available only to configured developer accounts.' });
-    if (wayforpayCheckoutAvailable() && process.env.STRIPE_CHECKOUT_WHEN_WAYFORPAY !== 'true') {
+    const stripeGuard = assertStripeCheckoutAllowed();
+    if (!stripeGuard.ok) {
+        return res.status(503).json({ message: stripeGuard.message, code: stripeGuard.code });
+    }
+    if (wayforpayCheckoutAvailable() && !shouldPreferStripeOverWayforpay()) {
         return res.status(409).json({
             message: 'Paid plan checkout uses WayForPay. Use /api/payments/wayforpay/create.',
             primaryProvider: 'wayforpay',
@@ -1035,16 +1050,12 @@ const createCheckoutSession = async (req, res) => {
     }
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
     const checkoutOrigin = frontendOrigin(req);
-    const embedded = req.body.embedded === true;
+    const embedded = req.body.embedded === true || req.body.flow === 'embedded';
     await ensureStripePaymentMethodDomain(stripe, checkoutOrigin);
-    const sessionParams = {
-        mode: 'subscription',
-        customer_email: email,
-        client_reference_id: String(req.user.id),
-        billing_address_collection: 'required',
-        phone_number_collection: { enabled: true },
-        ...stripeCheckoutWalletOptions(),
-        line_items: [{
+    const configuredPriceId = stripePriceIdForPlan(planKey);
+    const lineItems = configuredPriceId
+        ? [{ quantity: 1, price: configuredPriceId }]
+        : [{
             quantity: 1,
             price_data: {
                 currency: 'usd',
@@ -1055,22 +1066,41 @@ const createCheckoutSession = async (req, res) => {
                     description: `${plan.limit.toLocaleString()} AI requests per ${plan.interval}`,
                 },
             },
-        }],
-        metadata: { email, plan: planKey, userName: req.user.name || 'Subscriber' },
-        subscription_data: { metadata: { email, plan: planKey } },
+        }];
+    const testMode = isStripeTestMode();
+    const sessionParams = {
+        mode: 'subscription',
+        customer_email: email,
+        client_reference_id: String(req.user.id),
+        billing_address_collection: 'required',
+        phone_number_collection: { enabled: false },
+        ...stripeCheckoutWalletOptions(),
+        line_items: lineItems,
+        metadata: {
+            email,
+            plan: planKey,
+            userName: req.user.name || 'Subscriber',
+            isTestMode: testMode ? 'true' : 'false',
+        },
+        subscription_data: { metadata: { email, plan: planKey, isTestMode: testMode ? 'true' : 'false' } },
     };
     if (embedded) {
         sessionParams.ui_mode = 'custom';
-        sessionParams.return_url = `${checkoutOrigin}/chat?subscribe=success&session_id={CHECKOUT_SESSION_ID}`;
+        sessionParams.return_url = `${checkoutOrigin}/checkout?success=1&session_id={CHECKOUT_SESSION_ID}`;
     } else {
         sessionParams.success_url = `${checkoutOrigin}/checkout?success=1&session_id={CHECKOUT_SESSION_ID}`;
         sessionParams.cancel_url = `${checkoutOrigin}/checkout?canceled=1&plan=${planKey}`;
     }
     const session = await stripe.checkout.sessions.create(sessionParams);
     if (embedded) {
-        return res.status(201).json({ clientSecret: session.client_secret, sessionId: session.id, embedded: true });
+        return res.status(201).json({
+            clientSecret: session.client_secret,
+            sessionId: session.id,
+            embedded: true,
+            stripeTestMode: testMode,
+        });
     }
-    return res.status(201).json({ checkoutUrl: session.url });
+    return res.status(201).json({ checkoutUrl: session.url, stripeTestMode: testMode });
 };
 
 const getPaymentConfig = (_req, res) => {
@@ -1101,12 +1131,20 @@ const fulfillStripeSession = async (connection, session) => {
             return previous || { email: existing.email, plan: planKey, name: session.metadata.userName || 'Subscriber' };
         }
     }
+    const testPayment = isStripeTestMode() || session.metadata?.isTestMode === 'true';
     const payload = {
         email: session.metadata.email || session.customer_details?.email,
-        name: session.metadata.userName,
+        name: session.metadata.userName || session.customer_details?.name || 'Subscriber',
+        city: session.customer_details?.address?.city || '',
         planKey,
         stripeCustomerId: session.customer,
         stripeSubscriptionId: session.subscription,
+        paymentProvider: 'stripe',
+        orderReference: String(session.id),
+        paymentStatus: testPayment ? 'test_paid' : 'paid',
+        amount: session.amount_total != null ? session.amount_total / 100 : null,
+        currency: session.currency || 'usd',
+        isTestPayment: testPayment,
     };
     return isPostgresConnection(connection)
         ? activateSubscriptionAsync(connection, payload)
@@ -1114,7 +1152,8 @@ const fulfillStripeSession = async (connection, session) => {
 };
 
 const verifyCheckoutSession = async (req, res) => {
-    if (!process.env.STRIPE_SECRET_KEY?.trim()) return res.status(503).json({ message: 'Payments are not configured' });
+    const stripeGuard = assertStripeCheckoutAllowed();
+    if (!stripeGuard.ok) return res.status(503).json({ message: stripeGuard.message, code: stripeGuard.code });
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
     const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
     if (String(session.metadata?.email).toLowerCase() !== String(req.user.email).toLowerCase()) return res.status(403).json({ message: 'This checkout belongs to another account' });
@@ -1122,8 +1161,101 @@ const verifyCheckoutSession = async (req, res) => {
     return res.json({ purchase, plan: subscriptionPlans[purchase.plan] });
 };
 
+const { resolvePaidCheckoutPlan } = require('../payments/paymentIntentPlans');
+
+const fulfillPaymentIntent = async (connection, intent) => {
+    if (intent.status !== 'succeeded') throw new Error('Payment is not complete');
+    const planKey = normalizePlanKey(intent.metadata?.plan);
+    if (!subscriptionPlans[planKey]) throw new Error('Unknown subscription plan');
+    const email = String(intent.metadata?.email || '').toLowerCase();
+    if (!email) throw new Error('Missing payer email on payment intent');
+    const existing = connection.database?.prepare?.(
+        'SELECT email FROM subscription_details WHERE order_reference = ? AND status = ?',
+    )?.get(String(intent.id), 'active');
+    if (existing) {
+        return { email: existing.email, plan: planKey, name: intent.metadata.userName || 'Subscriber' };
+    }
+    const testPayment = isStripeTestMode() || intent.metadata?.isTestMode === 'true';
+    const payload = {
+        email,
+        name: intent.metadata.userName || 'Subscriber',
+        planKey,
+        stripeCustomerId: intent.customer || null,
+        stripeSubscriptionId: String(intent.id),
+        paymentProvider: 'stripe',
+        orderReference: String(intent.id),
+        paymentStatus: testPayment ? 'test_paid' : 'paid',
+        amount: intent.amount != null ? intent.amount / 100 : null,
+        currency: intent.currency || 'usd',
+        isTestPayment: testPayment,
+    };
+    return isPostgresConnection(connection)
+        ? activateSubscriptionAsync(connection, payload)
+        : activateSubscription(connection, payload);
+};
+
+const createPaymentIntent = async (req, res) => {
+    const resolved = resolvePaidCheckoutPlan(req.body.plan);
+    if (!resolved) {
+        return res.status(400).json({ message: 'Choose a valid paid plan: pro or enterprise.' });
+    }
+    const stripeGuard = assertStripeCheckoutAllowed();
+    if (!stripeGuard.ok) {
+        return res.status(503).json({ message: stripeGuard.message, code: stripeGuard.code });
+    }
+    if (!stripeCheckoutEnabled()) {
+        return res.status(503).json({ message: 'Stripe checkout is not enabled for this deployment.' });
+    }
+    const email = String(req.user.email).trim().toLowerCase();
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
+    const testMode = isStripeTestMode();
+    const intent = await stripe.paymentIntents.create({
+        amount: resolved.plan.amount,
+        currency: 'usd',
+        automatic_payment_methods: { enabled: true },
+        metadata: {
+            email,
+            plan: resolved.planKey,
+            checkoutSlug: resolved.slug,
+            userName: req.user.name || 'Subscriber',
+            isTestMode: testMode ? 'true' : 'false',
+        },
+        description: `AllModelAI ${resolved.plan.name}`,
+    });
+    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY?.trim()
+        || process.env.VITE_STRIPE_PUBLISHABLE_KEY?.trim()
+        || null;
+    return res.status(201).json({
+        clientSecret: intent.client_secret,
+        paymentIntentId: intent.id,
+        amount: resolved.plan.amount,
+        currency: 'usd',
+        plan: resolved.slug,
+        planKey: resolved.planKey,
+        stripeTestMode: testMode,
+        publishableKey,
+    });
+};
+
+const verifyPaymentIntent = async (req, res) => {
+    const stripeGuard = assertStripeCheckoutAllowed();
+    if (!stripeGuard.ok) return res.status(503).json({ message: stripeGuard.message, code: stripeGuard.code });
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
+    const intent = await stripe.paymentIntents.retrieve(req.params.intentId);
+    if (String(intent.metadata?.email).toLowerCase() !== String(req.user.email).toLowerCase()) {
+        return res.status(403).json({ message: 'This payment belongs to another account' });
+    }
+    const purchase = await fulfillPaymentIntent(req.app.locals.db, intent);
+    return res.json({
+        purchase,
+        plan: subscriptionPlans[purchase.plan],
+        stripeTestMode: isStripeTestMode() || intent.metadata?.isTestMode === 'true',
+    });
+};
+
 const stripeWebhook = async (req, res) => {
-    if (!process.env.STRIPE_SECRET_KEY?.trim() || !process.env.STRIPE_WEBHOOK_SECRET?.trim()) return res.status(503).send('Stripe webhook is not configured');
+    const stripeGuard = assertStripeCheckoutAllowed();
+    if (!stripeGuard.ok || !process.env.STRIPE_WEBHOOK_SECRET?.trim()) return res.status(503).send('Stripe webhook is not configured');
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
     let event;
     try { event = stripe.webhooks.constructEvent(req.body, req.get('stripe-signature'), process.env.STRIPE_WEBHOOK_SECRET.trim()); }
@@ -1131,6 +1263,9 @@ const stripeWebhook = async (req, res) => {
     const connection = req.app.locals.db;
     if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
         try { await fulfillStripeSession(connection, event.data.object); } catch (error) { return res.status(400).send(error.message); }
+    }
+    if (event.type === 'payment_intent.succeeded') {
+        try { await fulfillPaymentIntent(connection, event.data.object); } catch (error) { return res.status(400).send(error.message); }
     }
     if (event.type === 'customer.subscription.deleted') {
         const updatedAt = new Date().toISOString();
@@ -1225,7 +1360,14 @@ function extractOpenAIStreamDelta(chunk) {
     if (!choice) return '';
     if (typeof choice.delta?.content === 'string') return choice.delta.content;
     if (typeof choice.delta?.text === 'string') return choice.delta.text;
+    if (typeof choice.delta?.reasoning === 'string') return choice.delta.reasoning;
     if (typeof choice.message?.content === 'string') return choice.message.content;
+    const contentParts = choice.delta?.content;
+    if (Array.isArray(contentParts)) {
+        return contentParts
+            .map((part) => (typeof part === 'string' ? part : part?.text || ''))
+            .join('');
+    }
     return '';
 }
 
@@ -1704,6 +1846,112 @@ const createChatResponse = async (req, res) => {
         let fallbackUsed = usePreferredGemini;
         let fallbackModel = usePreferredGemini ? 'gemini' : null;
         let upstreamError = null;
+        let equivalenceViaOpenRouter = false;
+
+        const fetchOpenRouterChat = (gatewayModel) => fetchProvider('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            signal: requestSignal(),
+            headers: { Authorization: `Bearer ${gatewayKey.trim()}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: resolveOpenRouterModelId({
+                    access: creditStatus,
+                    requestedModel: model,
+                    routedModel,
+                    gatewayModel,
+                    usesDirectProvider: false,
+                }),
+                stream: true,
+                max_tokens: outputTokenLimit,
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
+            }),
+        });
+
+        if (!apiResponse.ok && gatewayKey?.trim()) {
+            upstreamError = await apiResponse.json().catch(() => ({}));
+            const detail = upstreamErrorMessage(upstreamError);
+            const billingOrQuota = isBillingOrQuotaFailure(apiResponse.status, detail);
+            const capacity = isTransientCapacityFailure(apiResponse.status, detail);
+            const gatewayModel = providerModels[routedModel];
+
+            if ((billingOrQuota || capacity) && gatewayModel) {
+                if ((routedModel === 'gpt' || routedModel === 'copilot') && isOpenAI) {
+                    apiResponse = await fetchOpenRouterChat(gatewayModel);
+                    if (apiResponse.ok) {
+                        equivalenceViaOpenRouter = true;
+                        isOpenAI = false;
+                        isXAI = false;
+                        isClaude = false;
+                        isGemini = false;
+                        isKimi = false;
+                        isMistral = false;
+                        isCloudflare = false;
+                        logSmartRouter('equivalence fallback', { from: 'openai-direct', to: 'openrouter', routedModel, gatewayModel });
+                    } else {
+                        upstreamError = await apiResponse.json().catch(() => ({}));
+                    }
+                } else if (routedModel === 'mistral' && isMistral && (billingOrQuota || apiResponse.status === 403)) {
+                    apiResponse = await fetchOpenRouterChat(gatewayModel);
+                    if (apiResponse.ok) {
+                        equivalenceViaOpenRouter = true;
+                        isMistral = false;
+                        logSmartRouter('equivalence fallback', { from: 'mistral-direct', to: 'openrouter', gatewayModel });
+                    } else {
+                        upstreamError = await apiResponse.json().catch(() => ({}));
+                    }
+                } else if (routedModel === 'gemini' && isGemini) {
+                    apiResponse = await fetchOpenRouterChat(gatewayModel);
+                    if (apiResponse.ok) {
+                        equivalenceViaOpenRouter = true;
+                        isGemini = false;
+                        logSmartRouter('equivalence fallback', { from: 'gemini-direct', to: 'openrouter', gatewayModel });
+                    } else {
+                        upstreamError = await apiResponse.json().catch(() => ({}));
+                    }
+                } else if (routedModel === 'kimi' && isKimi && directKimiKey && billingOrQuota) {
+                    apiResponse = await fetchOpenRouterChat(gatewayModel);
+                    if (apiResponse.ok) {
+                        equivalenceViaOpenRouter = true;
+                        isKimi = false;
+                        logSmartRouter('equivalence fallback', { from: 'kimi-direct', to: 'openrouter', gatewayModel });
+                    } else {
+                        upstreamError = await apiResponse.json().catch(() => ({}));
+                    }
+                }
+            }
+
+            if (!apiResponse.ok && routedModel === 'claude' && !isClaude && process.env.CLAUDE_API_KEY?.trim() && billingOrQuota) {
+                apiKey = process.env.CLAUDE_API_KEY.trim();
+                isClaude = true;
+                isOpenAI = false;
+                isXAI = false;
+                isGemini = false;
+                isKimi = false;
+                isMistral = false;
+                isCloudflare = false;
+                apiResponse = await fetchProvider('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    signal: requestSignal(),
+                    headers: {
+                        'x-api-key': apiKey.trim(),
+                        'anthropic-version': '2023-06-01',
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model: selectedVariant?.direct || process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+                        stream: true,
+                        max_tokens: outputTokenLimit,
+                        system: systemPrompt,
+                        messages: buildClaudeMessages(normalizedInputMessages),
+                    }),
+                });
+                if (apiResponse.ok) {
+                    logSmartRouter('equivalence fallback', { from: 'openrouter', to: 'anthropic-direct', routedModel });
+                } else {
+                    upstreamError = await apiResponse.json().catch(() => ({}));
+                }
+            }
+        }
+
         // Prefer independently configured Gemini connection for failed non-Gemini provider
         if (!apiResponse.ok && allowFallback && !isGemini && process.env.GEMINI_API_KEY?.trim()) {
             upstreamError = await apiResponse.json().catch(() => ({}));
@@ -2758,6 +3006,8 @@ module.exports = {
     deleteChat,
     createPurchase,
     createCheckoutSession,
+    createPaymentIntent,
+    verifyPaymentIntent,
     verifyCheckoutSession,
     getPaymentConfig,
     getPublicCheckoutInfo,

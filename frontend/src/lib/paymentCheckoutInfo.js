@@ -12,6 +12,21 @@ export function clientWayforpayTestModeEnabled() {
 }
 
 export function buildClientTestCheckoutInfo() {
+  const pk = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
+  const stripeTestPk = pk.startsWith('pk_test_');
+  if (stripeTestPk) {
+    return {
+      primaryProvider: 'stripe',
+      stripeConfigured: true,
+      stripeCheckoutEnabled: true,
+      stripeTestMode: true,
+      showTestModeBanner: true,
+      showStripeTestCardHint: true,
+      testModeBannerText: TEST_MODE_BANNER,
+      checkoutSecureLabel: 'STRIPE TEST CHECKOUT',
+      fromClientFallback: true,
+    };
+  }
   const testMode = clientWayforpayTestModeEnabled();
   if (!testMode) return null;
   return {
@@ -29,7 +44,7 @@ export function buildClientTestCheckoutInfo() {
 export function mergeCheckoutInfo(apiInfo) {
   const fallback = buildClientTestCheckoutInfo();
   if (!apiInfo) return fallback;
-  if (apiInfo.wayforpayTestMode || apiInfo.showTestModeBanner) return apiInfo;
+  if (apiInfo.primaryProvider === 'stripe' || apiInfo.stripeTestMode || apiInfo.showTestModeBanner) return apiInfo;
   if (fallback && apiInfo.primaryProvider !== 'stripe') {
     return { ...fallback, ...apiInfo, ...fallback };
   }

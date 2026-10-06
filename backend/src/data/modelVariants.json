@@ -1,6 +1,7 @@
 {
   "gemini": [
     {"id":"3.1-pro","name":"Gemini 3.1","label":"Pro","speed":"High","description":"Complex tasks, code and reasoning","gateway":"google/gemini-3.1-pro-preview","direct":"gemini-3.1-pro-preview"},
+    {"id":"3.5-pro","name":"Gemini 3.5","label":"Pro","speed":"High","description":"Advanced reasoning (Google API: gemini-3.1-pro-preview)","gateway":"google/gemini-3.1-pro-preview","direct":"gemini-3.1-pro-preview"},
     {"id":"3.5-flash","name":"Gemini 3.5","label":"Flash","speed":"Fast","description":"Everyday tasks and fast answers","gateway":"google/gemini-3.5-flash","direct":"gemini-3.5-flash"},
     {"id":"3.6-flash","name":"Gemini 3.6","label":"Flash","speed":"Fast","description":"Code, images and documents","gateway":"google/gemini-3.6-flash","direct":"gemini-3.6-flash"}
   ],

@@ -19,9 +19,8 @@ import { canUseGoogleRedirectSignIn } from '../../lib/storageAvailability';
 import { markFreshLogin } from '../../lib/session';
 import { socialError } from '../../lib/socialSession';
 import AuthDebugPanel from '../SocialAuth/AuthDebugPanel';
+import GoogleSignInIcon from './GoogleSignInIcon';
 import './Login.css';
-
-const GOOGLE_ICON = 'https://cdn.simpleicons.org/google';
 
 export default function Login(props) {
   return <LoginForm {...props} />;
@@ -448,7 +447,7 @@ function LoginForm({
             title={!firebaseSocialReady ? 'Firebase web configuration is missing' : undefined}
             onClick={() => handleSocialSignIn('Google')}
           >
-            <img src={GOOGLE_ICON} alt="" />
+            <GoogleSignInIcon className="login-social-google-icon" />
             <span>
               {socialBusy === 'Google' ? 'Connecting to Google…' : 'Continue with Google'}
             </span>

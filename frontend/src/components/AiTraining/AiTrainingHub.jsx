@@ -54,6 +54,9 @@ export default function AiTrainingHub() {
           <Link to="/python-ai" className="py-btn-nav">
             PyTorch Lab
           </Link>
+          <Link to="/model-lab" className="py-btn-nav">
+            Model Lab
+          </Link>
           <Link to="/chat" className="py-btn-nav primary">
             Chat
           </Link>

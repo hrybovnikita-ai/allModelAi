@@ -12,7 +12,7 @@ import { peekRedirectIntent } from '../../lib/socialRedirectState.js';
 import { socialAuthDebug } from '../../lib/socialAuthDiagnostics.js';
 import { COOKIE_CONSENT_UPDATED_EVENT } from '../../lib/cookieConsent.js';
 
-const SessionContext = createContext(null);
+export const SessionContext = createContext(null);
 
 function initialStatus() {
   if (isGoogleRedirectRecoveryPending()) {

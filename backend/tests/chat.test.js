@@ -26,6 +26,35 @@ describe('secure chat and knowledge API',()=>{
      assert.equal(calls.length, 2);
    } finally { global.fetch = async () => upstream(); }
  });
+ test('retries GPT through OpenRouter when direct OpenAI billing fails', async () => {
+   const previousOpenAi = process.env.OPENAI_API_KEY;
+   process.env.OPENAI_API_KEY = 'openai-test-key';
+   const urls = [];
+   global.fetch = async (url, options) => {
+     urls.push(String(url));
+     if (urls.length === 1) {
+       return new Response(JSON.stringify({ error: { message: 'You have no credits remaining' } }), { status: 429, headers: { 'Content-Type': 'application/json' } });
+     }
+     return upstream();
+   };
+   try {
+     const response = await api.post('/api/chat').send({
+       model: 'gpt',
+       variant: 'mini',
+       temporary: true,
+       messages: [{ role: 'user', text: 'hello' }],
+     });
+     assert.equal(response.status, 200);
+     assert.match(response.text, /Secure answer/);
+     assert.match(urls[0], /api\.openai\.com/);
+     assert.match(urls[1], /openrouter\.ai/);
+   } finally {
+     global.fetch = async () => upstream();
+     if (previousOpenAi === undefined) delete process.env.OPENAI_API_KEY;
+     else process.env.OPENAI_API_KEY = previousOpenAi;
+   }
+ });
+
  test('passes the selected Gemini version to the direct API', async () => {
    const previous = process.env.GEMINI_API_KEY;
    process.env.GEMINI_API_KEY = 'test-gemini';

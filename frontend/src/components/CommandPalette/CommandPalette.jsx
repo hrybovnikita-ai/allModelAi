@@ -20,16 +20,10 @@ const commands = [
   ['Settings', 'Manage your account', '/settings', '⚙'],
 ];
 
-export default function CommandPalette() {
+function CommandPaletteAuthenticated() {
   const navigate = useNavigate();
-  const { authLoading, status, user } = useSession();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-
-  const paletteAllowed = !authLoading
-    && !isGoogleRedirectRecoveryPending()
-    && status === 'authenticated'
-    && Boolean(user?.email);
 
   const visible = useMemo(
     () => commands.filter((item) => `${item[0]} ${item[1]}`.toLowerCase().includes(query.toLowerCase())),
@@ -37,7 +31,6 @@ export default function CommandPalette() {
   );
 
   useEffect(() => {
-    if (!paletteAllowed) return undefined;
     const handler = (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
@@ -49,18 +42,7 @@ export default function CommandPalette() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [paletteAllowed]);
-
-  useEffect(() => {
-    if (!paletteAllowed) {
-      setOpen(false);
-      setQuery('');
-    }
-  }, [paletteAllowed]);
-
-  if (!paletteAllowed) {
-    return null;
-  }
+  }, []);
 
   if (!open) {
     return (
@@ -114,4 +96,19 @@ export default function CommandPalette() {
       </section>
     </div>
   );
+}
+
+export default function CommandPalette() {
+  const { authLoading, status, user } = useSession();
+
+  const paletteAllowed = !authLoading
+    && !isGoogleRedirectRecoveryPending()
+    && status === 'authenticated'
+    && Boolean(user?.email);
+
+  if (!paletteAllowed) {
+    return null;
+  }
+
+  return <CommandPaletteAuthenticated key={user.email} />;
 }

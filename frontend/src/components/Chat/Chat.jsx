@@ -20,6 +20,7 @@ import './Chat.css';
 import './ChatApi.css';
 import './ChatDarkViolet.css';
 import './ChatSidebarCollapse.css';
+import './ChatPremium.css';
 import './ComposerInput.css';
 import SidebarIconButton from './SidebarIconButton';
 import CreateProjectModal, { ProjectIconBadge } from './CreateProjectModal';
@@ -1936,7 +1937,7 @@ export default function Chat() {
 
   return (
     <main
-      className={`chat-page ${standaloneApp ? 'chat-page--standalone' : ''} ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${sidebarResizing ? 'sidebar-width-resizing' : ''}`}
+      className={`chat-page ${standaloneApp ? 'chat-page--standalone' : ''} ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${sidebarResizing ? 'sidebar-width-resizing' : ''} ${isSending ? 'chat-busy' : ''}`}
       style={!isSidebarCollapsed ? { '--chat-sidebar-width': `${sidebarWidth}px` } : undefined}
     >
       <button className={`sidebar-backdrop ${sidebarOpen ? 'visible' : ''}`} aria-label={t("Close sidebar")} onClick={() => setSidebarOpen(false)} />
