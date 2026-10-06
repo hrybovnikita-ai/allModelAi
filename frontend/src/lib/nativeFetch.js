@@ -1,7 +1,9 @@
 import {
+  coerceApiUrlToSameOrigin,
   getApiBase,
   isCapacitorWebViewHost,
   nativeClientHeaders,
+  prefersSameOriginApi,
   requiresAbsoluteApiBase,
   resolveApiUrl,
 } from './apiBase.js';
@@ -13,6 +15,9 @@ function isApiLikePath(pathname) {
 
 function rewriteRequestUrl(input) {
   if (typeof input !== 'string') return input;
+
+  const coerced = coerceApiUrlToSameOrigin(input);
+  if (coerced !== input) return coerced;
 
   if (input.startsWith('/') && isApiLikePath(input)) {
     return resolveApiUrl(input);
@@ -35,6 +40,7 @@ function rewriteRequestUrl(input) {
 function shouldPatchFetch() {
   if (import.meta.env?.VITE_CAPACITOR_NATIVE === 'true') return true;
   if (typeof window !== 'undefined' && isCapacitorWebViewHost()) return true;
+  if (typeof window !== 'undefined' && prefersSameOriginApi()) return true;
   return requiresAbsoluteApiBase();
 }
 
@@ -48,19 +54,24 @@ function patchFetch() {
     Object.entries({ ...nativeClientHeaders(), ...nativeSessionHeaders() }).forEach(([key, value]) => {
       headers.set(key, value);
     });
+    const nextInit = {
+      ...init,
+      credentials: init.credentials ?? 'include',
+      headers,
+    };
 
     if (typeof input === 'string') {
-      return originalFetch(rewriteRequestUrl(input), { ...init, headers });
+      return originalFetch(rewriteRequestUrl(input), nextInit);
     }
 
     if (input instanceof Request) {
       const rewritten = rewriteRequestUrl(input.url);
       if (rewritten !== input.url) {
-        return originalFetch(new Request(rewritten, input), { ...init, headers });
+        return originalFetch(new Request(rewritten, input), nextInit);
       }
     }
 
-    return originalFetch(input, { ...init, headers });
+    return originalFetch(input, nextInit);
   };
 
   window.__allmodelaiFetchPatched = true;

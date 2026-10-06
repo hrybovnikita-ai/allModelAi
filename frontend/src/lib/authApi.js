@@ -1,8 +1,10 @@
 import {
+  coerceApiUrlToSameOrigin,
   DEFAULT_CAPACITOR_NATIVE_API_ORIGIN,
   getApiBase,
   isCapacitorWebViewHost,
   nativeClientHeaders,
+  prefersSameOriginApi,
   requiresAbsoluteApiBase,
   resolveApiUrl,
 } from './apiBase.js';
@@ -22,7 +24,11 @@ function normalizeAuthPath(path) {
  */
 export function resolveAuthApiUrl(path) {
   const normalized = normalizeAuthPath(path);
-  let url = resolveApiUrl(normalized);
+  let url = coerceApiUrlToSameOrigin(resolveApiUrl(normalized));
+
+  if (prefersSameOriginApi() && url.startsWith('/api')) {
+    return url;
+  }
 
   const needsRewrite =
     url.startsWith('/api')

@@ -5,7 +5,6 @@ import './index.css'
 import './styles/style.css'
 import App from './App.jsx'
 import { SessionProvider } from './components/Session/SessionProvider.jsx'
-import { restoreSession } from './lib/session.js'
 import { applyDeviceProfile } from './lib/deviceProfile.js'
 import { installNativeFetchInterceptor } from './lib/nativeFetch.js'
 import { initPwaInstallPrompt } from './lib/pwaInstall.js'
@@ -14,7 +13,6 @@ import { ensureFirebaseSocialConfigLoaded } from './lib/loadFirebaseConfig.js'
 import { runGoogleRedirectRecovery } from './lib/socialSignIn.js'
 
 installNativeFetchInterceptor()
-void restoreSession()
 void ensureFirebaseSocialConfigLoaded().then(() => runGoogleRedirectRecovery('MainBootstrap'))
 
 function readAppearance() {

@@ -76,6 +76,53 @@ export function requiresAbsoluteApiBase() {
 }
 
 /**
+ * Production SPA served from a public HTTPS host (Vercel/custom domain).
+ * API calls must stay same-origin (/api → backend proxy) so Safari treats session cookies as first-party.
+ */
+export function isHostedWebApp(location = typeof window !== 'undefined' ? window.location : null) {
+  if (!location) return false;
+  if (isCapacitorNative() || isCapacitorWebViewHost(location)) return false;
+  const hostname = String(location.hostname || '').toLowerCase();
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return false;
+  return String(location.protocol || '').toLowerCase() === 'https:' || hostname.endsWith('.vercel.app');
+}
+
+export function prefersSameOriginApi() {
+  return isHostedWebApp();
+}
+
+function isApiLikePathname(pathname = '') {
+  return pathname.startsWith('/api') || pathname.startsWith('/auth');
+}
+
+/** Rewrite accidental cross-origin Render API URLs back to first-party paths on the public site. */
+export function coerceApiUrlToSameOrigin(url) {
+  if (!prefersSameOriginApi() || !url) return url;
+  if (!/^https?:\/\//i.test(url)) return url;
+  try {
+    const parsed = new URL(url);
+    if (!isApiLikePathname(parsed.pathname)) return url;
+    const pageOrigin = getBrowserApiOrigin();
+    if (pageOrigin && parsed.origin === pageOrigin) {
+      return `${parsed.pathname}${parsed.search}`;
+    }
+    const envRemote = ENV_API_BASE || ENV_REMOTE_API_FALLBACK;
+    if (envRemote) {
+      const remoteOrigin = new URL(envRemote).origin;
+      if (parsed.origin === remoteOrigin) {
+        return `${parsed.pathname}${parsed.search}`;
+      }
+    }
+    if (/\.onrender\.com$/i.test(parsed.hostname) && isApiLikePathname(parsed.pathname)) {
+      return `${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    return url;
+  }
+  return url;
+}
+
+/**
  * Absolute API origin for Capacitor / native WebView.
  * Empty string in normal browser (same-origin or Vite proxy).
  */
@@ -114,6 +161,10 @@ export function usesRemoteApiOrigin() {
 }
 
 export function getApiBase() {
+  if (prefersSameOriginApi()) {
+    return '';
+  }
+
   if (ENV_API_BASE) return ENV_API_BASE;
 
   if (isCapacitorWebViewHost() || requiresAbsoluteApiBase()) {
@@ -162,6 +213,10 @@ export function resolveApiUrl(path) {
   if (!path) return getApiBase() || '/';
 
   if (/^https?:\/\//i.test(path)) {
+    const sameOriginPath = coerceApiUrlToSameOrigin(path);
+    if (sameOriginPath !== path) {
+      return sameOriginPath;
+    }
     if (requiresAbsoluteApiBase() && /^https?:\/\/localhost(?::\d+)?\//i.test(path)) {
       try {
         const parsed = new URL(path);
@@ -178,6 +233,10 @@ export function resolveApiUrl(path) {
   }
 
   const normalized = path.startsWith('/') ? path : `/${path}`;
+
+  if (prefersSameOriginApi() && isApiLikePathname(normalized)) {
+    return normalized;
+  }
 
   const needsAbsolute =
     requiresAbsoluteApiBase()
@@ -203,7 +262,7 @@ export function resolveApiUrl(path) {
     return `${sameOrigin}${normalized}`;
   }
 
-  if (ENV_REMOTE_API_FALLBACK) {
+  if (ENV_REMOTE_API_FALLBACK && !prefersSameOriginApi()) {
     return `${ENV_REMOTE_API_FALLBACK}${normalized}`;
   }
 
@@ -213,6 +272,9 @@ export function resolveApiUrl(path) {
 export function nativeClientHeaders() {
   if (isCapacitorNative()) {
     return { 'X-AllModelAI-Client': 'capacitor' };
+  }
+  if (prefersSameOriginApi()) {
+    return {};
   }
   if (requiresAbsoluteApiBase() || usesRemoteApiOrigin()) {
     return { 'X-AllModelAI-Client': 'web' };

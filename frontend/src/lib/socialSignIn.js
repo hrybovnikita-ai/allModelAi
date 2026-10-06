@@ -9,6 +9,7 @@ import {
 } from 'firebase/auth';
 import { ensureSocialAuthReady, getEffectiveFirebaseConfig, getFirebaseOAuthOrigin } from './firebase.js';
 import { isCapacitorNative } from './apiBase.js';
+import { markFreshLogin } from './session.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
 import { SOCIAL_PROVIDER_LABELS } from './socialProviders.js';
 import { describeRedirectRecoveryFailure, socialAuthDebug } from './socialAuthDiagnostics.js';
@@ -342,6 +343,7 @@ export function navigateAfterSocialLogin(user, { navigate, replaceDashboard = fa
   if (!user?.email) return;
   const useHardNav = replaceDashboard || shouldPreferGoogleRedirectSignIn() || peekRedirectIntent();
   socialAuthDebug('DASHBOARD_REDIRECT', { replace: useHardNav });
+  markFreshLogin();
   clearSocialRedirectIntent();
   if (useHardNav) {
     window.location.replace('/dashboard');

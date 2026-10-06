@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
+  isFreshLoginGraceActive,
   readStoredSessionUser,
   restoreSession,
   SESSION_UPDATED_EVENT,
@@ -15,10 +16,16 @@ export function SessionProvider({ children }) {
   }));
 
   const applySessionUser = useCallback((user) => {
-    setState({
-      status: user?.email ? 'authenticated' : 'anonymous',
-      user: user?.email ? user : null,
-    });
+    if (user?.email) {
+      setState({ status: 'authenticated', user });
+      return;
+    }
+    const hint = readStoredSessionUser();
+    if (hint?.email && isFreshLoginGraceActive()) {
+      setState({ status: 'authenticated', user: hint });
+      return;
+    }
+    setState({ status: 'anonymous', user: null });
   }, []);
 
   const refresh = useCallback(async ({ force = false } = {}) => {

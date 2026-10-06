@@ -1,11 +1,13 @@
 import { resolveAuthApiUrl } from './authApi.js';
-import { isCapacitorNative, nativeClientHeaders, usesRemoteApiOrigin } from './apiBase.js';
+import { isCapacitorNative, nativeClientHeaders, prefersSameOriginApi, usesRemoteApiOrigin } from './apiBase.js';
 import { isMobileWebSafari } from './socialSignInEnv.js';
 import { socialAuthDebug } from './socialAuthDiagnostics.js';
 import { readJsonBody } from './httpJson.js';
 
 const SESSION_CLEARED_EVENT = 'allmodelai:session-cleared';
 export const SESSION_UPDATED_EVENT = 'allmodelai:session-updated';
+const FRESH_LOGIN_KEY = 'allmodelai_fresh_login';
+const FRESH_LOGIN_GRACE_MS = 120000;
 
 let verifiedSession = null;
 let pendingSession = null;
@@ -96,6 +98,45 @@ function dispatchSessionUpdated(user) {
   globalThis.dispatchEvent(new CustomEvent(SESSION_UPDATED_EVENT, { detail: { user } }));
 }
 
+export function markFreshLogin() {
+  try {
+    getStorage().setItem(FRESH_LOGIN_KEY, String(Date.now()));
+  } catch {
+    /* Safari private mode */
+  }
+}
+
+export function clearFreshLoginMark() {
+  try {
+    getStorage().removeItem(FRESH_LOGIN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function isFreshLoginGraceActive(maxMs = FRESH_LOGIN_GRACE_MS) {
+  try {
+    const raw = getStorage().getItem(FRESH_LOGIN_KEY);
+    if (!raw) return false;
+    const started = Number(raw);
+    if (!Number.isFinite(started)) return false;
+    return Date.now() - started < maxMs;
+  } catch {
+    return false;
+  }
+}
+
+function shouldTrustClientSessionHint(storedHint) {
+  if (!storedHint?.email) return false;
+  return Boolean(
+    getNativeSessionToken()
+    || isMobileWebSafari()
+    || usesRemoteApiOrigin()
+    || prefersSameOriginApi()
+    || isFreshLoginGraceActive(),
+  );
+}
+
 /** Client-side session hint (server HttpOnly cookie remains source of truth). */
 export function readStoredSessionUser() {
   const saved = getStorage().getItem('allmodelai_user');
@@ -157,7 +198,12 @@ export async function restoreSession({ force = false } = {}) {
   const request = { generation };
   request.promise = (async () => {
     const storedHint = sessionRestoreHintFromStorage(saved);
-    const retryDelays = storedHint && (isMobileWebSafari() || getNativeSessionToken()) ? [0, 120, 320] : [0];
+    const retryDelays = storedHint && (
+      isMobileWebSafari()
+      || getNativeSessionToken()
+      || prefersSameOriginApi()
+      || isFreshLoginGraceActive()
+    ) ? [0, 120, 320, 640] : [0];
 
     for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
       if (retryDelays[attempt] > 0) {
@@ -170,6 +216,7 @@ export async function restoreSession({ force = false } = {}) {
 
       if (response.ok) {
         socialAuthDebug('SESSION_RESTORED', { source: 'api', attempt });
+        clearFreshLoginMark();
         return rememberSession(data.user);
       }
       if (response.status !== 401) {
@@ -177,13 +224,15 @@ export async function restoreSession({ force = false } = {}) {
       }
     }
 
-    if (storedHint && (getNativeSessionToken() || isMobileWebSafari() || usesRemoteApiOrigin())) {
+    if (shouldTrustClientSessionHint(storedHint)) {
       socialAuthDebug('SESSION_RESTORED', { source: 'client-hint', email: storedHint.email });
       return rememberSession(storedHint);
     }
 
     verifiedSession = null;
-    storage.removeItem('allmodelai_user');
+    if (!isFreshLoginGraceActive()) {
+      storage.removeItem('allmodelai_user');
+    }
     return null;
   })();
   pendingSession = request;
@@ -199,6 +248,7 @@ export async function confirmSession(user) {
   if (!user?.email) {
     throw new Error('Your sign-in could not be verified. Please retry.');
   }
+  markFreshLogin();
   rememberSession(user);
 
   const matchesUser = (candidate) =>
@@ -277,6 +327,7 @@ export function clearAllSessionData() {
   const storage = getStorage();
   storage.removeItem('allmodelai_user');
   clearNativeSessionToken();
+  clearFreshLoginMark();
   dispatchSessionCleared();
 }
 

@@ -42,7 +42,7 @@ test('isViteDevServerHost detects local Vite ports', () => {
   assert.equal(isViteDevServerHost({ hostname: 'localhost', port: '' }), false);
 });
 
-test('resolveApiUrl uses window.location.origin on production web hosts', () => {
+test('resolveApiUrl keeps first-party relative /api paths on production web hosts', () => {
   const originalWindow = globalThis.window;
   globalThis.window = {
     location: { protocol: 'https:', hostname: 'all-model-ai.vercel.app', port: '', origin: 'https://all-model-ai.vercel.app' },
@@ -51,7 +51,7 @@ test('resolveApiUrl uses window.location.origin on production web hosts', () => 
   try {
     assert.equal(
       resolveApiUrl('/api/status/models'),
-      'https://all-model-ai.vercel.app/api/status/models',
+      '/api/status/models',
     );
     assert.equal(getBrowserApiOrigin(), 'https://all-model-ai.vercel.app');
   } finally {
