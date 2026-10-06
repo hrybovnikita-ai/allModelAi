@@ -12,7 +12,10 @@ import {
   completeGooglePopupSignIn,
   isGoogleRedirectRecoveryPending,
   launchGooglePopupSignIn,
+  startGoogleRedirectSignIn,
 } from '../../lib/socialSignIn';
+import { shouldPreferGoogleRedirectSignIn } from '../../lib/socialSignInEnv';
+import { markFreshLogin } from '../../lib/session';
 import { socialError } from '../../lib/socialSession';
 import './Login.css';
 
@@ -41,7 +44,7 @@ function LoginForm({
   const [successNotice, setSuccessNotice] = useState('');
   const [firebaseSocialReady, setFirebaseSocialReady] = useState(() => isFirebaseSocialConfigured());
   const [firebaseConfigChecked, setFirebaseConfigChecked] = useState(() => isFirebaseSocialConfigured());
-  const [authReadyForPopup, setAuthReadyForPopup] = useState(false);
+  const [authReadyForGoogle, setAuthReadyForGoogle] = useState(false);
 
   useEffect(() => {
     if (isGoogleRedirectRecoveryPending()) {
@@ -61,7 +64,7 @@ function LoginForm({
         if (active) {
           setFirebaseSocialReady(true);
           setFirebaseConfigChecked(true);
-          setAuthReadyForPopup(true);
+          setAuthReadyForGoogle(true);
         }
         return;
       }
@@ -71,7 +74,7 @@ function LoginForm({
       setFirebaseConfigChecked(true);
       if (ready) {
         await ensureSocialAuthReady();
-        if (active) setAuthReadyForPopup(true);
+        if (active) setAuthReadyForGoogle(true);
       }
     })();
     return () => {
@@ -80,7 +83,7 @@ function LoginForm({
   }, []);
 
   const handleSocialSignIn = (provider) => {
-    if (submitting || socialBusy || !authReadyForPopup || !firebaseSocialReady) {
+    if (submitting || socialBusy || !authReadyForGoogle || !firebaseSocialReady) {
       if (!firebaseSocialReady && firebaseConfigChecked) {
         setError(
           `Google sign-in is not configured. Set ${getMissingFirebaseConfigKeys().join(', ')} in frontend/.env or FIREBASE_WEB_* on the backend.`,
@@ -90,6 +93,19 @@ function LoginForm({
     }
     setError('');
     setSocialBusy(provider);
+
+    if (shouldPreferGoogleRedirectSignIn()) {
+      void (async () => {
+        try {
+          await startGoogleRedirectSignIn(provider, { rememberMe }, 'ios-safari');
+        } catch (requestError) {
+          setError(socialError(requestError));
+          setSocialBusy(null);
+        }
+      })();
+      return;
+    }
+
     let launched;
     try {
       launched = launchGooglePopupSignIn();
@@ -164,6 +180,7 @@ function LoginForm({
 
       applyAuthResponsePayload(data);
       const user = await confirmSession(data.user);
+      markFreshLogin();
 
       document.activeElement?.blur();
 
@@ -233,7 +250,7 @@ function LoginForm({
     return () => document.removeEventListener('keydown', closeWithEscape);
   }, [onClose]);
 
-  const socialDisabled = submitting || Boolean(socialBusy) || !authReadyForPopup;
+  const socialDisabled = submitting || Boolean(socialBusy) || !authReadyForGoogle;
 
   const modalTree = (
     <div className="login-overlay" role="presentation">

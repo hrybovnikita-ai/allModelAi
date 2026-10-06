@@ -14,7 +14,11 @@ import { exchangeSocialSession, prepareSocialSession } from './socialSession.js'
 import { SOCIAL_PROVIDER_LABELS } from './socialProviders.js';
 import { authLog, describeRedirectRecoveryFailure, socialAuthDebug } from './socialAuthDiagnostics.js';
 import { stashFirebaseIdToken } from './firebaseSessionFallback.js';
-import { isMobileWebSafari, shouldTryGooglePopupFirst } from './socialSignInEnv.js';
+import {
+  isMobileWebSafari,
+  shouldPreferGoogleRedirectSignIn,
+  shouldTryGooglePopupFirst,
+} from './socialSignInEnv.js';
 import { consumeFirebaseRedirectResult, hasRedirectResultBeenConsumed } from './firebaseRedirectCoordinator.js';
 import { bootstrapGoogleRedirectRecovery, waitForGoogleRedirectRecovery } from './googleRedirectRecovery.js';
 import {
@@ -99,7 +103,13 @@ export function cancelSocialLink() {
 }
 
 function shouldUseRedirectSignInFirst() {
-  return isCapacitorNative();
+  return isCapacitorNative() || shouldPreferGoogleRedirectSignIn();
+}
+
+export async function startGoogleRedirectSignIn(name, options = {}, reason = 'ios-safari') {
+  await ensureSocialAuthReady();
+  const auth = getSocialAuth();
+  return beginRedirectSignIn(auth, name, options, reason);
 }
 
 async function beginRedirectSignIn(auth, name, options, reason) {
@@ -128,6 +138,9 @@ async function beginRedirectSignIn(auth, name, options, reason) {
  * Requires ensureSocialAuthReady() to have completed during app/login mount.
  */
 export function launchGooglePopupSignIn() {
+  if (shouldPreferGoogleRedirectSignIn()) {
+    throw Object.assign(new Error('Use redirect sign-in on this device.'), { code: 'auth/redirect-required' });
+  }
   reconcileStaleRedirectIntent();
   clearSocialRedirectIntent();
   if (typeof window !== 'undefined' && !getFirebaseOAuthOrigin()) {

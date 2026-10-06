@@ -5,6 +5,7 @@ import './index.css'
 import './styles/style.css'
 import App from './App.jsx'
 import { SessionProvider } from './components/Session/SessionProvider.jsx'
+import RouteErrorBoundary from './components/ErrorBoundary/RouteErrorBoundary.jsx'
 import { applyDeviceProfile } from './lib/deviceProfile.js'
 import { installNativeFetchInterceptor } from './lib/nativeFetch.js'
 import { initPwaInstallPrompt } from './lib/pwaInstall.js'
@@ -23,8 +24,12 @@ void ensureFirebaseSocialConfigLoaded()
   })
 
 function readAppearance() {
-  try { return JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}') || {} }
-  catch { return {} }
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('allmodelai_appearance') : null;
+    return JSON.parse(raw || '{}') || {};
+  } catch {
+    return {};
+  }
 }
 const savedAppearance = readAppearance()
 const savedMessageColor = !savedAppearance.textColor || savedAppearance.textColor.toLowerCase() === '#ffffff' ? '#8b5cf6' : savedAppearance.textColor
@@ -54,9 +59,11 @@ void initServiceWorker()
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
-      <SessionProvider>
-        <App />
-      </SessionProvider>
+      <RouteErrorBoundary>
+        <SessionProvider>
+          <App />
+        </SessionProvider>
+      </RouteErrorBoundary>
     </BrowserRouter>
   </StrictMode>,
 )
