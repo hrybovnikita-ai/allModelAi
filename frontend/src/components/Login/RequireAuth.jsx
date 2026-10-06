@@ -1,6 +1,7 @@
 import { useLanguage } from '../../lib/useLanguage';
 import { useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { isGoogleRedirectRecoveryPending } from '../../lib/socialSignIn';
 import { isLogoutInProgress, restoreSession, subscribeSessionCleared } from '../../lib/session';
 
 export default function RequireAuth() {
@@ -24,6 +25,10 @@ export default function RequireAuth() {
   useEffect(() => subscribeSessionCleared(() => {
     setSession({ status: 'anonymous', user: null });
   }), []);
+
+  if (isGoogleRedirectRecoveryPending()) {
+    return <main className="dashboard-page" role="status">{t('Finishing Google sign-in…')}</main>;
+  }
 
   if (session.status === 'loading') {
     return <main className="dashboard-page" role="status">{t('Checking your session...')}</main>;

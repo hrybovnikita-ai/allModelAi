@@ -57,11 +57,12 @@ export function socialError(error) {
     IDENTITY_CONFLICT: 'This provider account is already linked to another AllModelAI user.',
     SESSION_CHANGED: 'Your session changed. Sign in again and retry linking.',
     SOCIAL_AUTH_FAILED: 'We could not complete sign-in. Please try again.',
+    REDIRECT_RESULT_MISSING:
+      'Google sign-in could not be completed after redirect. Please try again, or use email and password.',
   };
   if (error.code && messages[error.code]) return messages[error.code];
   const providerHint = String(error.message || '');
   if (/apple/i.test(providerHint)) return "We couldn't complete Apple sign-in. Please try again.";
   if (/github/i.test(providerHint)) return 'GitHub authentication failed. Please try again.';
-  if (/google/i.test(providerHint)) return 'Google sign-in was cancelled.';
   return error.message || 'Social sign-in failed. Please retry.';
 }

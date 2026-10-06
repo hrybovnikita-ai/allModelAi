@@ -8,7 +8,7 @@ import { validateRegistrationForm } from '../../lib/authValidation';
 import { getMissingFirebaseConfigKeys, isFirebaseSocialConfigured } from '../../lib/firebase';
 import { ensureFirebaseSocialConfigLoaded } from '../../lib/loadFirebaseConfig';
 import { consumeStoredSocialAuthError } from '../SocialAuth/GoogleRedirectRecoveryGate';
-import { socialSignIn } from '../../lib/socialSignIn';
+import { isGoogleRedirectRecoveryPending, socialSignIn } from '../../lib/socialSignIn';
 import { socialError } from '../../lib/socialSession';
 import './Login.css';
 
@@ -39,6 +39,9 @@ function LoginForm({
   const [firebaseConfigChecked, setFirebaseConfigChecked] = useState(() => isFirebaseSocialConfigured());
 
   useEffect(() => {
+    if (isGoogleRedirectRecoveryPending()) {
+      return;
+    }
     const storedSocialError = consumeStoredSocialAuthError();
     if (storedSocialError) {
       setError(storedSocialError);

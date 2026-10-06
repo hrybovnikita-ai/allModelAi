@@ -41,4 +41,12 @@ test('link intent is explicit and social dashboard navigation follows confirmed 
   assert.match(login, /await socialSignIn[\s\S]*?navigate\('\/dashboard'/);
   assert.match(socialError({ code: 'auth/popup-blocked' }), /Allow popups/);
   assert.match(socialError({ code: 'auth/popup-closed-by-user' }), /cancelled/i);
+  assert.match(
+    socialError({ code: 'REDIRECT_RESULT_MISSING', message: 'Google sign-in could not be completed' }),
+    /could not be completed/i,
+  );
+  assert.doesNotMatch(
+    socialError({ code: 'REDIRECT_RESULT_MISSING', message: 'Google sign-in could not be completed' }),
+    /^Google sign-in was cancelled\.$/,
+  );
 });

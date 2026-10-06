@@ -161,6 +161,7 @@ async function signInWithProvider(auth, name, options) {
     const challenge = await prepareBackendChallenge(options);
     saveRedirectIntent(name, { ...options, challengeState: challenge?.state }, { phase: 'awaiting-google-return' });
 
+    socialAuthDebug('GOOGLE_AUTH_STRATEGY', { mode: 'redirect' });
     socialAuthDebug('FIREBASE_REDIRECT_START', {
       path: typeof window !== 'undefined' ? window.location.pathname : '',
       authDomain: getEffectiveFirebaseConfig().authDomain,
@@ -197,11 +198,14 @@ export async function socialSignIn(name, options = {}) {
   const auth = await ensureSocialAuthReady();
   pendingLink = null;
 
+  let redirected = false;
   try {
     const signInOutcome = await signInWithProvider(auth, name, options);
     if (signInOutcome.redirected) {
+      redirected = true;
       return { redirected: true };
     }
+    socialAuthDebug('GOOGLE_AUTH_STRATEGY', { mode: 'popup' });
     const challenge = await prepareBackendChallenge(options);
     return await complete(signInOutcome.result, {
       ...options,
@@ -221,7 +225,7 @@ export async function socialSignIn(name, options = {}) {
     }
     throw error;
   } finally {
-    if (!peekRedirectIntent()) {
+    if (!redirected && !peekRedirectIntent()) {
       await signOut(auth).catch(() => {});
     }
   }
@@ -266,9 +270,15 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
       authDomain: getEffectiveFirebaseConfig().authDomain,
     });
 
-    const redirectResult = await consumeFirebaseRedirectResult(auth, consumer, {
-      allowAuthStateFallback: true,
-    });
+    let redirectResult;
+    try {
+      redirectResult = await consumeFirebaseRedirectResult(auth, consumer, {
+        allowAuthStateFallback: true,
+      });
+    } catch (error) {
+      socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, code: error?.code, message: error?.message });
+      throw error;
+    }
 
     if (!redirectResult?.user) {
       const failure = describeRedirectRecoveryFailure({
@@ -295,7 +305,6 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
         ...options,
         challenge,
       });
-      clearSocialRedirectIntent();
       return user;
     } finally {
       await signOut(auth).catch(() => {});
@@ -331,10 +340,17 @@ export async function completeRedirectSignIn(consumer) {
 
 export function navigateAfterSocialLogin(user, { navigate, replaceDashboard = false } = {}) {
   if (!user?.email) return;
-  socialAuthDebug('DASHBOARD_REDIRECT', { replace: replaceDashboard || shouldPreferGoogleRedirectSignIn() });
-  if (replaceDashboard || shouldPreferGoogleRedirectSignIn()) {
+  const useHardNav = replaceDashboard || shouldPreferGoogleRedirectSignIn() || peekRedirectIntent();
+  socialAuthDebug('DASHBOARD_REDIRECT', { replace: useHardNav });
+  clearSocialRedirectIntent();
+  if (useHardNav) {
     window.location.replace('/dashboard');
     return;
   }
   navigate?.('/dashboard', { replace: true, state: { user } });
+}
+
+export function isGoogleRedirectRecoveryPending() {
+  const intent = peekRedirectIntent();
+  return intent?.phase === 'awaiting-google-return';
 }

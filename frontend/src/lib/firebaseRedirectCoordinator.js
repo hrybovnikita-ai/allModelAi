@@ -1,5 +1,6 @@
 import { getRedirectResult, onAuthStateChanged } from 'firebase/auth';
 import { socialAuthDebug } from './socialAuthDiagnostics.js';
+import { isMobileWebSafari } from './socialSignInEnv.js';
 
 let cachedRedirectResult = undefined;
 let redirectResultInflight = null;
@@ -15,7 +16,7 @@ export function hasRedirectResultBeenConsumed() {
   return redirectResultConsumed;
 }
 
-function waitForAuthStateUser(auth, timeoutMs = 5000) {
+function waitForAuthStateUser(auth, timeoutMs = isMobileWebSafari() ? 12000 : 5000) {
   if (auth.currentUser) {
     socialAuthDebug('FIREBASE_AUTH_STATE_RESTORED', { source: 'currentUser' });
     return Promise.resolve(auth.currentUser);
@@ -81,9 +82,9 @@ export async function consumeFirebaseRedirectResult(auth, consumer, { allowAuthS
       } catch (error) {
         cachedRedirectResult = null;
         redirectResultConsumed = true;
-        socialAuthDebug('GET_REDIRECT_RESULT_NULL', { consumer, code: error?.code });
+        socialAuthDebug('GET_REDIRECT_RESULT_NULL', { consumer, code: error?.code, message: error?.message });
         socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, code: error?.code });
-        return null;
+        throw error;
       } finally {
         redirectResultInflight = null;
       }
