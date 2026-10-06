@@ -72,7 +72,9 @@ export function socialError(error) {
     'auth/operation-not-allowed': 'This provider is not enabled in Firebase Authentication yet.',
     'auth/account-exists-with-different-credential': 'Sign in with your original provider. To connect another provider, use Settings > Connected accounts.',
     'auth/invalid-credential': 'The provider credential is invalid or expired. Try signing in again.',
-    'auth/web-storage-unsupported': 'This browser blocks the storage needed by the provider. Open this site in your regular browser and retry.',
+    'auth/web-storage-unsupported':
+      'Google sign-in cannot finish in Private Browsing (Safari blocks session storage for the redirect). '
+      + 'Use a regular Safari tab, or sign in with email and password.',
     'auth/email-not-verified': 'Your provider email is not verified yet. Verify it with the provider, then try again.',
     'auth/missing-email': 'GitHub did not share an email address. In GitHub → Settings → Emails, add and verify a primary email (or allow email visibility for OAuth), then try again.',
     INVALID_STATE: 'Sign-in expired. Please try again.',

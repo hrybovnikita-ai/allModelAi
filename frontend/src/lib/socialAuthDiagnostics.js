@@ -1,6 +1,14 @@
 function isSocialAuthDebugEnabled() {
   if (import.meta.env?.DEV) return true;
   try {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('authdebug') === '1') return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
     return globalThis.localStorage?.getItem('allmodelai_social_auth_debug') === '1';
   } catch {
     return false;

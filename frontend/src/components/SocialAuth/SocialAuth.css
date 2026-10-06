@@ -35,3 +35,30 @@
   0% { background-position: 100% 0; }
   100% { background-position: -100% 0; }
 }
+
+.auth-debug-panel {
+  margin-top: 20px;
+  padding: 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+  border-radius: 10px;
+  text-align: left;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+.auth-debug-pre {
+  margin: 8px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+}
+.auth-debug-copy {
+  border: 1px solid #475569;
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: transparent;
+  color: #e2e8f0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+}

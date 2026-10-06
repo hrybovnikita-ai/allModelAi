@@ -52,17 +52,29 @@ export function peekRedirectIntent() {
   return null;
 }
 
+const REDIRECT_PENDING_BACKUP_KEY = `${REDIRECT_PENDING_KEY}_backup`;
+
 export function markRedirectFlowCommitted() {
   try {
     sessionStorage.setItem(REDIRECT_PENDING_KEY, 'true');
   } catch {
     /* ignore */
   }
+  try {
+    localStorage.setItem(REDIRECT_PENDING_BACKUP_KEY, 'true');
+  } catch {
+    /* Safari / storage partitions */
+  }
 }
 
 export function isRedirectFlowCommitted() {
   try {
-    return sessionStorage.getItem(REDIRECT_PENDING_KEY) === 'true';
+    if (sessionStorage.getItem(REDIRECT_PENDING_KEY) === 'true') return true;
+  } catch {
+    /* ignore */
+  }
+  try {
+    return localStorage.getItem(REDIRECT_PENDING_BACKUP_KEY) === 'true';
   } catch {
     return false;
   }
@@ -71,6 +83,11 @@ export function isRedirectFlowCommitted() {
 function clearRedirectFlowCommitted() {
   try {
     sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.removeItem(REDIRECT_PENDING_BACKUP_KEY);
   } catch {
     /* ignore */
   }

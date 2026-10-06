@@ -37,8 +37,9 @@ test('default Capacitor native API uses 10.0.2.2', () => {
   assert.match(DEFAULT_CAPACITOR_NATIVE_API_ORIGIN, /^http:\/\/10\.0\.2\.2:\d+$/);
 });
 
-test('isViteDevServerHost detects local Vite ports', () => {
+test('isViteDevServerHost detects local Vite ports including 5174', () => {
   assert.equal(isViteDevServerHost({ hostname: 'localhost', port: '5173' }), true);
+  assert.equal(isViteDevServerHost({ hostname: 'localhost', port: '5174' }), true);
   assert.equal(isViteDevServerHost({ hostname: 'localhost', port: '' }), false);
 });
 

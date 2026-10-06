@@ -15,8 +15,10 @@ import {
   startGoogleRedirectSignIn,
 } from '../../lib/socialSignIn';
 import { shouldPreferGoogleRedirectSignIn } from '../../lib/socialSignInEnv';
+import { canUseGoogleRedirectSignIn } from '../../lib/storageAvailability';
 import { markFreshLogin } from '../../lib/session';
 import { socialError } from '../../lib/socialSession';
+import AuthDebugPanel from '../SocialAuth/AuthDebugPanel';
 import './Login.css';
 
 const GOOGLE_ICON = 'https://cdn.simpleicons.org/google';
@@ -95,6 +97,13 @@ function LoginForm({
     setSocialBusy(provider);
 
     if (shouldPreferGoogleRedirectSignIn()) {
+      if (!canUseGoogleRedirectSignIn()) {
+        setSocialBusy(null);
+        setError(
+          socialError({ code: 'auth/web-storage-unsupported' }),
+        );
+        return;
+      }
       void (async () => {
         try {
           await startGoogleRedirectSignIn(provider, { rememberMe }, 'ios-safari');
@@ -446,6 +455,8 @@ function LoginForm({
             {socialBusy === 'Google' && <span className="login-social-spinner" aria-hidden="true" />}
           </button>
         </div>
+
+        <AuthDebugPanel />
       </section>
     </div>
   );

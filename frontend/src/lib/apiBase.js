@@ -36,16 +36,28 @@ export function getCapacitorPlatform() {
   }
 }
 
+/** True when the page is Vite (or preview) on loopback — use relative /api and the dev proxy. */
+export function isBrowserLocalhostDev(location = typeof window !== 'undefined' ? window.location : null) {
+  if (!location) return false;
+  if (import.meta.env?.VITE_CAPACITOR_NATIVE === 'true') return false;
+  const protocol = String(location.protocol || '').toLowerCase();
+  const hostname = String(location.hostname || '').toLowerCase();
+  if (protocol === 'capacitor:' || protocol === 'ionic:') return false;
+  if (hostname !== 'localhost' && hostname !== '127.0.0.1') return false;
+  const port = String(location.port || '');
+  // Capacitor WebView is https://localhost with no port; Vite always uses an explicit port.
+  return port !== '';
+}
+
 export function isCapacitorWebViewHost(location = typeof window !== 'undefined' ? window.location : null) {
   if (!location) return false;
+  if (isBrowserLocalhostDev(location)) return false;
   const protocol = String(location.protocol || '').toLowerCase();
   const hostname = String(location.hostname || '').toLowerCase();
   const port = String(location.port || '');
 
   if (protocol === 'capacitor:' || protocol === 'ionic:') return true;
   if (hostname !== 'localhost') return false;
-  // Vite dev / preview — keep relative /api + proxy
-  if (port === '5173' || port === '4173') return false;
   // Capacitor Android/iOS WebView: https://localhost or http://localhost (no port)
   return port === '';
 }
@@ -231,11 +243,7 @@ export function getApiBase() {
 
 /** True when Vite dev server should keep relative /api paths (local proxy). */
 export function isViteDevServerHost(location = typeof window !== 'undefined' ? window.location : null) {
-  if (!location) return false;
-  const hostname = String(location.hostname || '').toLowerCase();
-  const port = String(location.port || '');
-  return (hostname === 'localhost' || hostname === '127.0.0.1')
-    && (port === '5173' || port === '4173');
+  return isBrowserLocalhostDev(location);
 }
 
 /**
@@ -295,8 +303,7 @@ export function resolveApiUrl(path) {
 
   const needsAbsolute =
     requiresAbsoluteApiBase()
-    || isCapacitorWebViewHost()
-    || (normalized.startsWith('/api') && typeof window !== 'undefined' && window.location.hostname === 'localhost' && !['5173', '4173'].includes(window.location.port));
+    || (isCapacitorWebViewHost() && !isBrowserLocalhostDev());
 
   if (needsAbsolute) {
     const base = getApiBase() || DEFAULT_CAPACITOR_NATIVE_API_ORIGIN;

@@ -1,6 +1,7 @@
 import { nativeClientHeaders, resolveApiUrl } from './apiBase.js';
 import { nativeSessionHeaders } from './nativeSession.js';
 import { firebaseSessionFallbackHeaders } from './firebaseSessionFallback.js';
+import { classifyNetworkError } from './networkErrors.js';
 
 export {
   API_BASE_URL,
@@ -88,10 +89,8 @@ export async function postJson(path, body, options = {}) {
       signal: options.signal,
     });
   } catch (networkError) {
-    const message = networkError?.message?.includes('Failed to fetch')
-      ? 'Could not reach the server. Check your network or VITE_API_BASE_URL for the Android app.'
-      : networkError?.message || 'Network request failed.';
-    throw new Error(message, { cause: networkError });
+    const { code, message } = classifyNetworkError(networkError, { phase: options.phase });
+    throw Object.assign(new Error(message), { code, cause: networkError });
   }
 
   const { data, parseError, html } = await readJsonBody(response);

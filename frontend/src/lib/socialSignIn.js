@@ -30,6 +30,7 @@ import {
   persistRedirectIntent,
   reconcileStaleRedirectIntent,
 } from './socialRedirectState.js';
+import { assertGoogleRedirectStorageAvailable } from './storageAvailability.js';
 
 export {
   clearSocialRedirectIntent,
@@ -113,6 +114,7 @@ export async function startGoogleRedirectSignIn(name, options = {}, reason = 'io
 }
 
 async function beginRedirectSignIn(auth, name, options, reason) {
+  assertGoogleRedirectStorageAvailable();
   socialAuthDebug('GOOGLE_AUTH_START', {
     path: typeof window !== 'undefined' ? window.location.pathname : '',
     mobileSafari: isMobileWebSafari(),
@@ -307,6 +309,7 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
         ...options,
         challenge,
       });
+      clearSocialRedirectIntent();
       return user;
     } finally {
       await signOut(auth).catch(() => {});
