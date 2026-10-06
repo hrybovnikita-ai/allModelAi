@@ -5,6 +5,7 @@ import { socialAuthDebug } from './socialAuthDiagnostics.js';
 import { readJsonBody } from './httpJson.js';
 
 const SESSION_CLEARED_EVENT = 'allmodelai:session-cleared';
+export const SESSION_UPDATED_EVENT = 'allmodelai:session-updated';
 
 let verifiedSession = null;
 let pendingSession = null;
@@ -90,13 +91,56 @@ function getStorage() {
   };
 }
 
+function dispatchSessionUpdated(user) {
+  if (typeof globalThis.dispatchEvent !== 'function') return;
+  globalThis.dispatchEvent(new CustomEvent(SESSION_UPDATED_EVENT, { detail: { user } }));
+}
+
+/** Client-side session hint (server HttpOnly cookie remains source of truth). */
+export function readStoredSessionUser() {
+  const saved = getStorage().getItem('allmodelai_user');
+  if (!saved) return null;
+  try {
+    const parsed = JSON.parse(saved);
+    return parsed?.email ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export function rememberSession(user) {
   if (!user?.email) throw new Error('Missing session user');
   const saved = JSON.stringify(user);
   const storage = getStorage();
   storage.setItem('allmodelai_user', saved);
   verifiedSession = { user, saved: storage.getItem('allmodelai_user'), expiresAt: Date.now() + cacheDuration };
+  dispatchSessionUpdated(user);
   return user;
+}
+
+async function fetchSessionFromServer() {
+  const response = await fetch(resolveAuthApiUrl('session'), {
+    credentials: 'include',
+    cache: 'no-store',
+    headers: {
+      Accept: 'application/json',
+      ...nativeClientHeaders(),
+      ...nativeSessionHeaders(),
+    },
+  });
+  const { data, parseError } = await readJsonBody(response);
+  if (parseError) throw parseError;
+  return { response, data };
+}
+
+function sessionRestoreHintFromStorage(savedRaw) {
+  if (!savedRaw) return null;
+  try {
+    const parsed = JSON.parse(savedRaw);
+    return parsed?.email ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function restoreSession({ force = false } = {}) {
@@ -112,29 +156,35 @@ export async function restoreSession({ force = false } = {}) {
   const generation = sessionGeneration;
   const request = { generation };
   request.promise = (async () => {
-    const response = await fetch(resolveAuthApiUrl('session'), {
-      credentials: 'include',
-      cache: 'no-store',
-      headers: {
-        Accept: 'application/json',
-        ...nativeClientHeaders(),
-        ...nativeSessionHeaders(),
-      },
-    });
-    if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
-    const { data, parseError } = await readJsonBody(response);
-    if (parseError) throw parseError;
+    const storedHint = sessionRestoreHintFromStorage(saved);
+    const retryDelays = storedHint && (isMobileWebSafari() || getNativeSessionToken()) ? [0, 120, 320] : [0];
 
-    if (response.status === 401) {
-      verifiedSession = null;
-      storage.removeItem('allmodelai_user');
-      return null;
+    for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
+      if (retryDelays[attempt] > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+      }
+      if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
+
+      const { response, data } = await fetchSessionFromServer();
+      if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
+
+      if (response.ok) {
+        socialAuthDebug('SESSION_RESTORED', { source: 'api', attempt });
+        return rememberSession(data.user);
+      }
+      if (response.status !== 401) {
+        throw new Error(data?.message || 'Could not verify your session. Please try again.');
+      }
     }
-    if (!response.ok) {
-      throw new Error(data?.message || 'Could not verify your session. Please try again.');
+
+    if (storedHint && (getNativeSessionToken() || isMobileWebSafari() || usesRemoteApiOrigin())) {
+      socialAuthDebug('SESSION_RESTORED', { source: 'client-hint', email: storedHint.email });
+      return rememberSession(storedHint);
     }
-    if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
-    return rememberSession(data.user);
+
+    verifiedSession = null;
+    storage.removeItem('allmodelai_user');
+    return null;
   })();
   pendingSession = request;
   try {

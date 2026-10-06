@@ -2,6 +2,7 @@ import { apiFetch } from '../../lib/api';
 import { clearAllSessionData } from '../../lib/session';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
+import { useSession } from '../Session/SessionProvider';
 import { dashboardModels as models } from '../../data/dashboardModels';
 import './Dashboard.css';
 import './DashboardEnhancements.css';
@@ -31,7 +32,9 @@ const subscriptionStatusLabel = (creditStatus) => {
 export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useOutletContext();
+  const { user: routeUser } = useOutletContext();
+  const { user: sessionUser } = useSession();
+  const user = routeUser?.email ? routeUser : sessionUser;
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');

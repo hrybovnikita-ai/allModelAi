@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useLanguage } from '../../lib/useLanguage';
 import { useEffect, useState } from 'react';
 import Login from '../Login/Login';
-import InstallPwaButton from '../InstallPwaButton/InstallPwaButton';
+import NavAuthSection from './NavAuthSection';
 import './Navbar.css';
 
 export default function Navbar() {
@@ -35,9 +35,7 @@ export default function Navbar() {
           <Link to="/python-ai" onClick={closeMenu} style={{ color: '#818cf8', fontWeight: '700' }}>⚡ PyTorch AI</Link>
         </div>
         <div className="nav-auth">
-          <InstallPwaButton />
-          <button className="nav-signin" onClick={() => setAuthMode('signin')}>{t("Sign in")}</button>
-          <button className="nav-signup" onClick={() => setAuthMode('signup')}>{t("Sign up")}</button>
+          <NavAuthSection onOpenAuth={setAuthMode} />
           <button className="menu-toggle" onClick={() => setMenuOpen((open) => !open)} aria-expanded={menuOpen} aria-label="Toggle navigation menu">
             <span></span><span></span><span></span>
           </button>

@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { performLogout } from '../../lib/session';
+import { useSession } from '../Session/SessionProvider';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import {
   DASHBOARD_NAV_DESKTOP_MAIN,
@@ -7,8 +8,10 @@ import {
   DASHBOARD_NAV_LINKS,
 } from './dashboardNavLinks';
 
-export default function DashboardWorkspaceNav({ user, onAuthError, onDeleteAccount }) {
+export default function DashboardWorkspaceNav({ user: routeUser, onAuthError, onDeleteAccount }) {
   const navigate = useNavigate();
+  const { user: sessionUser, authLoading } = useSession();
+  const user = routeUser?.email ? routeUser : sessionUser;
 
   const signOut = async () => {
     try {
@@ -19,7 +22,17 @@ export default function DashboardWorkspaceNav({ user, onAuthError, onDeleteAccou
     }
   };
 
-  if (!user) return null;
+  if (authLoading && !user?.email) {
+    return (
+      <header className="dashboard-header dashboard-nav" role="status">
+        <div className="dashboard-nav-bar">
+          <span className="dashboard-session-loading">Checking your session…</span>
+        </div>
+      </header>
+    );
+  }
+
+  if (!user?.email) return null;
 
   return (
     <header className="dashboard-header dashboard-nav">

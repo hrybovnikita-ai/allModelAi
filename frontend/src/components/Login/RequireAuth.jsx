@@ -1,49 +1,32 @@
 import { useLanguage } from '../../lib/useLanguage';
-import { useEffect, useState } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { isGoogleRedirectRecoveryPending } from '../../lib/socialSignIn';
-import { isLogoutInProgress, restoreSession, subscribeSessionCleared } from '../../lib/session';
+import { isLogoutInProgress } from '../../lib/session';
+import { useSession } from '../Session/SessionProvider';
 
 export default function RequireAuth() {
   const { t } = useLanguage();
   const location = useLocation();
-  const [session, setSession] = useState({ status: 'loading' });
-  const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-    restoreSession()
-      .then((user) => {
-        if (active) setSession({ status: user ? 'authenticated' : 'anonymous', user });
-      })
-      .catch(() => {
-        if (active) setSession({ status: 'error' });
-      });
-    return () => { active = false; };
-  }, [attempt]);
-
-  useEffect(() => subscribeSessionCleared(() => {
-    setSession({ status: 'anonymous', user: null });
-  }), []);
+  const { status, user, authLoading, refresh } = useSession();
 
   if (isGoogleRedirectRecoveryPending()) {
     return <main className="dashboard-page" role="status">{t('Finishing Google sign-in…')}</main>;
   }
 
-  if (session.status === 'loading') {
+  if (authLoading) {
     return <main className="dashboard-page" role="status">{t('Checking your session...')}</main>;
   }
-  if (session.status === 'error') {
+  if (status === 'error') {
     return (
       <main className="dashboard-page">
         <p role="alert">{t('Could not connect. Please try again.')}</p>
-        <button type="button" onClick={() => { setSession({ status: 'loading' }); setAttempt((value) => value + 1); }}>
+        <button type="button" onClick={() => { void refresh({ force: true }); }}>
           {t('Retry')}
         </button>
       </main>
     );
   }
-  if (session.status === 'anonymous' || isLogoutInProgress()) {
+  if (status === 'anonymous' || !user?.email || isLogoutInProgress()) {
     return (
       <Navigate
         to="/"
@@ -56,5 +39,5 @@ export default function RequireAuth() {
       />
     );
   }
-  return <Outlet context={{ user: session.user }} />;
+  return <Outlet context={{ user }} />;
 }

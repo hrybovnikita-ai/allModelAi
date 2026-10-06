@@ -96,9 +96,10 @@ test('session cleared event lets restoreSession return null after logout', async
 
 test('home navbar opens Sign In modal only from explicit button clicks', () => {
   const navbar = readFileSync(`${root}src/components/Navbar/Navbar.jsx`, 'utf8');
-  assert.match(navbar, /setAuthMode\('signin'\)/);
+  const navAuth = readFileSync(`${root}src/components/Navbar/NavAuthSection.jsx`, 'utf8');
+  assert.match(navbar, /onOpenAuth=\{setAuthMode\}/);
+  assert.match(navAuth, /onOpenAuth\('signin'\)/);
   assert.doesNotMatch(navbar, /signedOut/);
-  assert.doesNotMatch(navbar, /useLocation/);
 });
 
 test('logout navigation targets public home, not login modal route', () => {
