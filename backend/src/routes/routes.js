@@ -35,6 +35,8 @@ const {
     mockDeveloperSubscribe,
     getPaymentConfig,
     getPublicCheckoutInfo,
+    getCheckoutPlans,
+    getCheckoutPlanQuote,
     createChatResponse,
     analyzeVision,
     generateImage,
@@ -42,6 +44,11 @@ const {
     previewRouter, searchKnowledge, getTeams, createTeam, inviteTeamMember, updateTeamMember, removeTeamMember, shareConversation, getSharedConversation, listDeveloperKeys, createDeveloperKey, revokeDeveloperKey,
     getSharedPromptTemplates, rateSharedPromptTemplate, chatSuggestions, recordArenaVote, getArenaLeaderboard, improvePrompt,
 } = require('../controllers/controllers');
+const {
+    getPythonLlmHealth,
+    getPythonLlmModels,
+    postPythonLlmChat,
+} = require('../controllers/pythonLlmController');
 const {
     getPyTorchStatus,
     startPyTorchTraining,
@@ -103,6 +110,14 @@ const { prepareAppGeneration } = require('../appGeneration');
 const { health, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
 const { getStorageOverview, listStorageIdea, createStorageIdea, deleteStorageIdea } = require('../controllers/storageIdeasController');
 const { getSubscriptionSummary, cancelTestSubscriptionHandler } = require('../controllers/subscriptionController');
+const {
+    listKnowledgeDocuments,
+    uploadKnowledgeDocument,
+    deleteKnowledgeDocument,
+    reindexKnowledgeDocument,
+    queryKnowledgeBase,
+} = require('../controllers/knowledgeBaseController');
+const { postMultiAgentResearch } = require('../controllers/multiAgentResearchController');
 
 const router = express.Router();
 const socialAuth = require('../socialAuth');
@@ -113,6 +128,9 @@ const { cachePublicResponse } = require('../cache');
 const { logAuthStage } = require('../authRouteStages');
 
 // Local PyTorch AI Learning Engine routes
+router.get('/python-llm/health', requireAuth, getPythonLlmHealth);
+router.get('/python-llm/models', requireAuth, getPythonLlmModels);
+router.post('/python-llm/chat', requireAuth, postPythonLlmChat);
 router.get('/ai-python/status', getPyTorchStatus);
 router.get('/ai-python/openai/status', getOpenAiTrainingStatus);
 router.get('/ai-python/quotas', requireAuth, getPyTorchQuotas);
@@ -189,6 +207,8 @@ router.post('/images', requireAuth, generateImage);
 router.post('/images/generate', requireAuth, generateImage);
 router.post('/purchases', requireAuth, createPurchase);
 router.get('/payments/checkout-info', getPublicCheckoutInfo);
+router.get('/payments/plans', getCheckoutPlans);
+router.get('/payments/plans/:slug', getCheckoutPlanQuote);
 router.get('/payments/config', requireAuth, getPaymentConfig);
 router.post('/payments/wayforpay/create', requireAuth, createWayforpayPayment);
 router.post('/payments/wayforpay/mock-complete', requireAuth, completeMockWayforpayPayment);
@@ -214,8 +234,17 @@ router.post('/workspace', requireAuth, createWorkspaceItem);
 router.patch('/workspace/:id', requireAuth, updateWorkspaceItem);
 router.delete('/workspace/:id', requireAuth, deleteWorkspaceItem);
 router.post('/knowledge/search', requireAuth, searchKnowledge);
+router.get('/knowledge/documents', requireAuth, listKnowledgeDocuments);
+router.post('/knowledge/documents', requireAuth, uploadKnowledgeDocument);
+router.delete('/knowledge/documents/:id', requireAuth, deleteKnowledgeDocument);
+router.post('/knowledge/documents/:id/reindex', requireAuth, reindexKnowledgeDocument);
+router.post('/knowledge/query', requireAuth, queryKnowledgeBase);
+router.post('/agents/research', requireAuth, postMultiAgentResearch);
 router.get('/analytics', requireAuth, getUsageAnalytics);
+const { postResearchClarify, getResearchConfig } = require('../controllers/deepResearchController');
 router.post('/research', requireAuth, webResearch);
+router.post('/research/clarify', requireAuth, postResearchClarify);
+router.get('/research/config', requireAuth, getResearchConfig);
 router.post('/research/answer', requireAuth, webResearchAnswer);
 router.get('/ollama/models', requireAuth, getOllamaModels);
 router.post('/quality/check', requireAuth, checkAnswerQuality);

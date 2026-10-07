@@ -9,11 +9,17 @@ import { Highlight } from 'prism-react-renderer';
 import { Prism, codeTheme, languageAliases } from '../../lib/codeHighlight';
 import { dashboardModels } from '../../data/dashboardModels';
 import { apiFetch, checkChatResponse } from '../../lib/api';
-import { buildImageRequestBody, downloadOriginalImage } from '../../lib/imageGeneration';
+import { buildImageRequestBody, downloadOriginalImage, userFacingImageGenerationError } from '../../lib/imageGeneration';
 import { logger, timingElapsed, timingNow } from '../../lib/logger';
 import { clearAllSessionData } from '../../lib/session';
 import SessionRecovery from './SessionRecovery';
 import WebSources, { WebSearchStatus } from './WebSources';
+import DeepResearchMessageBlock from './DeepResearchMessageBlock';
+import {
+  applyDeepResearchSseEvent,
+  consumeDeepResearchStream,
+  fetchResearchClarification,
+} from '../../lib/deepResearchClient.js';
 import { buildCitationSourceMap, isSafeHttpUrl, scrollToSourceCard, splitCitationSegments } from '../../lib/citationLinks.js';
 import { splitRichTextSegments } from '../../lib/chatMessageLinks.js';
 import './Chat.css';
@@ -22,28 +28,23 @@ import './ChatDarkViolet.css';
 import './ChatSidebarCollapse.css';
 import './ChatPremium.css';
 import './ComposerInput.css';
-import SidebarIconButton from './SidebarIconButton';
 import CreateProjectModal, { ProjectIconBadge } from './CreateProjectModal';
 import AccountDeleteModal from '../AccountDeleteModal';
-import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { isStandaloneApp } from '../../lib/appMode';
 import SubscribeStripeEmbedded from './SubscribeStripeEmbedded';
 import { submitWayforpayCheckout } from '../../lib/wayforpay';
+import { copyToClipboard } from '../../lib/clipboard';
+import MessageActions from './MessageActions';
+import ChatSidebar from './ChatSidebar';
+import { IconToolKnowledgeBase } from './ChatSidebarIcons';
+import SmartRouterStatus, { KnowledgeSourceChips } from './SmartRouterStatus';
+import './SmartRouterStatus.css';
 
 const CHAT_PLAN_TO_CHECKOUT = { starter: 'week', pro: 'common', unlimited: 'plus' };
 
 function ModelSpeedBadge({ speed }) {
   if (!speed || !['Fast', 'Medium', 'High'].includes(speed)) return null;
   return <em className={`model-speed-badge speed-${speed.toLowerCase()}`}>{speed}</em>;
-}
-
-function CopyMessageIcon() {
-  return (
-    <svg className="message-action-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  );
 }
 
 // const quickPrompts = [
@@ -87,7 +88,7 @@ function CodeBlock({ language, code }) {
   };
 
   return <section className={`response-code-block ${wrapped ? 'code-wrapped' : ''}`}>
-    <header><span>{language || 'code'}</span><div><button type="button" onClick={() => setWrapped((value) => !value)} aria-label="Toggle line wrapping">{wrapped ? 'Scroll' : 'Wrap'}</button><button type="button" onClick={downloadCode} aria-label="Download code">Download</button><button type="button" onClick={copyCode} aria-label="Copy code">{copied ? 'Copied!' : 'Copy'}</button></div></header>
+    <header><span>{language || 'code'}</span><div><button type="button" className="code-action-btn" onClick={() => setWrapped((value) => !value)} aria-label="Toggle line wrapping">{wrapped ? 'Scroll' : 'Wrap'}</button><button type="button" className="code-action-btn" onClick={downloadCode} aria-label="Download code">Download</button><button type="button" className={`code-action-btn ${copied ? 'is-copied' : ''}`} onClick={copyCode} aria-label="Copy code">{copied ? 'Copied' : 'Copy'}</button></div></header>
     <Highlight prism={Prism} theme={codeTheme} code={code} language={prismLanguage}>
       {({ className, style, tokens, getLineProps, getTokenProps }) => (
         <pre className={className} style={{ ...style, background: 'transparent' }}>
@@ -227,18 +228,6 @@ function MessageContent({ text, streaming, citationSources }) {
 }
 
 
-async function copyToClipboard(text) {
-  try {
-    if (!globalThis.navigator?.clipboard?.writeText) throw new Error('Clipboard unavailable');
-    await globalThis.navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    // iOS can deny clipboard access; keep manual copying available.
-    globalThis.window?.prompt('Copy this text:', text);
-    return false;
-  }
-}
-
 function safeStorageGet(storageName, key, fallback = null) {
   try {
     const storage = globalThis[storageName];
@@ -318,6 +307,7 @@ export default function Chat() {
   const fileInput = useRef(null);
   const composerInputRef = useRef(null);
   const activeRequest = useRef(null);
+  const deepResearchPendingRef = useRef(null);
   const speechRecognition = useRef(null);
   const { user } = useOutletContext();
   const isGuest = user?.guest === true;
@@ -350,13 +340,18 @@ export default function Chat() {
   const [historyQuery, setHistoryQuery] = useState('');
   const [historyFeedOpen, setHistoryFeedOpen] = useState(false);
   const [historyFeedQuery, setHistoryFeedQuery] = useState('');
-  const [messageRatings, setMessageRatings] = useState({});
+  const [messageRatings, setMessageRatings] = useState(() =>
+    safeJSON(safeStorageGet('localStorage', 'allmodelai_message_ratings'), {})
+  );
   const [messageLikes, setMessageLikes] = useState(() =>
     safeJSON(safeStorageGet('localStorage', 'allmodelai_message_likes'), {})
   );
 
   const [messageFeedback, setMessageFeedback] = useState(() =>
     safeJSON(safeStorageGet('localStorage', 'allmodelai_message_feedback'), {})
+  );
+  const [useKnowledgeBase, setUseKnowledgeBase] = useState(
+    () => safeStorageGet('localStorage', 'allmodelai_use_knowledge') === 'true',
   );
 
   const [backgroundNotification, setBackgroundNotification] = useState(null);
@@ -499,6 +494,8 @@ export default function Chat() {
   const [voiceInputState, setVoiceInputState] = useState('idle');
   const isListening = voiceInputState === 'listening';
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [activeSpeechMessageIndex, setActiveSpeechMessageIndex] = useState(null);
+  const [regeneratingMessageIndex, setRegeneratingMessageIndex] = useState(null);
   const [voiceMode, setVoiceMode] = useState(() => safeStorageGet('localStorage', 'allmodelai_voice_mode') === 'true');
   const [voicePanelOpen, setVoicePanelOpen] = useState(false);
   const [speechLanguage, setSpeechLanguage] = useState(() => safeStorageGet('localStorage', 'allmodelai_voice_language') || globalThis.navigator?.language || 'en-US');
@@ -894,11 +891,28 @@ export default function Chat() {
       }
     } catch (error) { setChatError(error.message || 'Could not share this message.'); }
   };
-  const rateMessage = (index, rating) => setMessageRatings((ratings) => ({ ...ratings, [index]: rating }));
-  const likeMessage = (index) => {
-    setMessageLikes((likes) => {
-      const next = { ...likes, [index]: !likes[index] };
-      safeStorageSet('localStorage', 'allmodelai_message_likes', JSON.stringify(next));
+  const rateMessage = (index, rating) => {
+    setMessageRatings((ratings) => {
+      const next = { ...ratings };
+      if (rating) next[index] = rating;
+      else delete next[index];
+      safeStorageSet('localStorage', 'allmodelai_message_ratings', JSON.stringify(next));
+      return next;
+    });
+    if (rating === 'up') {
+      setMessageLikes((likes) => {
+        const next = { ...likes, [index]: true };
+        safeStorageSet('localStorage', 'allmodelai_message_likes', JSON.stringify(next));
+        return next;
+      });
+    }
+  };
+  const setFeedbackReason = (index, reason) => {
+    setMessageFeedback((feedback) => {
+      const next = { ...feedback };
+      if (reason) next[index] = reason;
+      else delete next[index];
+      safeStorageSet('localStorage', 'allmodelai_message_feedback', JSON.stringify(next));
       return next;
     });
   };
@@ -953,9 +967,34 @@ export default function Chat() {
     const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([content], { type: 'application/json' })); link.download = 'allmodelai-backup.json'; link.click(); URL.revokeObjectURL(link.href);
     logger.action('Backup workspace', { conversations: chatHistory.length });
   };
-  const retryMessage = (index) => {
+  const regenerateResponse = async (index) => {
+    if (isSending) return;
     const previousUserMessage = messages.slice(0, index).reverse().find((message) => message.role === 'user');
-    if (previousUserMessage) { setPrompt(previousUserMessage.content ?? previousUserMessage.text ?? ''); document.querySelector('.chat-composer textarea')?.focus(); }
+    if (!previousUserMessage) return;
+    const cutIndex = messages.slice(0, index).findLastIndex((message) => message.role === 'user');
+    const attachment = previousUserMessage.imageUrl || previousUserMessage.image
+      ? { url: previousUserMessage.imageUrl || previousUserMessage.image }
+      : null;
+    setRegeneratingMessageIndex(index);
+    try {
+      await sendMessage(
+        null,
+        previousUserMessage.content ?? previousUserMessage.text ?? '',
+        messages.slice(0, cutIndex),
+        attachment,
+      );
+    } finally {
+      setRegeneratingMessageIndex(null);
+    }
+  };
+  const exportAssistantMessage = (message, modelName) => {
+    const body = message.content ?? message.text ?? '';
+    const content = `${modelName}:\n${body}`;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
+    link.download = `allmodelai-response-${Date.now()}.txt`;
+    link.click();
+    URL.revokeObjectURL(link.href);
   };
   const editMessage = (index) => {
     const message = messages[index];
@@ -1129,6 +1168,246 @@ export default function Chat() {
 
   if (!user) return <Navigate to="/" replace />;
 
+  async function runWebOrDeepResearchStream({
+    text,
+    nextMessages,
+    assistantIndex,
+    isDeepResearch,
+    startedConversationId,
+    controller,
+    requestStartedAt,
+    clarificationAnswers = null,
+    skipClarification = false,
+  }) {
+    let assistantText = '';
+    let webSources = [];
+    let webSearchComplete = false;
+    let researchMeta = null;
+    setIsStreamingResponse(false);
+    setMessages((current) => current.map((message, index) => (
+      index === assistantIndex
+        ? {
+          ...message,
+          text: '',
+          webSearching: true,
+          deepResearch: isDeepResearch,
+          deepResearchClarification: null,
+          deepResearchError: null,
+          webSearchStatus: isDeepResearch ? 'understanding' : 'searching',
+          deepResearchLabel: isDeepResearch ? 'Understanding your goal' : undefined,
+          researchDepth: isDeepResearch ? researchDepth : undefined,
+        }
+        : message
+    )));
+
+    const webSearchQueryPreview = text.length > 120 ? `${text.slice(0, 120)}…` : text;
+    const loggedWebStages = new Set();
+    const logWebStage = (stage, meta) => {
+      if (loggedWebStages.has(stage)) return;
+      loggedWebStages.add(stage);
+      logger.search(stage, meta);
+    };
+    logger.group(`${isDeepResearch ? '🔎' : '🌐'} AllModelAI ${isDeepResearch ? 'Deep Research' : 'Web Search'} · ${webSearchQueryPreview}`, () => {
+      logWebStage('Search enabled');
+      logger.search('Query', { query: webSearchQueryPreview });
+      logWebStage('Request started');
+    });
+
+    const researchResponse = await apiFetch('/api/research/answer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: text,
+        model: selectedSlug === 'smart' ? 'gemini' : selectedSlug,
+        ...(isDeepResearch ? {
+          deepResearch: true,
+          depth: researchDepth,
+          clarificationAnswers,
+          skipClarification,
+          useKnowledge: useKnowledgeBase,
+        } : {}),
+      }),
+      signal: controller.signal,
+    });
+
+    if (researchResponse.status === 404) {
+      logger.search('Dedicated route unavailable — falling back to chat web search');
+      return { webSearchViaChat: true, assistantText, webSources, webSearchComplete };
+    }
+
+    await checkChatResponse(researchResponse);
+
+    if (isDeepResearch) {
+      const streamResult = await consumeDeepResearchStream(researchResponse, {
+        signal: controller.signal,
+        onEvent: (event) => {
+          if (event.researchEvent) logWebStage(event.researchEvent, { count: event.sourceCount ?? event.count });
+          setMessages((current) => current.map((message, index) => (
+            index === assistantIndex
+              ? applyDeepResearchSseEvent(message, event)
+              : message
+          )));
+          if (event.text) setIsStreamingResponse(true);
+        },
+      });
+      assistantText = streamResult.assistantText;
+      webSources = streamResult.webSources;
+      webSearchComplete = streamResult.webSearchComplete;
+      researchMeta = streamResult.researchMeta;
+    } else {
+      if (researchResponse.headers.get('content-type')?.includes('application/json')) {
+        const errorData = await researchResponse.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Could not search the web.');
+      }
+      const reader = researchResponse.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const events = buffer.replaceAll('\r\n', '\n').split('\n\n');
+        buffer = events.pop() || '';
+        for (const eventData of events) {
+          const dataLine = eventData.split('\n').find((line) => line.startsWith('data: '));
+          if (!dataLine || dataLine.slice(6) === '[DONE]') continue;
+          const event = JSON.parse(dataLine.slice(6));
+          if (event.error) throw new Error(event.message || event.error);
+          if (event.code && event.message) throw new Error(event.message);
+          if (event.webSearchStatus || event.deepResearchStage) {
+            const status = event.deepResearchStage || event.webSearchStatus;
+            setMessages((current) => current.map((message, index) => (
+              index === assistantIndex
+                ? {
+                  ...message,
+                  webSearchStatus: status,
+                  deepResearchLabel: event.deepResearchLabel || message.deepResearchLabel,
+                  webSearchCount: event.count ?? message.webSearchCount,
+                }
+                : message
+            )));
+          }
+          if (event.text) {
+            assistantText += event.text;
+            setIsStreamingResponse(true);
+            setMessages((current) => current.map((message, index) => (
+              index === assistantIndex
+                ? { ...message, text: (message.text || '') + event.text, webSearching: false }
+                : message
+            )));
+          }
+          if (Array.isArray(event.webSources)) webSources = event.webSources;
+          if (event.webSearchComplete === true && webSources.length) webSearchComplete = true;
+        }
+        if (done) break;
+      }
+    }
+
+    setMessages((current) => current.map((message, index) => (
+      index === assistantIndex
+        ? {
+          ...message,
+          text: assistantText || message.text,
+          webSearching: false,
+          webSearchStatus: null,
+          webSources,
+          webSearchComplete,
+          deepResearch: isDeepResearch,
+          deepResearchLabel: null,
+          researchMeta: researchMeta || message.researchMeta,
+          researchDepth: isDeepResearch ? researchDepth : undefined,
+          clarificationAnswers: clarificationAnswers || message.clarificationAnswers,
+        }
+        : message
+    )));
+
+    if (!temporaryChat) {
+      let conversationId = activeConversationId;
+      if (!conversationId) {
+        const historyResponse = await apiFetch('/api/chat/history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email, model: selectedSlug, messages: nextMessages }),
+        });
+        if (historyResponse.ok) {
+          const conversation = await historyResponse.json();
+          conversationId = conversation.id;
+          if (activeConversationIdRef.current === startedConversationId) {
+            activeConversationIdRef.current = conversation.id;
+            setActiveConversationId(conversation.id);
+          }
+          setChatHistory((history) => [conversation, ...history]);
+        }
+      }
+      if (conversationId) {
+        await apiFetch(`/api/chat/history/${conversationId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: user.email,
+            messages: [...nextMessages, {
+              role: 'assistant',
+              text: assistantText,
+              modelSlug: selectedSlug,
+              webSources,
+              webSearchComplete,
+              deepResearch: isDeepResearch,
+              researchMeta,
+              researchDepth: isDeepResearch ? researchDepth : undefined,
+              clarificationAnswers,
+            }],
+          }),
+        });
+        await refreshHistory();
+      }
+    }
+
+    setSelectedSkill(null);
+    if (voiceMode && assistantText) speakText(assistantText);
+    logger.searchSuccess('Search completed', { sources: webSources.length });
+    logger.success('Assistant response completed', {
+      mode: isDeepResearch ? 'deep-research' : 'web-search',
+      durationMs: timingElapsed(requestStartedAt),
+    });
+    deepResearchPendingRef.current = null;
+    return { webSearchViaChat: false, assistantText, webSources, webSearchComplete };
+  }
+
+  async function handleDeepResearchClarification(assistantIndex, answers, skipClarification) {
+    const pending = deepResearchPendingRef.current;
+    if (!pending || pending.assistantIndex !== assistantIndex) return;
+    setIsSending(true);
+    setChatError('');
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const requestStartedAt = timingNow();
+    try {
+      await runWebOrDeepResearchStream({
+        text: pending.text,
+        nextMessages: pending.nextMessages,
+        assistantIndex,
+        isDeepResearch: true,
+        startedConversationId: pending.startedConversationId,
+        controller,
+        requestStartedAt,
+        clarificationAnswers: answers,
+        skipClarification,
+      });
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        setChatError(error.message || 'Deep Research failed.');
+        setMessages((current) => current.map((message, index) => (
+          index === assistantIndex
+            ? { ...message, webSearching: false, deepResearchError: error.message }
+            : message
+        )));
+      }
+    } finally {
+      if (activeRequest.current === controller) activeRequest.current = null;
+      setIsStreamingResponse(false);
+      setIsSending(false);
+    }
+  }
+
   const sendMessage = async (event, overrideText, overrideMessages, overrideAttachment, options = {}) => {
     event?.preventDefault();
     const rawText = String(overrideText ?? prompt).trim();
@@ -1179,185 +1458,60 @@ export default function Chat() {
       let webSearchViaChat = false;
       if (selectedSkill === 'web' || selectedSkill === 'deep-research') {
         const isDeepResearch = selectedSkill === 'deep-research';
-        let assistantText = '';
-        let webSources = [];
-        let webSearchComplete = false;
-        setIsStreamingResponse(false);
-        setMessages((current) => current.map((message, index) => (
-          index === assistantIndex
-            ? {
-              ...message,
-              text: '',
-              webSearching: true,
-              deepResearch: isDeepResearch,
-              webSearchStatus: isDeepResearch ? 'planning' : 'searching',
-              deepResearchLabel: isDeepResearch ? 'Planning research...' : undefined,
-            }
-            : message
-        )));
-
-        const webSearchQueryPreview = text.length > 120 ? `${text.slice(0, 120)}…` : text;
-        const loggedWebStages = new Set();
-        const logWebStage = (stage, meta) => {
-          if (loggedWebStages.has(stage)) return;
-          loggedWebStages.add(stage);
-          logger.search(stage, meta);
-        };
-        logger.group(`🌐 AllModelAI Web Search · ${webSearchQueryPreview}`, () => {
-          logWebStage('Search enabled');
-          logger.search('Query', { query: webSearchQueryPreview });
-          logWebStage('Request started');
-        });
-
-        const researchResponse = await apiFetch('/api/research/answer', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: text,
-            model: selectedSlug === 'smart' ? 'gemini' : selectedSlug,
-            ...(isDeepResearch ? { deepResearch: true, depth: researchDepth } : {}),
-          }),
-          signal: controller.signal,
-        });
-
-        if (researchResponse.status === 404) {
-          webSearchViaChat = true;
-          logger.search('Dedicated route unavailable — falling back to chat web search');
-          setMessages((current) => current.map((message, index) => (
-            index === assistantIndex
-              ? { ...message, webSearchStatus: 'searching' }
-              : message
-          )));
-        } else {
-        await checkChatResponse(researchResponse);
-
-        if (researchResponse.headers.get('content-type')?.includes('application/json')) {
-          const errorData = await researchResponse.json().catch(() => ({}));
-          throw new Error(errorData.message || 'Could not search the web.');
-        }
-
-        const reader = researchResponse.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-          const events = buffer.replaceAll('\r\n', '\n').split('\n\n');
-          buffer = events.pop() || '';
-
-          for (const eventData of events) {
-            const dataLine = eventData.split('\n').find((line) => line.startsWith('data: '));
-            if (!dataLine || dataLine.slice(6) === '[DONE]') continue;
-            const event = JSON.parse(dataLine.slice(6));
-            if (event.error) throw new Error(event.message || event.error);
-            if (event.code && event.message) throw new Error(event.message);
-            if (event.webSearchStatus || event.deepResearchStage) {
-              const status = event.deepResearchStage || event.webSearchStatus;
-              if (status === 'searching') logWebStage('Request started');
-              if (status === 'results' && event.count != null) logWebStage(`Results received: ${event.count}`, { count: event.count });
-              if (status === 'filtered' && event.count != null) logWebStage(`Sources filtered: ${event.count}`, { count: event.count });
-              if (status === 'synthesizing') logWebStage('Sending sources to AI');
+        if (isDeepResearch) {
+          try {
+            const clarify = await fetchResearchClarification(apiFetch, { query: text });
+            if (!clarify.searchAvailable) {
               setMessages((current) => current.map((message, index) => (
                 index === assistantIndex
                   ? {
                     ...message,
-                    deepResearch: event.deepResearch ?? message.deepResearch,
-                    webSearchStatus: status,
-                    deepResearchLabel: event.deepResearchLabel || message.deepResearchLabel,
-                    webSearchCount: event.count ?? message.webSearchCount,
+                    webSearching: false,
+                    deepResearch: true,
+                    deepResearchError: 'Web research is temporarily unavailable.',
                   }
                   : message
               )));
+              return;
             }
-            if (event.text) {
-              assistantText += event.text;
-              setIsStreamingResponse(true);
+            if (clarify.needsClarification) {
+              deepResearchPendingRef.current = {
+                text,
+                nextMessages,
+                assistantIndex,
+                startedConversationId,
+              };
               setMessages((current) => current.map((message, index) => (
                 index === assistantIndex
-                  ? { ...message, text: (message.text || '') + event.text, webSearching: false }
+                  ? {
+                    ...message,
+                    webSearching: false,
+                    deepResearch: true,
+                    deepResearchClarification: {
+                      questions: clarify.questions,
+                      topicTitle: clarify.topicTitle,
+                    },
+                  }
                   : message
               )));
+              return;
             }
-            if (Array.isArray(event.webSources)) {
-              webSources = event.webSources;
-              if (event.webSources.length) {
-                logWebStage(`Results received: ${event.webSources.length}`, { count: event.webSources.length });
-              }
-            }
-            if (event.webSearchStatus === 'no_sources' || (event.webSearchComplete === false && Array.isArray(event.webSources) && !event.webSources.length)) {
-              webSearchComplete = false;
-              logWebStage('No relevant web sources');
-            } else if (event.webSearchComplete === true && webSources.length) {
-              webSearchComplete = true;
-              logWebStage('Search completed');
-            }
-          }
-          if (done) break;
-        }
-
-        setMessages((current) => current.map((message, index) => (
-          index === assistantIndex
-            ? {
-              ...message,
-              text: assistantText || message.text,
-              webSearching: false,
-              webSearchStatus: null,
-              webSources,
-              webSearchComplete,
-              deepResearch: isDeepResearch,
-              deepResearchLabel: null,
-            }
-            : message
-        )));
-
-        if (!temporaryChat) {
-          let conversationId = activeConversationId;
-          if (!conversationId) {
-            const historyResponse = await apiFetch('/api/chat/history', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: user.email, model: selectedSlug, messages: nextMessages }),
-            });
-            if (historyResponse.ok) {
-              const conversation = await historyResponse.json();
-              conversationId = conversation.id;
-              if (activeConversationIdRef.current === startedConversationId) {
-                activeConversationIdRef.current = conversation.id;
-                setActiveConversationId(conversation.id);
-              }
-              setChatHistory((history) => [conversation, ...history]);
-            }
-          }
-          if (conversationId) {
-            await apiFetch(`/api/chat/history/${conversationId}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: user.email,
-                messages: [...nextMessages, {
-                  role: 'assistant',
-                  text: assistantText,
-                  modelSlug: selectedSlug,
-                  webSources,
-                  webSearchComplete,
-                  deepResearch: isDeepResearch,
-                }],
-              }),
-            });
-            await refreshHistory();
+          } catch (clarifyError) {
+            throw clarifyError;
           }
         }
 
-        setSelectedSkill(null);
-        if (voiceMode && assistantText) speakText(assistantText);
-        logger.searchSuccess('Search completed', { sources: webSources.length });
-        logger.success('Assistant response completed', {
-          mode: isDeepResearch ? 'deep-research' : 'web-search',
-          durationMs: timingElapsed(requestStartedAt),
+        const streamResult = await runWebOrDeepResearchStream({
+          text,
+          nextMessages,
+          assistantIndex,
+          isDeepResearch,
+          startedConversationId,
+          controller,
+          requestStartedAt,
         });
-        return;
-        }
+        webSearchViaChat = streamResult.webSearchViaChat;
+        if (!webSearchViaChat) return;
       }
       if (generatingImage) {
         logger.action('Generate image', { promptLength: text.length });
@@ -1374,7 +1528,8 @@ export default function Chat() {
         });
         await checkChatResponse(imageResponse);
         const imageData = await imageResponse.json().catch(() => ({}));
-        if (!imageResponse.ok || !imageData.imageUrl) throw new Error(imageData.message || 'Could not create the image.');
+        const imageUserError = userFacingImageGenerationError(imageResponse.ok, imageData);
+        if (imageUserError) throw new Error(imageUserError);
         const answer = {
           role: 'assistant',
           text: 'Done! Here is your image.',
@@ -1446,7 +1601,7 @@ export default function Chat() {
       const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ responseMode: generatingFile ? 'file' : 'chat', maxTokens: generatingFile ? 4096 : undefined, model: selectedSlug, variant: selectedVersion?.id, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, webSearch: webSearchFlag, routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced', responsePrefs: safeJSON(safeStorageGet('localStorage', 'allmodelai_response_prefs'), {}), systemInstructions: safeStorageGet('localStorage', 'allmodelai_system_instructions') || '', fallbackEnabled: !selectedVersion }),
+        body: JSON.stringify({ responseMode: generatingFile ? 'file' : 'chat', maxTokens: generatingFile ? 4096 : undefined, model: selectedSlug, variant: selectedVersion?.id, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, webSearch: webSearchFlag, useKnowledge: useKnowledgeBase, routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced', responsePrefs: safeJSON(safeStorageGet('localStorage', 'allmodelai_response_prefs'), {}), systemInstructions: safeStorageGet('localStorage', 'allmodelai_system_instructions') || '', fallbackEnabled: !selectedVersion }),
         signal: controller.signal,
       });
 
@@ -1533,6 +1688,35 @@ export default function Chat() {
             fallbackProvider = event.actualModel;
             logger.router(`${event.requestedModel} unavailable`);
             logger.router('Trying fallback', { provider: event.actualModel });
+          }
+          if (event.router || event.knowledgeSources || event.routeDisplayName) {
+            setMessages((current) => current.map((message, idx) => (
+              idx === assistantIndex
+                ? {
+                  ...message,
+                  router: event.router || {
+                    taskType: event.routeTaskType,
+                    reason: event.routeReason,
+                    selectedModel: event.routeDisplayName,
+                    fallbacks: event.routeFallbacks,
+                  },
+                  routeDisplayName: event.routeDisplayName,
+                  knowledgeSources: event.knowledgeSources || message.knowledgeSources,
+                }
+                : message
+            )));
+          }
+          if (event.agentProgress?.agent) {
+            setMessages((current) => current.map((message, idx) => (
+              idx === assistantIndex
+                ? {
+                  ...message,
+                  deepResearch: true,
+                  agentProgress: event.agentProgress,
+                  deepResearchLabel: event.agentProgress.summary || message.deepResearchLabel,
+                }
+                : message
+            )));
           }
           if (event.error) throw new Error(event.error);
           if (Array.isArray(event.webSources)) {
@@ -1702,6 +1886,20 @@ export default function Chat() {
     setSelectedSkill(skill);
     setComposerMenuOpen(false);
     document.querySelector('.chat-composer textarea')?.focus();
+  };
+
+  const setKnowledgeBaseActive = (active) => {
+    setUseKnowledgeBase(active);
+    safeStorageSet('localStorage', 'allmodelai_use_knowledge', active ? 'true' : 'false');
+    if (active) {
+      logger.action('Knowledge Base enabled for chat', { useKnowledge: true });
+    }
+  };
+
+  const toggleKnowledgeBaseFromMenu = () => {
+    setKnowledgeBaseActive(!useKnowledgeBase);
+    setComposerMenuOpen(false);
+    composerInputRef.current?.focus();
   };
 
   const goTo = (path, label) => {
@@ -1941,102 +2139,54 @@ export default function Chat() {
       style={!isSidebarCollapsed ? { '--chat-sidebar-width': `${sidebarWidth}px` } : undefined}
     >
       <button className={`sidebar-backdrop ${sidebarOpen ? 'visible' : ''}`} aria-label={t("Close sidebar")} onClick={() => setSidebarOpen(false)} />
-      <aside className={`chat-sidebar ${sidebarOpen ? 'open' : ''} ${isSidebarCollapsed ? 'is-collapsed' : ''}`}>
-        <div className="sidebar-top">
-          {isSidebarCollapsed ? (
-            <SidebarIconButton
-              className="sidebar-dragon-toggle"
-              label={t('Open sidebar')}
-              onClick={expandSidebar}
-            >
-              <AllModelAILogoMark size={38} className="sidebar-dragon-mark" />
-            </SidebarIconButton>
-          ) : (
-            <>
-              <Link to="/dashboard" className="chat-brand"><AllModelAILogoMark /><strong>AllModelAI</strong></Link>
-              <SidebarIconButton
-                className="sidebar-collapse-toggle"
-                label={t('Close sidebar')}
-                onClick={collapseSidebar}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <rect x="3" y="4" width="18" height="16" rx="3" />
-                  <path d="M9 4v16" />
-                  <path d="M14 10l-3 2 3 2" />
-                </svg>
-              </SidebarIconButton>
-              <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label={t("Close sidebar")}>×</button>
-            </>
-          )}
-        </div>
-        <nav className="sidebar-rail" aria-label={t('Quick navigation')}>
-          <SidebarIconButton className="sidebar-rail-btn" label={t('New conversation')} onClick={newChat}><span>＋</span></SidebarIconButton>
-          <SidebarIconButton className="sidebar-rail-btn" label={t('Smart Router')} active={selectedSlug === 'smart'} onClick={openSmartRouter}><span>✦</span></SidebarIconButton>
-          <SidebarIconButton className="sidebar-rail-btn" label={t('Generate image')} onClick={() => chooseSkill('image')}><span>◈</span></SidebarIconButton>
-          <SidebarIconButton className="sidebar-rail-btn" label={t('Projects')} onClick={createProject}><span>▣</span></SidebarIconButton>
-          <SidebarIconButton className="sidebar-rail-btn" label={t('Settings')} onClick={() => goTo('/chat/settings', 'Settings')}><span>⚙</span></SidebarIconButton>
-        </nav>
-        <div className="sidebar-expanded-content">
-        <button className="new-chat" onClick={newChat}><span>＋</span> {t("New conversation")}</button>
-        <div className="workspace-tools">
-          <button className="settings-quick-access" onClick={() => goTo('/chat/settings', 'Chat settings')}><span>⚙</span><span><strong>{t("Chat settings")}</strong><small>{t("Change input and message colors")}</small></span><b>›</b></button>
-          <button className={temporaryChat ? 'active' : ''} onClick={startTemporaryChat}><span>◌</span><span><strong>{t("Temporary chat")}</strong><small>{t("Not saved to history")}</small></span></button>
-          <button onClick={createProject}><span>▣</span><span><strong>{t("New project")}</strong><small>{t("Organize chats by goal")}</small></span></button>
-          <button onClick={() => goTo('/arena', 'AI Arena')}><span>⚔</span><span><strong>{t("AI Arena")}</strong><small>{t("Compare answers side by side")}</small></span></button>
-          <button className={selectedSlug === 'smart' ? 'active' : ''} onClick={openSmartRouter}><span>✦</span><span><strong>{t("Smart Router")}</strong><small>{t("Choose the best AI automatically")}</small></span></button>
-          <button onClick={() => chooseSkill('image')}><span>◈</span><span><strong>{t("Generate image")}</strong><small>{t("Create an image from text")}</small></span></button>
-          <button onClick={() => goTo('/studio?tool=prompt', 'Prompt library')}><span>▤</span><span><strong>{t("Prompt library")}</strong><small>{t("Ready-to-use templates")}</small></span></button>
-          <button disabled={!messages.length} onClick={exportConversation}><span>↓</span><span><strong>{t("Export chat")}</strong><small>{t("Download this conversation")}</small></span></button>
-          <button onClick={editSystemInstructions}><span>⚙</span><span><strong>{t("AI instructions")}</strong><small>{t("Set language, style, and behavior")}</small></span></button>
-          <button onClick={backupWorkspace}><span>⬡</span><span><strong>{t("Backup workspace")}</strong><small>{t("Download chats and settings")}</small></span></button>
-          <button onClick={() => goTo('/python-ai', 'AI Training Lab')}><span>⚡</span><span><strong>{t("AI model training")}</strong><small>{t("Linear layers, loss, backward, PyTorch")}</small></span></button>
-        </div>
-        {projects.length > 0 && <div className="project-list"><p>{t("Projects")}</p>{projects.map((project) => <div className={`project-item ${activeProject?.id === project.id ? 'active' : ''}`} key={project.id}><button className="project-open" onClick={() => enterProject(project)}><ProjectIconBadge project={project} /><strong>{project.name}</strong></button><button className="project-more" onClick={() => setProjectMenuId((id) => id === project.id ? null : project.id)} aria-label={`Options for ${project.name}`}>•••</button>{projectMenuId === project.id && <div className="project-menu"><button onClick={() => renameProject(project)}>✎ Rename</button><button className="danger" onClick={() => deleteProject(project)}>{t("Delete")}</button></div>}</div>)}</div>}
-        {favorites.length > 0 && <div className="favorite-list"><p>{t("Favorites")} <span>{favorites.length}</span></p>{favorites.slice(0, 4).map((favorite) => <button key={favorite.id} onClick={() => chooseSuggestion(favorite.text)} title={favorite.text}><span>★</span><span><strong>{dashboardModels.find((model) => model.slug === favorite.modelSlug)?.name || 'AI response'}</strong><small>{favorite.text}</small></span></button>)}</div>}
-        <div className="chat-history" onKeyDown={(event) => { if (event.key === 'Escape') { setChatMenuId(null); event.target.closest('.chat-history-item')?.querySelector('.chat-history-more')?.focus(); } }} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setChatMenuId(null); }}>
-          <p className="chat-history-heading">
-            {t("Saved conversations")}
-            <span className="chat-history-count">{chatHistory.length}</span>
-            <button
-              type="button"
-              className={`chat-history-feed-toggle ${historyFeedOpen ? 'open' : ''}`}
-              aria-expanded={historyFeedOpen}
-              aria-label={t("Open question history panel")}
-              title={t("Open question history panel")}
-              onClick={() => setHistoryFeedOpen((open) => !open)}
-            >
-              ⌄
-            </button>
-            <button className="chat-history-export" type="button" onClick={exportConversation} disabled={!messages.length} title={t("Export current conversation")}>↓</button>
-          </p>
-          <input className="chat-history-search" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder={t("Search saved chats")} aria-label={t("Search saved chats")} />
-          <div className="chat-history-list" tabIndex={0} aria-label={t("Saved conversations")}>
-          {chatHistory.length === 0 && <small className="chat-history-empty">{t("Your saved chats will appear here.")}</small>}
-          {chatHistory.length > 0 && visibleHistory.length === 0 && <small className="chat-history-empty">{t("No matching conversations.")}</small>}
-          {visibleHistory.map((conversation) => <div className={`chat-history-item ${activeConversationId === conversation.id ? 'active' : ''}`} key={conversation.id}>
-            <button className="chat-history-open" onClick={() => openConversation(conversation)}><span>{chatMeta[conversation.id]?.pinned ? '★' : '◇'}</span><span><strong>{conversation.title || conversationPreview(conversation)}</strong><small>{conversationPreview(conversation)}</small>{Array.isArray(chatMeta[conversation.id]?.tags) && chatMeta[conversation.id].tags.length > 0 && <small className="chat-tags">{chatMeta[conversation.id].tags.map((tag) => `#${tag}`).join(' ')}</small>}<em>Saved · {conversation.model}</em></span></button>
-            <button type="button" aria-expanded={chatMenuId === conversation.id} className="chat-history-more" onClick={() => setChatMenuId((id) => id === conversation.id ? null : conversation.id)} aria-label={`Options for ${conversation.title}`}>•••</button>
-            {chatMenuId === conversation.id && (
-              <div className="chat-history-menu" lang="en">
-                <button type="button" onClick={() => pinConversation(conversation)}>
-                  {chatMeta[conversation.id]?.pinned ? t('Unpin') : t('Pin')}
-                </button>
-                <button type="button" onClick={() => renameConversation(conversation)}>{t('Rename')}</button>
-                <button type="button" className="danger" onClick={() => deleteConversation(conversation)}>{t('Delete')}</button>
-              </div>
-            )}
-          </div>)}
-          </div>
-        </div>
-        <nav className="sidebar-links" aria-label={t("Chat navigation")}><Link to="/dashboard" onClick={() => logger.action('Open: Dashboard', { path: '/dashboard' })}>⌂ <span>{t("Dashboard")}</span></Link><Link to="/ai-training" onClick={() => logger.action('Open: AI Training', { path: '/ai-training' })}>⚡ <span>{t("AI Training")}</span></Link><Link to="/ai-platform" onClick={() => logger.action('Open: AI Platform', { path: '/ai-platform' })}>34 <span>{t("AI Platform")}</span></Link><Link to="/app-builder" onClick={() => logger.action('Open: App Builder', { path: '/app-builder' })}>&lt;/&gt; <span>App Builder</span></Link><Link to="/studio" onClick={() => logger.action('Open: Workspace Studio', { path: '/studio' })}>✦ <span>{t("Workspace Studio")}</span></Link><Link to="/control-center" onClick={() => logger.action('Open: Control Center', { path: '/control-center' })}>⌘ <span>{t("Control Center")}</span></Link><Link to="/models/gpt" onClick={() => logger.action('Open: Model library', { path: '/models/gpt' })}>▦ <span>{t("Model library")}</span></Link></nav>
-        <section className="sidebar-theme-settings collapsed" aria-label={t("Theme settings")}><button type="button" className="chat-settings-trigger" onClick={() => goTo('/chat/settings', 'Settings')}><span className="settings-gear" aria-hidden="true">⚙</span><span><strong>{t("Settings")}</strong><small>{themePreference} · {chatTextColors.find(([,color])=>color===textColor)?.[0]||'Custom'} message</small></span><b>›</b></button></section>
-        <div className="chat-profile">
-          <span className="chat-profile-avatar" aria-hidden="true">{user.name?.charAt(0) || user.email.charAt(0)}</span>
-          <div className="chat-profile-meta"><strong>{user.name || t("User")}</strong><small>{user.email}</small></div>
-          <button type="button" className="chat-profile-signout" onClick={() => setDeleteModalOpen(true)} aria-label={t("Sign out")} title={t("Sign out")}>↗</button>
-        </div>
-        </div>
-      </aside>
+      <ChatSidebar
+        t={t}
+        user={user}
+        isSidebarCollapsed={isSidebarCollapsed}
+        sidebarOpen={sidebarOpen}
+        expandSidebar={expandSidebar}
+        collapseSidebar={collapseSidebar}
+        setSidebarOpen={setSidebarOpen}
+        newChat={newChat}
+        openSmartRouter={openSmartRouter}
+        chooseSkill={chooseSkill}
+        createProject={createProject}
+        goTo={goTo}
+        logger={logger}
+        temporaryChat={temporaryChat}
+        startTemporaryChat={startTemporaryChat}
+        selectedSlug={selectedSlug}
+        messages={messages}
+        exportConversation={exportConversation}
+        editSystemInstructions={editSystemInstructions}
+        backupWorkspace={backupWorkspace}
+        projects={projects}
+        activeProject={activeProject}
+        enterProject={enterProject}
+        projectMenuId={projectMenuId}
+        setProjectMenuId={setProjectMenuId}
+        renameProject={renameProject}
+        deleteProject={deleteProject}
+        favorites={favorites}
+        chooseSuggestion={chooseSuggestion}
+        dashboardModels={dashboardModels}
+        chatHistory={chatHistory}
+        visibleHistory={visibleHistory}
+        historyQuery={historyQuery}
+        setHistoryQuery={setHistoryQuery}
+        chatMeta={chatMeta}
+        activeConversationId={activeConversationId}
+        openConversation={openConversation}
+        chatMenuId={chatMenuId}
+        setChatMenuId={setChatMenuId}
+        pinConversation={pinConversation}
+        renameConversation={renameConversation}
+        deleteConversation={deleteConversation}
+        themePreference={themePreference}
+        textColor={textColor}
+        chatTextColors={chatTextColors}
+        setDeleteModalOpen={setDeleteModalOpen}
+      />
 
       {!isSidebarCollapsed && (
         <div
@@ -2253,29 +2403,42 @@ export default function Chat() {
             if (!text && !messageImage && message.role === 'assistant' && isSending && index === messages.length - 1) return null;
             const activelyStreaming = isStreamingResponse && isSending && index === messages.length - 1 && message.role === 'assistant';
             const editing = message.role === 'user' && editingMessageIndex === index;
-            const liked = messageLikes[index];
             const feedback = messageFeedback[index];
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} citationSources={message.webSources} /> : <p>{text}</p>)}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
-{message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} />}{message.imageUrl && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || 'hd', aspectRatio: message.imageAspect || '1:1' }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{text && !activelyStreaming && !editing && <div className="message-actions">
-              {message.role === 'assistant' ? (
-                <>
-                  <button type="button" data-tooltip={t("Copy")} onClick={() => copyMessage(generatedFile?.content || text)} aria-label="Copy response"><CopyMessageIcon /></button>
-                  <button type="button" data-tooltip={liked ? 'Liked' : 'Like'} className={liked ? 'selected-like' : ''} onClick={() => likeMessage(index)} aria-label="Like response">👍</button>
-                  <button type="button" data-tooltip={t("Feedback")} onClick={() => openFeedback(index)} aria-label="Leave feedback">💬</button>
-                  <button type="button" data-tooltip="Good response" className={messageRatings[index] === 'up' ? t("selected") : ''} onClick={() => rateMessage(index, 'up')} aria-label="Good response">♧</button>
-                  <button type="button" data-tooltip="Bad response" className={messageRatings[index] === 'down' ? t("selected") : ''} onClick={() => rateMessage(index, 'down')} aria-label="Bad response">♧</button>
-                  <button type="button" data-tooltip={t("Share")} onClick={() => shareMessage(text)} aria-label="Share response">↗</button>
-                  <button type="button" data-tooltip={t("Retry")} onClick={() => retryMessage(index)} aria-label="Retry response">⟳</button>
-                  <button type="button" data-tooltip={isSpeaking ? 'Stop voice' : t("Read aloud")} onClick={() => isSpeaking ? stopSpeaking() : speakText(text)} aria-label={isSpeaking ? 'Stop reading response' : 'Read response aloud'}>{isSpeaking ? '■' : '🔊'}</button>
-                  {feedback && <span className="feedback-badge" title={feedback}>Feedback sent</span>}
-                </>
-              ) : (
-                <>
-                  <button type="button" data-tooltip={t("Copy")} onClick={() => copyMessage(text)} aria-label="Copy message"><CopyMessageIcon /></button>
-                  <button type="button" data-tooltip={t("Edit")} onClick={() => editMessage(index)} aria-label="Edit message">✎</button>
-                </>
-              )}
-             </div>}
+            const favoriteEntry = favorites.some((item) => item.text === text);
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : message.deepResearch ? <DeepResearchMessageBlock message={message} onClarifyStart={(answers) => handleDeepResearchClarification(index, answers, false)} onClarifySkip={() => handleDeepResearchClarification(index, null, true)} onStopResearch={stopGenerating} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1)); }} /> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} citationSources={message.webSources} /> : <p>{text}</p>)}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
+{message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} />}{message.role === 'assistant' && selectedSlug === 'smart' && message.router && <SmartRouterStatus router={message.router} routedModel={message.modelSlug} displayName={message.routeDisplayName} />}{message.knowledgeSources?.length > 0 && <KnowledgeSourceChips sources={message.knowledgeSources} onSourceClick={() => navigate('/knowledge')} />}{message.imageUrl && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || 'hd', aspectRatio: message.imageAspect || '1:1' }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{text && !activelyStreaming && !editing && (
+              <MessageActions
+                role={message.role}
+                text={text}
+                copyText={generatedFile?.content || text}
+                messageIndex={index}
+                rating={messageRatings[index] || null}
+                feedbackReason={feedback || ''}
+                isFavorite={favoriteEntry}
+                modelInfo={message.role === 'assistant' ? messageModel : null}
+                conversationId={temporaryChat ? null : activeConversationId}
+                isSending={isSending}
+                isRegenerating={regeneratingMessageIndex === index}
+                speechLanguage={speechLanguage}
+                selectedVoiceName={selectedVoice}
+                availableVoices={availableVoices}
+                activeSpeechIndex={activeSpeechMessageIndex}
+                onSpeechIndexChange={(nextIndex) => {
+                  setActiveSpeechMessageIndex(nextIndex);
+                  setIsSpeaking(nextIndex !== null);
+                }}
+                onRate={rateMessage}
+                onFeedbackReason={setFeedbackReason}
+                onShare={() => shareMessage(text)}
+                onRegenerate={message.role === 'assistant' ? regenerateResponse : undefined}
+                onEdit={editMessage}
+                onSaveFavorite={message.role === 'assistant' ? () => toggleFavorite(text, message.modelSlug || selectedSlug) : undefined}
+                onExportMessage={message.role === 'assistant' ? () => exportAssistantMessage(message, messageModel.name) : undefined}
+                onContinueFromHere={message.role === 'assistant' ? () => sendMessage(null, 'Continue the previous answer from exactly where it stopped. Do not repeat completed content.') : undefined}
+                onViewModelInfo={message.role === 'assistant' ? () => setModelMenuOpen(true) : undefined}
+                translate={t}
+              />
+            )}
             </div>
            </article>
             })}
@@ -2309,6 +2472,10 @@ export default function Chat() {
               <button type="button" onClick={() => chooseSkill('file')}><span>{'</>'}</span> Create file</button>
               <button type="button" onClick={() => chooseSkill('video')}><span>▶</span> Make video</button>
               <button type="button" onClick={() => chooseSkill('web')}><span>🌐</span> Search the web</button>
+              <button type="button" onClick={toggleKnowledgeBaseFromMenu} aria-pressed={useKnowledgeBase}>
+                <span className="composer-menu-svg" aria-hidden="true"><IconToolKnowledgeBase /></span>
+                {useKnowledgeBase ? 'Knowledge Base on' : 'Use Knowledge Base'}
+              </button>
               <button type="button" onClick={() => chooseSkill('deep-research')}><span>🔎</span> Deep Research</button>
               <button type="button" disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))} onClick={() => { setComposerMenuOpen(false); sendMessage(null, 'Continue the previous answer from exactly where it stopped. Do not repeat completed content.'); }}><span>→</span> Continue last answer</button>
               <button type="button" disabled={!activeConversationId || !messages.length} onClick={() => { setComposerMenuOpen(false); branchCurrentConversation(); }}><span>⑂</span> Branch conversation</button>
@@ -2342,9 +2509,25 @@ export default function Chat() {
                 <label>Voice<select value={selectedVoice} onChange={(event) => { setSelectedVoice(event.target.value); safeStorageSet('localStorage', 'allmodelai_voice_name', event.target.value); }}><option value="">Automatic</option>{availableVoices.map((voice) => <option value={voice.name} key={`${voice.name}-${voice.lang}`}>{voice.name} ({voice.lang})</option>)}</select></label>
                 {isSpeaking && <button type="button" className="stop-speaking" onClick={stopSpeaking}>Stop speaking</button>}
               </section>}
+              {useKnowledgeBase && (
+                <div className="composer-kb-chip" role="status">
+                  <span className="composer-kb-chip-icon" aria-hidden="true">
+                    <IconToolKnowledgeBase />
+                  </span>
+                  <span className="composer-kb-chip-label">{t('Knowledge Base')}</span>
+                  <button
+                    type="button"
+                    className="composer-kb-chip-remove"
+                    onClick={() => setKnowledgeBaseActive(false)}
+                    aria-label={t('Turn off Knowledge Base for this chat')}
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               {selectedSkill && <div className="selected-skill">
                 <span className={`selected-skill-icon ${selectedSkill}`} aria-hidden="true">{selectedSkill === 'image' ? '✦' : selectedSkill === 'web' ? '🌐' : selectedSkill === 'deep-research' ? '🔎' : '▶'}</span>
-                <span><strong>{selectedSkill === 'file' ? 'Create file' : selectedSkill === 'image' ? 'Create image' : selectedSkill === 'web' ? 'Search the web' : selectedSkill === 'deep-research' ? 'Deep Research' : 'Make a video'}</strong><small>{selectedSkill === 'file' ? 'Describe a text or code file. Open, copy and download the result.' : selectedSkill === 'image' ? 'Write a description and press send'  : selectedSkill === 'web' ? 'Current information with sources' : selectedSkill === 'deep-research' ? 'Multi-step research with Tavily sources and a structured report' : 'Describe the video you want to create'}</small></span>
+                <span><strong>{selectedSkill === 'file' ? 'Create file' : selectedSkill === 'image' ? 'Create image' : selectedSkill === 'web' ? 'Search the web' : selectedSkill === 'deep-research' ? 'Deep Research' : 'Make a video'}</strong><small>{selectedSkill === 'file' ? 'Describe a text or code file. Open, copy and download the result.' : selectedSkill === 'image' ? 'Write a description and press send'  : selectedSkill === 'web' ? 'Current information with sources' : selectedSkill === 'deep-research' ? 'Multi-step web research with live progress and cited sources' : 'Describe the video you want to create'}</small></span>
                 <button type="button" className="selected-skill-remove" onClick={() => setSelectedSkill(null)} aria-label="Remove selected skill" title="Remove skill">×</button>
               </div>}
               {attachedImage && (

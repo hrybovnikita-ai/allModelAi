@@ -1,19 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { buildClientTestCheckoutInfo, fetchCheckoutInfo, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
+import { fetchCheckoutInfo, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
 import './Pricing.css';
-
-const initialCheckoutUi = () => {
-  const fallback = buildClientTestCheckoutInfo();
-  return {
-    showTestBanner: Boolean(fallback?.showTestModeBanner),
-    testBannerText: fallback?.testModeBannerText || TEST_MODE_BANNER,
-  };
-};
 
 export default function Pricing() {
   const navigate = useNavigate();
-  const [banner, setBanner] = useState(initialCheckoutUi);
+  const [banner, setBanner] = useState({ showTestBanner: false, testBannerText: TEST_MODE_BANNER });
 
   useEffect(() => {
     fetchCheckoutInfo().then((info) => {
@@ -43,7 +35,7 @@ export default function Pricing() {
             <li>5,000 requests per month</li>
             <li>Code Studio and Live Preview</li>
           </ul>
-          <button className="pricing-btn" type="button" onClick={() => navigate('/checkout?plan=developer')}>Activate developer</button>
+          <button className="pricing-btn" type="button" onClick={() => navigate('/checkout?plan=developer')}>Activate Developer</button>
         </div>
         <div className="pricing-card featured">
           <span className="featured-badge">Most Popular</span>
@@ -68,7 +60,7 @@ export default function Pricing() {
             <li>Custom SLA guarantees</li>
             <li>Self-hosting options</li>
           </ul>
-          <button className="pricing-btn" type="button" onClick={() => navigate('/checkout/enterprise')}>Choose Power</button>
+          <button className="pricing-btn" type="button" onClick={() => navigate('/checkout/enterprise')}>Choose Enterprise</button>
         </div>
       </div>
     </section>

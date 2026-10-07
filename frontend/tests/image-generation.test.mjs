@@ -34,6 +34,24 @@ test('image request keeps the selected quality and aspect', () => {
     assert.equal(imageGeneration.IMAGE_QUALITIES.map((item) => item.label).join(','), 'Standard,HD,Ultra');
 });
 
+test('user-facing image errors hide provider billing details', () => {
+    const { userFacingImageGenerationError, IMAGE_UNAVAILABLE_MESSAGE } = imageGeneration;
+    assert.equal(
+        userFacingImageGenerationError(false, {
+            code: 'IMAGE_GENERATION_UNAVAILABLE',
+            message: 'Insufficient balance 0.0094 pollen Top up at enter.pollinations.ai',
+        }),
+        IMAGE_UNAVAILABLE_MESSAGE,
+    );
+    assert.equal(
+        userFacingImageGenerationError(false, {
+            message: 'Insufficient balance available balance: 0.0000 pollen',
+        }),
+        IMAGE_UNAVAILABLE_MESSAGE,
+    );
+    assert.equal(userFacingImageGenerationError(true, { success: true, imageUrl: 'https://example.com/a.png' }), null);
+});
+
 test('download bytes are the original base64 payload', () => {
     const decoded = imageGeneration.dataImageBytes(`data:image/png;base64,${PNG_1X1}`);
     assert.equal(decoded.mimeType, 'image/png');

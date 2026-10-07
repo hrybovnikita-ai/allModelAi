@@ -18,4 +18,5 @@ test('design system defines core tokens without replacing brand purple', () => {
 test('main.jsx loads design system globally', () => {
   assert.match(main, /styles\/design-system\.css/);
   assert.match(main, /styles\/premium-ui\.css/);
+  assert.match(main, /styles\/home-premium\.css/);
 });

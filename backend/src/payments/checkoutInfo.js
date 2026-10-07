@@ -1,56 +1,64 @@
 const { wayforpayConfigured, wayforpayConfig, wayforpayCheckoutAvailable } = require('../wayforpay/config');
+const { assertStripeCheckoutAllowed, getStripeMode, isStripeTestMode } = require('./stripeMode');
 const {
-    assertStripeCheckoutAllowed,
-    getStripeMode,
-    isStripeTestMode,
-    shouldPreferStripeOverWayforpay,
-} = require('./stripeMode');
+    getPaymentMode,
+    resolvePrimaryPaymentProvider,
+    paymentsCheckoutAvailable,
+    stripeCheckoutEnabledForDeployment,
+    wayforpayCheckoutEnabledForDeployment,
+    stripePaymentsConfigured,
+} = require('./paymentProvider');
 
-const TEST_MODE_BANNER = 'TEST MODE — NO REAL MONEY WILL BE CHARGED';
-
-const stripeCheckoutEnabled = () => {
-    if (!assertStripeCheckoutAllowed().ok) return false;
-    const wayforpayOn = wayforpayCheckoutAvailable();
-    if (wayforpayOn && !shouldPreferStripeOverWayforpay()) return false;
-    return true;
-};
+const TEST_MODE_BANNER = 'TEST MODE — No real money will be charged';
 
 const buildCheckoutInfo = () => {
-    const stripeKeyPresent = Boolean(process.env.STRIPE_SECRET_KEY?.trim());
     const stripeGuard = assertStripeCheckoutAllowed();
-    const stripeOn = stripeKeyPresent && stripeGuard.ok;
+    const stripeKeyPresent = Boolean(process.env.STRIPE_SECRET_KEY?.trim());
+    const stripeOn = stripePaymentsConfigured();
     const wayforpayOn = wayforpayCheckoutAvailable();
-    const preferStripe = shouldPreferStripeOverWayforpay();
-    const primaryProvider = stripeOn && (preferStripe || !wayforpayOn)
-        ? 'stripe'
-        : wayforpayOn
-            ? 'wayforpay'
-            : stripeOn
-                ? 'stripe'
-                : null;
+    const primaryProvider = resolvePrimaryPaymentProvider();
+    const paymentMode = getPaymentMode();
     const wayforpayTestMode = wayforpayOn && wayforpayConfig().testMode;
     const stripeTestMode = stripeOn && isStripeTestMode();
-    const checkoutSecureLabel = primaryProvider === 'wayforpay'
-        ? (wayforpayTestMode ? 'WAYFORPAY TEST CHECKOUT' : 'WAYFORPAY SECURE CHECKOUT')
+    const testModeActive = paymentMode === 'test' || wayforpayTestMode || stripeTestMode;
+
+    const providerDisplayName = primaryProvider === 'wayforpay'
+        ? 'WayForPay'
         : primaryProvider === 'stripe'
-            ? (stripeTestMode ? 'STRIPE TEST CHECKOUT' : 'STRIPE SECURE CHECKOUT')
-            : 'CHECKOUT';
+            ? 'Stripe'
+            : null;
+
+    let checkoutUnavailableMessage = null;
+    if (!paymentsCheckoutAvailable()) {
+        checkoutUnavailableMessage = process.env.NODE_ENV === 'production'
+            ? 'Payments are temporarily unavailable. Please try again later.'
+            : 'Payments are not configured. Add WayForPay or Stripe credentials on the server.';
+    } else if (primaryProvider === 'stripe' && stripeKeyPresent && !stripeGuard.ok) {
+        checkoutUnavailableMessage = stripeGuard.message;
+    }
+
     return {
+        paymentMode,
         primaryProvider,
+        paymentProvider: primaryProvider,
+        providerDisplayName,
+        checkoutAvailable: paymentsCheckoutAvailable() && !checkoutUnavailableMessage,
+        checkoutUnavailableMessage,
         stripeConfigured: stripeKeyPresent,
-        stripeCheckoutEnabled: stripeCheckoutEnabled(),
+        stripeCheckoutEnabled: stripeCheckoutEnabledForDeployment(),
         stripeMode: getStripeMode(),
         stripeTestMode,
         stripeCheckoutBlocked: stripeKeyPresent && !stripeGuard.ok,
         stripeCheckoutBlockedMessage: stripeGuard.ok ? null : stripeGuard.message,
         wayforpayConfigured: wayforpayConfigured(),
         wayforpayCheckoutAvailable: wayforpayOn,
+        wayforpayCheckoutEnabled: wayforpayCheckoutEnabledForDeployment(),
         wayforpayTestMode,
-        wayforpayMockCheckout: Boolean(wayforpayTestMode && primaryProvider === 'wayforpay'),
-        checkoutSecureLabel,
-        showTestModeBanner: Boolean(stripeTestMode || wayforpayTestMode),
-        testModeBannerText: (stripeTestMode || wayforpayTestMode) ? TEST_MODE_BANNER : null,
-        showStripeTestCardHint: Boolean(stripeTestMode && primaryProvider === 'stripe'),
+        wayforpayMockCheckout: Boolean(primaryProvider === 'wayforpay' && wayforpayTestMode),
+        showTestModeBanner: testModeActive,
+        testModeBannerText: testModeActive ? TEST_MODE_BANNER : null,
+        showStripeTestCardHint: Boolean(primaryProvider === 'stripe' && stripeTestMode),
+        secureCheckoutLabel: testModeActive ? 'Secure test checkout' : 'Secure payment',
     };
 };
 
@@ -58,11 +66,13 @@ const assertWayforpayCheckoutAllowed = () => {
     const cfg = wayforpayConfig();
     if (cfg.testMode) return null;
     if (!wayforpayConfigured()) {
-        return 'WayForPay live checkout requires WAYFORPAY_MERCHANT_ACCOUNT, WAYFORPAY_SECRET_KEY, and WAYFORPAY_DOMAIN.';
+        return 'WayForPay live checkout requires merchant account, secret key, and domain on the server.';
     }
     if (process.env.WAYFORPAY_LIVE_CONFIRM === 'true') return null;
-    return 'Live WayForPay charges are disabled. Set WAYFORPAY_TEST_MODE=true for mock testing or WAYFORPAY_LIVE_CONFIRM=true for production.';
+    return 'Live WayForPay charges are disabled until live mode is explicitly enabled on the server.';
 };
+
+const stripeCheckoutEnabled = () => stripeCheckoutEnabledForDeployment();
 
 module.exports = {
     buildCheckoutInfo,

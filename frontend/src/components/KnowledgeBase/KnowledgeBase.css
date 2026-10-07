@@ -1,0 +1,120 @@
+.kb-page {
+  min-height: 100svh;
+  background: radial-gradient(1200px 600px at 20% -10%, rgba(124, 92, 255, 0.18), transparent),
+    #05070a;
+  color: #e2e8f0;
+  padding: 1.5rem clamp(1rem, 4vw, 2.5rem) 3rem;
+}
+
+.kb-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.kb-brand {
+  font-weight: 800;
+  color: #c4b5fd;
+  text-decoration: none;
+}
+
+.kb-nav a {
+  color: #94a3b8;
+  margin-left: 1rem;
+  text-decoration: none;
+}
+
+.kb-nav a:hover {
+  color: #e2e8f0;
+}
+
+.kb-hero h1 {
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+}
+
+.kb-hero p {
+  color: #94a3b8;
+  max-width: 52rem;
+}
+
+.kb-panel {
+  margin-top: 1.25rem;
+  padding: 1rem 1.15rem;
+  border-radius: 14px;
+  border: 1px solid rgba(124, 92, 255, 0.25);
+  background: rgba(15, 15, 22, 0.85);
+}
+
+.kb-upload {
+  display: inline-flex;
+  padding: 0.75rem 1rem;
+  border: 1px dashed rgba(34, 211, 238, 0.45);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.kb-upload input {
+  display: none;
+}
+
+.kb-doc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.kb-doc-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.kb-doc-list small {
+  display: block;
+  color: #94a3b8;
+}
+
+.kb-ask-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.kb-ask-form textarea {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  background: #0b0d14;
+  color: #f8fafc;
+  padding: 0.65rem;
+}
+
+.kb-primary {
+  justify-self: start;
+  background: linear-gradient(135deg, #7c5cff, #22d3ee);
+  border: none;
+  color: #0f172a;
+  font-weight: 700;
+  padding: 0.5rem 1.1rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.kb-answer {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.kb-error {
+  color: #fca5a5;
+}
+
+.kb-muted {
+  color: #64748b;
+}

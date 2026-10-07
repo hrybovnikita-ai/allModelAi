@@ -1,0 +1,161 @@
+/**
+ * AllModelAI homepage — premium layout, cards, and responsive polish.
+ * Visual only; preserves existing colors and structure.
+ */
+
+.home-surface {
+  background-color: var(--bg-primary);
+}
+
+.home-surface .container {
+  width: 100%;
+  max-width: var(--ama-container-wide);
+  margin-inline: auto;
+  padding-block: clamp(48px, 6vw, 88px);
+  padding-inline: max(var(--page-gutter, 20px), var(--safe-left)) max(var(--page-gutter, 20px), var(--safe-right));
+}
+
+.home-layout {
+  gap: clamp(40px, 5vw, 72px);
+}
+
+/* Shared section header rhythm */
+.home-layout .grid-header h2,
+.home-layout .users-heading h2,
+.home-layout .comments-heading h3,
+.pricing-section .section-header h2 {
+  font-size: clamp(1.45rem, 2.2vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary, var(--text));
+}
+
+.home-layout .grid-header p,
+.pricing-section .section-header p {
+  font-size: clamp(0.88rem, 1.1vw, 1rem);
+  max-width: 52ch;
+  margin-inline: auto;
+  color: var(--text-secondary);
+}
+
+/* Premium card shell */
+.home-layout .about-card,
+.home-layout .user-card,
+.home-layout .comment-card,
+.home-layout .model-card,
+.pricing-section .pricing-card,
+.workflow-section {
+  border: 1px solid var(--border);
+  background: linear-gradient(165deg, rgba(20, 27, 42, 0.96), rgba(14, 18, 30, 0.92));
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform var(--duration-normal, 200ms) var(--ease-out, ease),
+    border-color var(--duration-normal, 200ms),
+    box-shadow var(--duration-normal, 200ms);
+}
+
+.home-layout .about-card:hover,
+.home-layout .user-card:hover,
+.home-layout .comment-card:hover,
+.home-layout .model-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.home-layout .model-card.active {
+  border-color: var(--border-active);
+  box-shadow: var(--shadow-glow);
+}
+
+.home-layout .model-card {
+  border-radius: var(--radius-md, 14px);
+  min-width: 0;
+}
+
+/* Model detail panel */
+.home-model-section {
+  gap: clamp(24px, 3vw, 40px);
+}
+
+.models-grid + .model-details,
+.home-model-section > div:last-child {
+  border-radius: var(--radius-lg, 18px);
+  border: 1px solid var(--border-strong);
+  background: linear-gradient(160deg, rgba(18, 22, 34, 0.98), rgba(10, 12, 20, 0.95));
+  box-shadow: var(--shadow-md);
+}
+
+/* Everyday toolkit cards (homepage block) */
+.home-layout .everyday-card-grid > a {
+  border-radius: var(--radius-md);
+  transition: transform var(--duration-normal), box-shadow var(--duration-normal), border-color var(--duration-normal);
+}
+
+.home-layout .everyday-card-grid > a:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* Workflow timeline polish */
+.workflow-section {
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(8px);
+}
+
+@media (max-width: 900px) {
+  .workflow-steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Community + testimonials */
+.users-grid,
+.comments-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: clamp(12px, 2vw, 18px);
+}
+
+.comment-card blockquote {
+  font-size: clamp(0.85rem, 1vw, 0.92rem);
+  line-height: 1.65;
+}
+
+/* Footer */
+.footer {
+  margin-top: clamp(48px, 6vw, 80px);
+  padding-block: clamp(48px, 6vw, 80px) clamp(24px, 3vw, 32px);
+  padding-inline: max(var(--page-gutter, 20px), var(--safe-left)) max(var(--page-gutter, 20px), var(--safe-right));
+  background: linear-gradient(180deg, var(--bg-secondary), #06080e);
+  border-top: 1px solid var(--border-strong);
+}
+
+.footer-content {
+  max-width: var(--ama-container-ultra);
+  margin-inline: auto;
+}
+
+/* Prevent horizontal overflow globally on marketing pages */
+.home-surface,
+.home-surface .container,
+.header {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-layout .about-card,
+  .home-layout .user-card,
+  .home-layout .comment-card,
+  .home-layout .model-card,
+  .hero-visual > button {
+    transition: none;
+    animation: none !important;
+  }
+}
+
+@media (min-width: 2560px) {
+  .home-surface .container {
+    max-width: var(--ama-container-ultra);
+  }
+}

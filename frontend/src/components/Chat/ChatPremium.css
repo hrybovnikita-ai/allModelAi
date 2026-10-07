@@ -162,11 +162,8 @@
   font-size: 0.85em;
 }
 
-.chat-page .message-actions button[data-tooltip]::after {
-  border: 1px solid rgba(157, 123, 255, 0.25);
-  background: rgba(12, 12, 18, 0.98);
-  backdrop-filter: blur(8px);
-  border-radius: var(--radius-xs);
+.chat-page .message-actions .message-action-btn:focus-visible {
+  outline-color: rgba(157, 123, 255, 0.85);
 }
 
 /* Composer busy state */

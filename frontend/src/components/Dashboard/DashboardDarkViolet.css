@@ -58,15 +58,30 @@
   color: #c4b5fd;
 }
 
-.dashboard-violet .dashboard-user button {
+.dashboard-violet .dashboard-account-signout {
   border-color: rgba(124, 92, 255, 0.28);
-  color: #a8a3b8;
-  background: rgba(21, 21, 29, 0.6);
+  color: #c4b5fd;
+  background: rgba(21, 21, 29, 0.72);
 }
 
-.dashboard-violet .dashboard-user button:hover {
-  border-color: rgba(157, 123, 255, 0.45);
+.dashboard-violet .dashboard-account-signout:hover,
+.dashboard-violet .dashboard-account-signout:focus-visible {
+  border-color: rgba(157, 123, 255, 0.55);
   color: #fff;
+  background: rgba(49, 46, 129, 0.4);
+}
+
+.dashboard-violet .dashboard-account-delete {
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+  background: rgba(40, 12, 18, 0.55);
+}
+
+.dashboard-violet .dashboard-account-delete:hover,
+.dashboard-violet .dashboard-account-delete:focus-visible {
+  border-color: rgba(252, 165, 165, 0.75);
+  color: #ffe4e6;
+  background: rgba(127, 29, 29, 0.5);
 }
 
 .dashboard-violet .dashboard-eyebrow,

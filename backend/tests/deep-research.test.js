@@ -55,29 +55,45 @@ describe('Deep Research API', () => {
         assert.equal(response.status, 400);
     });
 
-    test('returns 503 when Tavily key is missing for deep mode', async () => {
+    test('collects sources via public fallback when Tavily key is missing', async () => {
         const previous = process.env.TAVILY_API_KEY;
         delete process.env.TAVILY_API_KEY;
+        global.fetch = async (url) => {
+            if (String(url).includes('bing.com')) {
+                return new Response('<html></html>', { status: 200 });
+            }
+            if (String(url).includes('duckduckgo.com')) {
+                return new Response('<html></html>', { status: 200 });
+            }
+            return new Response(JSON.stringify({
+                candidates: [{ content: { parts: [{ text: '{"objective":"Study","queries":["quantum trends","quantum computing news"]}' }] } }],
+            }), { status: 200 });
+        };
         try {
             const response = await api.post('/api/research').send({ query: 'quantum computing trends', depth: 'quick' });
-            assert.equal(response.status, 503);
-            assert.equal(response.body.code, 'tavily_not_configured');
+            assert.equal(response.status, 200);
+            assert.ok(Array.isArray(response.body.sources));
         } finally {
             if (previous) process.env.TAVILY_API_KEY = previous;
         }
     });
 
-    test('maps Tavily auth errors safely', async () => {
+    test('falls back when Tavily auth fails without exposing the key', async () => {
         process.env.TAVILY_API_KEY = 'bad-key';
         global.fetch = async (url) => {
             if (String(url).includes('tavily.com')) {
                 return new Response(JSON.stringify({ detail: 'Unauthorized: invalid api key' }), { status: 401 });
             }
-            return sseUpstream([{ candidates: [{ content: { parts: [{ text: '{"objective":"x","queries":["a","b"]}' }] } }] }]);
+            if (String(url).includes('bing.com') || String(url).includes('duckduckgo.com')) {
+                return new Response('<html></html>', { status: 200 });
+            }
+            return new Response(JSON.stringify({
+                candidates: [{ content: { parts: [{ text: '{"objective":"x","queries":["a","b"]}' }] } }],
+            }), { status: 200 });
         };
         const response = await api.post('/api/research').send({ query: 'AI safety report', depth: 'quick' });
-        assert.equal(response.status, 401);
-        assert.equal(response.body.code, 'tavily_auth');
+        assert.equal(response.status, 200);
+        assert.ok(Array.isArray(response.body.sources));
         assert.doesNotMatch(JSON.stringify(response.body), /bad-key/);
     });
 

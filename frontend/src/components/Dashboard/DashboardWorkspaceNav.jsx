@@ -89,11 +89,11 @@ export default function DashboardWorkspaceNav({ user: routeUser, onAuthError, on
             <Link to="/settings">
               <small>{user.name || user.email}</small>
             </Link>
-            <button type="button" onClick={signOut}>
+            <button type="button" className="dashboard-account-signout" onClick={signOut}>
               Sign out
             </button>
             {onDeleteAccount ? (
-              <button type="button" onClick={onDeleteAccount}>
+              <button type="button" className="dashboard-account-delete" onClick={onDeleteAccount}>
                 Delete account
               </button>
             ) : null}

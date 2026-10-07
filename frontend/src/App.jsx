@@ -24,6 +24,7 @@ import ModelDetails from "./components/ModelDetails/ModelDetails";
 import Chat from "./components/Chat/Chat";
 import Checkout from "./components/Checkout/Checkout";
 import CheckoutSuccess from "./components/Checkout/CheckoutSuccess";
+import CheckoutCancel from "./components/Checkout/CheckoutCancel";
 import SocialAuthCallback from "./components/SocialAuth/SocialAuthCallback";
 import GoogleRedirectRecoveryGate from "./components/SocialAuth/GoogleRedirectRecoveryGate";
 import Workflow from "./components/Workflow/Workflow";
@@ -67,6 +68,7 @@ import EverydayAI from "./components/EverydayAI/EverydayAI";
 import EverydayCards from "./components/EverydayAI/EverydayCards";
 import PythonAILab from "./components/PythonAILab/PythonAILab";
 import AiTrainingHub from "./components/AiTraining/AiTrainingHub";
+import KnowledgeBasePage from "./components/KnowledgeBase/KnowledgeBasePage";
 import LessonPage from "./components/AiTraining/LessonPage";
 import AiLearningLab from "./components/AiLearning/AiLearningLab";
 import ModelLab from "./components/ModelLab/ModelLab";
@@ -127,7 +129,7 @@ function HomePage() {
   };
 
   return (
-    <div className="app">
+    <div className="app home-surface">
       <Header />
       <main className="container home-layout">
         <ModelsSection 
@@ -176,6 +178,7 @@ export default function App() {
       <Route path="/login" element={<AuthPage mode="signin" />} />
       <Route path="/register" element={<AuthPage mode="signup" />} />
       <Route path="/checkout/success" element={<CheckoutSuccess />} />
+      <Route path="/checkout/cancel" element={<CheckoutCancel />} />
       <Route path="/checkout" element={<Checkout />} />
       <Route path="/checkout/pro" element={<Checkout />} />
       <Route path="/checkout/enterprise" element={<Checkout />} />
@@ -188,6 +191,7 @@ export default function App() {
       <Route path="/settings" element={<Settings />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="/chat" element={<Chat />} />
+      <Route path="/knowledge" element={<KnowledgeBasePage />} />
       <Route path="/files/:conversationId/:fileId" element={<GeneratedFile />} />
       <Route path="/model-comparison" element={<ModelComparison />} />
       <Route path="/usage-analytics" element={<UsageAnalytics />} />

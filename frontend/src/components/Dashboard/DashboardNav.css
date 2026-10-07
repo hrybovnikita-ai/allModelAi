@@ -188,6 +188,64 @@
 .dashboard-user > a {
   min-width: 0;
   overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.dashboard-user .dashboard-account-signout,
+.dashboard-user .dashboard-account-delete {
+  margin-left: 0;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 11px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.dashboard-user .dashboard-account-signout {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.65);
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.dashboard-user .dashboard-account-signout:hover,
+.dashboard-user .dashboard-account-signout:focus-visible {
+  border-color: rgba(129, 140, 248, 0.6);
+  background: rgba(49, 46, 129, 0.45);
+  color: #fff;
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.18);
+}
+
+.dashboard-user .dashboard-account-delete {
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(69, 10, 10, 0.35);
+  color: #fca5a5;
+}
+
+.dashboard-user .dashboard-account-delete:hover,
+.dashboard-user .dashboard-account-delete:focus-visible {
+  border-color: rgba(248, 113, 113, 0.75);
+  background: rgba(127, 29, 29, 0.55);
+  color: #fecaca;
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.2);
+}
+
+.dashboard-user .dashboard-account-signout:focus-visible,
+.dashboard-user .dashboard-account-delete:focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 2px;
+}
+
+.dashboard-user .dashboard-account-delete:focus-visible {
+  outline-color: #f87171;
 }
 
 .dashboard-nav-mobile {
@@ -301,8 +359,18 @@
 }
 
 @media (max-width: 560px) {
-  .dashboard-user button {
-    margin-left: 0;
-    padding: 8px 10px;
+  .dashboard-user .dashboard-account-signout,
+  .dashboard-user .dashboard-account-delete {
+    padding-inline: 11px;
+    min-height: 38px;
+    font-size: 0.76rem;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .dashboard-user .dashboard-account-signout,
+  .dashboard-user .dashboard-account-delete {
+    padding-inline: 12px;
+    font-size: 0.78rem;
   }
 }

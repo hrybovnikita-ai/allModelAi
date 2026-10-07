@@ -66,12 +66,48 @@ test('Payments: developer mock vs user Stripe checkout', async (t) => {
         assert.equal(res.status, 400);
     });
 
-    await t.test('POST /api/payments/create-intent returns 503 when Stripe is not configured', async () => {
+    await t.test('POST /api/payments/create-intent routes to WayForPay when Stripe is not the primary provider', async () => {
+        const prev = {
+            domain: process.env.WAYFORPAY_DOMAIN,
+            testMode: process.env.WAYFORPAY_TEST_MODE,
+            provider: process.env.PAYMENT_PROVIDER,
+        };
+        process.env.WAYFORPAY_DOMAIN = 'checkout.example.com';
+        process.env.WAYFORPAY_TEST_MODE = 'true';
+        delete process.env.PAYMENT_PROVIDER;
+        delete process.env.STRIPE_SECRET_KEY;
         const cookie = await registerAndCookie(`intent-${Date.now()}@example.com`);
         const res = await request(app)
             .post('/api/payments/create-intent')
             .set('Cookie', cookie)
             .send({ plan: 'pro' });
+        process.env.WAYFORPAY_DOMAIN = prev.domain;
+        process.env.WAYFORPAY_TEST_MODE = prev.testMode;
+        process.env.PAYMENT_PROVIDER = prev.provider;
+        assert.equal(res.status, 409);
+        assert.equal(res.body.useWayforpay, true);
+    });
+
+    await t.test('POST /api/payments/create-intent returns 503 when no payment provider is configured', async () => {
+        const prev = {
+            domain: process.env.WAYFORPAY_DOMAIN,
+            testMode: process.env.WAYFORPAY_TEST_MODE,
+            provider: process.env.PAYMENT_PROVIDER,
+            stripe: process.env.STRIPE_SECRET_KEY,
+        };
+        delete process.env.WAYFORPAY_DOMAIN;
+        delete process.env.WAYFORPAY_TEST_MODE;
+        delete process.env.PAYMENT_PROVIDER;
+        delete process.env.STRIPE_SECRET_KEY;
+        const cookie = await registerAndCookie(`intent-none-${Date.now()}@example.com`);
+        const res = await request(app)
+            .post('/api/payments/create-intent')
+            .set('Cookie', cookie)
+            .send({ plan: 'pro' });
+        process.env.WAYFORPAY_DOMAIN = prev.domain;
+        process.env.WAYFORPAY_TEST_MODE = prev.testMode;
+        process.env.PAYMENT_PROVIDER = prev.provider;
+        process.env.STRIPE_SECRET_KEY = prev.stripe;
         assert.equal(res.status, 503);
     });
 

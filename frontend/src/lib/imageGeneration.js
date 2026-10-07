@@ -34,6 +34,21 @@ export const ASPECT_LABELS = {
   '9:16': 'Portrait (9:16)',
 };
 
+export const IMAGE_UNAVAILABLE_MESSAGE =
+  'Image generation is temporarily unavailable. Please try again in a moment.';
+
+const PROVIDER_BILLING_LEAK =
+  /pollen|pollinations\.ai|insufficient balance|top up at|available balance|credits remaining|platform\.openai\.com/i;
+
+/** Never surface upstream billing or provider branding in the UI. */
+export function userFacingImageGenerationError(responseOk, data = {}) {
+  if (responseOk && data.success !== false && data.imageUrl) return null;
+  if (data.code === 'IMAGE_GENERATION_UNAVAILABLE') return IMAGE_UNAVAILABLE_MESSAGE;
+  const raw = String(data.message || '').trim();
+  if (!raw || PROVIDER_BILLING_LEAK.test(raw)) return IMAGE_UNAVAILABLE_MESSAGE;
+  return raw;
+}
+
 export async function fetchImageGenerationStatus() {
   const response = await apiFetch('/api/images/status');
   if (!response.ok) {
@@ -120,6 +135,14 @@ export async function requestImageGeneration(body, signal) {
     body: JSON.stringify(body),
     signal,
   });
+  const data = await response.clone().json().catch(() => ({}));
+  const userError = userFacingImageGenerationError(response.ok, data);
+  if (userError) {
+    const error = new Error(userError);
+    error.code = data.code;
+    error.response = response;
+    throw error;
+  }
   return response;
 }
 

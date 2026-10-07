@@ -66,8 +66,8 @@ export default function AiTrainingHub() {
       <div className="at-page at-hero">
         <h1>AI Training</h1>
         <p>
-          Interactive lessons with real NumPy and PyTorch training, visualizations, an AI tutor, and Deep Research — Phase 1:
-          linear regression, gradient descent, and PyTorch intro.
+          Fifteen-lesson path from linear regression through regularization and transformers — with interactive
+          NumPy/PyTorch labs, loss charts, tutor help, and Deep Research.
         </p>
       </div>
 

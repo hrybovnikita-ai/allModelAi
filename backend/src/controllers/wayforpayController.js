@@ -1,6 +1,6 @@
 const crypto = require('node:crypto');
 const { publicAppOrigin } = require('../publicAccess');
-const { subscriptionPlans, normalizePlanKey, planAmountDecimal, periodEndFor } = require('../billing/plans');
+const { subscriptionPlans, normalizePlanKey, planAmountDecimal, periodEndFor, planSlugForKey } = require('../billing/plans');
 const { activateSubscription } = require('../billing/subscriptions');
 const { activateSubscriptionAsync } = require('../billing/subscriptionsAsync');
 const { isPostgresConnection } = require('../db/postgresHttpReads');
@@ -343,7 +343,7 @@ const createWayforpayPayment = async (req, res) => {
         clientEmail: email,
         clientAccountId: email,
         language: 'EN',
-        returnUrl: `${frontendOrigin}/checkout?wayforpay=return&orderReference=${encodeURIComponent(orderReference)}`,
+        returnUrl: `${frontendOrigin}/checkout/success?plan=${encodeURIComponent(planSlugForKey(planKey))}&orderReference=${encodeURIComponent(orderReference)}`,
         serviceUrl: `${serviceBase}/api/payments/wayforpay/callback`,
     };
 

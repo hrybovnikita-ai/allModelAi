@@ -4,7 +4,7 @@ const { sessionCookie, hashToken, readSessionToken } = require('../sessionAuth')
 const { createSessionToken } = require('../sessionToken');
 const { publicAppOrigin } = require('../publicAccess');
 const { stripeCheckoutWalletOptions, ensureStripePaymentMethodDomain } = require('../stripeWallet');
-const { subscriptionPlans, normalizePlanKey, periodEndFor } = require('../billing/plans');
+const { subscriptionPlans, normalizePlanKey, periodEndFor, planSlugForKey } = require('../billing/plans');
 const { activateSubscription } = require('../billing/subscriptions');
 const { wayforpayCheckoutAvailable } = require('../wayforpay/config');
 const { buildCheckoutInfo, stripeCheckoutEnabled } = require('../payments/checkoutInfo');
@@ -31,6 +31,10 @@ const users = require('../data/data');
 const webSearchService = require('../services/webSearchService');
 const deepResearchService = require('../services/deepResearchService');
 const aiPythonBridge = require('../services/aiPythonBridge');
+const { selectSmartRoute } = require('../services/smartRouter2');
+const { recordRouterMetric } = require('../services/smartRouter2/telemetry');
+const { routerMetaFromDecision } = require('../services/unifiedAiResponse');
+const knowledgeBaseService = require('../services/rag/knowledgeBaseService');
 const {
     authLog,
     normalizeEmail,
@@ -1089,7 +1093,7 @@ const createCheckoutSession = async (req, res) => {
         sessionParams.return_url = `${checkoutOrigin}/checkout?success=1&session_id={CHECKOUT_SESSION_ID}`;
     } else {
         sessionParams.success_url = `${checkoutOrigin}/checkout?success=1&session_id={CHECKOUT_SESSION_ID}`;
-        sessionParams.cancel_url = `${checkoutOrigin}/checkout?canceled=1&plan=${planKey}`;
+        sessionParams.cancel_url = `${checkoutOrigin}/checkout/cancel?plan=${encodeURIComponent(planSlugForKey(planKey))}`;
     }
     const session = await stripe.checkout.sessions.create(sessionParams);
     if (embedded) {
@@ -1115,6 +1119,17 @@ const getPaymentConfig = (_req, res) => {
 };
 
 const getPublicCheckoutInfo = (_req, res) => res.json(buildCheckoutInfo());
+
+const { getPublicCheckoutPlans, getPublicCheckoutPlan } = require('../payments/checkoutPlans');
+const { resolvePrimaryPaymentProvider } = require('../payments/paymentProvider');
+
+const getCheckoutPlans = (_req, res) => res.json({ plans: getPublicCheckoutPlans() });
+
+const getCheckoutPlanQuote = (req, res) => {
+    const plan = getPublicCheckoutPlan(req.params.slug);
+    if (!plan) return res.status(404).json({ message: 'Unknown checkout plan.' });
+    return res.json(plan);
+};
 
 const fulfillStripeSession = async (connection, session) => {
     const planKey = normalizePlanKey(session.metadata?.plan);
@@ -1198,6 +1213,23 @@ const createPaymentIntent = async (req, res) => {
     const resolved = resolvePaidCheckoutPlan(req.body.plan);
     if (!resolved) {
         return res.status(400).json({ message: 'Choose a valid paid plan: pro or enterprise.' });
+    }
+    if (Number(req.body.amount) && Number(req.body.amount) !== resolved.plan.amount) {
+        return res.status(400).json({ message: 'Plan price is set by the server.' });
+    }
+    const primaryProvider = resolvePrimaryPaymentProvider();
+    if (primaryProvider !== 'stripe') {
+        if (!primaryProvider) {
+            return res.status(503).json({
+                message: 'Payments are temporarily unavailable.',
+                code: 'PAYMENTS_UNAVAILABLE',
+            });
+        }
+        return res.status(409).json({
+            message: 'Paid checkout uses the configured payment provider.',
+            primaryProvider,
+            useWayforpay: primaryProvider === 'wayforpay',
+        });
     }
     const stripeGuard = assertStripeCheckoutAllowed();
     if (!stripeGuard.ok) {
@@ -1323,37 +1355,9 @@ const mockDeveloperSubscribe = async (req, res) => {
     return res.status(201).json({ ...access, mock: true, message: 'Developer test subscription activated (no charge).' });
 };
 
-const chooseSmartRoute = (prompt, mode = 'balanced', hasImage = false) => {
-    const text = String(prompt || '').toLowerCase();
-    if (hasImage) {
-        if (mode === 'quality') return { model: 'gpt', reason: 'High-precision GPT vision selected for detailed screenshot and UI analysis.', category: 'vision' };
-        return { model: 'gemini', reason: 'Fast and accurate Gemini multimodal vision selected for image understanding and UI navigation.', category: 'vision' };
-    }
-    const signals = {
-        vision: /скриншот|картинк|фото|изображен|куда нажимать|куда нажать|где нажать|screenshot|image|where to click|what do you see/.test(text),
-        coding: require('../services/chatIntent').classifyChatIntent(prompt).coding,
-        research: (() => {
-            const intent = require('../services/chatIntent').classifyChatIntent(prompt);
-            return intent.webSearch || intent.recommendation;
-        })(),
-        writing: /write|rewrite|essay|story|email|текст|перепиш|стать|письм/.test(text)
-            && !require('../services/chatIntent').classifyChatIntent(prompt).recommendation
-            && !require('../services/chatIntent').classifyChatIntent(prompt).informational,
-        multilingual: /translate|translation|перевод|переведи|україн|украин/.test(text),
-        longContext: text.length > 3500 || /document|report|pdf|документ|отч[её]т/.test(text),
-    };
-    if (signals.vision) return { model: 'gemini', reason: 'Visual UI navigation and screenshot analysis intent detected.', category: 'vision' };
-    if (mode === 'economy') return { model: process.env.CLOUDFLARE_ACCOUNT_ID ? 'cloudflare' : 'gemini', reason: 'Economy mode selected the lowest-cost available model.', category: 'economy' };
-    if (mode === 'speed') return { model: 'gemini', reason: 'Speed mode selected Gemini for low-latency generation.', category: 'speed' };
-    const routeIntent = require('../services/chatIntent').classifyChatIntent(prompt);
-    if (routeIntent.recommendation) return { model: 'perplexity', reason: 'Recommendation or resource-list intent detected — prioritizing web-backed answers with sources.', category: 'recommendation' };
-    if (signals.research) return { model: 'perplexity', reason: 'Web search or current-information intent was detected.', category: 'web_search' };
-    if (signals.coding) return { model: 'gemini', reason: 'Explicit coding or implementation intent was detected.', category: 'coding' };
-    if (signals.longContext || signals.writing) return { model: 'claude', reason: signals.longContext ? 'A long document or large context was detected.' : 'Long-form writing intent was detected.', category: signals.longContext ? 'documents' : 'writing' };
-    if (signals.multilingual) return { model: 'gemini', reason: 'A multilingual or translation task was detected.', category: 'multilingual' };
-    if (mode === 'quality') return { model: 'claude', reason: 'Quality mode selected a strong reasoning model.', category: 'reasoning' };
-    return { model: 'gemini', reason: 'Balanced routing selected Gemini for reliable general answers.', category: 'general' };
-};
+const chooseSmartRoute = (prompt, mode = 'balanced', hasImage = false, modelAllowed = () => true) => (
+    selectSmartRoute(prompt, { routerMode: mode, hasImage, modelAllowed })
+);
 
 function extractOpenAIStreamDelta(chunk) {
     const choice = chunk?.choices?.[0];
@@ -1393,9 +1397,9 @@ const previewRouter = async (req, res) => {
     const prompt = String(req.body.prompt || '').trim();
     const hasImage = Boolean(req.body.image || req.body.hasImage);
     if (!prompt && !hasImage) return res.status(400).json({ message: 'Prompt or image is required' });
-    const route = chooseSmartRoute(prompt, req.body.routerMode, hasImage);
     const access = await getCreditStatusAsync(req.app.locals.db, req.user.email);
     const modelAllowedPreview = (slug) => access.models.includes('all') || access.models.includes(slug) || slug === 'ai_python';
+    const route = chooseSmartRoute(prompt, req.body.routerMode, hasImage, modelAllowedPreview);
     if (!modelAllowedPreview(route.model)) {
         route.model = 'gemini';
         route.reason = 'Smart Router picked Gemini from models available in User mode.';
@@ -1428,7 +1432,11 @@ const previewRouter = async (req, res) => {
         }
     }
 
-    return res.json({ ...route, localClassifier });
+    return res.json({
+        ...route,
+        router: routerMetaFromDecision(route),
+        localClassifier,
+    });
 };
 
 const createChatResponse = async (req, res) => {
@@ -1467,8 +1475,9 @@ const createChatResponse = async (req, res) => {
     const latestMessage = normalizedInputMessages.at(-1);
     const latestPrompt = String(latestMessage?.content || '');
     const hasAttachedImage = normalizedInputMessages.some((m) => Boolean(m.image || m.imageUrl));
-    const routeDecision = chooseSmartRoute(latestPrompt, routerMode, hasAttachedImage);
     const creditStatus = await getCreditStatusAsync(req.app.locals.db, userEmail);
+    const modelAllowedEarly = (slug) => hasModelAccess(creditStatus, slug);
+    const routeDecision = chooseSmartRoute(latestPrompt, routerMode, hasAttachedImage, modelAllowedEarly);
     const usageGate = checkUsageLimit(creditStatus);
     if (!usageGate.allowed) {
         return res.status(usageGate.status).json({ message: usageGate.message, code: usageGate.code });
@@ -2048,7 +2057,7 @@ const createChatResponse = async (req, res) => {
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
         const freeTierModels = new Set(['gemini', 'cloudflare']);
-        res.write(`data: ${JSON.stringify({ unlimited: creditStatus.unlimited, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:selectedVariant ? ((isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isCloudflare) ? selectedVariant.direct : selectedVariant.gateway) : fallbackUsed ? providerModels[fallbackModel] : providerModels[routedModel], routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, knowledgeSources:knowledge.map(({id,name,excerpt,score})=>({id,name,excerpt,score})), costTier:freeTierModels.has(fallbackUsed ? fallbackModel : routedModel)?'free-allowance':'paid' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ unlimited: creditStatus.unlimited, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:selectedVariant ? ((isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isCloudflare) ? selectedVariant.direct : selectedVariant.gateway) : fallbackUsed ? providerModels[fallbackModel] : providerModels[routedModel], routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, routeTaskType:routeDecision.taskType || routeDecision.category, routeDisplayName:routeDecision.displayName, routeFallbacks:routeDecision.fallbacks || routeDecision.fallbackSlugs, router:routerMetaFromDecision(routeDecision, fallbackUsed), knowledgeSources:knowledge.map(({id,name,excerpt,score,pageNumber,sectionLabel})=>({id,name,excerpt,score,pageNumber,sectionLabel})), costTier:freeTierModels.has(fallbackUsed ? fallbackModel : routedModel)?'free-allowance':'paid' })}\n\n`);
         if (fallbackUsed) res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: fallbackModel })}\n\n`);
         if (shouldAugmentWithWeb) {
             if (webSourcesForResponse.length) {
@@ -2141,6 +2150,15 @@ const createChatResponse = async (req, res) => {
                     const chatConnection = req.app.locals.db;
                     const createdAt = new Date().toISOString();
                     const savedMessages = normalizeMessages([...messages, { role: 'assistant', content: assistantText }]);
+                    recordRouterMetric(chatConnection, {
+                        email: userEmail,
+                        taskType: routeDecision.taskType || routeDecision.category,
+                        provider: routeDecision.selectedProvider || actualUsageModel,
+                        model: actualUsageModel,
+                        latencyMs: Date.now() - requestStartedAt,
+                        success: true,
+                        fallbackUsed,
+                    });
                     if (isPostgresConnection(chatConnection)) {
                         await insertUsageEventAsync(chatConnection, {
                             email: userEmail,
@@ -2443,6 +2461,12 @@ const webResearchAnswer = async (req, res) => {
     const deepResearch = Boolean(req.body.deepResearch) || Boolean(req.body.depth);
     const depth = deepResearch ? deepResearchService.normalizeDepth(req.body.depth || 'deep') : null;
     const timeRange = deepResearchService.normalizeTimeRange(req.body.timeRange);
+    const clarificationAnswers = req.body.clarificationAnswers && typeof req.body.clarificationAnswers === 'object'
+        ? req.body.clarificationAnswers
+        : null;
+    const useKnowledge = Boolean(req.body.useKnowledge);
+    const email = req.user?.email || null;
+    const connection = req.app?.locals?.db || null;
     if (!query) return res.status(400).json({ message: 'Research query is required' });
 
     res.status(200);
@@ -2452,9 +2476,25 @@ const webResearchAnswer = async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
 
+    if (req.body.multiAgent === true) {
+        const { postMultiAgentResearch } = require('./multiAgentResearchController');
+        return postMultiAgentResearch(req, res);
+    }
+
     if (deepResearch) {
         try {
-            return await deepResearchService.runDeepResearch(res, { query, modelSlug: model, depth, timeRange });
+            return await deepResearchService.runDeepResearch(res, {
+                query,
+                modelSlug: model,
+                depth,
+                timeRange,
+                req,
+                clarificationAnswers,
+                skipClarification: Boolean(clarificationAnswers) || Boolean(req.body.skipClarification),
+                useKnowledge,
+                email,
+                connection,
+            });
         } catch (error) {
             console.error('[DEEP RESEARCH ANSWER]', error.code || error.name, error.message);
             const mapped = deepResearchService.mapErrorToResponse(error);
@@ -2586,6 +2626,22 @@ const findKnowledge = (database, email, query, limit = 5) => {
 };
 
 const findKnowledgeForUser = async (connection, email, query, limit = 5) => {
+    try {
+        const vectorHits = await knowledgeBaseService.retrieveForQuery(connection, email, query, limit);
+        if (vectorHits.length) {
+            return vectorHits.map((hit) => ({
+                id: hit.id,
+                chunkId: hit.chunkId,
+                name: hit.name,
+                score: hit.score,
+                excerpt: hit.excerpt,
+                pageNumber: hit.pageNumber,
+                sectionLabel: hit.sectionLabel,
+            }));
+        }
+    } catch (error) {
+        console.warn('[KNOWLEDGE_RETRIEVE]', error.message);
+    }
     if (isPostgresConnection(connection)) {
         const rows = await listDocumentWorkspaceItemsAsync(connection, email);
         return scoreKnowledgeRows(rows, query, limit);
@@ -3011,6 +3067,8 @@ module.exports = {
     verifyCheckoutSession,
     getPaymentConfig,
     getPublicCheckoutInfo,
+    getCheckoutPlans,
+    getCheckoutPlanQuote,
     mockDeveloperSubscribe,
     stripeWebhook,
     createChatResponse,

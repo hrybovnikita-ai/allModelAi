@@ -8,6 +8,7 @@ const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const appSource = fs.readFileSync(path.join(frontendRoot, 'src/App.jsx'), 'utf8');
 const pricingSource = fs.readFileSync(path.join(frontendRoot, 'src/components/Pricing/Pricing.jsx'), 'utf8');
 const stripeCheckoutSource = fs.readFileSync(path.join(frontendRoot, 'src/components/Checkout/StripePlanCheckout.jsx'), 'utf8');
+const checkoutSource = fs.readFileSync(path.join(frontendRoot, 'src/components/Checkout/Checkout.jsx'), 'utf8');
 
 test('checkout routes are public (outside RequireAuth)', () => {
   const requireAuthIdx = appSource.indexOf('<Route element={<RequireAuth />}');
@@ -15,6 +16,14 @@ test('checkout routes are public (outside RequireAuth)', () => {
   assert.ok(appSource.indexOf('path="/checkout/pro"') < requireAuthIdx);
   assert.ok(appSource.indexOf('path="/checkout/enterprise"') < requireAuthIdx);
   assert.ok(appSource.indexOf('path="/checkout/success"') < requireAuthIdx);
+  assert.ok(appSource.indexOf('path="/checkout/cancel"') < requireAuthIdx);
+});
+
+test('checkout page does not mix WayForPay and Stripe copy', () => {
+  assert.doesNotMatch(checkoutSource, /Complete your subscription on Stripe/);
+  assert.doesNotMatch(checkoutSource, /Configure Stripe test keys/);
+  assert.doesNotMatch(checkoutSource, /WAYFORPAY TEST CHECKOUT/);
+  assert.match(checkoutSource, /primaryProvider/);
 });
 
 test('pricing paid plans navigate to dedicated checkout paths', () => {

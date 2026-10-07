@@ -3,6 +3,7 @@ const path = require('path');
 const Database = require('better-sqlite3');
 const { ensureStorageIdeasSchema } = require('./storageIdeasSchema');
 const { ensureAiTrainingSchema } = require('./aiTrainingSchema');
+const { ensureAiEngineeringSchema } = require('./aiEngineeringSchema');
 const { createConnectionApi } = require('./db/connectionApi');
 const { connectPostgresSync } = require('./db/postgresSync');
 const { createAuthPgPool, formatSafePgFailure } = require('./db/pgConfig');
@@ -271,6 +272,7 @@ const connectDatabase = () => {
 
     ensureStorageIdeasSchema(database);
     ensureAiTrainingSchema(database);
+    ensureAiEngineeringSchema(database);
 
     database.exec(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email

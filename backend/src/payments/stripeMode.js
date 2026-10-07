@@ -105,10 +105,10 @@ function assertStripeCheckoutAllowed() {
 }
 
 function shouldPreferStripeOverWayforpay() {
-    if (envTrim('STRIPE_CHECKOUT_WHEN_WAYFORPAY') === 'true') return true;
-    if (getStripeMode() === 'test') return true;
-    if (isStripeTestMode()) return true;
-    return false;
+    const provider = envTrim('PAYMENT_PROVIDER').toLowerCase();
+    if (provider === 'stripe') return true;
+    if (provider === 'wayforpay') return false;
+    return envTrim('STRIPE_CHECKOUT_WHEN_WAYFORPAY') === 'true';
 }
 
 function stripePriceIdForPlan(planKey) {

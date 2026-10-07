@@ -30,6 +30,7 @@ test('uses Pollinations when sk_ pollinations key is configured', async () => {
     const result = await generate();
     assert.equal(result.body.imageUrl, 'data:image/png;base64,aGVsbG8=');
     assert.equal(result.body.provider, 'pollinations');
+    assert.equal(result.body.success, true);
 });
 
 test('uses legacy OpenAI key and returns base64 image', async () => {
@@ -50,7 +51,10 @@ test('uses legacy OpenAI key and returns base64 image', async () => {
     assert.equal((await generate()).body.imageUrl, 'data:image/png;base64,aGVsbG8=');
 });
 test('does not send an OpenRouter key to OpenAI', async () => {
-    clear(); process.env.API_IMAGE_KEY = 'sk-or-test'; assert.equal((await generate()).statusCode, 503);
+    clear(); process.env.API_IMAGE_KEY = 'sk-or-test';
+    const result = await generate();
+    assert.equal(result.statusCode, 503);
+    assert.equal(result.body.code, 'IMAGE_GENERATION_UNAVAILABLE');
 });
 test('Cloudflare requires an account and handles its image response', async () => {
     clear(); process.env.IMAGE_PROVIDER = 'cloudflare'; process.env.CLAUDEFLARE_API_KEY = 'cf-test';
@@ -59,25 +63,31 @@ test('Cloudflare requires an account and handles its image response', async () =
     global.fetch = async (url, options) => { assert.match(url, /accounts\/account\/ai\/run/); assert.equal(options.headers.Authorization, 'Bearer cf-test'); return Response.json({ success: true, result: { image: 'aGVsbG8=' } }); };
     assert.equal((await generate()).body.imageUrl, 'data:image/jpeg;base64,aGVsbG8=');
 });
-test('pollinations preserves upstream error details', async () => {
+test('pollinations 402 without fallback returns sanitized unavailable error', async () => {
     clear(); process.env.POLLINATIONS_API_KEY = 'sk_pollinations_test';
     global.fetch = async () => Response.json({ error: { message: 'Insufficient pollen balance', code: 'insufficient_quota' } }, { status: 402 });
     const result = await generate();
-    assert.equal(result.statusCode, 402);
-    assert.match(result.body.message, /Insufficient pollen balance/);
-    assert.equal(result.body.provider, 'pollinations');
-    assert.equal(result.body.upstreamStatus, 402);
+    assert.equal(result.statusCode, 503);
+    assert.equal(result.body.success, false);
+    assert.equal(result.body.code, 'IMAGE_GENERATION_UNAVAILABLE');
+    assert.doesNotMatch(String(result.body.message), /pollen|Insufficient balance/i);
 });
 
 test('handles rejected keys, quotas and malformed responses without leaking secrets', async () => {
     clear(); process.env.IMAGE_PROVIDER = 'openai'; process.env.IMAGE_API_KEY = 'sk-secret';
     for (const status of [401, 403, 429, 500]) {
-        global.fetch = async () => Response.json({ error: { message: 'Invalid API key' } }, { status });
-        const result = await generate(); assert.equal(result.statusCode, status === 429 ? 429 : status >= 500 ? 502 : status); assert.equal(result.body.message, 'Invalid API key');
+        global.fetch = async () => Response.json({ error: { message: 'Invalid API key sk-secret' } }, { status });
+        const result = await generate();
+        assert.equal(result.statusCode, 503);
+        assert.equal(result.body.code, 'IMAGE_GENERATION_UNAVAILABLE');
+        assert.doesNotMatch(String(result.body.message), /sk-secret|Invalid API key/i);
     }
-    global.fetch = async () => new Response('not json'); assert.equal((await generate()).statusCode, 502);
-    global.fetch = async () => Response.json({ data: [{ url: 'javascript:alert(1)' }] }); assert.equal((await generate()).statusCode, 502);
-    global.fetch = async () => { throw new DOMException('timeout', 'TimeoutError'); }; assert.equal((await generate()).statusCode, 504);
+    global.fetch = async () => new Response('not json');
+    assert.equal((await generate()).statusCode, 503);
+    global.fetch = async () => Response.json({ data: [{ url: 'javascript:alert(1)' }] });
+    assert.equal((await generate()).statusCode, 503);
+    global.fetch = async () => { throw new DOMException('timeout', 'TimeoutError'); };
+    assert.equal((await generate()).statusCode, 503);
 });
 
 test('maps HD and Ultra to supported Pollinations models and sizes', async () => {
@@ -163,7 +173,7 @@ test('redacts secrets from upstream image errors', async () => {
     global.fetch = async () => Response.json({ error: { message: 'rejected sk_pollinations_test' } }, { status: 401 });
     const result = await generate();
     console.log = original;
-    assert.equal(result.statusCode, 401);
+    assert.equal(result.statusCode, 503);
     assert.equal(result.body.message.includes('sk_pollinations_test'), false);
     assert.equal(logs.some((line) => line.includes('sk_pollinations_test')), false);
 });

@@ -17,6 +17,16 @@
   --text-secondary: #a8b4c7;
   --text-muted: #8b8b9a;
 
+  /* Homepage palette (from existing Header / hero) */
+  --bg-primary: #070910;
+  --bg-secondary: #0b0f19;
+  --bg-hero-grid: rgba(255, 255, 255, 0.035);
+  --cyan-accent: #60e0d0;
+  --cyan-soft: rgba(0, 155, 165, 0.15);
+  --lavender: #a69cff;
+  --violet: #7769e8;
+  --hero-gradient: linear-gradient(115deg, #9b8cff 5%, #69a9ff 50%, #60e0d0 95%);
+
   /* Brand purple (unchanged) */
   --purple: #7c5cff;
   --purple-soft: #9d7bff;
@@ -81,6 +91,20 @@
   --chat-line: #252530;
   --chat-muted: var(--text-muted);
   --chat-accent: var(--purple);
+
+  /* Homepage layout widths */
+  --ama-container: min(100% - 2 * var(--page-gutter, 24px), 1280px);
+  --ama-container-wide: min(100% - 2 * var(--page-gutter, 32px), 1520px);
+  --ama-container-hero: min(100% - 2 * var(--page-gutter, 40px), 1680px);
+  --ama-container-ultra: min(100% - 2 * var(--page-gutter, 48px), 1840px);
+}
+
+@media (min-width: 1920px) {
+  :root {
+    --ama-container-wide: min(100% - 96px, 1720px);
+    --ama-container-hero: min(100% - 112px, 1880px);
+    --ama-container-ultra: min(100% - 128px, 2040px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

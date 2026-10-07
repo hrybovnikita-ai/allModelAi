@@ -637,6 +637,7 @@ module.exports = {
     buildIntentAwareSearchQueries,
     extractSearchIntent,
     collectWebSources,
+    runSearchProviders,
     rankSources,
     buildSynthesisPrompt,
     mapSourcesForClient,

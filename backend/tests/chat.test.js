@@ -100,7 +100,7 @@ describe('secure chat and knowledge API',()=>{
      return upstream();
    };
    try {
-     const response = await api.post('/api/chat').send({model:'smart', routerMode:'economy', temporary:true, messages:[{role:'user',text:'hello'}]});
+     const response = await api.post('/api/chat').send({model:'smart', routerMode:'speed', temporary:true, messages:[{role:'user',text:'hello'}]});
      assert.equal(response.status,200);
      assert.match(response.text,/Secure answer/);
      assert.match(response.text,/"fallback":true/);

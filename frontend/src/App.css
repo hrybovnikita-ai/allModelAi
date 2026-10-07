@@ -64,13 +64,14 @@ body {
 
 .container {
   flex: 1;
-  max-width: 1260px;
+  max-width: var(--ama-container-wide, 1260px);
   margin: 0 auto;
   width: 100%;
+  min-width: 0;
   padding:
-    clamp(62px, 6vw, 92px)
+    clamp(48px, 5vw, 88px)
     max(var(--page-gutter, 20px), var(--safe-right))
-    clamp(62px, 6vw, 92px)
+    clamp(48px, 5vw, 88px)
     max(var(--page-gutter, 20px), var(--safe-left));
 }
 
@@ -95,7 +96,7 @@ body {
 }
 
 @media (min-width: 1800px) {
-  .container { max-width: 1680px; }
+  .container { max-width: var(--ama-container-ultra, 1680px); }
 }
 
 @media (max-width: 767px) {

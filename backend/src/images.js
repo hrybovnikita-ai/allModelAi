@@ -1,47 +1,21 @@
-const {
-    resolveImageProvider,
-    generatePollinationsImage,
-    getPollinationsApiKey,
-    extractPollinationsErrorMessage,
-} = require('./pollinations');
+const { getPollinationsApiKey } = require('./pollinations');
 const { buildImagePromptPayload } = require('./enhanceImagePrompt');
 const {
     parseQuality,
     parseAspect,
     parseStyle,
     redactSecrets,
-    sniffImageMime,
-    buildImageGenerationPlan,
     capabilitySummary,
     upscaleWithExternalProvider,
 } = require('./imageProviderAdapter');
-
-const safeImageUrl = (imageUrl) =>
-    typeof imageUrl === 'string'
-    && imageUrl.length < 25_000_000
-    && /^(https:\/\/|data:image\/(png|jpeg|webp);base64,)/.test(imageUrl);
-
-const providerErrorMessage = (provider, cloudflare) => {
-    if (provider === 'pollinations') {
-        return 'Set POLLINATIONS_API_KEY (from enter.pollinations.ai/keys) on the server to generate images.';
-    }
-    if (cloudflare) {
-        return 'Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_KEY on the server to use Cloudflare.';
-    }
-    return 'Set IMAGE_API_KEY or configure Cloudflare on the server to generate images.';
-};
-
-const mapHttpStatusForClient = (status) => {
-    if ([400, 401, 402, 403, 404, 409, 422, 429].includes(status)) return status;
-    if (status >= 500) return 502;
-    return 502;
-};
-
-const extractOpenAiErrorMessage = (data) => {
-    if (data?.error?.message) return redactSecrets(data.error.message);
-    if (data?.message) return redactSecrets(data.message);
-    return null;
-};
+const {
+    generateImageWithFallback,
+    listConfiguredImageProviders,
+    isProviderConfigured,
+    safeImageUrl,
+    resolveImageProvider,
+    USER_UNAVAILABLE_MESSAGE,
+} = require('./services/imageGenerationService');
 
 const configuredModel = (provider) => {
     if (provider === 'pollinations') return String(process.env.POLLINATIONS_IMAGE_MODEL || 'flux').trim();
@@ -82,26 +56,6 @@ const validateImageInput = (body = {}) => {
     };
 };
 
-const mimeFromImageUrl = (imageUrl, base64) => {
-    const dataMime = /^data:(image\/[a-z0-9.+-]+);base64,/i.exec(imageUrl);
-    if (base64) return sniffImageMime(base64);
-    if (dataMime) return dataMime[1].toLowerCase();
-    return 'image/png';
-};
-
-const imageResponse = ({ imageUrl, promptPayload, plan, mimeType }) => ({
-    imageUrl,
-    prompt: promptPayload.userPrompt,
-    provider: plan.provider,
-    model: plan.model,
-    style: promptPayload.style,
-    aspectRatio: plan.aspectRatio,
-    quality: plan.quality,
-    size: plan.size,
-    mimeType,
-    upscaleSupported: plan.upscaleSupported,
-});
-
 const generateImage = async (req, res) => {
     console.log('[IMAGE] Request received');
     const validation = validateImageInput(req.body || {});
@@ -118,129 +72,40 @@ const generateImage = async (req, res) => {
         style: validation.value.style,
     });
     const generationPrompt = promptPayload.enhancedPrompt;
-    console.log('[IMAGE] User prompt length:', promptPayload.userPrompt.length);
-    console.log('[IMAGE] Enhanced prompt length:', generationPrompt.length);
-    console.log('[IMAGE] Quality:', promptPayload.quality);
-    console.log('[IMAGE] Aspect:', promptPayload.aspectRatio);
 
-    const resolved = resolveImageProvider();
-    const { provider, apiKey, cloudflareConfigured, account, cloudflareKey } = resolved;
-    console.log('[IMAGE] Provider:', provider);
-    console.log('[IMAGE] API key configured:', provider === 'pollinations' ? Boolean(getPollinationsApiKey()) : Boolean(apiKey || cloudflareKey));
-    console.log('[IMAGE] IMAGE_PROVIDER env:', String(process.env.IMAGE_PROVIDER || '').trim() || '(unset)');
-
-    if (validation.value.provider && validation.value.provider !== provider) {
-        return res.status(400).json({ message: 'Image provider does not match the server configuration.' });
-    }
-    if (provider === 'none') {
-        return res.status(503).json({ message: providerErrorMessage(provider, cloudflareConfigured) });
-    }
-    if (provider === 'pollinations' && !getPollinationsApiKey()) {
-        return res.status(503).json({ message: providerErrorMessage('pollinations', false) });
-    }
-    if (provider === 'cloudflare' && (!account || !cloudflareKey)) {
-        return res.status(503).json({ message: providerErrorMessage('cloudflare', true) });
-    }
-    if (provider === 'openai' && !apiKey) {
-        return res.status(503).json({ message: providerErrorMessage('openai', false) });
+    if (validation.value.provider) {
+        const allowed = listConfiguredImageProviders();
+        if (!allowed.includes(validation.value.provider)) {
+            return res.status(400).json({ message: 'The requested image provider is not configured on this server.' });
+        }
     }
 
-    const plan = buildImageGenerationPlan({
-        provider,
-        quality: promptPayload.quality,
-        aspectRatio: promptPayload.aspectRatio,
-        requestedModel: validation.value.model,
-    });
-    if (plan.error) {
-        console.log('[IMAGE] Rejected model:', plan.error);
-        return res.status(400).json({ message: plan.error });
+    const providers = listConfiguredImageProviders();
+    if (!providers.length) {
+        return res.status(503).json({
+            success: false,
+            code: 'IMAGE_GENERATION_UNAVAILABLE',
+            message: USER_UNAVAILABLE_MESSAGE,
+        });
     }
-
-    console.log('[IMAGE] Model:', plan.model);
-    console.log('[IMAGE] Size:', plan.size || '(provider default)');
-    console.log('[IMAGE] Upscale supported:', plan.upscaleSupported);
 
     try {
-        if (provider === 'pollinations') {
-            const { response, data, model: pollinationsModel } = await generatePollinationsImage(generationPrompt, plan.request);
-            if (!response.ok || data?.success === false) {
-                const detail = extractPollinationsErrorMessage(data, response);
-                return res.status(mapHttpStatusForClient(response.status)).json({
-                    message: detail,
-                    provider: 'pollinations',
-                    upstreamStatus: response.status,
-                });
-            }
-
-            const image = data?.data?.[0];
-            const base64 = image?.b64_json;
-            const mimeType = base64 ? sniffImageMime(base64) : mimeFromImageUrl(image?.url);
-            const imageUrl = base64 ? `data:${mimeType};base64,${base64}` : image?.url;
-            if (!safeImageUrl(imageUrl)) {
-                console.log('[IMAGE] Pollinations success status but missing image payload');
-                return res.status(502).json({
-                    message: 'Pollinations did not return image data in the response.',
-                    provider: 'pollinations',
-                    upstreamStatus: response.status,
-                });
-            }
-            return res.json(imageResponse({
-                imageUrl,
-                promptPayload,
-                plan: { ...plan, model: pollinationsModel || plan.model },
-                mimeType,
-            }));
-        }
-
-        const cloudflare = provider === 'cloudflare';
-        const upstreamUrl = cloudflare
-            ? `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/ai/run/${encodeURIComponent(plan.model)}`
-            : process.env.IMAGE_API_URL || 'https://api.openai.com/v1/images/generations';
-        const upstreamBody = cloudflare
-            ? { prompt: generationPrompt.slice(0, plan.maxPromptLength), steps: plan.request.steps }
-            : { ...plan.request, prompt: generationPrompt.slice(0, plan.maxPromptLength) };
-
-        console.log('[IMAGE] Sending request to', provider);
-        console.log('[IMAGE] Upstream parameter keys:', Object.keys(upstreamBody).join(','));
-
-        const started = Date.now();
-        const response = await fetch(upstreamUrl, {
-            method: 'POST',
-            signal: AbortSignal.timeout(180000),
-            headers: { Authorization: `Bearer ${cloudflare ? cloudflareKey : apiKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify(upstreamBody),
+        const result = await generateImageWithFallback({
+            generationPrompt,
+            promptPayload,
+            quality: promptPayload.quality,
+            aspectRatio: promptPayload.aspectRatio,
+            requestedModel: validation.value.model,
         });
-        const contentType = response.headers.get('content-type') || '';
-        const data = contentType.includes('application/json')
-            ? await response.json().catch(() => null)
-            : null;
-        console.log('[IMAGE]', provider, 'response status:', response.status);
-        console.log('[IMAGE]', provider, 'content-type:', contentType || '(none)');
-        console.log('[IMAGE]', provider, 'request durationMs:', Date.now() - started);
-        if (!response.ok || data?.success === false) {
-            const detail = extractOpenAiErrorMessage(data) || `${provider} HTTP ${response.status}`;
-            console.log('[IMAGE]', provider, 'error:', detail);
-            return res.status(mapHttpStatusForClient(response.status)).json({
-                message: detail,
-                provider,
-                upstreamStatus: response.status,
-            });
-        }
-        const image = data?.data?.[0];
-        const base64 = cloudflare ? data?.result?.image : image?.b64_json;
-        const mimeType = base64
-            ? sniffImageMime(base64, cloudflare ? 'image/jpeg' : 'image/png')
-            : mimeFromImageUrl(image?.url);
-        const imageUrl = base64 ? `data:${mimeType};base64,${base64}` : image?.url;
-        if (!safeImageUrl(imageUrl)) {
-            return res.status(502).json({ message: 'The service did not return an image. Please try again.', provider });
-        }
-        return res.json(imageResponse({ imageUrl, promptPayload, plan, mimeType }));
+
+        return res.status(result.clientStatus).json(result.body);
     } catch (error) {
         console.log('[IMAGE] Request failed:', error.name, redactSecrets(error.message));
-        return res.status(error.name === 'TimeoutError' ? 504 : 502).json({ message: error.name === 'TimeoutError'
-            ? 'Image generation took too long. Please try again.'
-            : 'Could not connect to the image generation service.' });
+        return res.status(error.name === 'TimeoutError' ? 504 : 503).json({
+            success: false,
+            code: 'IMAGE_GENERATION_UNAVAILABLE',
+            message: USER_UNAVAILABLE_MESSAGE,
+        });
     }
 };
 
@@ -261,8 +126,8 @@ const upscaleGeneratedImage = async (req, res) => {
         }
         if (!result.ok || !safeImageUrl(result.imageUrl)) {
             console.log('[IMAGE] Upscale failed:', result.status || 502);
-            return res.status(mapHttpStatusForClient(result.status || 502)).json({
-                message: result.message || 'Could not upscale the image.',
+            return res.status(result.status >= 500 ? 502 : (result.status || 502)).json({
+                message: 'Could not upscale the image. Please try again.',
                 upscaleSupported: true,
             });
         }
@@ -281,15 +146,18 @@ const upscaleGeneratedImage = async (req, res) => {
 };
 
 const getImageGenerationStatus = (_req, res) => {
-    const resolved = resolveImageProvider();
+    const providers = listConfiguredImageProviders();
+    const primary = providers[0] || resolveImageProvider().provider;
     const pollinationsKey = getPollinationsApiKey();
-    const capabilities = resolved.provider === 'none' ? null : capabilitySummary(resolved.provider);
+    const capabilities = primary && primary !== 'none' ? capabilitySummary(primary) : null;
     return res.status(200).json({
-        provider: resolved.provider,
-        configured: resolved.provider !== 'none',
+        provider: primary || 'none',
+        providers,
+        configured: providers.length > 0,
         pollinations: Boolean(pollinationsKey),
-        model: configuredModel(resolved.provider),
-        docsUrl: 'https://enter.pollinations.ai/keys',
+        openai: isProviderConfigured('openai'),
+        cloudflare: isProviderConfigured('cloudflare'),
+        model: configuredModel(primary),
         upscaleSupported: Boolean(capabilities?.upscaleSupported),
         qualities: capabilities?.qualities || ['standard', 'hd', 'ultra'],
         aspects: capabilities?.aspects || ['1:1', '16:9', '9:16'],
