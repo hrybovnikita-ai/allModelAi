@@ -116,7 +116,12 @@ export function isGoogleRedirectRecoveryPending() {
 
 export function reconcileStaleRedirectIntent() {
   const intent = peekRedirectIntent();
-  if (!intent) return;
+  if (!intent) {
+    if (isRedirectFlowCommitted()) {
+      clearSocialRedirectIntent();
+    }
+    return;
+  }
   if (intent.phase === 'awaiting-google-return' && !isRedirectFlowCommitted()) {
     clearSocialRedirectIntent();
   }

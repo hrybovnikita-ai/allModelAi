@@ -9,7 +9,7 @@ import {
   setPersistence,
 } from 'firebase/auth';
 import { ensureFirebaseSocialConfigLoaded } from './loadFirebaseConfig.js';
-import { getBrowserApiOrigin, getPublicAppOrigin, isHostedWebApp } from './apiBase.js';
+import { getBrowserApiOrigin, getPublicAppOrigin, isBrowserLocalhostDev, isHostedWebApp } from './apiBase.js';
 import { isMobileWebSafari } from './socialSignInEnv.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
 import {
@@ -69,10 +69,12 @@ function hostedSiteAuthDomain() {
  */
 export function resolveAuthDomainForRuntime(configuredAuthDomain) {
   const viteEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
+  const onHostedWeb = isHostedWebApp() && !isBrowserLocalhostDev();
   return resolveAuthDomainCore(configuredAuthDomain, {
     envAuthDomain: viteEnv.VITE_FIREBASE_AUTH_DOMAIN,
     customAuthDomainEnabled: isCustomAuthDomainEnabled(),
     hostedHostname: hostedSiteAuthDomain(),
+    preferHostedAuthDomainWhenProxied: onHostedWeb,
   });
 }
 

@@ -181,6 +181,9 @@ export async function completeGooglePopupSignIn(auth, popupPromise, name, option
     const challenge = await prepareBackendChallenge(options);
     return await complete(result, { ...options, challenge });
   } catch (error) {
+    if (error.code === 'auth/popup-closed-by-user') {
+      throw error;
+    }
     if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
       redirected = true;
       return beginRedirectSignIn(auth, name, options, error.code);

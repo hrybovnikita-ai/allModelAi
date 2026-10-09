@@ -18,6 +18,11 @@ async function registerAndCookie(email) {
     return res.headers['set-cookie'];
 }
 
+async function registerSandboxCheckoutCookie(email) {
+    process.env.PAYMENT_OWNER_EMAILS = String(email).trim().toLowerCase();
+    return registerAndCookie(email);
+}
+
 test('Subscription & payment lifecycle', async (t) => {
     const prev = {
         account: process.env.WAYFORPAY_MERCHANT_ACCOUNT,
@@ -26,6 +31,7 @@ test('Subscription & payment lifecycle', async (t) => {
         testMode: process.env.WAYFORPAY_TEST_MODE,
         live: process.env.WAYFORPAY_LIVE_CONFIRM,
         backend: process.env.BACKEND_PUBLIC_URL,
+        paymentOwners: process.env.PAYMENT_OWNER_EMAILS,
     };
     process.env.WAYFORPAY_MERCHANT_ACCOUNT = 'test_merch_n1';
     process.env.WAYFORPAY_SECRET_KEY = TEST_SECRET;
@@ -40,10 +46,11 @@ test('Subscription & payment lifecycle', async (t) => {
         process.env.WAYFORPAY_TEST_MODE = prev.testMode;
         process.env.WAYFORPAY_LIVE_CONFIRM = prev.live;
         process.env.BACKEND_PUBLIC_URL = prev.backend;
+        process.env.PAYMENT_OWNER_EMAILS = prev.paymentOwners;
     });
 
     await t.test('test-checkout sets Pro limit 3000 and metadata', async () => {
-        const cookie = await registerAndCookie(`sub-pro-${Date.now()}@example.com`);
+        const cookie = await registerSandboxCheckoutCookie(`sub-pro-${Date.now()}@example.com`);
         const pay = await request(app)
             .post('/api/payments/wayforpay/test-checkout')
             .set('Cookie', cookie)
@@ -80,14 +87,14 @@ test('Subscription & payment lifecycle', async (t) => {
     });
 
     await t.test('plan labels for week and power test checkout', async () => {
-        const weekCookie = await registerAndCookie(`sub-week-${Date.now()}@example.com`);
+        const weekCookie = await registerSandboxCheckoutCookie(`sub-week-${Date.now()}@example.com`);
         await request(app).post('/api/payments/wayforpay/test-checkout').set('Cookie', weekCookie).send({ plan: 'week' });
         const weekCredits = await request(app).get('/api/credits').set('Cookie', weekCookie);
         assert.equal(weekCredits.body.planDisplayName, 'Weekly');
         assert.equal(weekCredits.body.subscriptionStatus, 'active');
         assert.equal(weekCredits.body.remaining, 500);
 
-        const powerCookie = await registerAndCookie(`sub-power-${Date.now()}@example.com`);
+        const powerCookie = await registerSandboxCheckoutCookie(`sub-power-${Date.now()}@example.com`);
         await request(app).post('/api/payments/wayforpay/test-checkout').set('Cookie', powerCookie).send({ plan: 'power' });
         const powerCredits = await request(app).get('/api/credits').set('Cookie', powerCookie);
         assert.equal(powerCredits.body.planDisplayName, 'Power Monthly');
@@ -130,7 +137,7 @@ test('Subscription & payment lifecycle', async (t) => {
     });
 
     await t.test('cancel test subscription returns to free', async () => {
-        const cookie = await registerAndCookie(`sub-cancel-${Date.now()}@example.com`);
+        const cookie = await registerSandboxCheckoutCookie(`sub-cancel-${Date.now()}@example.com`);
         await request(app)
             .post('/api/payments/wayforpay/test-checkout')
             .set('Cookie', cookie)
@@ -145,7 +152,7 @@ test('Subscription & payment lifecycle', async (t) => {
 
     await t.test('expired subscription reverts on credits read', async () => {
         const email = `sub-exp-${Date.now()}@example.com`;
-        const cookie = await registerAndCookie(email);
+        const cookie = await registerSandboxCheckoutCookie(email);
         await request(app)
             .post('/api/payments/wayforpay/test-checkout')
             .set('Cookie', cookie)
@@ -238,13 +245,21 @@ test('Subscription & payment lifecycle', async (t) => {
         assert.equal(res.status, 403);
     });
 
-    await t.test('live create blocked while TEST MODE true', async () => {
+    await t.test('TEST MODE create is owner-only', async () => {
         process.env.WAYFORPAY_TEST_MODE = 'true';
         const cookie = await registerAndCookie(`sub-block-${Date.now()}@example.com`);
-        const create = await request(app)
+        const denied = await request(app)
             .post('/api/payments/wayforpay/create')
             .set('Cookie', cookie)
             .send({ plan: 'common' });
+        assert.equal(denied.status, 403);
+
+        const ownerCookie = await registerSandboxCheckoutCookie(`sub-block-owner-${Date.now()}@example.com`);
+        const create = await request(app)
+            .post('/api/payments/wayforpay/create')
+            .set('Cookie', ownerCookie)
+            .send({ plan: 'common' });
+        assert.equal(create.status, 201);
         assert.equal(create.body.mockCheckout, true);
         assert.equal(create.body.payUrl, undefined);
     });

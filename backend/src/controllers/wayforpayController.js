@@ -8,6 +8,7 @@ const {
     insertPaymentAsync,
     getPaymentByReferenceAsync,
     updatePaymentStatusAsync,
+    listPaymentsForUserAsync,
 } = require('../wayforpay/paymentsStoreAsync');
 const { logPayment } = require('../billing/paymentLogger');
 const {
@@ -18,6 +19,7 @@ const {
     WAYFORPAY_PAY_URL,
 } = require('../wayforpay/config');
 const { assertWayforpayCheckoutAllowed } = require('../payments/checkoutInfo');
+const { requirePaymentSandboxUser } = require('../payments/paymentSandbox');
 const {
     signPurchaseRequest,
     signCallbackPayload,
@@ -29,6 +31,7 @@ const {
     insertPayment,
     getPaymentByReference,
     updatePaymentStatus,
+    listPaymentsForUser,
 } = require('../wayforpay/paymentsStore');
 
 const APPROVED_STATUS = 'Approved';
@@ -285,6 +288,7 @@ const createWayforpayPayment = async (req, res) => {
     });
 
     if (cfg.testMode) {
+        if (!(await requirePaymentSandboxUser(req, res))) return undefined;
         logPayment('Checkout created (TEST MODE mock)', { orderReference, plan: planKey, email });
         return res.status(201).json({
             provider: 'wayforpay',
@@ -381,6 +385,7 @@ const completeMockWayforpayPayment = async (req, res) => {
         if (!cfg.testMode) {
             return res.status(403).json({ message: 'Mock checkout is only available when WAYFORPAY_TEST_MODE=true.' });
         }
+        if (!(await requirePaymentSandboxUser(req, res))) return undefined;
         if (!wayforpayCheckoutAvailable()) {
             return res.status(503).json({ message: 'WayForPay test checkout is not configured.' });
         }
@@ -431,6 +436,7 @@ const completeTestWayforpayCheckout = async (req, res) => {
         if (!cfg.testMode) {
             return res.status(403).json({ message: 'Test checkout is only available when WAYFORPAY_TEST_MODE=true.' });
         }
+        if (!(await requirePaymentSandboxUser(req, res))) return undefined;
         if (!wayforpayCheckoutAvailable()) {
             return res.status(503).json({ message: 'WayForPay test checkout is not configured.' });
         }
@@ -496,6 +502,33 @@ const wayforpayCallback = async (req, res) => {
     }
 };
 
+const mapPaymentHistoryRow = (row) => {
+    const plan = subscriptionPlans[row.planKey];
+    return {
+        orderReference: row.orderReference,
+        plan: row.planKey,
+        planName: plan?.name || row.planKey,
+        amount: row.amount,
+        currency: row.currency,
+        status: row.status,
+        test: Boolean(row.isTest),
+        createdAt: row.createdAt,
+        paidAt: row.paidAt || null,
+    };
+};
+
+const getPaymentHistory = async (req, res) => {
+    initWayforpayStore(req);
+    const email = String(req.user.email).trim().toLowerCase();
+    const limit = Number(req.query.limit) || 25;
+    const rows = isPostgresConnection(req.app.locals.db)
+        ? await listPaymentsForUserAsync(req.app.locals.db, email, limit)
+        : listPaymentsForUser(req.app.locals.db.database, email, limit);
+    return res.json({
+        payments: rows.map(mapPaymentHistoryRow),
+    });
+};
+
 const getWayforpayPaymentStatus = async (req, res) => {
     initWayforpayStore(req);
     const orderReference = String(req.params.orderReference || '');
@@ -525,6 +558,7 @@ module.exports = {
     completeTestWayforpayCheckout,
     wayforpayCallback,
     getWayforpayPaymentStatus,
+    getPaymentHistory,
     processWayforpayCallbackPayload,
     PAYMENT_STATUS,
     wayforpayConfigured,

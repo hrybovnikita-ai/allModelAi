@@ -2,6 +2,7 @@ import { useLanguage } from '../../lib/useLanguage';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { isGoogleRedirectRecoveryPending } from '../../lib/socialSignIn';
 import { isLogoutInProgress } from '../../lib/session';
+import { AUTH_STATUS } from '../../lib/authSessionStatus';
 import { useSession } from '../Session/SessionProvider';
 import RouteErrorBoundary from '../ErrorBoundary/RouteErrorBoundary';
 import '../SocialAuth/SocialAuth.css';
@@ -38,14 +39,14 @@ export default function RequireAuth() {
       </main>
     );
   }
-  if (status === 'anonymous' || !user?.email || isLogoutInProgress()) {
+  if (status === AUTH_STATUS.UNAUTHENTICATED || status === 'anonymous' || !user?.email || isLogoutInProgress()) {
+    const returnPath = location.pathname + location.search + location.hash;
     return (
       <Navigate
-        to="/"
+        to="/login"
         replace
         state={{
-          signedOut: true,
-          from: location.pathname + location.search + location.hash,
+          from: returnPath,
           returnState: location.state,
         }}
       />

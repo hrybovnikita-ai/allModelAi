@@ -82,6 +82,22 @@ const getPaymentByReference = (database, orderReference) => database.prepare(`
     WHERE order_reference = ?
 `).get(orderReference);
 
+const listPaymentsForUser = (database, email, limit = 25) => database.prepare(`
+    SELECT
+        order_reference AS orderReference,
+        plan_key AS planKey,
+        amount,
+        currency,
+        status,
+        is_test AS isTest,
+        created_at AS createdAt,
+        paid_at AS paidAt
+    FROM wayforpay_payments
+    WHERE user_email = ?
+    ORDER BY datetime(created_at) DESC
+    LIMIT ?
+`).all(String(email).trim().toLowerCase(), Math.min(Math.max(Number(limit) || 25, 1), 50));
+
 const updatePaymentStatus = (database, orderReference, patch) => {
     const now = new Date().toISOString();
     database.prepare(`
@@ -110,5 +126,6 @@ module.exports = {
     ensureWayforpaySchema,
     insertPayment,
     getPaymentByReference,
+    listPaymentsForUser,
     updatePaymentStatus,
 };

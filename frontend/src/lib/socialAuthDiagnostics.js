@@ -98,16 +98,19 @@ export function socialAuthDebug(stage, detail = {}) {
 }
 
 export function describeRedirectRecoveryFailure(context = {}) {
-  const parts = ['Google sign-in could not be completed on this device.'];
-  if (import.meta.env?.DEV) {
-    if (context.consumer) parts.push(`consumer=${context.consumer}`);
-    if (context.reason) parts.push(`reason=${context.reason}`);
-    if (context.authDomain) parts.push(`authDomain=${context.authDomain}`);
-    if (context.path) parts.push(`path=${context.path}`);
-    if (context.hasIntent != null) parts.push(`hasIntent=${context.hasIntent}`);
-    if (context.redirectConsumed != null) parts.push(`redirectConsumed=${context.redirectConsumed}`);
-  } else {
-    parts.push('Try again, or sign in with email and password.');
+  authLog('Redirect recovery failed', context);
+  return 'Google sign-in could not be completed. Please try again, or sign in with email and password.';
+}
+
+const SOCIAL_ERROR_STORAGE_KEY = 'allmodelai_social_error';
+
+export function persistSocialAuthError(errorOrMessage) {
+  const message = typeof errorOrMessage === 'string'
+    ? errorOrMessage
+    : (errorOrMessage?.message || 'Google sign-in could not be completed. Please try again.');
+  try {
+    sessionStorage.setItem(SOCIAL_ERROR_STORAGE_KEY, message);
+  } catch {
+    /* Safari private mode */
   }
-  return parts.join(' ');
 }

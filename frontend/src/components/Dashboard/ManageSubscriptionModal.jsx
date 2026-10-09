@@ -4,13 +4,19 @@ import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
 
 export default function ManageSubscriptionModal({ onClose, onUpdated }) {
   const [summary, setSummary] = useState(null);
+  const [history, setHistory] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    apiFetch('/api/subscription')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (data) setSummary(data); })
+    Promise.all([
+      apiFetch('/api/subscription').then((r) => (r.ok ? r.json() : null)),
+      apiFetch('/api/payments/history').then((r) => (r.ok ? r.json() : { payments: [] })),
+    ])
+      .then(([sub, pay]) => {
+        if (sub) setSummary(sub);
+        setHistory(Array.isArray(pay?.payments) ? pay.payments : []);
+      })
       .catch(() => setError('Could not load subscription details.'));
   }, []);
 
@@ -35,7 +41,7 @@ export default function ManageSubscriptionModal({ onClose, onUpdated }) {
       <div className="dashboard-modal" role="dialog" aria-labelledby="manage-sub-title" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="dashboard-modal-close" onClick={onClose} aria-label="Close">×</button>
         <h2 id="manage-sub-title">Manage subscription</h2>
-        {summary?.wayforpayTestMode && (
+        {(summary?.showTestModeBanner || summary?.canUseOwnerTestCheckout) && summary?.wayforpayTestMode && (
           <p className="dashboard-sub-test-note">TEST MODE — simulated WayForPay only. No real money is charged.</p>
         )}
         {summary ? (
@@ -45,9 +51,29 @@ export default function ManageSubscriptionModal({ onClose, onUpdated }) {
             <div><dt>Status</dt><dd>{summary.subscriptionStatus === 'active' ? 'Active' : summary.subscriptionStatus}</dd></div>
             {summary.renewalLabel && <div><dt>Renewal</dt><dd>{summary.renewalLabel.replace('Renews/Expires: ', '')}</dd></div>}
             {summary.orderReference && <div><dt>Order ref</dt><dd><code>{summary.orderReference}</code></dd></div>}
+            {summary.limit != null && (
+              <div><dt>Monthly quota</dt><dd>{Number(summary.limit).toLocaleString()} requests</dd></div>
+            )}
+            {summary.used != null && (
+              <div><dt>Used this period</dt><dd>{Number(summary.used).toLocaleString()}</dd></div>
+            )}
           </dl>
         ) : (
           <p>Loading…</p>
+        )}
+        {history.length > 0 && (
+          <div className="dashboard-sub-history">
+            <h3>Payment history</h3>
+            <ul>
+              {history.map((row) => (
+                <li key={row.orderReference}>
+                  <span>{row.planName} · ${Number(row.amount).toFixed(2)} {row.currency}</span>
+                  <span>{row.status}{row.test ? ' (test)' : ''}</span>
+                  <small>{row.paidAt || row.createdAt}</small>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         {error && <p className="dashboard-modal-error" role="alert">{error}</p>}
         {summary?.manageTestSubscription && (

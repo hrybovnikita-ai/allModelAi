@@ -69,6 +69,12 @@ async function registerAndCookie(email) {
     return res.headers['set-cookie'];
 }
 
+async function registerSandboxCheckoutCookie(email) {
+    const normalized = String(email).trim().toLowerCase();
+    process.env.PAYMENT_OWNER_EMAILS = normalized;
+    return registerAndCookie(email);
+}
+
 test('WayForPay HTTP integration', async (t) => {
     const prev = {
         account: process.env.WAYFORPAY_MERCHANT_ACCOUNT,
@@ -76,6 +82,7 @@ test('WayForPay HTTP integration', async (t) => {
         domain: process.env.WAYFORPAY_DOMAIN,
         backend: process.env.BACKEND_PUBLIC_URL,
         testMode: process.env.WAYFORPAY_TEST_MODE,
+        paymentOwners: process.env.PAYMENT_OWNER_EMAILS,
     };
     process.env.WAYFORPAY_MERCHANT_ACCOUNT = 'test_merch_n1';
     process.env.WAYFORPAY_SECRET_KEY = TEST_SECRET;
@@ -89,11 +96,23 @@ test('WayForPay HTTP integration', async (t) => {
         process.env.WAYFORPAY_DOMAIN = prev.domain;
         process.env.BACKEND_PUBLIC_URL = prev.backend;
         process.env.WAYFORPAY_TEST_MODE = prev.testMode;
+        process.env.PAYMENT_OWNER_EMAILS = prev.paymentOwners;
+    });
+
+    await t.test('TEST MODE create rejects non-owner accounts', async () => {
+        process.env.WAYFORPAY_TEST_MODE = 'true';
+        const cookie = await registerAndCookie(`wfp-deny-${Date.now()}@example.com`);
+        const res = await request(app)
+            .post('/api/payments/wayforpay/create')
+            .set('Cookie', cookie)
+            .send({ plan: 'week' });
+        assert.equal(res.status, 403);
+        assert.equal(res.body.code, 'PAYMENT_SANDBOX_FORBIDDEN');
     });
 
     await t.test('TEST MODE create returns mock checkout without payUrl', async () => {
         process.env.WAYFORPAY_TEST_MODE = 'true';
-        const cookie = await registerAndCookie(`wfp-mock-${Date.now()}@example.com`);
+        const cookie = await registerSandboxCheckoutCookie(`wfp-mock-${Date.now()}@example.com`);
         const res = await request(app)
             .post('/api/payments/wayforpay/create')
             .set('Cookie', cookie)
@@ -107,7 +126,7 @@ test('WayForPay HTTP integration', async (t) => {
     await t.test('test-checkout creates mock transaction and activates plan in one request', async () => {
         process.env.WAYFORPAY_TEST_MODE = 'true';
         const email = `wfp-test-checkout-${Date.now()}@example.com`;
-        const cookie = await registerAndCookie(email);
+        const cookie = await registerSandboxCheckoutCookie(email);
         const res = await request(app)
             .post('/api/payments/wayforpay/test-checkout')
             .set('Cookie', cookie)
@@ -128,7 +147,7 @@ test('WayForPay HTTP integration', async (t) => {
     await t.test('mock-complete simulates callback and activates plan', async () => {
         process.env.WAYFORPAY_TEST_MODE = 'true';
         const email = `wfp-mock-paid-${Date.now()}@example.com`;
-        const cookie = await registerAndCookie(email);
+        const cookie = await registerSandboxCheckoutCookie(email);
         const createRes = await request(app)
             .post('/api/payments/wayforpay/create')
             .set('Cookie', cookie)

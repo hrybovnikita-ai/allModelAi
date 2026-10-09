@@ -22,6 +22,16 @@ test('VITE_FIREBASE_AUTH_DOMAIN overrides configured firebaseapp.com', () => {
   );
 });
 
+test('hosted production web auto-uses custom hostname when config is firebaseapp.com', () => {
+  assert.equal(
+    resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {
+      preferHostedAuthDomainWhenProxied: true,
+      hostedHostname: 'all-model-ai.com',
+    }),
+    'all-model-ai.com',
+  );
+});
+
 test('custom auth domain flag uses hosted site hostname on production web', () => {
   assert.equal(
     resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {

@@ -16,11 +16,15 @@ export function hasRedirectResultBeenConsumed() {
   return redirectResultConsumed;
 }
 
-function getRedirectResultTimeoutMs() {
-  return isMobileWebSafari() ? 6000 : 12000;
+function isIosWebContext() {
+  return isMobileWebSafari() || (typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent));
 }
 
-function waitForAuthStateUser(auth, timeoutMs = isMobileWebSafari() ? 8000 : 5000) {
+function getRedirectResultTimeoutMs() {
+  return isIosWebContext() ? 10000 : 12000;
+}
+
+function waitForAuthStateUser(auth, timeoutMs = isIosWebContext() ? 12000 : 5000) {
   if (auth.currentUser) {
     socialAuthDebug('FIREBASE_AUTH_STATE_RESTORED', { source: 'currentUser' });
     authRecoveryLog('Auth state already has currentUser');

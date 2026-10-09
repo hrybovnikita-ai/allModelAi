@@ -13,7 +13,7 @@ import './SocialAuth.css';
 
 const SOCIAL_ERROR_KEY = 'allmodelai_social_error';
 /** getRedirectResult timeout (6s) + auth-state fallback (8s) + backend exchange buffer */
-const RECOVERY_OVERLAY_SAFETY_MS = 22000;
+const RECOVERY_OVERLAY_SAFETY_MS = 32000;
 
 /**
  * Single redirect recovery owner for normal SPA routes (/, /login, etc.).

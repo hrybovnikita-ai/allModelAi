@@ -111,8 +111,8 @@ test('logout navigation targets public home, not login modal route', () => {
   assert.doesNotMatch(nav, /navigate\('\/login'/);
   assert.match(settings, /navigate\('\/', \{ replace: true \}\)/);
   assert.doesNotMatch(settings, /navigate\('\/login'/);
-  assert.match(requireAuth, /to="\/"/);
-  assert.doesNotMatch(requireAuth, /to="\/login"/);
+  assert.match(requireAuth, /to="\/login"/);
+  assert.doesNotMatch(requireAuth, /signedOut: true/);
 });
 
 test('login → logout → login cycle clears and restores session hints', async () => {

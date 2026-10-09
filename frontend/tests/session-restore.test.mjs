@@ -33,27 +33,42 @@ afterEach(() => {
   delete globalThis.localStorage;
   delete globalThis.sessionStorage;
   delete globalThis.fetch;
+  delete globalThis.document;
 });
 
-test('restoreSession retries on 401 for mobile Safari before clearing stored user', async () => {
+test('restoreSession treats 401 as signed out and clears stale client hint', async () => {
   installStorage();
   globalThis.localStorage.setItem(
     'allmodelai_user',
-    JSON.stringify({ email: 'safari@example.com', name: 'Safari User' }),
+    JSON.stringify({ email: 'stale@example.com', name: 'Stale' }),
   );
-  Object.defineProperty(globalThis, 'navigator', {
-    configurable: true,
-    value: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' },
-  });
+  globalThis.document = { cookie: 'allmodelai_cookie_consent=accepted' };
 
   let calls = 0;
   globalThis.fetch = async () => {
     calls += 1;
-    return jsonResponse(401, { message: 'Unauthorized' });
+    return jsonResponse(401, { message: 'No active session' });
   };
 
   const user = await restoreSession({ force: true });
-  assert.ok(calls >= 3);
-  assert.equal(user?.email, 'safari@example.com');
-  assert.ok(globalThis.localStorage.getItem('allmodelai_user'));
+  assert.equal(calls, 1);
+  assert.equal(user, null);
+  assert.equal(globalThis.localStorage.getItem('allmodelai_user'), null);
+});
+
+test('restoreSession retries on 401 only during fresh-login grace', async () => {
+  installStorage();
+  globalThis.localStorage.setItem('allmodelai_fresh_login', String(Date.now()));
+  globalThis.document = { cookie: 'allmodelai_cookie_consent=accepted' };
+
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls < 2) return jsonResponse(401, { message: 'No active session' });
+    return jsonResponse(200, { user: { email: 'ok@example.com', name: 'Ok' } });
+  };
+
+  const user = await restoreSession({ force: true });
+  assert.ok(calls >= 2);
+  assert.equal(user?.email, 'ok@example.com');
 });

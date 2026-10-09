@@ -1,14 +1,15 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { bootstrapAuthenticatedUser } from '../../lib/authBootstrap.js';
+import { AUTH_STATUS, isAuthInitializing } from '../../lib/authSessionStatus.js';
 import {
-  isFreshLoginGraceActive,
-  readStoredSessionUser,
   restoreSession,
   SESSION_UPDATED_EVENT,
   subscribeSessionCleared,
 } from '../../lib/session.js';
-import { isGoogleRedirectRecoveryPending } from '../../lib/socialSignIn.js';
-import { peekRedirectIntent } from '../../lib/socialRedirectState.js';
+import {
+  isGoogleRedirectRecoveryPending,
+  reconcileStaleRedirectIntent,
+} from '../../lib/socialSignIn.js';
 import { socialAuthDebug } from '../../lib/socialAuthDiagnostics.js';
 import { COOKIE_CONSENT_UPDATED_EVENT } from '../../lib/cookieConsent.js';
 
@@ -16,72 +17,68 @@ export const SessionContext = createContext(null);
 
 function initialStatus() {
   if (isGoogleRedirectRecoveryPending()) {
-    return 'checking-redirect';
+    return AUTH_STATUS.CHECKING_REDIRECT;
   }
-  return 'loading';
+  return AUTH_STATUS.INITIALIZING;
 }
 
 export function SessionProvider({ children }) {
+  const bootstrapStarted = useRef(false);
   const [state, setState] = useState(() => ({
     status: initialStatus(),
-    user: readStoredSessionUser(),
+    user: null,
   }));
 
   const applySessionUser = useCallback((user) => {
     if (user?.email) {
       socialAuthDebug('SESSION_PROVIDER_AUTHENTICATED', { source: 'applySessionUser', email: user.email });
-      setState({ status: 'authenticated', user });
+      setState({ status: AUTH_STATUS.AUTHENTICATED, user });
       return;
     }
     if (isGoogleRedirectRecoveryPending()) {
-      setState((current) => ({
-        status: 'checking-redirect',
-        user: current.user?.email ? current.user : readStoredSessionUser(),
-      }));
-      return;
-    }
-    const redirectIntent = peekRedirectIntent();
-    if (redirectIntent?.phase === 'awaiting-google-return') {
-      setState((current) => ({
-        status: 'checking-redirect',
-        user: current.user?.email ? current.user : readStoredSessionUser(),
-      }));
-      return;
-    }
-    const hint = readStoredSessionUser();
-    if (hint?.email && isFreshLoginGraceActive()) {
-      setState({ status: 'authenticated', user: hint });
+      setState({ status: AUTH_STATUS.CHECKING_REDIRECT, user: null });
       return;
     }
     socialAuthDebug('SESSION_PROVIDER_ANONYMOUS', {});
-    setState({ status: 'anonymous', user: null });
+    setState({ status: AUTH_STATUS.UNAUTHENTICATED, user: null });
   }, []);
 
   const refresh = useCallback(async ({ force = false } = {}) => {
-    setState((current) => ({
-      status: isGoogleRedirectRecoveryPending() ? 'checking-redirect' : 'restoring-session',
-      user: current.user?.email ? current.user : readStoredSessionUser(),
-    }));
+    if (isGoogleRedirectRecoveryPending()) {
+      setState({ status: AUTH_STATUS.CHECKING_REDIRECT, user: null });
+    } else {
+      setState((current) => ({
+        status: AUTH_STATUS.INITIALIZING,
+        user: current.status === AUTH_STATUS.AUTHENTICATED ? current.user : null,
+      }));
+    }
     try {
       const user = force
         ? await restoreSession({ force: true })
         : await bootstrapAuthenticatedUser();
       applySessionUser(user);
       return user;
-    } catch {
-      setState({ status: 'error', user: null });
+    } catch (error) {
+      socialAuthDebug('SESSION_PROVIDER_ERROR', { message: error?.message });
+      setState({ status: AUTH_STATUS.ERROR, user: null });
       return null;
     }
   }, [applySessionUser]);
 
   useEffect(() => {
+    if (bootstrapStarted.current) return undefined;
+    bootstrapStarted.current = true;
     let active = true;
     void bootstrapAuthenticatedUser()
       .then((user) => {
         if (active) applySessionUser(user);
       })
-      .catch(() => {
-        if (active) setState({ status: 'error', user: null });
+      .catch((error) => {
+        if (active) {
+          socialAuthDebug('SESSION_PROVIDER_ERROR', { message: error?.message });
+          reconcileStaleRedirectIntent();
+          setState({ status: AUTH_STATUS.ERROR, user: null });
+        }
       });
     return () => {
       active = false;
@@ -89,14 +86,14 @@ export function SessionProvider({ children }) {
   }, [applySessionUser]);
 
   useEffect(() => subscribeSessionCleared(() => {
-    setState({ status: 'anonymous', user: null });
+    setState({ status: AUTH_STATUS.UNAUTHENTICATED, user: null });
   }), []);
 
   useEffect(() => {
     const onUpdated = (event) => {
       const user = event.detail?.user;
       if (user?.email) {
-        setState({ status: 'authenticated', user });
+        setState({ status: AUTH_STATUS.AUTHENTICATED, user });
       }
     };
     globalThis.addEventListener(SESSION_UPDATED_EVENT, onUpdated);
@@ -113,15 +110,15 @@ export function SessionProvider({ children }) {
     return () => globalThis.removeEventListener(COOKIE_CONSENT_UPDATED_EVENT, onConsent);
   }, [refresh]);
 
-  const authLoading = state.status === 'loading'
-    || state.status === 'checking-redirect'
-    || state.status === 'restoring-session';
+  const authLoading = isAuthInitializing(state.status);
 
   const value = useMemo(() => ({
     status: state.status,
     user: state.user,
     authLoading,
     refresh,
+    /** @deprecated use status === AUTH_STATUS.AUTHENTICATED */
+    serverSessionVerified: state.status === AUTH_STATUS.AUTHENTICATED,
   }), [state.status, state.user, authLoading, refresh]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

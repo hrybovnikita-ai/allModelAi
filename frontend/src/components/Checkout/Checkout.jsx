@@ -7,6 +7,7 @@ import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { fetchCheckoutInfo, fetchCheckoutPlan, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
 import { runTestWayforpayCheckout, submitWayforpayCheckout } from '../../lib/wayforpay';
 import { useSession } from '../Session/SessionProvider';
+import { isAuthInitializing } from '../../lib/authSessionStatus';
 import StripePlanCheckout from './StripePlanCheckout';
 import { IconCheck, IconLock, IconShield } from './CheckoutIcons';
 
@@ -53,9 +54,11 @@ export default function Checkout() {
   const [stripePublishableKey, setStripePublishableKey] = useState('');
   const [stripeClientSecret, setStripeClientSecret] = useState('');
   const [stripeReady, setStripeReady] = useState(false);
+  const [ownerTestCheckout, setOwnerTestCheckout] = useState(false);
 
   const paymentProvider = checkoutInfo?.primaryProvider || null;
-  const showTestBanner = Boolean(checkoutInfo?.showTestModeBanner);
+  const showTestBanner = Boolean(checkoutInfo?.showTestModeBanner)
+    || (ownerTestCheckout && checkoutInfo?.wayforpayTestMode);
   const paymentsAvailable = Boolean(checkoutInfo?.checkoutAvailable);
   const providerLabel = checkoutInfo?.providerDisplayName || 'Payment provider';
   const secureLabel = checkoutInfo?.secureCheckoutLabel || 'Secure payment';
@@ -68,6 +71,22 @@ export default function Checkout() {
   useEffect(() => {
     fetchCheckoutInfo().then(setCheckoutInfo);
   }, []);
+
+  useEffect(() => {
+    if (sessionStatus !== 'authenticated') {
+      setOwnerTestCheckout(false);
+      return undefined;
+    }
+    let cancelled = false;
+    apiClient.get('/api/subscription')
+      .then((response) => {
+        if (!cancelled) setOwnerTestCheckout(Boolean(response.data?.canUseOwnerTestCheckout));
+      })
+      .catch(() => {
+        if (!cancelled) setOwnerTestCheckout(false);
+      });
+    return () => { cancelled = true; };
+  }, [sessionStatus]);
 
   useEffect(() => {
     if (isDeveloper) {
@@ -83,7 +102,7 @@ export default function Checkout() {
 
   useEffect(() => {
     if (isDeveloper) return undefined;
-    if (sessionStatus === 'restoring-session' || sessionStatus === 'checking-redirect') return undefined;
+    if (isAuthInitializing(sessionStatus)) return undefined;
     if (sessionStatus === 'authenticated') return undefined;
     const returnPath = location.pathname || '/checkout/pro';
     navigate('/login', { replace: true, state: { from: returnPath } });
@@ -145,11 +164,18 @@ export default function Checkout() {
     }
   }, [planSlug, checkoutInfo?.paymentMode]);
 
+  const wayforpaySandboxForOwner = Boolean(
+    checkoutInfo?.wayforpayTestMode && ownerTestCheckout && paymentProvider === 'wayforpay',
+  );
+
   const startWayforpayCheckout = async () => {
     setCheckoutBusy(true);
     setError('');
     try {
-      if (checkoutInfo?.wayforpayMockCheckout) {
+      if (checkoutInfo?.wayforpayTestMode && !ownerTestCheckout) {
+        throw new Error('Paid checkout is unavailable in the test environment. Live WayForPay checkout activates when the server is configured for production payments.');
+      }
+      if (wayforpaySandboxForOwner) {
         const result = await runTestWayforpayCheckout(apiClient, planSlug);
         navigate(`/checkout/success?plan=${encodeURIComponent(planSlug)}&orderReference=${encodeURIComponent(result.orderReference)}`, { replace: true });
         return;
@@ -233,7 +259,20 @@ export default function Checkout() {
             <dl className="checkout-meta-list">
               <div><dt>Billing</dt><dd>Monthly</dd></div>
               <div><dt>Payment provider</dt><dd>{providerLabel}</dd></div>
+              {checkoutInfo?.supportedPaymentMethodsNote && (
+                <div><dt>Payment methods</dt><dd>{checkoutInfo.supportedPaymentMethodsNote}</dd></div>
+              )}
             </dl>
+          )}
+
+          {!isDeveloper && checkoutInfo?.renewalNotice && (
+            <p className="checkout-renewal-note" role="note">{checkoutInfo.renewalNotice}</p>
+          )}
+
+          {wayforpaySandboxForOwner && (
+            <p className="checkout-owner-test-note" role="status">
+              Owner test payment — simulated WayForPay only. No real money will be charged.
+            </p>
           )}
 
           {isDeveloper && (
@@ -272,8 +311,8 @@ export default function Checkout() {
           )}
 
           {!isDeveloper && paymentsAvailable && paymentProvider === 'wayforpay' && (
-            <button className="pay-button" type="button" disabled={checkoutBusy || sessionStatus !== 'authenticated'} onClick={handleContinueToPayment}>
-              {checkoutBusy ? 'Processing…' : 'Continue to secure payment'}
+            <button className="pay-button" type="button" disabled={checkoutBusy || sessionStatus !== 'authenticated' || (checkoutInfo?.wayforpayTestMode && !ownerTestCheckout)} onClick={handleContinueToPayment}>
+              {checkoutBusy ? 'Processing…' : (wayforpaySandboxForOwner ? 'Complete test payment' : 'Continue to secure payment')}
             </button>
           )}
 

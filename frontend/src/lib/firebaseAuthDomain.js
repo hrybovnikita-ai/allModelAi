@@ -13,14 +13,24 @@ export function isUsableFirebaseConfigValue(value) {
 export function resolveAuthDomainForRuntime(configuredAuthDomain, options = {}) {
   const configured = String(configuredAuthDomain || '').trim();
   const envDomain = String(options.envAuthDomain || '').trim();
+  const hosted = String(options.hostedHostname || '').trim();
 
   if (isUsableFirebaseConfigValue(envDomain)) {
     return envDomain;
   }
 
-  if (options.customAuthDomainEnabled) {
-    const hosted = String(options.hostedHostname || '').trim();
-    if (hosted) return hosted;
+  if (hosted) {
+    if (options.customAuthDomainEnabled) {
+      return hosted;
+    }
+    // Hosted SPA with /__/auth proxy (e.g. Vercel → firebaseapp.com): OAuth must use the site hostname.
+    if (
+      options.preferHostedAuthDomainWhenProxied
+      && configured.endsWith('.firebaseapp.com')
+      && !hosted.endsWith('.firebaseapp.com')
+    ) {
+      return hosted;
+    }
   }
 
   return configured;

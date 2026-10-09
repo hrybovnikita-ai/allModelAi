@@ -38,10 +38,10 @@ afterEach(() => {
   delete globalThis.localStorage;
   delete globalThis.sessionStorage;
   delete globalThis.fetch;
-  delete globalThis.window;
+  delete globalThis.document;
 });
 
-test('fresh login grace keeps stored user when session endpoint returns 401 during Safari bootstrap', async () => {
+test('fresh login grace retries session endpoint after 401 before succeeding', async () => {
   installStorage();
   globalThis.localStorage.setItem(
     'allmodelai_user',
@@ -49,25 +49,18 @@ test('fresh login grace keeps stored user when session endpoint returns 401 duri
   );
   markFreshLogin();
   assert.equal(isFreshLoginGraceActive(), true);
-
-  globalThis.window = {
-    location: {
-      protocol: 'https:',
-      hostname: 'all-model-ai.com',
-      origin: 'https://all-model-ai.com',
-      port: '',
-    },
-  };
+  globalThis.document = { cookie: 'allmodelai_cookie_consent=accepted' };
 
   let calls = 0;
   globalThis.fetch = async (url) => {
     calls += 1;
     assert.match(String(url), /\/api\/auth\/session$/);
-    return jsonResponse(401, { message: 'Unauthorized' });
+    if (calls < 2) return jsonResponse(401, { message: 'Unauthorized' });
+    return jsonResponse(200, { user: { email: 'ipad@example.com', name: 'iPad User' } });
   };
 
   const user = await restoreSession({ force: true });
-  assert.ok(calls >= 1);
+  assert.ok(calls >= 2);
   assert.equal(user?.email, 'ipad@example.com');
   assert.ok(globalThis.localStorage.getItem('allmodelai_user'));
 });

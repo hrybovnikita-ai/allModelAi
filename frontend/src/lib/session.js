@@ -1,6 +1,5 @@
 import { resolveAuthApiUrl } from './authApi.js';
-import { isCapacitorNative, nativeClientHeaders, prefersSameOriginApi, usesRemoteApiOrigin } from './apiBase.js';
-import { isMobileWebSafari } from './socialSignInEnv.js';
+import { isCapacitorNative, nativeClientHeaders, usesRemoteApiOrigin } from './apiBase.js';
 import { socialAuthDebug } from './socialAuthDiagnostics.js';
 import { readJsonBody } from './httpJson.js';
 import { clearFirebaseIdTokenFallback, firebaseSessionFallbackHeaders } from './firebaseSessionFallback.js';
@@ -128,15 +127,18 @@ export function isFreshLoginGraceActive(maxMs = FRESH_LOGIN_GRACE_MS) {
   }
 }
 
-function shouldTrustClientSessionHint(storedHint) {
-  if (!storedHint?.email) return false;
-  return Boolean(
-    getNativeSessionToken()
-    || isMobileWebSafari()
-    || usesRemoteApiOrigin()
-    || prefersSameOriginApi()
-    || isFreshLoginGraceActive(),
-  );
+function hasFirebaseSessionFallback() {
+  return Boolean(firebaseSessionFallbackHeaders().Authorization);
+}
+
+function sessionRestoreRetryDelays() {
+  if (isFreshLoginGraceActive() || hasFirebaseSessionFallback()) {
+    return [0, 200, 500];
+  }
+  if (getNativeSessionToken()) {
+    return [0, 150];
+  }
+  return [0];
 }
 
 /** Client-side session hint (server HttpOnly cookie remains source of truth). */
@@ -203,13 +205,7 @@ export async function restoreSession({ force = false } = {}) {
   const generation = sessionGeneration;
   const request = { generation };
   request.promise = (async () => {
-    const storedHint = sessionRestoreHintFromStorage(saved);
-    const retryDelays = storedHint && (
-      isMobileWebSafari()
-      || getNativeSessionToken()
-      || prefersSameOriginApi()
-      || isFreshLoginGraceActive()
-    ) ? [0, 120, 320, 640] : [0];
+    const retryDelays = sessionRestoreRetryDelays();
 
     for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
       if (retryDelays[attempt] > 0) {
@@ -217,22 +213,28 @@ export async function restoreSession({ force = false } = {}) {
       }
       if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
 
-      const { response, data } = await fetchSessionFromServer();
+      let response;
+      let data;
+      try {
+        ({ response, data } = await fetchSessionFromServer());
+      } catch (networkError) {
+        if (attempt === retryDelays.length - 1) throw networkError;
+        continue;
+      }
       if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
 
       if (response.ok) {
         socialAuthDebug('SESSION_RESTORED', { source: 'api', attempt });
         clearFreshLoginMark();
+        clearFirebaseIdTokenFallback();
         return rememberSession(data.user);
       }
-      if (response.status !== 401) {
-        throw new Error(data?.message || 'Could not verify your session. Please try again.');
+      if (response.status === 401) {
+        socialAuthDebug('SESSION_CONFIRM_401', { pathname: '/api/auth/session', attempt });
+        if (attempt < retryDelays.length - 1) continue;
+        break;
       }
-    }
-
-    if (shouldTrustClientSessionHint(storedHint)) {
-      socialAuthDebug('SESSION_RESTORED', { source: 'client-hint', email: storedHint.email });
-      return rememberSession(storedHint);
+      throw new Error(data?.message || 'Could not verify your session. Please try again.');
     }
 
     verifiedSession = null;
@@ -276,12 +278,10 @@ export async function confirmSession(user) {
   const lenientSessionConfirm =
     isCapacitorNative()
     || usesRemoteApiOrigin()
-    || prefersSameOriginApi()
-    || Boolean(getNativeSessionToken())
-    || isMobileWebSafari();
+    || Boolean(getNativeSessionToken());
 
   if (lenientSessionConfirm) {
-    const retryDelays = isMobileWebSafari() ? [0, 120, 320] : [0];
+    const retryDelays = [0, 200, 500];
     for (const delayMs of retryDelays) {
       if (delayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -296,12 +296,10 @@ export async function confirmSession(user) {
         /* retry */
       }
     }
-    if (getNativeSessionToken() || isMobileWebSafari()) {
-      socialAuthDebug('SESSION_CONFIRMED', { source: 'native-or-mobile-trusted' });
+    if (getNativeSessionToken()) {
+      socialAuthDebug('SESSION_CONFIRMED', { source: 'native-session-header' });
       return rememberSession(user);
     }
-    socialAuthDebug('SESSION_CONFIRMED', { source: 'trusted-login-payload' });
-    return rememberSession(user);
   }
 
   clearAllSessionData();

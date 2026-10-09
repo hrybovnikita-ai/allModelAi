@@ -14,7 +14,7 @@ test('auth bootstrap waits for Google redirect recovery before restoreSession', 
 test('SessionProvider uses auth bootstrap instead of immediate restoreSession only', () => {
   const src = readFileSync(`${root}src/components/Session/SessionProvider.jsx`, 'utf8');
   assert.match(src, /bootstrapAuthenticatedUser/);
-  assert.match(src, /checking-redirect/);
+  assert.match(src, /CHECKING_REDIRECT|checking-redirect/);
 });
 
 test('SESSION_UPDATED_EVENT updates authenticated user email for listeners', async () => {

@@ -22,14 +22,15 @@ import { initServiceWorker } from './lib/serviceWorker.js'
 import { ensureFirebaseSocialConfigLoaded } from './lib/loadFirebaseConfig.js'
 import { ensureSocialAuthReady } from './lib/firebase.js'
 import { reconcileStaleRedirectIntent } from './lib/socialRedirectState.js'
-import { runGoogleRedirectRecovery } from './lib/socialSignIn.js'
 
 installNativeFetchInterceptor()
 void ensureFirebaseSocialConfigLoaded()
   .then(() => ensureSocialAuthReady())
   .then(() => {
     reconcileStaleRedirectIntent()
-    return runGoogleRedirectRecovery('MainBootstrap')
+  })
+  .catch(() => {
+    /* SessionProvider owns redirect recovery; avoid duplicate bootstrap here. */
   })
 
 function readAppearance() {

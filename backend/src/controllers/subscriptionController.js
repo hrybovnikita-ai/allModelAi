@@ -12,6 +12,7 @@ const {
 const { getCreditStatusCoreAsync } = require('../billing/creditStatusAsync');
 const { applyOwnerAccess } = require('../billing/accessControl');
 const { readUserRoleSync } = require('../billing/userRole');
+const { canUsePaymentSandboxAsync } = require('../payments/paymentSandbox');
 const { authLog } = require('../authHelpers');
 
 function readUsageCount(database, normalizedEmail) {
@@ -81,13 +82,18 @@ const getSubscriptionSummary = async (req, res) => {
     try {
         const status = await getCreditStatusCoreAsync(req.app.locals.db, req.user.email);
         const checkoutFlags = buildCheckoutInfo();
+        const canUseOwnerTestCheckout = await canUsePaymentSandboxAsync(req.app.locals.db, req.user);
         authLog('SUBSCRIPTION_ROUTE_SUCCESS', { durationMs: Date.now() - startedAt });
         return res.json({
             ...checkoutFlags,
             ...status,
             currentPlan: status.currentPlan || status.planDisplayName,
             planKey: status.planKey || status.planSlug,
-            manageTestSubscription: wayforpayTestModeEnabled() && status.hasSubscription && status.paymentProvider === 'wayforpay',
+            canUseOwnerTestCheckout,
+            manageTestSubscription: canUseOwnerTestCheckout
+                && wayforpayTestModeEnabled()
+                && status.hasSubscription
+                && status.paymentProvider === 'wayforpay',
         });
     } catch (error) {
         authLog('SUBSCRIPTION_ROUTE_FAILED', {

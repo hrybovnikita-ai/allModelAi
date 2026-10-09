@@ -11,6 +11,17 @@ function formatError(value) {
   }
 }
 
+function shouldSuppressAuthOverlay(reason) {
+  const message = formatError(reason);
+  if (/Google sign-in/i.test(message)) return true;
+  if (reason && typeof reason === 'object' && typeof reason.code === 'string') {
+    if (reason.code.startsWith('auth/')) return true;
+    if (reason.code === 'REDIRECT_RESULT_MISSING') return true;
+    if (reason.code.startsWith('AUTH_API_')) return true;
+  }
+  return false;
+}
+
 function showRuntimeErrorBanner(kind, message) {
   if (typeof document === 'undefined') return;
   let box = document.getElementById(OVERLAY_ID);
@@ -48,6 +59,10 @@ export function installRuntimeErrorOverlay() {
   });
 
   window.addEventListener('unhandledrejection', (event) => {
+    if (shouldSuppressAuthOverlay(event.reason)) {
+      event.preventDefault();
+      return;
+    }
     showRuntimeErrorBanner('rejection', formatError(event.reason));
   });
 }

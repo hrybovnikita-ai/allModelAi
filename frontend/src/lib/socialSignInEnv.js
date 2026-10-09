@@ -24,14 +24,17 @@ function isCapacitorNativeEnv() {
   return false;
 }
 
-/** iPhone / iPad / iOS Safari: popups are blocked or report "cancelled" — use redirect only. */
+/**
+ * All iOS/iPadOS browsers use WebKit — popups are unreliable (Safari, Chrome/CriOS, Firefox/FxiOS).
+ * Use redirect-only on iOS touch devices.
+ */
 export function shouldPreferGoogleRedirectSignIn(userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
   if (isCapacitorNativeEnv()) return true;
-  return isMobileWebSafari(userAgent);
+  return isIosTouchDevice(userAgent);
 }
 
-/** Desktop Chrome/Edge/Firefox and non-iOS browsers may use popup sign-in. */
+/** Desktop and Android may use popup sign-in when supported. */
 export function shouldTryGooglePopupFirst(userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
   if (isCapacitorNativeEnv()) return false;
-  return !shouldPreferGoogleRedirectSignIn(userAgent);
+  return !isIosTouchDevice(userAgent);
 }

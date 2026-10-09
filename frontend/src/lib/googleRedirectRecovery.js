@@ -1,3 +1,5 @@
+import { persistSocialAuthError } from './socialAuthDiagnostics.js';
+import { socialError } from './socialSession.js';
 import { isGoogleRedirectRecoveryPending } from './socialRedirectState.js';
 
 let bootstrapPromise = null;
@@ -17,8 +19,8 @@ export function bootstrapGoogleRedirectRecovery(runPipeline) {
   }
 
   bootstrapPromise = runPipeline('AppBootstrap').catch((error) => {
-    bootstrapPromise = null;
-    throw error;
+    persistSocialAuthError(socialError(error));
+    return null;
   });
 
   return bootstrapPromise;

@@ -20,7 +20,10 @@ const buildCheckoutInfo = () => {
     const paymentMode = getPaymentMode();
     const wayforpayTestMode = wayforpayOn && wayforpayConfig().testMode;
     const stripeTestMode = stripeOn && isStripeTestMode();
-    const testModeActive = paymentMode === 'test' || wayforpayTestMode || stripeTestMode;
+    const sandboxDeployment = paymentMode === 'test' || wayforpayTestMode || stripeTestMode;
+    const liveWayforpayReady = wayforpayOn && !wayforpayTestMode && wayforpayConfigured()
+        && process.env.WAYFORPAY_LIVE_CONFIRM === 'true';
+    const showTestModeBanner = sandboxDeployment && !liveWayforpayReady;
 
     const providerDisplayName = primaryProvider === 'wayforpay'
         ? 'WayForPay'
@@ -54,11 +57,18 @@ const buildCheckoutInfo = () => {
         wayforpayCheckoutAvailable: wayforpayOn,
         wayforpayCheckoutEnabled: wayforpayCheckoutEnabledForDeployment(),
         wayforpayTestMode,
-        wayforpayMockCheckout: Boolean(primaryProvider === 'wayforpay' && wayforpayTestMode),
-        showTestModeBanner: testModeActive,
-        testModeBannerText: testModeActive ? TEST_MODE_BANNER : null,
+        wayforpayMockCheckout: false,
+        recurringBillingSupported: false,
+        renewalNotice: 'Each successful payment grants one month of access. Automatic card renewal is not enabled yet — renew manually before your period ends unless we enable WayForPay recurring billing.',
+        supportedPaymentMethodsNote: primaryProvider === 'wayforpay'
+            ? 'Visa, MasterCard, Google Pay, and Apple Pay through WayForPay secure checkout.'
+            : primaryProvider === 'stripe'
+                ? 'Cards and wallets supported by Stripe.'
+                : null,
+        showTestModeBanner,
+        testModeBannerText: showTestModeBanner ? TEST_MODE_BANNER : null,
         showStripeTestCardHint: Boolean(primaryProvider === 'stripe' && stripeTestMode),
-        secureCheckoutLabel: testModeActive ? 'Secure test checkout' : 'Secure payment',
+        secureCheckoutLabel: showTestModeBanner ? 'Secure test checkout' : 'Secure payment',
     };
 };
 

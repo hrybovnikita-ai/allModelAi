@@ -14,7 +14,7 @@ export default function AuthDebugPanel() {
 
   const report = useMemo(() => {
     if (!enabled) return '';
-    const serverSessionVerified = user?.email && status === 'authenticated' ? 'YES' : status === 'anonymous' ? 'NO' : 'UNKNOWN';
+    const serverSessionVerified = user?.email && status === 'authenticated' ? 'YES' : (status === 'unauthenticated' || status === 'anonymous') ? 'NO' : 'UNKNOWN';
     return formatAuthDiagnosticsReport(
       collectAuthDiagnostics({ status, user, serverSessionVerified }),
     );

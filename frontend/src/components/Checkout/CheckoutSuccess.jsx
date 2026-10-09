@@ -6,6 +6,7 @@ import { fetchCheckoutInfo, fetchCheckoutPlan, TEST_MODE_BANNER } from '../../li
 import { apiFetch } from '../../lib/api';
 import { pollWayforpayPaymentStatus } from '../../lib/wayforpay';
 import { useSession } from '../Session/SessionProvider';
+import { isAuthInitializing } from '../../lib/authSessionStatus';
 import { IconCheck } from './CheckoutIcons';
 import './Checkout.css';
 import './CheckoutProduction.css';
@@ -46,7 +47,7 @@ export default function CheckoutSuccess() {
   }, [planSlug, isDeveloper]);
 
   useEffect(() => {
-    if (sessionStatus === 'restoring-session' || sessionStatus === 'checking-redirect') return undefined;
+    if (isAuthInitializing(sessionStatus)) return undefined;
     if (sessionStatus !== 'authenticated') {
       navigate('/login', { replace: true, state: { from: returnPath } });
       return undefined;

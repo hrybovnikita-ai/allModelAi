@@ -8,6 +8,7 @@ import {
 } from '../src/lib/socialSignInEnv.js';
 
 const iphoneSafari = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+const ipadChrome = 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.6099.119 Mobile/15E148 Safari/604.1';
 const desktopChrome = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 test('iPhone Safari always prefers redirect sign-in', () => {
@@ -15,6 +16,13 @@ test('iPhone Safari always prefers redirect sign-in', () => {
   assert.equal(isIosTouchDevice(iphoneSafari), true);
   assert.equal(shouldPreferGoogleRedirectSignIn(iphoneSafari), true);
   assert.equal(shouldTryGooglePopupFirst(iphoneSafari), false);
+});
+
+test('iPad Chrome (CriOS) prefers redirect sign-in', () => {
+  assert.equal(isMobileWebSafari(ipadChrome), false);
+  assert.equal(isIosTouchDevice(ipadChrome), true);
+  assert.equal(shouldPreferGoogleRedirectSignIn(ipadChrome), true);
+  assert.equal(shouldTryGooglePopupFirst(ipadChrome), false);
 });
 
 test('desktop Chrome uses popup-first sign-in', () => {
@@ -30,7 +38,8 @@ test('redirect recovery has a single bootstrap pipeline', async () => {
   const recovery = await readFile(new URL('../src/lib/googleRedirectRecovery.js', import.meta.url), 'utf8');
   const login = await readFile(new URL('../src/components/Login/Login.jsx', import.meta.url), 'utf8');
 
-  assert.match(main, /runGoogleRedirectRecovery\('MainBootstrap'\)/);
+  assert.doesNotMatch(main, /runGoogleRedirectRecovery\('MainBootstrap'\)/);
+  assert.match(main, /reconcileStaleRedirectIntent/);
   assert.match(app, /GoogleRedirectRecoveryGate/);
   assert.match(signIn, /startGoogleRedirectSignIn/);
   assert.match(signIn, /signInWithRedirect/);

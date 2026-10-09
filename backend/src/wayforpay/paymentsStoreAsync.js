@@ -55,6 +55,29 @@ async function getPaymentByReferenceAsync(connection, orderReference) {
     return result.rows[0] || null;
 }
 
+async function listPaymentsForUserAsync(connection, email, limit = 25) {
+    const pool = resolvePostgresAsyncPool(connection);
+    const capped = Math.min(Math.max(Number(limit) || 25, 1), 50);
+    const result = await queryPgPool(
+        pool,
+        `SELECT
+            order_reference AS "orderReference",
+            plan_key AS "planKey",
+            amount,
+            currency,
+            status,
+            is_test AS "isTest",
+            created_at AS "createdAt",
+            paid_at AS "paidAt"
+         FROM wayforpay_payments
+         WHERE user_email = $1
+         ORDER BY created_at DESC
+         LIMIT $2`,
+        [String(email).trim().toLowerCase(), capped],
+    );
+    return result.rows;
+}
+
 async function updatePaymentStatusAsync(connection, orderReference, patch) {
     const pool = resolvePostgresAsyncPool(connection);
     const fields = [];
@@ -83,5 +106,6 @@ async function updatePaymentStatusAsync(connection, orderReference, patch) {
 module.exports = {
     insertPaymentAsync,
     getPaymentByReferenceAsync,
+    listPaymentsForUserAsync,
     updatePaymentStatusAsync,
 };

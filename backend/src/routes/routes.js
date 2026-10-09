@@ -104,6 +104,7 @@ const {
     completeMockWayforpayPayment,
     completeTestWayforpayCheckout,
     getWayforpayPaymentStatus,
+    getPaymentHistory,
 } = require('../controllers/wayforpayController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { prepareAppGeneration } = require('../appGeneration');
@@ -214,6 +215,7 @@ router.post('/payments/wayforpay/create', requireAuth, createWayforpayPayment);
 router.post('/payments/wayforpay/mock-complete', requireAuth, completeMockWayforpayPayment);
 router.post('/payments/wayforpay/test-checkout', requireAuth, completeTestWayforpayCheckout);
 router.get('/payments/wayforpay/status/:orderReference', requireAuth, getWayforpayPaymentStatus);
+router.get('/payments/history', requireAuth, getPaymentHistory);
 router.post('/payments/checkout', requireAuth, createCheckoutSession);
 router.post('/payments/create-intent', requireAuth, createPaymentIntent);
 router.get('/payments/intent/:intentId', requireAuth, verifyPaymentIntent);

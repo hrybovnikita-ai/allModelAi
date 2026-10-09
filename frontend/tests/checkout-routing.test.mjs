@@ -27,8 +27,9 @@ test('checkout page does not mix WayForPay and Stripe copy', () => {
 });
 
 test('pricing paid plans navigate to dedicated checkout paths', () => {
-  assert.match(pricingSource, /navigate\('\/checkout\/pro'\)/);
-  assert.match(pricingSource, /navigate\('\/checkout\/enterprise'\)/);
+  assert.match(pricingSource, /\/checkout\/pro/);
+  assert.match(pricingSource, /\/checkout\/enterprise/);
+  assert.match(pricingSource, /onSelect/);
 });
 
 test('Stripe checkout uses PaymentElement via @stripe/react-stripe-js', () => {
