@@ -1,5 +1,5 @@
 import { resolveAuthApiUrl } from './authApi.js';
-import { isCapacitorNative, nativeClientHeaders, usesRemoteApiOrigin } from './apiBase.js';
+import { nativeClientHeaders } from './apiBase.js';
 import { socialAuthDebug } from './socialAuthDiagnostics.js';
 import { readJsonBody } from './httpJson.js';
 import { clearFirebaseIdTokenFallback, firebaseSessionFallbackHeaders } from './firebaseSessionFallback.js';
@@ -14,6 +14,8 @@ let verifiedSession = null;
 let pendingSession = null;
 let sessionGeneration = 0;
 let logoutInProgress = false;
+/** After local sign-out, require one server round-trip before trusting in-memory hints. */
+let sessionRevokedLocally = false;
 /** Client-side hint only; server HttpOnly cookie is the source of truth. */
 const cacheDuration = 30 * 60 * 1000;
 export {
@@ -140,14 +142,24 @@ export function hasSessionRestoreHint() {
   return false;
 }
 
+/** Bounded retries: only for fresh-login cookie propagation or transient network failures. */
 function sessionRestoreRetryDelays() {
-  if (isFreshLoginGraceActive() || hasFirebaseSessionFallback()) {
-    return [0, 200, 500];
-  }
-  if (getNativeSessionToken()) {
-    return [0, 150];
+  if (isFreshLoginGraceActive()) {
+    return [0, 200];
   }
   return [0];
+}
+
+const SESSION_FETCH_TIMEOUT_MS = 12000;
+
+function shouldRetrySessionAfterResponse(response, attempt, maxAttempts) {
+  if (response.status === 401) {
+    return isFreshLoginGraceActive() && attempt === 0 && maxAttempts > 1;
+  }
+  if (response.status >= 500) {
+    return attempt < maxAttempts - 1;
+  }
+  return false;
 }
 
 /** Client-side session hint (server HttpOnly cookie remains source of truth). */
@@ -164,6 +176,7 @@ export function readStoredSessionUser() {
 
 export function rememberSession(user) {
   if (!user?.email) throw new Error('Missing session user');
+  sessionRevokedLocally = false;
   const saved = JSON.stringify(user);
   const storage = getStorage();
   storage.setItem('allmodelai_user', saved);
@@ -181,11 +194,13 @@ export function rememberSession(user) {
  */
 export async function fetchSessionFromServer() {
   if (typeof document !== 'undefined' && !readCookieConsent()) {
-    await waitForCookieConsentChoice(1500);
+    const consentWaitMs = hasSessionRestoreHint() ? 350 : 1200;
+    await waitForCookieConsentChoice(consentWaitMs);
   }
   const response = await fetch(resolveAuthApiUrl('session'), {
     credentials: 'include',
     cache: 'no-store',
+    signal: AbortSignal.timeout(SESSION_FETCH_TIMEOUT_MS),
     headers: {
       Accept: 'application/json',
       ...nativeClientHeaders(),
@@ -211,7 +226,8 @@ export async function restoreSession({ force = false } = {}) {
   const generation = sessionGeneration;
   const request = { generation };
   request.promise = (async () => {
-    if (!force && !hasSessionRestoreHint()) {
+    const mustVerifyWithServer = force || sessionRevokedLocally;
+    if (!mustVerifyWithServer && !hasSessionRestoreHint()) {
       socialAuthDebug('SESSION_RESTORE_SKIPPED', { reason: 'no-restore-hint' });
       verifiedSession = null;
       return null;
@@ -242,7 +258,7 @@ export async function restoreSession({ force = false } = {}) {
           if (!isFreshLoginGraceActive()) {
             storage.removeItem('allmodelai_user');
           }
-          if (attempt < retryDelays.length - 1) continue;
+          if (isFreshLoginGraceActive() && attempt < retryDelays.length - 1) continue;
           return null;
         }
         socialAuthDebug('SESSION_RESTORED', { source: 'api', attempt });
@@ -252,9 +268,11 @@ export async function restoreSession({ force = false } = {}) {
       }
       if (response.status === 401) {
         socialAuthDebug('SESSION_CONFIRM_401', { pathname: '/api/auth/session', attempt });
-        if (attempt < retryDelays.length - 1) continue;
+        sessionRevokedLocally = false;
+        if (shouldRetrySessionAfterResponse(response, attempt, retryDelays.length)) continue;
         break;
       }
+      if (shouldRetrySessionAfterResponse(response, attempt, retryDelays.length)) continue;
       throw new Error(data?.message || 'Could not verify your session. Please try again.');
     }
 
@@ -272,59 +290,54 @@ export async function restoreSession({ force = false } = {}) {
   }
 }
 
-// Verify that the browser accepted the HttpOnly cookie before opening the app.
+// Verify backend session (cookie and/or native token) before treating the user as signed in.
 export async function confirmSession(user) {
   if (!user?.email) {
     throw new Error('Your sign-in could not be verified. Please retry.');
   }
-  markFreshLogin();
-  rememberSession(user);
 
   const matchesUser = (candidate) =>
     candidate?.email?.toLowerCase() === user.email.toLowerCase();
 
-  try {
-    const verified = await restoreSession({ force: true });
-    if (matchesUser(verified)) {
-      socialAuthDebug('SESSION_CONFIRM_OK', { email: verified.email, source: 'restoreSession' });
-      socialAuthDebug('SESSION_CONFIRMED', { source: 'restoreSession' });
-      return verified;
+  const retryDelays = isFreshLoginGraceActive() ? [0, 200, 500, 1000] : [0];
+  let lastError = null;
+
+  for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
+    if (retryDelays[attempt] > 0) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
     }
-    socialAuthDebug('SESSION_CONFIRM_401', { pathname: '/api/auth/session', phase: 'initial' });
-  } catch {
-    socialAuthDebug('SESSION_CONFIRM_401', { pathname: '/api/auth/session', phase: 'error' });
-    /* Cookie may not be ready yet on cross-origin or native clients. */
+    try {
+      const verified = await restoreSession({ force: true });
+      if (matchesUser(verified)) {
+        markFreshLogin();
+        socialAuthDebug('SESSION_CONFIRM_OK', { email: verified.email, attempt });
+        socialAuthDebug('SESSION_CONFIRMED', { source: attempt === 0 ? 'restoreSession' : 'restoreSession-retry', attempt });
+        return verified;
+      }
+      socialAuthDebug('SESSION_GUEST', { pathname: '/api/auth/session', phase: 'confirmSession', attempt });
+      if (!isFreshLoginGraceActive()) break;
+    } catch (error) {
+      lastError = error;
+      socialAuthDebug('SESSION_CONFIRM_FAILED', { pathname: '/api/auth/session', phase: 'error', attempt });
+      if (!isFreshLoginGraceActive()) break;
+    }
   }
 
-  const lenientSessionConfirm =
-    isCapacitorNative()
-    || usesRemoteApiOrigin()
-    || Boolean(getNativeSessionToken());
-
-  if (lenientSessionConfirm) {
-    const retryDelays = [0, 200, 500];
-    for (const delayMs of retryDelays) {
-      if (delayMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+  if (getNativeSessionToken()) {
+    try {
+      const verified = await restoreSession({ force: true });
+      if (matchesUser(verified)) {
+        markFreshLogin();
+        socialAuthDebug('SESSION_CONFIRMED', { source: 'native-session-header' });
+        return verified;
       }
-      try {
-        const retry = await restoreSession({ force: true });
-        if (matchesUser(retry)) {
-          socialAuthDebug('SESSION_CONFIRMED', { source: 'restoreSession-retry' });
-          return retry;
-        }
-      } catch {
-        /* retry */
-      }
-    }
-    if (getNativeSessionToken()) {
-      socialAuthDebug('SESSION_CONFIRMED', { source: 'native-session-header' });
-      return rememberSession(user);
+    } catch (error) {
+      lastError = error;
     }
   }
 
   clearAllSessionData();
-  throw new Error('Your sign-in could not be verified. Please retry.');
+  throw new Error(lastError?.message || 'Your sign-in could not be verified. Please retry.');
 }
 
 /**
@@ -351,6 +364,7 @@ function dispatchSessionCleared() {
 
 export function clearAllSessionData() {
   sessionGeneration += 1;
+  sessionRevokedLocally = true;
   verifiedSession = null;
   pendingSession = null;
   const storage = getStorage();

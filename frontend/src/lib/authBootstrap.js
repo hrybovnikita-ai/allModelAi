@@ -4,15 +4,16 @@ import {
   clearSocialRedirectIntent,
   isGoogleRedirectRecoveryPending,
   reconcileStaleRedirectIntent,
-  shouldAttemptGoogleRedirectRecovery,
 } from './socialSignIn.js';
+import {
+  shouldAttemptGoogleRedirectRecovery,
+} from './socialRedirectState.js';
 import { restoreSession } from './session.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
 
-/**
- * Single client auth bootstrap: finish Google redirect recovery (if pending), then restore backend session.
- */
-export async function bootstrapAuthenticatedUser() {
+let bootstrapPromise = null;
+
+async function runBootstrapAuthenticatedUser() {
   reconcileStaleRedirectIntent();
 
   if (isGoogleRedirectRecoveryPending() && !shouldAttemptGoogleRedirectRecovery()) {
@@ -50,8 +51,26 @@ export async function bootstrapAuthenticatedUser() {
     socialAuthDebug('SESSION_CONFIRM_OK', { email: user.email });
     socialAuthDebug('SESSION_PROVIDER_AUTHENTICATED', { source: 'restoreSession' });
   } else {
-    socialAuthDebug('SESSION_CONFIRM_401', { pathname: '/api/auth/session' });
+    socialAuthDebug('SESSION_GUEST', { pathname: '/api/auth/session', phase: 'bootstrap' });
     socialAuthDebug('SESSION_PROVIDER_ANONYMOUS', {});
   }
   return user;
+}
+
+/**
+ * Single client auth bootstrap: finish Google redirect recovery (if pending), then restore backend session.
+ * Concurrent callers share one in-flight promise (StrictMode-safe).
+ */
+export function bootstrapAuthenticatedUser() {
+  if (!bootstrapPromise) {
+    bootstrapPromise = runBootstrapAuthenticatedUser().catch((error) => {
+      bootstrapPromise = null;
+      throw error;
+    });
+  }
+  return bootstrapPromise;
+}
+
+export function resetAuthBootstrapForTests() {
+  bootstrapPromise = null;
 }

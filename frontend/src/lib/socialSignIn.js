@@ -9,7 +9,7 @@ import {
 } from 'firebase/auth';
 import { ensureSocialAuthReady, getEffectiveFirebaseConfig, getFirebaseOAuthOrigin, getSocialAuth } from './firebase.js';
 import { isCapacitorNative, prefersSameOriginApi } from './apiBase.js';
-import { markFreshLogin, rememberSession } from './session.js';
+import { restoreSession } from './session.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
 import { SOCIAL_PROVIDER_LABELS } from './socialProviders.js';
 import { authLog, describeRedirectRecoveryFailure, socialAuthDebug } from './socialAuthDiagnostics.js';
@@ -30,6 +30,8 @@ import {
   peekRedirectIntent,
   persistRedirectIntent,
   reconcileStaleRedirectIntent,
+  shouldAttemptGoogleRedirectRecovery,
+  shouldShowGoogleRedirectRecoveryUI,
 } from './socialRedirectState.js';
 import { assertGoogleRedirectStorageAvailable } from './storageAvailability.js';
 
@@ -352,16 +354,23 @@ export async function completeRedirectSignIn(consumer) {
   return awaitGoogleRedirectRecovery(consumer);
 }
 
-export function navigateAfterSocialLogin(user, { navigate, replaceDashboard = false } = {}) {
+export async function navigateAfterSocialLogin(user, { navigate, replaceDashboard = false } = {}) {
   if (!user?.email) return;
-  markFreshLogin();
-  rememberSession(user);
   clearSocialRedirectIntent();
 
+  const verified = await restoreSession({ force: true });
+  if (verified?.email?.toLowerCase() !== user.email.toLowerCase()) {
+    socialAuthDebug('DASHBOARD_REDIRECT_BLOCKED', { reason: 'session-not-confirmed' });
+    throw Object.assign(new Error('Your session could not be confirmed. Please try signing in again.'), {
+      code: 'SESSION_NOT_CONFIRMED',
+    });
+  }
+
+  const sessionUser = verified;
   const useSpaNav = prefersSameOriginApi() && typeof navigate === 'function';
   if (useSpaNav) {
     socialAuthDebug('DASHBOARD_REDIRECT', { mode: 'spa', pathname: '/dashboard' });
-    navigate('/dashboard', { replace: true, state: { user } });
+    navigate('/dashboard', { replace: true, state: { user: sessionUser } });
     return;
   }
 
@@ -371,6 +380,6 @@ export function navigateAfterSocialLogin(user, { navigate, replaceDashboard = fa
     window.location.replace('/dashboard');
     return;
   }
-  navigate?.('/dashboard', { replace: true, state: { user } });
+  navigate?.('/dashboard', { replace: true, state: { user: sessionUser } });
 }
 

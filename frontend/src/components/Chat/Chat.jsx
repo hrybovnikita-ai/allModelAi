@@ -10,7 +10,12 @@ import { Highlight } from 'prism-react-renderer';
 import { Prism, codeTheme, languageAliases } from '../../lib/codeHighlight';
 import { dashboardModels } from '../../data/dashboardModels';
 import { apiFetch, checkChatResponse } from '../../lib/api';
-import { buildImageRequestBody, downloadOriginalImage, requestImageGeneration } from '../../lib/imageGeneration';
+import {
+  buildImageRequestBody,
+  downloadOriginalImage,
+  fetchImageGenerationStatus,
+  requestImageGeneration,
+} from '../../lib/imageGeneration';
 import { buildVideoRequestBody, requestVideoGeneration } from '../../lib/videoGeneration';
 import { logger, timingElapsed, timingNow } from '../../lib/logger';
 import { deleteUserAccountAndSignOut } from '../../lib/clientAuthReset';
@@ -33,6 +38,7 @@ import './ComposerInput.css';
 import CreateProjectModal, { ProjectIconBadge } from './CreateProjectModal';
 import AccountDeleteModal from '../AccountDeleteModal';
 import { isStandaloneApp } from '../../lib/appMode';
+import { readResponsePrefs } from '../../lib/responseLanguagePrefs.js';
 import SubscribeStripeEmbedded from './SubscribeStripeEmbedded';
 import { submitWayforpayCheckout } from '../../lib/wayforpay';
 import { copyToClipboard } from '../../lib/clipboard';
@@ -1530,20 +1536,29 @@ export default function Chat() {
       }
       if (generatingImage) {
         logger.action('Generate image', { promptLength: text.length });
+        const imageStatus = await fetchImageGenerationStatus().catch(() => null);
         const imageData = await requestImageGeneration(
           buildImageRequestBody({
             prompt: text,
             quality: options.quality || 'hd',
             aspectRatio: options.aspectRatio || '1:1',
             style: options.style || 'auto',
+            ...(imageStatus?.configured && imageStatus?.cloudflare ? { provider: 'cloudflare' } : {}),
           }),
           controller.signal,
           {
             onPoll: ({ polls }) => {
-              if (polls < 2) return;
+              let imageStatusLabel = 'Generating your image…';
+              if (polls >= 2) imageStatusLabel = 'Generating your image…';
+              if (polls >= 5) imageStatusLabel = 'Still generating your image…';
               setMessages((current) => current.map((message, index) => (
                 index === assistantIndex
-                  ? { ...message, text: 'Still generating image…', generatingImage: true }
+                  ? {
+                    ...message,
+                    text: imageStatusLabel,
+                    generatingImage: true,
+                    imageStatusLabel,
+                  }
                   : message
               )));
             },
@@ -1671,7 +1686,7 @@ export default function Chat() {
       const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ responseMode: generatingFile ? 'file' : 'chat', maxTokens: generatingFile ? 4096 : undefined, model: selectedSlug, variant: selectedVersion?.id, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, webSearch: webSearchFlag, useKnowledge: useKnowledgeBase, routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced', responsePrefs: safeJSON(safeStorageGet('localStorage', 'allmodelai_response_prefs'), {}), systemInstructions: safeStorageGet('localStorage', 'allmodelai_system_instructions') || '', fallbackEnabled: !selectedVersion }),
+        body: JSON.stringify({ responseMode: generatingFile ? 'file' : 'chat', maxTokens: generatingFile ? 4096 : undefined, model: selectedSlug, variant: selectedVersion?.id, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, webSearch: webSearchFlag, useKnowledge: useKnowledgeBase, routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced', responsePrefs: readResponsePrefs(typeof localStorage !== 'undefined' ? localStorage : null), systemInstructions: safeStorageGet('localStorage', 'allmodelai_system_instructions') || '', fallbackEnabled: !selectedVersion }),
         signal: controller.signal,
       });
 
@@ -2501,7 +2516,7 @@ export default function Chat() {
             const editing = message.role === 'user' && editingMessageIndex === index;
             const feedback = messageFeedback[index];
             const favoriteEntry = favorites.some((item) => item.text === text);
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : message.deepResearch ? <DeepResearchMessageBlock message={message} onClarifyStart={(answers) => handleDeepResearchClarification(index, answers, false)} onClarifySkip={() => handleDeepResearchClarification(index, null, true)} onStopResearch={stopGenerating} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1)); }} /> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : imagePending ? <p role="status" className="typing-indicator"><b>Generating image…</b></p> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} citationSources={message.webSources} /> : <p>{text}</p>)}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : message.deepResearch ? <DeepResearchMessageBlock message={message} onClarifyStart={(answers) => handleDeepResearchClarification(index, answers, false)} onClarifySkip={() => handleDeepResearchClarification(index, null, true)} onStopResearch={stopGenerating} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1)); }} /> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : imagePending ? <div className="image-gen-status" role="status" aria-live="polite"><span className="image-gen-status__spinner" aria-hidden="true" /><b>{message.imageStatusLabel || 'Generating image…'}</b></div> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} citationSources={message.webSources} /> : <p>{text}</p>)}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
 {message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} />}{message.role === 'assistant' && selectedSlug === 'smart' && message.router && <SmartRouterStatus router={message.router} routedModel={message.modelSlug} displayName={message.routeDisplayName} />}{message.knowledgeSources?.length > 0 && <KnowledgeSourceChips sources={message.knowledgeSources} onSourceClick={() => navigate('/knowledge')} />}{message.imageUrl && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || 'hd', aspectRatio: message.imageAspect || '1:1' }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{message.videoUrl && message.role !== 'user' && <GeneratedVideoCard message={message} onDownloadError={setChatError} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceVideo: true, aspectRatio: message.videoAspect || '16:9', resolution: message.videoResolution || '720p' }); }} />}{text && !activelyStreaming && !editing && (
               <MessageActions
                 role={message.role}

@@ -27,7 +27,27 @@ const isCrossSiteAuthRequest = (req) => {
     }
 };
 
-const shouldIssueNativeSessionToken = (req) => isCapacitorClientRequest(req) || isCrossSiteAuthRequest(req);
+const isRenderUpstreamHost = (req) => {
+    const host = String(req.get('host') || '').split(',')[0].trim().split(':')[0].toLowerCase();
+    return host.endsWith('.onrender.com') || host === 'onrender.com';
+};
+
+/**
+ * Issue X-AllModelAI-Session fallback for Capacitor, cross-origin API calls, and
+ * Vercel → Render split deploy (browser is first-party but upstream Host is onrender.com).
+ */
+const shouldIssueNativeSessionToken = (req) => {
+    if (isCapacitorClientRequest(req)) return true;
+    if (isCrossSiteAuthRequest(req)) return true;
+    const origin = String(req.get('origin') || '').trim();
+    if (!origin || !isRenderUpstreamHost(req)) return false;
+    try {
+        const { isAllowedOrigin } = require('./publicAccess');
+        return isAllowedOrigin(origin, req);
+    } catch {
+        return false;
+    }
+};
 
 /** SameSite=None requires Secure; only use on HTTPS cross-site (production split deploy). */
 const needsCrossSiteCookies = (req) => {
@@ -72,6 +92,7 @@ module.exports = {
     isCapacitorClientOrigin,
     isCapacitorClientRequest,
     isCrossSiteAuthRequest,
+    isRenderUpstreamHost,
     shouldIssueNativeSessionToken,
     needsCrossSiteCookies,
 };

@@ -23,6 +23,20 @@ const defaultDatabase = {
 
 let connection;
 
+const ensureSqliteColumn = (database, table, columnName, alterSql) => {
+    const columns = database.prepare(`PRAGMA table_info(${table})`).all();
+    if (columns.some((column) => column.name === columnName)) {
+        return;
+    }
+    try {
+        database.exec(alterSql);
+    } catch (error) {
+        if (!/duplicate column name/i.test(String(error.message || ''))) {
+            throw error;
+        }
+    }
+};
+
 const readLegacyData = (filePath) => {
     if (!fs.existsSync(filePath)) {
         return defaultDatabase;
@@ -221,54 +235,30 @@ const connectDatabase = () => {
         );
     }
 
-    const productionUserColumns = database
-        .prepare(
-            'PRAGMA table_info(users)'
-        )
-        .all();
-
-    if (
-        !productionUserColumns.some(
-            (column) =>
-                column.name === 'email_verified'
-        )
-    ) {
-        database.exec(
-            'ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0'
-        );
-    }
-
-    if (
-        !productionUserColumns.some(
-            (column) =>
-                column.name === 'role'
-        )
-    ) {
-        database.exec(
-            "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"
-        );
-    }
-
-    if (!productionUserColumns.some(column => column.name === 'avatar_url')) {
-        database.exec('ALTER TABLE users ADD COLUMN avatar_url TEXT');
-    }
-
-    const userColumns = database
-        .prepare(
-            'PRAGMA table_info(users)'
-        )
-        .all();
-
-    if (
-        !userColumns.some(
-            (column) =>
-                column.name === 'password_hash'
-        )
-    ) {
-        database.exec(
-            'ALTER TABLE users ADD COLUMN password_hash TEXT'
-        );
-    }
+    ensureSqliteColumn(
+        database,
+        'users',
+        'email_verified',
+        'ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0',
+    );
+    ensureSqliteColumn(
+        database,
+        'users',
+        'role',
+        "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'",
+    );
+    ensureSqliteColumn(
+        database,
+        'users',
+        'avatar_url',
+        'ALTER TABLE users ADD COLUMN avatar_url TEXT',
+    );
+    ensureSqliteColumn(
+        database,
+        'users',
+        'password_hash',
+        'ALTER TABLE users ADD COLUMN password_hash TEXT',
+    );
 
     ensureStorageIdeasSchema(database);
     ensureAiTrainingSchema(database);

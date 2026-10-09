@@ -16,6 +16,7 @@
     "db:migrate": "node scripts/migrate.js",
     "db:import-sqlite": "node scripts/import-sqlite.js",
     "providers:check": "node scripts/check-providers.js",
+    "image:smoke": "node scripts/cloudflare-image-smoke.js",
     "models:smoke": "node scripts/model-provider-smoke.mjs",
     "stripe:check": "node scripts/stripe-check.js",
     "stripe:sync": "node scripts/sync-stripe-publishable.js"

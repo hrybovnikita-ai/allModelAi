@@ -14,7 +14,7 @@ import './SocialAuth.css';
 
 const SOCIAL_ERROR_KEY = 'allmodelai_social_error';
 /** Redirect result (~800ms) + auth-state fallback (~1s) + backend exchange buffer */
-const RECOVERY_OVERLAY_SAFETY_MS = 5000;
+const RECOVERY_OVERLAY_SAFETY_MS = 15000;
 
 function readInitialRecoveringState() {
   reconcileStaleRedirectIntent();
@@ -65,7 +65,7 @@ export default function GoogleRedirectRecoveryGate() {
           setRecovering(false);
           return;
         }
-        navigateAfterSocialLogin(user, { navigate, replaceDashboard: true });
+        await navigateAfterSocialLogin(user, { navigate, replaceDashboard: true });
       } catch (error) {
         if (!active) return;
         clearTimeout(safetyTimer);

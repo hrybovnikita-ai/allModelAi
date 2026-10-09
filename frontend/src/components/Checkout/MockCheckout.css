@@ -74,6 +74,14 @@
   grid-template-columns: 1fr 1fr;
 }
 
+.mock-checkout-field--first {
+  margin-top: 14px;
+}
+
+.mock-checkout-field--card {
+  margin-top: 10px;
+}
+
 .mock-checkout-field {
   display: grid;
   gap: 8px;
@@ -156,10 +164,6 @@
 
 .mock-checkout-submit {
   margin-top: 4px;
-  border-radius: 14px;
-  padding: 15px 18px;
-  font-size: 1rem;
-  box-shadow: 0 12px 32px rgba(99, 102, 241, 0.35);
 }
 
 .mock-checkout-submit-inner {

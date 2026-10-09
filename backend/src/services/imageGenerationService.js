@@ -15,6 +15,10 @@ const {
     redactSecrets,
     sniffImageMime,
 } = require('../imageProviderAdapter');
+const {
+    generateCloudflareWorkersAiImage,
+    isCloudflareImageConfigured,
+} = require('./cloudflareImageService');
 
 const LOG_PREFIX = '[AllModelAI][IMAGE]';
 const USER_UNAVAILABLE_MESSAGE = 'Image generation is temporarily unavailable. Please try again in a moment.';
@@ -46,10 +50,8 @@ const getOpenAiImageKey = () => {
     return openAiKeys.find((value) => /^sk-/i.test(value) && !/^sk-or-/i.test(value)) || null;
 };
 
-const getCloudflareCredentials = () => ({
-    account: strip(process.env.CLOUDFLARE_ACCOUNT_ID),
-    key: strip(process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY || process.env.API_IMAGE_KEY),
-});
+const resolveExplicitImageProvider = () =>
+    normalizeImageProviderId(process.env.IMAGE_GENERATION_PROVIDER || process.env.IMAGE_PROVIDER);
 
 const normalizeImageProviderId = (provider) => {
     const key = strip(provider).toLowerCase();
@@ -67,15 +69,12 @@ const isProviderConfigured = (provider) => {
         return Boolean(key && isPollinationsKey(key));
     }
     if (id === 'openai') return Boolean(getOpenAiImageKey());
-    if (id === 'cloudflare') {
-        const { account, key } = getCloudflareCredentials();
-        return Boolean(account && key);
-    }
+    if (id === 'cloudflare') return isCloudflareImageConfigured();
     return false;
 };
 
 const listConfiguredImageProviders = () => {
-    let explicit = normalizeImageProviderId(process.env.IMAGE_PROVIDER);
+    const explicit = resolveExplicitImageProvider();
     const ordered = [];
     const pushUnique = (name) => {
         const id = normalizeImageProviderId(name);
@@ -85,9 +84,11 @@ const listConfiguredImageProviders = () => {
 
     if (explicit && IMAGE_PROVIDER_IDS.includes(explicit)) {
         pushUnique(explicit);
-        IMAGE_PROVIDER_IDS.forEach((name) => {
-            if (name !== explicit) pushUnique(name);
-        });
+        if (process.env.IMAGE_ALLOW_FALLBACK === 'true') {
+            IMAGE_PROVIDER_IDS.forEach((name) => {
+                if (name !== explicit) pushUnique(name);
+            });
+        }
         return ordered;
     }
 
@@ -95,14 +96,37 @@ const listConfiguredImageProviders = () => {
     return ordered;
 };
 
+const classifyProviderFailure = (status, message) => {
+    const s = Number(status);
+    const blob = String(message || '').toLowerCase();
+    if (s === 504 || /timeout|timed out|aborterror/.test(blob)) return 'TIMEOUT';
+    if (s === 429 || /rate limit|too many requests/.test(blob)) return 'RATE_LIMIT';
+    if (s === 402 || /insufficient balance|pollen|no credits remaining|billing/.test(blob)) return 'QUOTA';
+    if (s === 403 && /free tier|not available for free/.test(blob)) return 'AUTH_TIER';
+    if (s === 401 || s === 403) return 'AUTH';
+    if (s === 400) return 'INVALID';
+    if (s >= 500) return 'UPSTREAM';
+    return 'UNKNOWN';
+};
+
+/** Retry the same provider (not “try next provider”). Quota/auth failures should not loop. */
 const isRetryableProviderFailure = ({ status, code, message }) => {
-    if ([402, 408, 409, 429, 500, 502, 503, 504].includes(Number(status))) return true;
-    if (Number(status) === 401) return true;
+    const category = classifyProviderFailure(status, message);
+    if (category === 'INVALID') return false;
+    if (category === 'QUOTA' || category === 'AUTH_TIER' || category === 'AUTH') return false;
+    if ([408, 500, 502, 503, 504].includes(Number(status))) return true;
+    if (Number(status) === 429 || category === 'RATE_LIMIT') return true;
     const blob = String(message || code || '').toLowerCase();
-    if (/insufficient|balance|quota|pollen|rate limit|timeout|unavailable|temporarily|exhausted/.test(blob)) {
-        return true;
-    }
+    if (/timeout|unavailable|temporarily|upstream/.test(blob)) return true;
     return false;
+};
+
+const attemptsAreProviderExhausted = (attempts) => {
+    if (!attempts.length) return false;
+    return attempts.every((attempt) => {
+        const category = classifyProviderFailure(attempt.status, attempt.message);
+        return ['QUOTA', 'AUTH_TIER', 'AUTH'].includes(category);
+    });
 };
 
 const logImage = (message, extra) => {
@@ -176,8 +200,42 @@ async function generateWithProvider(provider, {
         return { ok: false, retryable: false, status: 400, internalMessage: plan.error, provider };
     }
 
-    const { account, key: cloudflareKey } = getCloudflareCredentials();
     const openAiKey = getOpenAiImageKey();
+
+    if (provider === 'cloudflare') {
+        const cf = await generateCloudflareWorkersAiImage({
+            prompt: generationPrompt,
+            steps: plan.request.steps,
+            model: plan.model,
+        });
+        if (!cf.ok) {
+            return {
+                ok: false,
+                retryable: cf.retryable !== false,
+                status: cf.clientStatus || cf.status || 502,
+                internalMessage: cf.internalMessage,
+                userMessage: cf.userMessage,
+                code: cf.code,
+                provider: 'cloudflare',
+            };
+        }
+        if (!safeImageUrl(cf.imageUrl)) {
+            return {
+                ok: false,
+                retryable: true,
+                status: 502,
+                internalMessage: 'Cloudflare returned no image payload',
+                provider: 'cloudflare',
+            };
+        }
+        return {
+            ok: true,
+            imageUrl: cf.imageUrl,
+            mimeType: cf.mimeType,
+            plan,
+            provider: 'cloudflare',
+        };
+    }
 
     if (provider === 'comfy-cloud') {
         try {
@@ -252,19 +310,14 @@ async function generateWithProvider(provider, {
         };
     }
 
-    const cloudflare = provider === 'cloudflare';
-    const upstreamUrl = cloudflare
-        ? `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/ai/run/${encodeURIComponent(plan.model)}`
-        : process.env.IMAGE_API_URL || 'https://api.openai.com/v1/images/generations';
-    const upstreamBody = cloudflare
-        ? { prompt: generationPrompt.slice(0, plan.maxPromptLength), steps: plan.request.steps }
-        : { ...plan.request, prompt: generationPrompt.slice(0, plan.maxPromptLength) };
+    const upstreamUrl = process.env.IMAGE_API_URL || 'https://api.openai.com/v1/images/generations';
+    const upstreamBody = { ...plan.request, prompt: generationPrompt.slice(0, plan.maxPromptLength) };
 
     const response = await fetch(upstreamUrl, {
         method: 'POST',
         signal: AbortSignal.timeout(180000),
         headers: {
-            Authorization: `Bearer ${cloudflare ? cloudflareKey : openAiKey}`,
+            Authorization: `Bearer ${openAiKey}`,
             'Content-Type': 'application/json',
         },
         body: JSON.stringify(upstreamBody),
@@ -286,9 +339,9 @@ async function generateWithProvider(provider, {
     }
 
     const image = data?.data?.[0];
-    const base64 = cloudflare ? data?.result?.image : image?.b64_json;
+    const base64 = image?.b64_json;
     const mimeType = base64
-        ? sniffImageMime(base64, cloudflare ? 'image/jpeg' : 'image/png')
+        ? sniffImageMime(base64, 'image/png')
         : mimeFromImageUrl(image?.url);
     const imageUrl = base64 ? `data:${mimeType};base64,${base64}` : image?.url;
     if (!safeImageUrl(imageUrl)) {
@@ -310,22 +363,35 @@ async function generateImageWithFallback({
     quality,
     aspectRatio,
     requestedModel,
+    preferredProvider,
+    jobId,
 }) {
-    const providers = listConfiguredImageProviders();
+    const startedAt = Date.now();
+    const preferred = preferredProvider ? normalizeImageProviderId(preferredProvider) : '';
+    const providers = preferred && isProviderConfigured(preferred)
+        ? [preferred]
+        : listConfiguredImageProviders();
     if (!providers.length) {
         logImage('No image providers configured');
+        const { imageConfigurationReport } = require('../imageConfig');
+        const config = imageConfigurationReport();
         return {
             ok: false,
-            clientStatus: 503,
+            clientStatus: 502,
             body: {
                 success: false,
-                code: FAILURE_CODE,
-                message: USER_UNAVAILABLE_MESSAGE,
+                code: config.code || 'IMAGE_NOT_CONFIGURED',
+                message: config.message || USER_UNAVAILABLE_MESSAGE,
+                missingEnvVars: config.missing?.length ? config.missing : undefined,
+                configurationWarnings: config.warnings?.length ? config.warnings : undefined,
             },
         };
     }
 
-    logImage('Generation started', { providers: providers.join(' → ') });
+    logImage('Generation started', {
+        jobId: jobId || undefined,
+        providers: providers.join(' → '),
+    });
     const attempts = [];
 
     for (let index = 0; index < providers.length; index += 1) {
@@ -340,7 +406,11 @@ async function generateImageWithFallback({
             });
 
             if (result.ok) {
-                logImage('Generation completed', { providerUsed: provider });
+                logImage('Generation completed', {
+                    jobId: jobId || undefined,
+                    providerUsed: provider,
+                    durationMs: Date.now() - startedAt,
+                });
                 return {
                     ok: true,
                     clientStatus: 200,
@@ -356,22 +426,43 @@ async function generateImageWithFallback({
                 };
             }
 
+            const category = classifyProviderFailure(result.status, result.internalMessage);
             attempts.push({
                 provider,
                 status: result.status,
                 retryable: result.retryable,
                 message: result.internalMessage,
+                userMessage: result.userMessage,
+                category,
             });
             logImage(`${provider} failed: ${result.status || 'error'}`, {
+                jobId: jobId || undefined,
+                category,
                 retryable: result.retryable,
                 detail: process.env.NODE_ENV === 'production' ? undefined : redactSecrets(result.internalMessage),
             });
 
-            if (result.status === 400) {
+            if (result.status === 400 || result.code === 'IMAGE_INVALID_REQUEST') {
                 return {
                     ok: false,
                     clientStatus: 400,
-                    body: { message: result.internalMessage || 'Invalid image generation request.' },
+                    body: {
+                        success: false,
+                        code: result.code || 'IMAGE_INVALID_REQUEST',
+                        message: result.userMessage || result.internalMessage || 'Invalid image generation request.',
+                    },
+                };
+            }
+            if (['IMAGE_CLOUDFLARE_QUOTA', 'IMAGE_CLOUDFLARE_AUTH', 'IMAGE_CLOUDFLARE_FORBIDDEN', 'IMAGE_NOT_CONFIGURED'].includes(result.code)) {
+                return {
+                    ok: false,
+                    clientStatus: result.status || 502,
+                    body: {
+                        success: false,
+                        code: result.code,
+                        message: result.userMessage || result.internalMessage || USER_UNAVAILABLE_MESSAGE,
+                        retryable: result.retryable === true,
+                    },
                 };
             }
             if (!shouldAdvanceToNextProvider(result, index, providers.length)) {
@@ -380,13 +471,18 @@ async function generateImageWithFallback({
             logImage('Trying fallback provider');
         } catch (error) {
             const retryable = error.name === 'TimeoutError' || error.name === 'AbortError';
+            const status = error.name === 'TimeoutError' ? 504 : 502;
+            const category = classifyProviderFailure(status, error.message);
             attempts.push({
                 provider,
-                status: error.name === 'TimeoutError' ? 504 : 502,
+                status,
                 retryable,
                 message: redactSecrets(error.message),
+                category,
             });
             logImage(`${provider} failed: ${error.name}`, {
+                jobId: jobId || undefined,
+                category,
                 detail: process.env.NODE_ENV === 'production' ? undefined : redactSecrets(error.message),
             });
             if (!shouldAdvanceToNextProvider({ ok: false, status: error.name === 'TimeoutError' ? 504 : 502 }, index, providers.length)) {
@@ -396,36 +492,66 @@ async function generateImageWithFallback({
         }
     }
 
-    if (process.env.NODE_ENV !== 'production') {
-        console.log(`${LOG_PREFIX} All providers failed`, attempts.map((a) => ({
+    const durationMs = Date.now() - startedAt;
+    const exhausted = attemptsAreProviderExhausted(attempts);
+    logImage('All providers failed', {
+        jobId: jobId || undefined,
+        durationMs,
+        exhausted,
+        attempts: attempts.map((a) => ({
             provider: a.provider,
             status: a.status,
-            message: a.message,
-        })));
-    }
+            category: a.category || classifyProviderFailure(a.status, a.message),
+        })),
+    });
 
     const hadTimeout = attempts.some((a) => a.status === 504);
     const authFailure = attempts.find((a) => a.status === 403 || a.status === 401);
-    let message = USER_UNAVAILABLE_MESSAGE;
+    const quotaFailure = attempts.find((a) => a.category === 'QUOTA' || a.status === 402);
+    const rateFailure = attempts.find((a) => a.status === 429);
+    const lastUserMessage = [...attempts].reverse().find((a) => a.userMessage)?.userMessage;
+    let message = lastUserMessage || USER_UNAVAILABLE_MESSAGE;
     if (hadTimeout) {
         message = 'Image generation timed out. Try again with Standard quality or a shorter prompt.';
-    } else if (authFailure && attempts.length === 1) {
+    } else if (authFailure && attempts.length === 1 && !lastUserMessage) {
         message = 'The primary image provider rejected the server API key. Check Comfy Cloud billing/tier or configure a fallback provider (Pollinations / OpenAI).';
+    } else if (quotaFailure?.userMessage) {
+        message = quotaFailure.userMessage;
     }
     const allAuthBlocked = attempts.length > 0 && attempts.every((a) => a.status === 401 || a.status === 403);
+    const clientRetryable = !exhausted && !hadTimeout && !quotaFailure;
+    const lastAttempt = attempts[attempts.length - 1];
+    let clientStatus = 502;
+    if (hadTimeout) clientStatus = 504;
+    else if (rateFailure) clientStatus = 429;
+    else if (quotaFailure) clientStatus = 402;
+    else if (authFailure?.status === 500) clientStatus = 500;
+    else if (lastAttempt?.status >= 400 && lastAttempt.status < 600) clientStatus = lastAttempt.status;
+
+    let failureCode = exhausted ? 'IMAGE_PROVIDER_EXHAUSTED' : FAILURE_CODE;
+    if (authFailure?.status === 500) failureCode = 'COMFY_CLOUD_NOT_CONFIGURED';
+    if (attempts.length === 1 && attempts[0].provider === 'cloudflare') {
+        if (attempts[0].category === 'QUOTA') failureCode = 'IMAGE_CLOUDFLARE_QUOTA';
+        if (attempts[0].category === 'AUTH') failureCode = 'IMAGE_CLOUDFLARE_AUTH';
+    }
+
     return {
         ok: false,
-        clientStatus: hadTimeout ? 504 : (authFailure?.status === 500 ? 500 : 502),
+        clientStatus,
         body: {
             success: false,
-            code: authFailure?.status === 500 ? 'COMFY_CLOUD_NOT_CONFIGURED' : FAILURE_CODE,
+            code: failureCode,
             message: allAuthBlocked && attempts.length > 1
                 ? 'Image providers rejected the server API keys. Check Comfy Cloud tier and Pollinations/OpenAI keys on the server.'
                 : message,
-            retryable: true,
+            retryable: clientRetryable,
             attempts: process.env.NODE_ENV === 'production'
                 ? undefined
-                : attempts.map((a) => ({ provider: a.provider, status: a.status })),
+                : attempts.map((a) => ({
+                    provider: a.provider,
+                    status: a.status,
+                    category: a.category,
+                })),
         },
     };
 }
@@ -433,9 +559,12 @@ async function generateImageWithFallback({
 module.exports = {
     USER_UNAVAILABLE_MESSAGE,
     FAILURE_CODE,
+    resolveExplicitImageProvider,
     listConfiguredImageProviders,
     isProviderConfigured,
     isRetryableProviderFailure,
+    classifyProviderFailure,
+    attemptsAreProviderExhausted,
     generateImageWithFallback,
     safeImageUrl,
     resolveImageProvider,

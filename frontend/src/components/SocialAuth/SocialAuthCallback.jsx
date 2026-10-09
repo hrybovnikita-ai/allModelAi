@@ -41,7 +41,7 @@ export default function SocialAuthCallback() {
           return;
         }
         setMessage('Signing you in…');
-        navigateAfterSocialLogin(user, { navigate, replaceDashboard: true });
+        await navigateAfterSocialLogin(user, { navigate, replaceDashboard: true });
       } catch (err) {
         if (!active) return;
         setError(socialError(err));

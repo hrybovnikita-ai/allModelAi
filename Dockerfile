@@ -14,6 +14,8 @@ COPY backend/package.json backend/package-lock.json ./backend/
 WORKDIR /app/backend
 RUN npm ci --omit=dev
 COPY backend ./
+# Fail the image build if git is missing required modules (avoids a running container that crashes on require).
+RUN node -e "require('./src/services/cloudflareImageService'); require('./src/services/responseLanguage'); require('./src/services/imageGenerationService');"
 COPY --from=frontend /frontend/dist /app/frontend/dist
 # DATABASE_URL (Supabase pooler) selects PostgreSQL in production. DB_FILE is only used when DATABASE_URL is unset.
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=5050

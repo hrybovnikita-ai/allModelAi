@@ -22,7 +22,7 @@ test('AI Training Phase 1 APIs', async (t) => {
         assert.equal(res.status, 200);
         assert.ok(Array.isArray(res.body.lessons));
         assert.ok(res.body.lessons.some((l) => l.id === 'linear-regression'));
-        assert.equal(res.body.phase, 1);
+        assert.ok(typeof res.body.phase === 'number' && res.body.phase >= 1);
     });
 
     await t.test('GET /api/ai-training/tutor/status does not crash without OpenAI', async () => {

@@ -4,9 +4,12 @@
   z-index: 9999;
   display: grid;
   place-items: center;
+  align-items: safe center;
   padding: 20px;
   pointer-events: auto;
   isolation: isolate;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .login-backdrop-layer {
@@ -23,8 +26,11 @@
   position: relative;
   z-index: 1;
   width: min(470px, 100%);
-  max-height: calc(100vh - 40px);
-  overflow: auto;
+  max-height: min(calc(100dvh - 40px), calc(100vh - 40px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: var(--space-8, 38px);
   border: 1px solid var(--border-strong, rgba(148, 163, 184, 0.24));
   border-radius: var(--radius-lg, 20px);
@@ -193,17 +199,25 @@
   animation: login-social-spin .75s linear infinite;
 }
 @keyframes login-social-spin { to { transform: rotate(360deg); } }
-@media (max-width: 520px) {
+@media (max-width: 820px) {
   .login-overlay {
     padding:
-      max(10px, env(safe-area-inset-top))
-      max(10px, env(safe-area-inset-right))
-      max(10px, env(safe-area-inset-bottom))
-      max(10px, env(safe-area-inset-left));
+      max(12px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+    place-items: start center;
   }
   .login-modal {
-    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 20px);
-    padding: 30px 20px max(22px, env(safe-area-inset-bottom));
+    margin: max(8px, env(safe-area-inset-top)) auto max(12px, env(safe-area-inset-bottom));
+    max-height: none;
+    padding: 28px 22px max(24px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 520px) {
+  .login-modal {
+    padding: 26px 18px max(22px, env(safe-area-inset-bottom));
     border-radius: 15px;
   }
   .login-modal h2 { font-size: 1.6rem; }

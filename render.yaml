@@ -39,3 +39,17 @@ services:
         sync: false
       - key: IMAGE_API_KEY
         sync: false
+      - key: IMAGE_GENERATION_PROVIDER
+        sync: false
+      - key: IMAGE_PROVIDER
+        sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_API_KEY
+        sync: false
+      - key: CLOUDFLARE_IMAGE_MODEL
+        sync: false
+      - key: IMAGE_ALLOW_FALLBACK
+        sync: false

@@ -66,6 +66,13 @@ const health = async (req, res) => {
         checks.database = true;
     } catch { /* reported below */ }
     const ready = checks.database;
+    let imageGeneration = null;
+    try {
+        const { imageGenerationHealth } = require('../imageConfig');
+        imageGeneration = imageGenerationHealth();
+    } catch {
+        imageGeneration = { configured: false, code: 'IMAGE_HEALTH_UNAVAILABLE' };
+    }
     return res.status(ready ? 200 : 503).json({
         status: ready ? 'healthy' : 'degraded',
         service: 'AllModelAI',
@@ -77,6 +84,7 @@ const health = async (req, res) => {
         version: process.env.APP_VERSION || '1.0.0',
         uptimeSeconds: Math.floor(process.uptime()),
         checks,
+        imageGeneration,
         timestamp: now(),
     });
 };

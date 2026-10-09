@@ -16,7 +16,8 @@ const {
     resolveImageProvider,
     USER_UNAVAILABLE_MESSAGE,
 } = require('./services/imageGenerationService');
-const { imageConfigurationReport } = require('./imageConfig');
+const { imageConfigurationReport, imageGenerationHealth } = require('./imageConfig');
+const { resolveExplicitImageProvider } = require('./services/imageGenerationService');
 const { isComfyCloudConfigured } = require('./comfyCloud');
 const {
     createImageJob,
@@ -66,34 +67,72 @@ const validateImageInput = (body = {}) => {
 };
 
 const runImageGenerationJob = async (jobId, params) => {
+    const jobStartedAt = Date.now();
+    updateImageJob(jobId, { status: 'processing' });
+    console.log('[IMAGE] Job started', { jobId });
     try {
-        const result = await generateImageWithFallback(params);
+        const result = await generateImageWithFallback({ ...params, jobId });
         if (result.ok) {
-            updateImageJob(jobId, { status: 'completed', result: result.body });
+            updateImageJob(jobId, {
+                status: 'completed',
+                result: result.body,
+                durationMs: Date.now() - jobStartedAt,
+            });
+            console.log('[IMAGE] Job completed', { jobId, durationMs: Date.now() - jobStartedAt });
             return;
         }
         updateImageJob(jobId, {
             status: 'failed',
+            durationMs: Date.now() - jobStartedAt,
             error: {
                 code: result.body?.code || 'IMAGE_GENERATION_UNAVAILABLE',
                 message: result.body?.message || USER_UNAVAILABLE_MESSAGE,
+                retryable: result.body?.retryable !== false,
+                missingEnvVars: result.body?.missingEnvVars,
             },
         });
+        console.log('[IMAGE] Job failed', {
+            jobId,
+            durationMs: Date.now() - jobStartedAt,
+            code: result.body?.code,
+            retryable: result.body?.retryable !== false,
+        });
     } catch (error) {
-        console.error('[IMAGE] Async job failed:', error.name, redactSecrets(error.message));
+        console.error('[IMAGE] Async job failed:', jobId, error.name, redactSecrets(error.message));
         updateImageJob(jobId, {
             status: 'failed',
+            durationMs: Date.now() - jobStartedAt,
             error: {
                 code: 'IMAGE_GENERATION_UNAVAILABLE',
                 message: USER_UNAVAILABLE_MESSAGE,
+                retryable: error.name === 'TimeoutError',
             },
         });
+    }
+};
+
+const logImageConfigSnapshot = () => {
+    try {
+        const health = imageGenerationHealth();
+        console.log('[IMAGE] Config snapshot', {
+            configured: health.configured,
+            explicitProvider: health.explicitProvider || null,
+            activeProviders: health.providers || [],
+            cloudflareReady: Boolean(health.cloudflare?.ready),
+            cloudflareAccountIdPresent: Boolean(health.cloudflare?.accountIdPresent),
+            cloudflareTokenPresent: Boolean(health.cloudflare?.tokenPresent),
+            cloudflareModel: health.cloudflare?.model || null,
+            missingEnvVars: health.missingEnvVars?.length ? health.missingEnvVars : undefined,
+        });
+    } catch (error) {
+        console.warn('[IMAGE] Config snapshot unavailable:', error.name);
     }
 };
 
 const generateImage = async (req, res) => {
     try {
         console.log('[IMAGE] Request received');
+        logImageConfigSnapshot();
         const validation = validateImageInput(req.body || {});
         if (validation.error) {
             console.log('[IMAGE] Rejected request:', validation.error);
@@ -119,11 +158,15 @@ const generateImage = async (req, res) => {
         const config = imageConfigurationReport();
         const providers = config.providers?.length ? config.providers : listConfiguredImageProviders();
         if (!providers.length) {
-            const explicitComfy = String(process.env.IMAGE_PROVIDER || '').trim().toLowerCase().replace('comfy', 'comfy-cloud');
-            if (explicitComfy === 'comfy-cloud' && !isComfyCloudConfigured()) {
+            const explicitRaw = String(process.env.IMAGE_GENERATION_PROVIDER || process.env.IMAGE_PROVIDER || '').trim().toLowerCase();
+            const explicit = explicitRaw === 'comfy' ? 'comfy-cloud' : explicitRaw;
+            if (explicit === 'comfy-cloud' && !isComfyCloudConfigured()) {
                 console.error('[API Error] COMFY_CLOUD_API_KEY is not set');
             }
-            const status = explicitComfy === 'comfy-cloud' && !isComfyCloudConfigured() ? 500 : 502;
+            if (explicit === 'cloudflare' && !isProviderConfigured('cloudflare')) {
+                console.error('[API Error] Cloudflare Workers AI image generation is not fully configured (check CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN on Render)');
+            }
+            const status = explicit === 'comfy-cloud' && !isComfyCloudConfigured() ? 500 : 502;
             return res.status(status).json({
                 success: false,
                 code: config.code || 'IMAGE_NOT_CONFIGURED',
@@ -139,6 +182,7 @@ const generateImage = async (req, res) => {
             quality: promptPayload.quality,
             aspectRatio: promptPayload.aspectRatio,
             requestedModel: validation.value.model,
+            preferredProvider: validation.value.provider || '',
         };
 
         const wantsSync = req.body?.async === false || req.body?.async === 'false';
@@ -175,8 +219,7 @@ const getImageGenerationJob = (req, res) => {
         return res.status(404).json({ success: false, message: 'Image job not found or expired.' });
     }
     const payload = publicJobPayload(job);
-    const statusCode = job.status === 'failed' ? 502 : 200;
-    return res.status(statusCode).json(payload);
+    return res.status(200).json(payload);
 };
 
 const upscaleGeneratedImage = async (req, res) => {
@@ -218,7 +261,11 @@ const upscaleGeneratedImage = async (req, res) => {
 const getImageGenerationStatus = (_req, res) => {
     const config = imageConfigurationReport();
     const providers = config.providers?.length ? config.providers : listConfiguredImageProviders();
-    const primary = providers[0] || resolveImageProvider().provider;
+    const explicit = resolveExplicitImageProvider();
+    const primary = providers[0]
+        || (explicit && isProviderConfigured(explicit) ? explicit : null)
+        || explicit
+        || resolveImageProvider().provider;
     const pollinationsKey = getPollinationsApiKey();
     const capabilities = primary && primary !== 'none' ? capabilitySummary(primary) : null;
     return res.status(200).json({

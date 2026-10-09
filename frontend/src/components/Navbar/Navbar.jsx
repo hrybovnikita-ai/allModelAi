@@ -32,7 +32,7 @@ export default function Navbar() {
           <a href="#about" onClick={closeMenu}>{t("About")}</a>
           <a href="#pricing" onClick={closeMenu}>{t("Pricing")}</a>
           <a href="#models" onClick={closeMenu}>{t("Models")}</a>
-          <Link to="/python-ai" className="nav-link-feature" onClick={closeMenu}>⚡ PyTorch AI</Link>
+          <Link to="/python-ai" className="nav-link-feature" onClick={closeMenu}>⚡ AI Studio</Link>
         </div>
         <div className="nav-auth">
           <NavAuthSection onOpenAuth={setAuthMode} />

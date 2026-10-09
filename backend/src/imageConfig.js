@@ -28,10 +28,16 @@ const getOpenAiImageKeyHint = () => {
 };
 
 const getCloudflareHint = () => {
-    const account = strip(process.env.CLOUDFLARE_ACCOUNT_ID);
+    const account = strip(process.env.CLOUDFLARE_ACCOUNT_ID || process.env.CF_ACCOUNT_ID);
     const key = strip(
-        process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY || process.env.API_IMAGE_KEY,
+        process.env.CLOUDFLARE_API_TOKEN
+        || process.env.CLOUDFLARE_API_KEY
+        || process.env.CLAUDEFLARE_API_KEY
+        || process.env.AllModelAi_API_KEY_IMAGE,
     );
+    if (key && /^sk-/i.test(key)) {
+        return { issue: 'invalid_cloudflare_token_format' };
+    }
     if (!account && !key) return null;
     if (!account) return { issue: 'missing_account' };
     if (!key) return { issue: 'missing_api_key' };
@@ -82,14 +88,16 @@ function imageConfigurationReport() {
 
     const cloudflareHint = getCloudflareHint();
     if (cloudflareHint?.issue === 'missing_account') {
-        missing.push('CLOUDFLARE_ACCOUNT_ID (with CLOUDFLARE_API_KEY for Workers AI images)');
+        missing.push('CLOUDFLARE_ACCOUNT_ID (with CLOUDFLARE_API_TOKEN or CLOUDFLARE_API_KEY for Workers AI images)');
     } else if (cloudflareHint?.issue === 'missing_api_key') {
-        missing.push('CLOUDFLARE_API_KEY (with CLOUDFLARE_ACCOUNT_ID)');
+        missing.push('CLOUDFLARE_API_TOKEN or CLOUDFLARE_API_KEY (with CLOUDFLARE_ACCOUNT_ID)');
+    } else if (cloudflareHint?.issue === 'invalid_cloudflare_token_format') {
+        warnings.push('CLOUDFLARE_API_TOKEN must be a Cloudflare Workers AI API token, not an OpenAI sk- key.');
     } else if (!cloudflareHint && !strip(process.env.CLOUDFLARE_ACCOUNT_ID)) {
-        missing.push('Optional: CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_KEY');
+        missing.push('Optional: CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN');
     }
 
-    const explicit = strip(process.env.IMAGE_PROVIDER).toLowerCase();
+    const explicit = strip(process.env.IMAGE_GENERATION_PROVIDER || process.env.IMAGE_PROVIDER).toLowerCase();
     const normalizedExplicit = explicit === 'comfy' ? 'comfy-cloud' : explicit;
     if (explicit && !['comfy-cloud', 'pollinations', 'openai', 'cloudflare', 'comfy'].includes(explicit)) {
         warnings.push(`IMAGE_PROVIDER=${explicit} is not recognized. Use comfy-cloud, pollinations, openai, or cloudflare.`);
@@ -110,7 +118,37 @@ function imageConfigurationReport() {
     };
 }
 
+function imageGenerationHealth() {
+    const report = imageConfigurationReport();
+    const explicit = strip(process.env.IMAGE_GENERATION_PROVIDER || process.env.IMAGE_PROVIDER).toLowerCase();
+    const normalizedExplicit = explicit === 'comfy' ? 'comfy-cloud' : explicit;
+    const {
+        getCloudflareAccountId,
+        getCloudflareApiToken,
+        isCloudflareImageConfigured,
+        DEFAULT_MODEL,
+    } = require('./services/cloudflareImageService');
+    const tokenPresent = Boolean(getCloudflareApiToken());
+    const accountPresent = Boolean(getCloudflareAccountId());
+    return {
+        configured: report.configured,
+        provider: report.primaryProvider || normalizedExplicit || null,
+        explicitProvider: normalizedExplicit || null,
+        providers: report.providers || [],
+        cloudflare: {
+            ready: isCloudflareImageConfigured(),
+            accountIdPresent: accountPresent,
+            tokenPresent,
+            model: strip(process.env.CLOUDFLARE_IMAGE_MODEL || DEFAULT_MODEL),
+        },
+        missingEnvVars: report.missing || [],
+        warnings: report.warnings || [],
+        code: report.configured ? null : (report.code || 'IMAGE_NOT_CONFIGURED'),
+    };
+}
+
 module.exports = {
     imageConfigurationReport,
+    imageGenerationHealth,
     isProviderConfigured,
 };

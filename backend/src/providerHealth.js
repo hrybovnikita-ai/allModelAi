@@ -169,6 +169,20 @@ function logStartupConfig() {
     } catch (error) {
         console.warn('[CONFIG] AI provider status log skipped:', error.message);
     }
+    try {
+        const { imageGenerationHealth } = require('./imageConfig');
+        const image = imageGenerationHealth();
+        const cf = image.cloudflare || {};
+        console.log(`[CONFIG] image generation: ${image.configured ? 'ready' : 'not ready'} (provider=${image.provider || 'none'})`);
+        if (image.explicitProvider === 'cloudflare' || image.provider === 'cloudflare') {
+            console.log(`[CONFIG] cloudflare workers ai image: account=${cf.accountIdPresent ? 'set' : 'MISSING'}, token=${cf.tokenPresent ? 'set' : 'MISSING'}, model=${cf.model || 'default'}`);
+            if (!cf.ready && image.missingEnvVars?.length) {
+                console.log(`[CONFIG] image missing: ${image.missingEnvVars.join('; ')}`);
+            }
+        }
+    } catch (error) {
+        console.warn('[CONFIG] Image generation status log skipped:', error.message);
+    }
 }
 
 function getCachedProbeStatus(providerId) {

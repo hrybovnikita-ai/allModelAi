@@ -3,6 +3,7 @@ import { useOutletContext, Link, Navigate } from 'react-router-dom';
 import { LANGUAGES } from '../../lib/languages';
 import { useLanguage } from '../../lib/useLanguage';
 import LanguageDialog from '../LanguageDialog/LanguageDialog';
+import { DEFAULT_RESPONSE_PREFS, RESPONSE_LANGUAGE_OPTIONS, readResponsePrefs, writeResponsePrefs } from '../../lib/responseLanguagePrefs.js';
 import './ChatSettings.css';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 
@@ -18,7 +19,14 @@ export default function ChatSettings() {
   const [color,setColor] = useState(!initial.textColor || initial.textColor.toLowerCase() === '#ffffff' ? '#8b5cf6' : initial.textColor);
   const [inputColor,setInputColor] = useState(initial.inputColor || '#262626');
   const [pendingLang,setPendingLang] = useState(null);
+  const [responsePrefs, setResponsePrefs] = useState(() => readResponsePrefs());
   const { language, setLanguage, t } = useLanguage();
+
+  const setResponseLanguage = (value) => {
+    const next = { ...responsePrefs, responseLanguage: value };
+    setResponsePrefs(next);
+    writeResponsePrefs(next);
+  };
 
   useEffect(() => {
     const current = JSON.parse(localStorage.getItem('allmodelai_appearance') || '{}');
@@ -42,6 +50,9 @@ export default function ChatSettings() {
     <div className="settings-page-layout"><section className="settings-options">
       <article><small>03 · {t('language')}</small><h2>{t('language')}</h2><p>{t('confirmText')}</p><div className="page-color-grid language-grid">
         {LANGUAGES.map(item => <button type="button" aria-pressed={language.code === item.code} className={language.code === item.code ? 'active' : ''} onClick={() => { if (language.code !== item.code) setPendingLang(item.name); }} key={item.code}><i className="language-icon" aria-hidden="true">{item.code.slice(0,2).toUpperCase()}</i><span lang={item.code}>{item.native}</span><b aria-hidden="true">{language.code === item.code ? '✓' : ''}</b></button>)}
+      </div></article>
+      <article><small>04 · AI replies</small><h2>AI response language</h2><p>Choose the language models use in chat. Auto-detect follows your latest message — separate from the website interface language above.</p><div className="page-color-grid language-grid">
+        {RESPONSE_LANGUAGE_OPTIONS.map((option) => <button type="button" aria-pressed={(responsePrefs.responseLanguage || DEFAULT_RESPONSE_PREFS.responseLanguage) === option.value} className={(responsePrefs.responseLanguage || 'auto') === option.value ? 'active' : ''} onClick={() => setResponseLanguage(option.value)} key={option.value}><i className="language-icon" aria-hidden="true">{option.value === 'auto' ? 'A' : option.label.slice(0, 2).toUpperCase()}</i><span>{option.label}</span><b aria-hidden="true">{(responsePrefs.responseLanguage || 'auto') === option.value ? '✓' : ''}</b></button>)}
       </div></article>
       <article><small>{t('inputField')}</small><h2>{t('inputTitle')}</h2><p>{t('inputDescription')}</p>{colorChoices([['Black','#090909'],['Graphite','#262626'],...colors],inputColor,setInputColor)}</article>
       <article><small>01 · {t('appearance')}</small><h2>{t('themeTitle')}</h2><p>{t('themeDescription')}</p><div className="page-theme-grid">

@@ -309,7 +309,10 @@ const runPlannedSearch = async (res, { userQuestion, queries, profile, days, sig
     return { ...result, discoveredCount };
 };
 
+const { buildChatLanguageContext } = require('./responseLanguage');
+
 const buildReportPrompt = (userQuestion, objective, sources, crossCheckNotes, verificationNotes) => {
+    const { instructionBlock } = buildChatLanguageContext({ latestUserText: userQuestion });
     const sourceBlock = sources.map((source) => {
         const origin = source.knowledgeBase ? 'Knowledge Base (user uploaded — NOT a web page)' : 'Web';
         return `[${source.rank}] ${source.title}\nOrigin: ${origin}\nDomain: ${source.domain}\nURL: ${source.url}\nPublished: ${source.publishedDate || 'unknown'}\nExcerpt: ${source.excerpt}`;
@@ -342,7 +345,7 @@ Rules:
 - Never fabricate sources, quotes, or statistics.
 - If sources conflict, explain in Comparison and Limitations.
 - If evidence is insufficient, state that clearly.
-- Reply in the same language as the user question.
+- ${instructionBlock}
 - Do not expose chain-of-thought or internal planning.`;
 };
 

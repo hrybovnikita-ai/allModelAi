@@ -95,13 +95,17 @@ const formatSourceContextForModel = (sources) => {
     }).join('\n\n');
 };
 
-const buildCitationInstructions = (sourceCount) => `Citation rules (mandatory):
+const buildCitationInstructions = (sourceCount, resolvedLanguage) => {
+    const label = resolvedLanguage?.label || 'the user\'s latest message language';
+    const code = resolvedLanguage?.code ? ` (${resolvedLanguage.code})` : '';
+    return `Citation rules (mandatory):
 - Use ONLY citation IDs [1] through [${sourceCount}] that appear in the source list below.
 - Cite a source ONLY when its snippet supports the specific claim (not title similarity alone).
 - Never invent citation numbers or sources.
 - For prices, compensation amounts, schedules, delays, laws, policies, weather, or current events: if no source confirms the fact, say it could not be confirmed from the retrieved sources.
 - Prefer official/regulator/operator sources [sourceType government_regulator, official_operator, international_public] for numeric or policy claims when available.
-- Reply in the same language as the user's question.`;
+- Write the answer in ${label}${code}. Do not switch languages because of source snippets or earlier messages.`;
+};
 
 const MIN_COMBINED_SCORE = 48;
 

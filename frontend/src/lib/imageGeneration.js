@@ -54,7 +54,15 @@ export function formatImageServerError(data = {}, fallback = IMAGE_UNAVAILABLE_M
     }
     return data.message || IMAGE_NOT_CONFIGURED_MESSAGE;
   }
-  if (data.code === 'IMAGE_GENERATION_UNAVAILABLE') {
+  if (
+    data.code === 'IMAGE_CLOUDFLARE_AUTH'
+    || data.code === 'IMAGE_CLOUDFLARE_FORBIDDEN'
+    || data.code === 'IMAGE_CLOUDFLARE_QUOTA'
+    || data.code === 'IMAGE_CLOUDFLARE_MODEL'
+  ) {
+    return data.message || IMAGE_UNAVAILABLE_MESSAGE;
+  }
+  if (data.code === 'IMAGE_GENERATION_UNAVAILABLE' || data.code === 'IMAGE_PROVIDER_EXHAUSTED') {
     return data.message && !PROVIDER_BILLING_LEAK.test(data.message) ? data.message : IMAGE_UNAVAILABLE_MESSAGE;
   }
   return null;
@@ -152,6 +160,7 @@ export function buildImageRequestBody({
   quality = 'standard',
   basePrompt = '',
   editInstruction = '',
+  provider = '',
 }) {
   const body = {
     prompt: String(prompt || '').trim(),
@@ -159,6 +168,7 @@ export function buildImageRequestBody({
     aspectRatio,
     quality,
   };
+  if (provider) body.provider = String(provider).trim().toLowerCase();
   if (basePrompt) body.basePrompt = String(basePrompt).trim();
   if (editInstruction) body.editInstruction = String(editInstruction).trim();
   return body;
@@ -198,7 +208,7 @@ async function pollImageGenerationJob(jobId, signal, { onPoll } = {}) {
       const userError = userFacingImageGenerationError(false, data);
       const error = new Error(userError || IMAGE_UNAVAILABLE_MESSAGE);
       error.code = data.code;
-      error.retryable = data.retryable !== false;
+      error.retryable = data.retryable === true;
       throw error;
     }
     await sleep(IMAGE_JOB_POLL_INTERVAL_MS);
@@ -226,7 +236,7 @@ export async function requestImageGeneration(body, signal, options = {}) {
   let response = await postImageGeneration(body, signal, useAsync);
   let data = await response.clone().json().catch(() => ({}));
 
-  if ((response.status === 502 || response.status === 503) && useAsync) {
+  if ((response.status === 502 || response.status === 503) && useAsync && data.retryable !== false) {
     await sleep(800);
     response = await postImageGeneration(body, signal, useAsync);
     data = await response.clone().json().catch(() => ({}));
@@ -242,7 +252,8 @@ export async function requestImageGeneration(body, signal, options = {}) {
     const error = new Error(userError);
     error.code = data.code;
     error.response = response;
-    error.retryable = data.retryable !== false || response.status >= 500 || response.status === 429;
+    error.retryable = data.retryable === true
+      || (data.retryable !== false && (response.status >= 500 || response.status === 429));
     throw error;
   }
   if (!data?.imageUrl) {

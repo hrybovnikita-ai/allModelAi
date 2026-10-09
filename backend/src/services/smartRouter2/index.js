@@ -1,4 +1,5 @@
 const { classifyTask } = require('./classifyTask');
+const { detectLanguageFromText } = require('../responseLanguage');
 const {
     getCapabilities,
     displayModelName,
@@ -112,11 +113,13 @@ function selectSmartRoute(prompt, options = {}) {
     }
 
     const cap = getCapabilities(slug);
+    const responseLanguage = detectLanguageFromText(prompt);
 
     return {
         model: slug,
         category: taskMeta.taskType,
         taskType: taskMeta.taskType,
+        responseLanguage,
         reason,
         selectedProvider: cap?.provider || slug,
         selectedModel: cap?.model || slug,

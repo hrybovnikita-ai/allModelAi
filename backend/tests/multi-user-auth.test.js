@@ -129,7 +129,14 @@ test('multi-user auth: register, login, sessions, logout, isolation', async () =
   const cookieA = loginA.headers['set-cookie']?.[0]?.split(';')[0];
   assert.ok(cookieA);
   await agentA.post('/api/auth/logout');
-  assert.equal((await request(app).get('/api/auth/me').set('Cookie', cookieA)).status, 401);
+  const staleSession = await request(app).get('/api/auth/session').set('Cookie', cookieA);
+  assert.equal(staleSession.status, 200);
+  assert.equal(staleSession.body.authenticated, false);
+  assert.equal(staleSession.body.user, null);
+  assert.equal(
+    (await request(app).get('/api/chat/history').set('Cookie', cookieA)).status,
+    401,
+  );
 
   cleanupEmails(userA.email, userB.email);
 });

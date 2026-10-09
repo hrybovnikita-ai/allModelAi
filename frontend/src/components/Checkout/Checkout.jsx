@@ -4,6 +4,7 @@ import apiClient from '../../lib/apiClient';
 import './Checkout.css';
 import './CheckoutProduction.css';
 import './CheckoutDemo.css';
+import './CheckoutPremium.css';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { fetchCheckoutInfo, fetchCheckoutPlan, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
 import { runTestWayforpayCheckout, submitWayforpayCheckout } from '../../lib/wayforpay';
@@ -11,7 +12,9 @@ import { useSession } from '../Session/SessionProvider';
 import { isAuthInitializing } from '../../lib/authSessionStatus';
 import StripeEmbeddedCheckout from './StripeEmbeddedCheckout';
 import MockCheckoutForm from './MockCheckoutForm';
-import { IconCheck, IconLock, IconShield } from './CheckoutIcons';
+import CheckoutSummaryCard from './CheckoutSummaryCard';
+import PaymentFormCard from './PaymentFormCard';
+import PaymentButton from './PaymentButton';
 
 const DEVELOPER_FALLBACK = {
   slug: 'developer',
@@ -243,45 +246,14 @@ export default function Checkout() {
       )}
 
       <section className="checkout-layout checkout-layout--split">
-        <aside className="checkout-summary-panel glass-panel">
-          <p className="checkout-eyebrow">Order summary</p>
-          <h1>{isDeveloper ? 'Developer access' : `AllModelAI ${summary?.name || 'Pro'}`}</h1>
-          {!isDeveloper && summary && (
-            <>
-              <div className="checkout-plan checkout-plan--hero checkout-plan--glass">
-                <div>
-                  <span className="checkout-plan-label">Selected plan</span>
-                  <strong className="checkout-plan-name">{summary.name}</strong>
-                </div>
-                <div className="checkout-plan-price">
-                  <strong>{priceLabel}</strong>
-                  <small> / {summary.interval}</small>
-                </div>
-              </div>
-              <p className="checkout-summary-requests">
-                {summary.requestLimit?.toLocaleString?.() || summary.requestLimit} requests per {summary.interval}
-              </p>
-            </>
-          )}
-          <h2 className="checkout-summary-features-title">Included</h2>
-          <ul className="checkout-summary-list checkout-summary-list--intro">
-            {(summary?.features || []).map((perk) => (
-              <li key={perk}><IconCheck className="checkout-feature-icon" />{perk}</li>
-            ))}
-          </ul>
-          {!isDeveloper && (
-            <dl className="checkout-meta-list checkout-meta-list--summary">
-              <div><dt>Billing cycle</dt><dd>Monthly</dd></div>
-              <div><dt>Provider</dt><dd>{providerLabel}</dd></div>
-            </dl>
-          )}
-          <ul className="checkout-trust-list checkout-trust-list--summary">
-            <li><IconLock className="checkout-trust-icon" /> Encrypted checkout</li>
-            <li><IconShield className="checkout-trust-icon" /> Cancel anytime</li>
-          </ul>
-        </aside>
+        <CheckoutSummaryCard
+          isDeveloper={isDeveloper}
+          summary={summary}
+          priceLabel={priceLabel}
+          providerLabel={providerLabel}
+        />
 
-        <section className="checkout-form-panel glass-panel checkout-payment-card">
+        <PaymentFormCard>
           {canceled && (
             <div className="checkout-state checkout-state--cancel" role="status">
               <p>Payment wasn&apos;t completed.</p>
@@ -305,9 +277,9 @@ export default function Checkout() {
               <p className="developer-access-note">
                 Developer access is free for emails listed in server configuration. No card required.
               </p>
-              <button className="pay-button" type="button" disabled={checkoutBusy} onClick={activateDeveloperPlan}>
-                {checkoutBusy ? 'Activating…' : 'Activate developer access'}
-              </button>
+              <PaymentButton type="button" loading={checkoutBusy} loadingLabel="Activating…" onClick={activateDeveloperPlan}>
+                Activate developer access
+              </PaymentButton>
             </>
           )}
 
@@ -327,60 +299,70 @@ export default function Checkout() {
                 <p className="checkout-signin-hint" role="note">Sign in to complete subscription.</p>
               )}
 
-              {paymentsAvailable && paymentProvider === 'stripe' && (
-                <details
-                  className="checkout-stripe-advanced"
-                  open={stripePanelOpen}
-                  onToggle={(event) => setStripePanelOpen(event.currentTarget.open)}
-                >
-                  <summary>Alternative: Stripe secure checkout</summary>
-                  {!stripeReady ? (
-                    <button
-                      className="pay-button pay-button--secondary"
-                      type="button"
-                      disabled={checkoutBusy || !sessionReady}
-                      onClick={() => { void startStripeCheckout(); }}
-                    >
-                      {checkoutBusy ? 'Preparing…' : 'Load Stripe payment form'}
-                    </button>
-                  ) : (
-                    stripeClientSecret && stripePublishableKey && (
-                      <>
-                        <StripeEmbeddedCheckout
-                          publishableKey={stripePublishableKey}
-                          clientSecret={stripeClientSecret}
-                          returnUrl={stripeReturnUrl || checkoutReturnUrl}
-                          payLabel={`Subscribe · $${summary?.amountDisplay || ''} / month`}
-                          processingLabel="Processing payment…"
-                          onError={(message) => setError(message || 'Payment could not be completed.')}
-                        />
-                        {checkoutInfo?.showStripeTestCardHint && (
-                          <div className="checkout-dev-test-card" role="note">
-                            <strong>Stripe test mode</strong>
-                            <span>4242 4242 4242 4242 · any future expiry · any CVC</span>
-                          </div>
-                        )}
-                      </>
-                    )
-                  )}
-                </details>
-              )}
+              {(paymentsAvailable && (paymentProvider === 'stripe' || paymentProvider === 'wayforpay')) && (
+                <div className="checkout-provider-footer">
+                  <p className="checkout-provider-footer__label">Live payment</p>
 
-              {paymentsAvailable && paymentProvider === 'wayforpay' && (
-                <div className="checkout-wayforpay-alt">
-                  {wayforpaySandboxForOwner && (
-                    <p className="checkout-owner-test-note" role="status">
-                      Owner test payment — simulated WayForPay only. No real money will be charged.
-                    </p>
+                  {paymentProvider === 'stripe' && (
+                    <details
+                      className="checkout-stripe-advanced"
+                      open={stripePanelOpen}
+                      onToggle={(event) => setStripePanelOpen(event.currentTarget.open)}
+                    >
+                      <summary>Stripe secure checkout</summary>
+                      {!stripeReady ? (
+                        <PaymentButton
+                          variant="secondary"
+                          type="button"
+                          loading={checkoutBusy}
+                          loadingLabel="Preparing…"
+                          disabled={!sessionReady}
+                          onClick={() => { void startStripeCheckout(); }}
+                        >
+                          Load Stripe payment form
+                        </PaymentButton>
+                      ) : (
+                        stripeClientSecret && stripePublishableKey && (
+                          <>
+                            <StripeEmbeddedCheckout
+                              publishableKey={stripePublishableKey}
+                              clientSecret={stripeClientSecret}
+                              returnUrl={stripeReturnUrl || checkoutReturnUrl}
+                              payLabel={`Subscribe — $${summary?.amountDisplay || ''} / month`}
+                              processingLabel="Processing payment…"
+                              onError={(message) => setError(message || 'Payment could not be completed.')}
+                            />
+                            {checkoutInfo?.showStripeTestCardHint && (
+                              <div className="checkout-dev-test-card" role="note">
+                                <strong>Stripe test mode</strong>
+                                <span>4242 4242 4242 4242 · any future expiry · any CVC</span>
+                              </div>
+                            )}
+                          </>
+                        )
+                      )}
+                    </details>
                   )}
-                  <button
-                    className="pay-button pay-button--secondary"
-                    type="button"
-                    disabled={checkoutBusy || !sessionReady || (checkoutInfo?.wayforpayTestMode && !ownerTestCheckout)}
-                    onClick={() => { void startWayforpayCheckout(); }}
-                  >
-                    {checkoutBusy ? 'Processing…' : (wayforpaySandboxForOwner ? 'Complete WayForPay test payment' : 'Continue with WayForPay')}
-                  </button>
+
+                  {paymentProvider === 'wayforpay' && (
+                    <div className="checkout-wayforpay-alt">
+                      {wayforpaySandboxForOwner && (
+                        <p className="checkout-owner-test-note" role="status">
+                          Owner test payment — simulated WayForPay only. No real money will be charged.
+                        </p>
+                      )}
+                      <PaymentButton
+                        variant="secondary"
+                        type="button"
+                        loading={checkoutBusy}
+                        loadingLabel="Processing…"
+                        disabled={!sessionReady || (checkoutInfo?.wayforpayTestMode && !ownerTestCheckout)}
+                        onClick={() => { void startWayforpayCheckout(); }}
+                      >
+                        {wayforpaySandboxForOwner ? 'Complete WayForPay test payment' : 'Continue with WayForPay'}
+                      </PaymentButton>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -388,8 +370,8 @@ export default function Checkout() {
                 <p className="checkout-renewal-note" role="note">{checkoutInfo.renewalNotice}</p>
               )}
 
-              <small className="checkout-disclaimer checkout-disclaimer--left">
-                Demo checkout above does not charge your card. Live billing uses your configured payment provider after confirmation.
+              <small className="checkout-disclaimer checkout-disclaimer--left checkout-disclaimer--premium">
+                The form above is a styled demo for layout and validation. Live billing uses Stripe or WayForPay after you confirm with your provider.
               </small>
             </>
           )}
@@ -399,7 +381,7 @@ export default function Checkout() {
               Try again
             </button>
           )}
-        </section>
+        </PaymentFormCard>
       </section>
     </main>
   );

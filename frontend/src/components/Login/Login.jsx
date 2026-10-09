@@ -12,6 +12,7 @@ import {
   completeGooglePopupSignIn,
   isGoogleRedirectRecoveryPending,
   launchGooglePopupSignIn,
+  navigateAfterSocialLogin,
   startGoogleRedirectSignIn,
 } from '../../lib/socialSignIn';
 import { shouldPreferGoogleRedirectSignIn } from '../../lib/socialSignInEnv';
@@ -130,9 +131,13 @@ function LoginForm({
           return;
         }
         document.activeElement?.blur();
-        navigate('/dashboard', { replace: true, state: { user: outcome } });
+        await navigateAfterSocialLogin(outcome, { navigate, replaceDashboard: true });
       } catch (requestError) {
-        setError(socialError(requestError));
+        if (requestError.code === 'SESSION_NOT_CONFIRMED') {
+          setError('Sign-in reached Google but your AllModelAI session could not be verified. Please try again.');
+        } else {
+          setError(socialError(requestError));
+        }
       } finally {
         setSocialBusy(null);
       }

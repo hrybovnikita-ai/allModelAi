@@ -428,10 +428,13 @@ const assignCitationIdsFromRanked = (sources) => sources.map((source, index) => 
     rank: source.citationId ?? source.rank ?? (index + 1),
 }));
 
+const { resolveResponseLanguage, buildLanguageInstructionBlock } = require('./responseLanguage');
+
 const buildSynthesisPrompt = (userQuestion, sources) => {
+    const resolved = resolveResponseLanguage({ latestUserText: userQuestion });
     const numbered = sources.length ? assignCitationIdsFromRanked(sources) : [];
     const sourceBlock = formatSourceContextForModel(numbered);
-    const citationRules = buildCitationInstructions(numbered.length);
+    const citationRules = buildCitationInstructions(numbered.length, resolved);
 
     return `You are answering a user using live web search results.
 
@@ -449,7 +452,7 @@ Instructions:
 - Ignore irrelevant or low-quality sources even if they appear in the list.
 - Prefer official_operator, government_regulator, and international_public sourceTypes for policy and numeric claims.
 - If reliable sources disagree, explain briefly.
-- Reply in the same language as the user's question (English → English, Russian → Russian, Ukrainian → Ukrainian).
+- ${buildLanguageInstructionBlock(resolved)}
 - Start with a concise direct answer, then add brief supporting context if helpful.
 - Do not begin with "Web search completed" or similar meta commentary.`;
 };
@@ -467,16 +470,19 @@ const providerModels = {
 
 const geminiModelName = () => process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 
-const buildKnowledgeOnlyPrompt = (userQuestion) => `Answer this question directly using your general knowledge.
+const buildKnowledgeOnlyPrompt = (userQuestion) => {
+    const resolved = resolveResponseLanguage({ latestUserText: userQuestion });
+    return `Answer this question directly using your general knowledge.
 
 Question: ${userQuestion}
 
 Instructions:
 - Give a clear, helpful, accurate answer.
 - If web sources were unavailable or irrelevant, do not mention technical failures.
-- Reply in the same language as the question.
+- ${buildLanguageInstructionBlock(resolved)}
 - For coding or framework questions, name concrete options with brief pros/cons.
 - Do not dump raw search results or URLs.`;
+};
 
 const parseStreamChunk = (payload, useGeminiDirect) => {
     if (useGeminiDirect) {

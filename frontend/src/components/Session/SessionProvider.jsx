@@ -10,7 +10,7 @@ import {
 import {
   reconcileStaleRedirectIntent,
   shouldShowGoogleRedirectRecoveryUI,
-} from '../../lib/socialSignIn.js';
+} from '../../lib/socialRedirectState.js';
 import { socialAuthDebug } from '../../lib/socialAuthDiagnostics.js';
 import { COOKIE_CONSENT_UPDATED_EVENT } from '../../lib/cookieConsent.js';
 
@@ -50,7 +50,7 @@ export function SessionProvider({ children }) {
   const refresh = useCallback(async ({ force = false } = {}) => {
     if (shouldShowGoogleRedirectRecoveryUI()) {
       setState({ status: AUTH_STATUS.CHECKING_REDIRECT, user: null });
-    } else {
+    } else if (force) {
       setState((current) => ({
         status: AUTH_STATUS.INITIALIZING,
         user: current.status === AUTH_STATUS.AUTHENTICATED ? current.user : null,

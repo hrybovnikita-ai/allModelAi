@@ -14,7 +14,7 @@ const checks = [
     ['Gemini', env.GEMINI_API_KEY, 'https://generativelanguage.googleapis.com/v1beta/models', 'gemini'],
     ['Mistral', env.MISTRAL_API_KEY, 'https://api.mistral.ai/v1/models'],
     ['Kimi', env.KIMI_API_KEY, (env.KIMI_BASE_URL || 'https://api.moonshot.cn/v1').trim().replace(/\/+$/, '') + '/models'],
-    ['Cloudflare token', env.CLOUDFLARE_API_KEY || env.CLAUDEFLARE_API_KEY, 'https://api.cloudflare.com/client/v4/user/tokens/verify'],
+    ['Cloudflare token', env.CLOUDFLARE_API_TOKEN || env.CLOUDFLARE_API_KEY || env.CLAUDEFLARE_API_KEY, 'https://api.cloudflare.com/client/v4/user/tokens/verify'],
 ];
 
 async function check([name, key, url, type]) {
@@ -43,9 +43,18 @@ const grokViaOpenRouter = env.GROK_PROVIDER === 'openrouter'
     || /^sk-or-/i.test((env.GROK_API_KEY || env.XAI_API_KEY || '').trim());
 
 Promise.all(checks.map(check)).then(async () => {
-    console.log(`Cloudflare account: ${env.CLOUDFLARE_ACCOUNT_ID?.trim() ? 'configured' : 'missing (required for Workers AI image)'}`);
+    const cfToken = (env.CLOUDFLARE_API_TOKEN || env.CLOUDFLARE_API_KEY || env.CLAUDEFLARE_API_KEY || '').trim();
+    const cfAccount = (env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+    console.log(`Cloudflare account: ${cfAccount ? 'configured' : 'missing (required for Workers AI image)'}`);
+    if (cfToken && !cfAccount) {
+        console.log('Cloudflare Workers AI: token present but CLOUDFLARE_ACCOUNT_ID is missing — POST /api/images will fail until both are set on Render');
+    }
+    if (/^sk-/i.test(cfToken)) {
+        console.log('Cloudflare Workers AI: CLOUDFLARE_API_TOKEN looks like an OpenAI key (sk-…); use a Cloudflare API token instead');
+        process.exitCode = 1;
+    }
     console.log(`Pollinations: ${pollinationsKey ? (/^sk_/i.test(pollinationsKey) ? 'configured (sk_*)' : 'set but invalid format') : 'not configured'}`);
-    console.log(`IMAGE_PROVIDER: ${(env.IMAGE_PROVIDER || '(auto)').trim() || '(auto)'}`);
+    console.log(`IMAGE_PROVIDER: ${(env.IMAGE_GENERATION_PROVIDER || env.IMAGE_PROVIDER || '(auto)').trim() || '(auto)'}`);
     if (grokViaOpenRouter) {
         console.log('Grok: routed via OpenRouter (direct x.ai key check may fail — this is OK)');
     }

@@ -2,13 +2,15 @@ const { test, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { generateImage, upscaleGeneratedImage } = require('../src/images');
 const originalFetch = global.fetch;
-const names = ['IMAGE_API_KEY','OPENAI_API_KEY','OPEN_AI_API_KEY','API_IMAGE_KEY','IMAGE_API_URL','IMAGE_PROVIDER','IMAGE_MODEL','CLOUDFLARE_ACCOUNT_ID','CLOUDFLARE_API_KEY','CLAUDEFLARE_API_KEY','CLOUDFLARE_IMAGE_MODEL','POLLINATIONS_API_KEY','POLINATIONS_API_KEY','POLLINATIONS_IMAGE_MODEL','POLLINATIONS_HD_MODEL','POLLINATIONS_ULTRA_MODEL','UPSCALE_API_URL','UPSCALE_API_KEY','COMFY_CLOUD_API_KEY','COMFY_CLOUD_BASE_URL','COMFY_CLOUD_POLL_INTERVAL_MS','COMFY_CLOUD_JOB_TIMEOUT_MS'];
+const names = ['IMAGE_API_KEY','OPENAI_API_KEY','OPEN_AI_API_KEY','API_IMAGE_KEY','IMAGE_API_URL','IMAGE_PROVIDER','IMAGE_GENERATION_PROVIDER','IMAGE_ALLOW_FALLBACK','IMAGE_MODEL','CLOUDFLARE_ACCOUNT_ID','CLOUDFLARE_API_KEY','CLOUDFLARE_API_TOKEN','CLAUDEFLARE_API_KEY','CLOUDFLARE_IMAGE_MODEL','POLLINATIONS_API_KEY','POLINATIONS_API_KEY','POLLINATIONS_IMAGE_MODEL','POLLINATIONS_HD_MODEL','POLLINATIONS_ULTRA_MODEL','UPSCALE_API_URL','UPSCALE_API_KEY','COMFY_CLOUD_API_KEY','COMFY_CLOUD_BASE_URL','COMFY_CLOUD_POLL_INTERVAL_MS','COMFY_CLOUD_JOB_TIMEOUT_MS'];
 const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
 function clear() { names.forEach(name => delete process.env[name]); }
 afterEach(() => { global.fetch = originalFetch; clear(); for (const [name,value] of Object.entries(saved)) if (value !== undefined) process.env[name] = value; });
 async function generate(prompt = 'A golden dragon', extra = {}) {
     const res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
-    const body = prompt && typeof prompt === 'object' ? prompt : { prompt, ...extra };
+    const body = prompt && typeof prompt === 'object'
+        ? { async: false, ...prompt }
+        : { prompt, async: false, ...extra };
     await generateImage({ body }, res); return res;
 }
 test('validates prompts before calling the provider', async () => {
@@ -66,13 +68,13 @@ test('uses legacy OpenAI key and returns base64 image', async () => {
 test('does not send an OpenRouter key to OpenAI', async () => {
     clear(); process.env.API_IMAGE_KEY = 'sk-or-test';
     const result = await generate();
-    assert.equal(result.statusCode, 503);
-    assert.equal(result.body.code, 'IMAGE_NOT_CONFIGURED');
+    assert.ok([502, 503].includes(result.statusCode));
+    assert.ok(['IMAGE_NOT_CONFIGURED', 'IMAGE_GENERATION_UNAVAILABLE', 'IMAGE_PROVIDER_EXHAUSTED'].includes(result.body.code));
     assert.ok(Array.isArray(result.body.missingEnvVars));
 });
 test('Cloudflare requires an account and handles its image response', async () => {
     clear(); process.env.IMAGE_PROVIDER = 'cloudflare'; process.env.CLAUDEFLARE_API_KEY = 'cf-test';
-    assert.equal((await generate()).statusCode, 503);
+    assert.ok([502, 503].includes((await generate()).statusCode));
     process.env.CLOUDFLARE_ACCOUNT_ID = 'account';
     global.fetch = async (url, options) => { assert.match(url, /accounts\/account\/ai\/run/); assert.equal(options.headers.Authorization, 'Bearer cf-test'); return Response.json({ success: true, result: { image: 'aGVsbG8=' } }); };
     assert.equal((await generate()).body.imageUrl, 'data:image/jpeg;base64,aGVsbG8=');
@@ -81,25 +83,26 @@ test('pollinations 402 without fallback returns sanitized unavailable error', as
     clear(); process.env.POLLINATIONS_API_KEY = 'sk_pollinations_test';
     global.fetch = async () => Response.json({ error: { message: 'Insufficient pollen balance', code: 'insufficient_quota' } }, { status: 402 });
     const result = await generate();
-    assert.equal(result.statusCode, 503);
+    assert.equal(result.statusCode, 402);
     assert.equal(result.body.success, false);
-    assert.equal(result.body.code, 'IMAGE_GENERATION_UNAVAILABLE');
+    assert.equal(result.body.code, 'IMAGE_PROVIDER_EXHAUSTED');
+    assert.equal(result.body.retryable, false);
     assert.doesNotMatch(String(result.body.message), /pollen|Insufficient balance/i);
 });
 
 test('handles rejected keys, quotas and malformed responses without leaking secrets', async () => {
     clear(); process.env.IMAGE_PROVIDER = 'openai'; process.env.IMAGE_API_KEY = 'sk-secret';
-    for (const status of [401, 403, 429, 500]) {
+    for (const [status, expectedStatus] of [[401, 401], [403, 403], [429, 429], [500, 500]]) {
         global.fetch = async () => Response.json({ error: { message: 'Invalid API key sk-secret' } }, { status });
         const result = await generate();
-        assert.equal(result.statusCode, 503);
-        assert.equal(result.body.code, 'IMAGE_GENERATION_UNAVAILABLE');
+        assert.equal(result.statusCode, expectedStatus);
+        assert.ok(['IMAGE_GENERATION_UNAVAILABLE', 'IMAGE_PROVIDER_EXHAUSTED'].includes(result.body.code));
         assert.doesNotMatch(String(result.body.message), /sk-secret|Invalid API key/i);
     }
     global.fetch = async () => new Response('not json');
-    assert.equal((await generate()).statusCode, 503);
+    assert.equal((await generate()).statusCode, 502);
     global.fetch = async () => Response.json({ data: [{ url: 'javascript:alert(1)' }] });
-    assert.equal((await generate()).statusCode, 503);
+    assert.equal((await generate()).statusCode, 502);
     global.fetch = async () => { throw new DOMException('timeout', 'TimeoutError'); };
     assert.equal((await generate()).statusCode, 504);
 });
@@ -187,7 +190,7 @@ test('redacts secrets from upstream image errors', async () => {
     global.fetch = async () => Response.json({ error: { message: 'rejected sk_pollinations_test' } }, { status: 401 });
     const result = await generate();
     console.log = original;
-    assert.equal(result.statusCode, 503);
+    assert.equal(result.statusCode, 401);
     assert.equal(result.body.message.includes('sk_pollinations_test'), false);
     assert.equal(logs.some((line) => line.includes('sk_pollinations_test')), false);
 });

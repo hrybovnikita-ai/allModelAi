@@ -31,7 +31,8 @@ test('logout during response parsing cannot resurrect a session', async () => {
             return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
         };
         const session = await fresh();
-        const pending = session.restoreSession();
+        session.rememberSession(user);
+        const pending = session.restoreSession({ force: true });
         const rejection = assert.rejects(pending, /Session changed/);
         await started;
         session.clearAllSessionData();
@@ -53,7 +54,8 @@ test('login confirmation does not reuse an older pending verification', async ()
             return new Response(JSON.stringify({ user }), { status: 200, headers: { 'Content-Type': 'application/json' } });
         };
         const session = await fresh();
-        const pending = session.restoreSession();
+        session.rememberSession(user);
+        const pending = session.restoreSession({ force: true });
         const rejection = assert.rejects(pending, /Session changed/);
         assert.deepEqual(await session.confirmSession(user), user);
         finish(new Response('{}', { status: 401, headers: { 'Content-Type': 'application/json' } }));

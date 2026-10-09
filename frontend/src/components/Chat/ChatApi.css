@@ -34,6 +34,40 @@
   font-weight: 600;
 }
 
+.image-gen-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(129, 140, 248, 0.28);
+  background: rgba(99, 102, 241, 0.1);
+  color: #c4b5fd;
+  animation: thinking-text-in 0.35s ease both;
+}
+
+.image-gen-status b {
+  color: #e0e7ff;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.image-gen-status__spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(196, 181, 253, 0.35);
+  border-top-color: #a5b4fc;
+  animation: image-gen-spin 0.85s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes image-gen-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .thinking-dots {
   display: inline-flex;
   align-items: center;

@@ -78,7 +78,7 @@
 
 .checkout-layout--split {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 520px);
+  grid-template-columns: minmax(300px, 1fr) minmax(340px, 520px);
   gap: clamp(24px, 4vw, 48px);
   align-items: start;
   width: min(100%, 1280px);
@@ -205,7 +205,13 @@
 }
 .checkout-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 480px); gap: clamp(36px, 8vw, 110px); align-items: start; max-width: 1120px; margin: 100px auto 0; }
 .checkout-intro { padding-top: 32px; }
-.checkout-eyebrow { color: var(--lime); text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; font-weight: 700; }
+.checkout-eyebrow {
+  color: #a5b4fc;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
 .checkout-intro h1 { max-width: 560px; margin: 18px 0; font-size: clamp(2.4rem, 5vw, 4.5rem); line-height: 1.03; }
 .checkout-intro > p:not(.checkout-eyebrow) { max-width: 500px; color: #aab9d5; font-size: 1.05rem; line-height: 1.7; }
 .checkout-plan { display: flex; justify-content: space-between; max-width: 420px; margin-top: 48px; padding: 20px 0; border-top: 1px solid #33415d; border-bottom: 1px solid #33415d; }
@@ -223,10 +229,6 @@
 @media (max-width: 900px) {
   .checkout-layout--split {
     grid-template-columns: 1fr;
-  }
-
-  .checkout-form-panel {
-    order: 2;
   }
 }
 

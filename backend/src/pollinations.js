@@ -8,7 +8,7 @@ const getPollinationsApiKey = () =>
 const isPollinationsKey = (value) => /^sk_[A-Za-z0-9]+/i.test(stripQuotes(value));
 
 const resolveImageProvider = () => {
-    const explicit = String(process.env.IMAGE_PROVIDER || '').trim().toLowerCase();
+    const explicit = String(process.env.IMAGE_GENERATION_PROVIDER || process.env.IMAGE_PROVIDER || '').trim().toLowerCase();
     const pollinationsKey = getPollinationsApiKey();
     const openAiKeys = [
         process.env.IMAGE_API_KEY,
@@ -21,11 +21,20 @@ const resolveImageProvider = () => {
     const apiKey = process.env.IMAGE_API_URL
         ? openAiKeys[0]
         : openAiKeys.find((value) => /^sk-/i.test(value) && !/^sk-or-/i.test(value));
-    const account = stripQuotes(process.env.CLOUDFLARE_ACCOUNT_ID);
+    let cloudflareConfigured = false;
+    try {
+        const { isCloudflareImageConfigured } = require('./services/cloudflareImageService');
+        cloudflareConfigured = isCloudflareImageConfigured();
+    } catch {
+        cloudflareConfigured = false;
+    }
+    const account = stripQuotes(process.env.CLOUDFLARE_ACCOUNT_ID || process.env.CF_ACCOUNT_ID);
     const cloudflareKey = stripQuotes(
-        process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY || process.env.API_IMAGE_KEY
+        process.env.CLOUDFLARE_API_TOKEN
+        || process.env.CLOUDFLARE_API_KEY
+        || process.env.CLAUDEFLARE_API_KEY
+        || process.env.AllModelAi_API_KEY_IMAGE,
     );
-    const cloudflareConfigured = Boolean(account && cloudflareKey);
 
     if (explicit === 'pollinations') {
         return { provider: 'pollinations', pollinationsKey, apiKey, cloudflareConfigured, account, cloudflareKey };

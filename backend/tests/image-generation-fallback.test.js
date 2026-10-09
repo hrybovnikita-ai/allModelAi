@@ -9,7 +9,8 @@ const {
 
 const names = [
     'IMAGE_API_KEY', 'OPENAI_API_KEY', 'OPEN_AI_API_KEY', 'API_IMAGE_KEY', 'IMAGE_API_URL',
-    'IMAGE_PROVIDER', 'IMAGE_MODEL', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_KEY',
+    'IMAGE_PROVIDER', 'IMAGE_GENERATION_PROVIDER', 'IMAGE_ALLOW_FALLBACK', 'IMAGE_MODEL',
+    'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_KEY', 'CLOUDFLARE_API_TOKEN',
     'POLLINATIONS_API_KEY', 'POLLINATIONS_IMAGE_MODEL',
     'COMFY_CLOUD_API_KEY', 'COMFYUI_API_KEY', 'COMFY_CLOUD_BASE_URL',
 ];
@@ -48,8 +49,10 @@ async function generate(prompt = 'A golden dragon', extra = {}) {
 }
 
 describe('Image generation fallback', () => {
-    test('isRetryableProviderFailure treats 402 and balance errors as retryable', () => {
-        assert.equal(isRetryableProviderFailure({ status: 402, message: 'Insufficient balance' }), true);
+    test('isRetryableProviderFailure distinguishes quota from upstream errors', () => {
+        assert.equal(isRetryableProviderFailure({ status: 402, message: 'Insufficient balance' }), false);
+        assert.equal(isRetryableProviderFailure({ status: 403, message: 'free tier not allowed' }), false);
+        assert.equal(isRetryableProviderFailure({ status: 503, message: 'temporarily unavailable' }), true);
         assert.equal(isRetryableProviderFailure({ status: 429, message: 'rate limit' }), true);
     });
 
@@ -57,6 +60,7 @@ describe('Image generation fallback', () => {
         clearEnv();
         process.env.COMFY_CLOUD_API_KEY = 'comfy_test_key';
         process.env.IMAGE_PROVIDER = 'comfy-cloud';
+        process.env.IMAGE_ALLOW_FALLBACK = 'true';
         process.env.POLLINATIONS_API_KEY = 'sk_pollinations_test';
         let call = 0;
         global.fetch = async (url) => {
@@ -85,6 +89,7 @@ describe('Image generation fallback', () => {
         clearEnv();
         process.env.POLLINATIONS_API_KEY = 'sk_pollinations_test';
         process.env.IMAGE_PROVIDER = 'pollinations';
+        process.env.IMAGE_ALLOW_FALLBACK = 'true';
         process.env.IMAGE_API_KEY = 'sk-openai-fallback';
         let call = 0;
         global.fetch = async (url) => {
@@ -145,9 +150,10 @@ describe('Image generation fallback', () => {
             { status: 402 },
         );
         const result = await generate();
-        assert.equal(result.statusCode, 502);
+        assert.equal(result.statusCode, 402);
         assert.equal(result.body.success, false);
-        assert.equal(result.body.code, 'IMAGE_GENERATION_UNAVAILABLE');
+        assert.equal(result.body.code, 'IMAGE_PROVIDER_EXHAUSTED');
+        assert.equal(result.body.retryable, false);
         assert.equal(result.body.message, USER_UNAVAILABLE_MESSAGE);
         assert.doesNotMatch(JSON.stringify(result.body), /pollen|enter\.pollinations|Insufficient balance/i);
     });
@@ -168,11 +174,15 @@ describe('Image generation fallback', () => {
 
     test('listConfiguredImageProviders respects explicit IMAGE_PROVIDER first', () => {
         clearEnv();
+        delete process.env.IMAGE_ALLOW_FALLBACK;
         process.env.IMAGE_PROVIDER = 'openai';
         process.env.IMAGE_API_KEY = 'sk-test';
         process.env.POLLINATIONS_API_KEY = 'sk_pollinations_test';
         const list = listConfiguredImageProviders();
-        assert.equal(list[0], 'openai');
-        assert.ok(list.includes('pollinations'));
+        assert.deepEqual(list, ['openai']);
+        process.env.IMAGE_ALLOW_FALLBACK = 'true';
+        const withFallback = listConfiguredImageProviders();
+        assert.equal(withFallback[0], 'openai');
+        assert.ok(withFallback.includes('pollinations'));
     });
 });

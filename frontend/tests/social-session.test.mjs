@@ -38,7 +38,7 @@ test('link intent is explicit and social dashboard navigation follows confirmed 
   await exchangeSocialSession('token', { link: true });
   assert.ok(bodies.every(body => body.intent === 'link'));
   const login = await readFile(new URL('../src/components/Login/Login.jsx', import.meta.url), 'utf8');
-  assert.match(login, /navigate\('\/dashboard'/);
+  assert.match(login, /navigateAfterSocialLogin/);
   assert.match(login, /shouldPreferGoogleRedirectSignIn/);
   assert.match(socialError({ code: 'auth/popup-blocked' }), /Allow popups/);
   assert.match(socialError({ code: 'auth/popup-closed-by-user' }), /cancelled/i);

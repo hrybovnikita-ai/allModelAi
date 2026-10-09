@@ -29,3 +29,15 @@ test('auth bootstrap clears stale redirect intent after failed recovery', () => 
   const src = readFileSync(`${root}src/lib/authBootstrap.js`, 'utf8');
   assert.match(src, /clearSocialRedirectIntent/);
 });
+
+test('auth bootstrap deduplicates concurrent initialization', () => {
+  const src = readFileSync(`${root}src/lib/authBootstrap.js`, 'utf8');
+  assert.match(src, /bootstrapPromise/);
+  assert.match(src, /bootstrapAuthenticatedUser/);
+});
+
+test('navbar uses skeleton instead of checking session copy', () => {
+  const src = readFileSync(`${root}src/components/Navbar/NavAuthSection.jsx`, 'utf8');
+  assert.match(src, /nav-auth-skeleton/);
+  assert.doesNotMatch(src, /Checking your session/);
+});

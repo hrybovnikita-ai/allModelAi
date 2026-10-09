@@ -14,5 +14,8 @@ export function isAuthInitializing(status) {
     || status === 'restoring-session';
 }
 
-/** After this, UI may treat stuck bootstrap as guest (navbar, etc.). */
-export const AUTH_INIT_TIMEOUT_MS = 3000;
+/** After this, navbar may show guest actions if bootstrap is still in flight. */
+export const AUTH_INIT_TIMEOUT_MS = 8000;
+
+/** Reserve space in the header while session is verifying (matches auth controls). */
+export const NAV_AUTH_SKELETON_MIN_WIDTH_PX = 280;

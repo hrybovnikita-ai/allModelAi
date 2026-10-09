@@ -283,6 +283,8 @@ export const CHAT_STRINGS = {
     "Saved": "Saved",
     "New chat": "New chat",
     "Checking your session...": "Checking your session...",
+    "Loading account": "Loading account",
+    "Retrying…": "Retrying…",
     "Could not connect. Please try again.": "Could not connect. Please try again.",
     "Write a short story about a time traveler.": "Write a short story about a time traveler.",
     "Summarize the main benefits of daily exercise.": "Summarize the main benefits of daily exercise.",

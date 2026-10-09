@@ -1,7 +1,8 @@
-import { restoreSession } from './session.js';
+import { isFreshLoginGraceActive, restoreSession } from './session.js';
 import { isLoggerEnabled, logger } from './logger.js';
 import { nativeClientHeaders } from './apiBase.js';
 import { nativeSessionHeaders } from './nativeSession.js';
+import { firebaseSessionFallbackHeaders } from './firebaseSessionFallback.js';
 import { parseJsonResponse, resolveApiUrl } from './httpJson.js';
 
 export {
@@ -35,6 +36,7 @@ export function apiFetch(url, options = {}) {
     Accept: 'application/json',
     ...nativeClientHeaders(),
     ...nativeSessionHeaders(),
+    ...(isFreshLoginGraceActive() ? firebaseSessionFallbackHeaders() : {}),
     ...(options.headers || {}),
   };
 
