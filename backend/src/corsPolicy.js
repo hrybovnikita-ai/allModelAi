@@ -6,8 +6,13 @@ const ALL_MODEL_AI_VERCEL_PRODUCTION = 'https://all-model-ai.vercel.app';
 /** Custom production domains on Vercel (apex + www). */
 const ALL_MODEL_AI_CUSTOM_PRODUCTION = 'https://all-model-ai.com';
 const ALL_MODEL_AI_WWW_PRODUCTION = 'https://www.all-model-ai.com';
+/** Firebase Auth custom domain (primary). */
+const ALLMODELAI_CUSTOM_PRODUCTION = 'https://allmodelai.com';
+const ALLMODELAI_WWW_PRODUCTION = 'https://www.allmodelai.com';
 
 const ALL_MODEL_AI_BUILTIN_PRODUCTION_ORIGINS = [
+    ALLMODELAI_CUSTOM_PRODUCTION,
+    ALLMODELAI_WWW_PRODUCTION,
     ALL_MODEL_AI_CUSTOM_PRODUCTION,
     ALL_MODEL_AI_WWW_PRODUCTION,
     ALL_MODEL_AI_VERCEL_PRODUCTION,
@@ -49,6 +54,32 @@ const originHost = (origin) => {
 };
 
 const normalizeOrigin = (origin) => String(origin || '').trim().replace(/\/$/, '');
+
+function isPrivateLanHost(hostname) {
+    const host = String(hostname || '').toLowerCase();
+    if (!host) return false;
+    if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '[::1]') return true;
+    if (host.endsWith('.local')) return true;
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    return false;
+}
+
+/** Same Wi‑Fi / LAN dev (e.g. http://192.168.0.12:5173). Off in production unless explicitly enabled. */
+function isLocalNetworkDevOrigin(origin) {
+    const enabled = process.env.NODE_ENV !== 'production'
+        || process.env.CORS_ALLOW_LOCAL_NETWORK === 'true'
+        || process.env.CORS_ALLOW_LAN === 'true';
+    if (!enabled) return false;
+    try {
+        const url = new URL(normalizeOrigin(origin));
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+        return isPrivateLanHost(url.hostname);
+    } catch {
+        return false;
+    }
+}
 
 /**
  * HTTPS Vercel preview deployments for the all-model-ai project.
@@ -109,6 +140,7 @@ function isAllowedOrigin(origin, req) {
     if (isAllModelAiProductionWebOrigin(normalized)) return true;
     if (isAllModelAiVercelProjectOrigin(normalized)) return true;
     if (configuredOrigins().includes(normalized)) return true;
+    if (isLocalNetworkDevOrigin(normalized)) return true;
     const host = String(req?.get?.('x-forwarded-host') || req?.get?.('host') || '').split(',')[0].trim();
     return Boolean(host) && originHost(normalized) === host;
 }
@@ -147,6 +179,8 @@ module.exports = {
     isAllModelAiVercelProjectOrigin,
     isAllowedOrigin,
     isNativeAppOrigin,
+    isLocalNetworkDevOrigin,
+    isPrivateLanHost,
     createCredentialedCorsMiddleware,
     normalizeOrigin,
 };

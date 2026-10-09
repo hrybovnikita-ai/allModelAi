@@ -43,6 +43,21 @@ test('isViteDevServerHost detects local Vite ports including 5174', () => {
   assert.equal(isViteDevServerHost({ hostname: 'localhost', port: '' }), false);
 });
 
+test('isViteDevServerHost detects LAN IP Vite dev URLs', () => {
+  assert.equal(
+    isViteDevServerHost({ protocol: 'http:', hostname: '192.168.0.42', port: '5173' }),
+    true,
+  );
+  assert.equal(
+    isViteDevServerHost({ protocol: 'http:', hostname: '192.168.0.42', port: '' }),
+    false,
+  );
+  assert.equal(
+    isViteDevServerHost({ protocol: 'http:', hostname: '203.0.113.10', port: '5173' }),
+    false,
+  );
+});
+
 test('resolveApiUrl keeps first-party relative /api paths on production web hosts', () => {
   const originalWindow = globalThis.window;
   globalThis.window = {

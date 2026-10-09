@@ -756,6 +756,8 @@ html[data-theme="light"] .chat-message.assistant p{color:#202123}html[data-theme
 .generated-image-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .generated-image-actions button, .lightbox-actions button { padding: 7px 12px; border: 1px solid #4c3d86; border-radius: 8px; background: #1a1428; color: #e9e4ff; font: inherit; font-size: .75rem; cursor: pointer; }
 .generated-image-actions button:first-child, .lightbox-actions button { border-color: #7c5cff; }
+.generated-video-result { display: grid; gap: 10px; margin-top: 12px; justify-items: start; max-width: 100%; }
+.generated-video-result .generated-video { display: block; width: 100%; max-width: min(100%, 720px); max-height: min(70vh, 480px); border-radius: 14px; border: 1px solid #4c3d86; background: #0a0a10; }
 
 /* Shared code palette and charcoal surface, matching the supplied reference. */
 .chat-page .response-code-block {
@@ -1017,13 +1019,32 @@ html[data-theme="light"] .quick-prompts button:hover, html[data-theme="light"] .
 
 .subscribe-stripe-slot {
   position: relative;
-  min-height: 520px;
+  min-height: min(360px, 55vh);
   width: 100%;
   margin: 8px 0 4px;
   border-radius: 12px;
   border: 1px solid rgba(124, 92, 255, 0.28);
-  background: #0a0a0f;
+  background: transparent;
   overflow: auto;
+}
+
+.subscribe-stripe-slot__error {
+  padding: 16px;
+  margin: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(127, 29, 29, 0.25);
+  color: #fecaca;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.subscribe-stripe-embedded-wrap {
+  border: none;
+  background: transparent;
+  min-height: min(360px, 55vh);
+  max-height: min(640px, 72vh);
+  padding: 8px;
 }
 
 .subscribe-stripe-slot__loader {

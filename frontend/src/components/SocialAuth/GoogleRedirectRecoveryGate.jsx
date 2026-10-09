@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import {
   awaitGoogleRedirectRecovery,
   clearSocialRedirectIntent,
-  isGoogleRedirectRecoveryPending,
   navigateAfterSocialLogin,
+  reconcileStaleRedirectIntent,
+  shouldShowGoogleRedirectRecoveryUI,
 } from '../../lib/socialSignIn';
 import { authRecoveryLog } from '../../lib/socialAuthDiagnostics';
 import { socialError } from '../../lib/socialSession';
@@ -12,8 +13,13 @@ import { consumeStoredSocialAuthError } from './SocialAuthCallback.jsx';
 import './SocialAuth.css';
 
 const SOCIAL_ERROR_KEY = 'allmodelai_social_error';
-/** getRedirectResult timeout (6s) + auth-state fallback (8s) + backend exchange buffer */
-const RECOVERY_OVERLAY_SAFETY_MS = 32000;
+/** Redirect result (~800ms) + auth-state fallback (~1s) + backend exchange buffer */
+const RECOVERY_OVERLAY_SAFETY_MS = 5000;
+
+function readInitialRecoveringState() {
+  reconcileStaleRedirectIntent();
+  return shouldShowGoogleRedirectRecoveryUI();
+}
 
 /**
  * Single redirect recovery owner for normal SPA routes (/, /login, etc.).
@@ -22,14 +28,15 @@ const RECOVERY_OVERLAY_SAFETY_MS = 32000;
 export default function GoogleRedirectRecoveryGate() {
   const navigate = useNavigate();
   const startedRef = useRef(false);
-  const [recovering, setRecovering] = useState(() => isGoogleRedirectRecoveryPending());
+  const [recovering, setRecovering] = useState(readInitialRecoveringState);
 
   useEffect(() => {
-    if (startedRef.current) return;
-    if (!isGoogleRedirectRecoveryPending()) {
-      if (recovering) setRecovering(false);
+    reconcileStaleRedirectIntent();
+    if (!shouldShowGoogleRedirectRecoveryUI()) {
+      setRecovering(false);
       return undefined;
     }
+    if (startedRef.current) return undefined;
     startedRef.current = true;
     setRecovering(true);
 

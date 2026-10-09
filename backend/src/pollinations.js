@@ -3,7 +3,7 @@ const { redactSecrets } = require('./imageProviderAdapter');
 const stripQuotes = (value) => String(value || '').trim().replace(/^["']|["']$/g, '');
 
 const getPollinationsApiKey = () =>
-    stripQuotes(process.env.POLLINATIONS_API_KEY || process.env.POLINATIONS_API_KEY);
+    stripQuotes(process.env.POLLINATIONS_API_KEY || process.env.POLINATIONS_API_KEY || '');
 
 const isPollinationsKey = (value) => /^sk_[A-Za-z0-9]+/i.test(stripQuotes(value));
 

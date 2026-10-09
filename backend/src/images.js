@@ -16,8 +16,17 @@ const {
     resolveImageProvider,
     USER_UNAVAILABLE_MESSAGE,
 } = require('./services/imageGenerationService');
+const { imageConfigurationReport } = require('./imageConfig');
+const { isComfyCloudConfigured } = require('./comfyCloud');
+const {
+    createImageJob,
+    getImageJob,
+    publicJobPayload,
+    updateImageJob,
+} = require('./services/imageJobService');
 
 const configuredModel = (provider) => {
+    if (provider === 'comfy-cloud') return String(process.env.COMFY_CLOUD_CHECKPOINT || 'flux1-schnell-fp8.safetensors').trim();
     if (provider === 'pollinations') return String(process.env.POLLINATIONS_IMAGE_MODEL || 'flux').trim();
     if (provider === 'openai') return String(process.env.IMAGE_MODEL || 'gpt-image-1').trim();
     if (provider === 'cloudflare') return String(process.env.CLOUDFLARE_IMAGE_MODEL || '@cf/black-forest-labs/flux-1-schnell').trim();
@@ -56,57 +65,118 @@ const validateImageInput = (body = {}) => {
     };
 };
 
-const generateImage = async (req, res) => {
-    console.log('[IMAGE] Request received');
-    const validation = validateImageInput(req.body || {});
-    if (validation.error) {
-        console.log('[IMAGE] Rejected request:', validation.error);
-        return res.status(400).json({ message: validation.error });
-    }
-
-    const promptPayload = buildImagePromptPayload({
-        ...req.body,
-        prompt: validation.value.prompt,
-        quality: validation.value.quality,
-        aspectRatio: validation.value.aspectRatio,
-        style: validation.value.style,
-    });
-    const generationPrompt = promptPayload.enhancedPrompt;
-
-    if (validation.value.provider) {
-        const allowed = listConfiguredImageProviders();
-        if (!allowed.includes(validation.value.provider)) {
-            return res.status(400).json({ message: 'The requested image provider is not configured on this server.' });
+const runImageGenerationJob = async (jobId, params) => {
+    try {
+        const result = await generateImageWithFallback(params);
+        if (result.ok) {
+            updateImageJob(jobId, { status: 'completed', result: result.body });
+            return;
         }
-    }
-
-    const providers = listConfiguredImageProviders();
-    if (!providers.length) {
-        return res.status(503).json({
-            success: false,
-            code: 'IMAGE_GENERATION_UNAVAILABLE',
-            message: USER_UNAVAILABLE_MESSAGE,
+        updateImageJob(jobId, {
+            status: 'failed',
+            error: {
+                code: result.body?.code || 'IMAGE_GENERATION_UNAVAILABLE',
+                message: result.body?.message || USER_UNAVAILABLE_MESSAGE,
+            },
+        });
+    } catch (error) {
+        console.error('[IMAGE] Async job failed:', error.name, redactSecrets(error.message));
+        updateImageJob(jobId, {
+            status: 'failed',
+            error: {
+                code: 'IMAGE_GENERATION_UNAVAILABLE',
+                message: USER_UNAVAILABLE_MESSAGE,
+            },
         });
     }
+};
 
+const generateImage = async (req, res) => {
     try {
-        const result = await generateImageWithFallback({
+        console.log('[IMAGE] Request received');
+        const validation = validateImageInput(req.body || {});
+        if (validation.error) {
+            console.log('[IMAGE] Rejected request:', validation.error);
+            return res.status(400).json({ message: validation.error });
+        }
+
+        const promptPayload = buildImagePromptPayload({
+            ...req.body,
+            prompt: validation.value.prompt,
+            quality: validation.value.quality,
+            aspectRatio: validation.value.aspectRatio,
+            style: validation.value.style,
+        });
+        const generationPrompt = promptPayload.enhancedPrompt;
+
+        if (validation.value.provider) {
+            const allowed = listConfiguredImageProviders();
+            if (!allowed.includes(validation.value.provider)) {
+                return res.status(400).json({ message: 'The requested image provider is not configured on this server.' });
+            }
+        }
+
+        const config = imageConfigurationReport();
+        const providers = config.providers?.length ? config.providers : listConfiguredImageProviders();
+        if (!providers.length) {
+            const explicitComfy = String(process.env.IMAGE_PROVIDER || '').trim().toLowerCase().replace('comfy', 'comfy-cloud');
+            if (explicitComfy === 'comfy-cloud' && !isComfyCloudConfigured()) {
+                console.error('[API Error] COMFY_CLOUD_API_KEY is not set');
+            }
+            const status = explicitComfy === 'comfy-cloud' && !isComfyCloudConfigured() ? 500 : 502;
+            return res.status(status).json({
+                success: false,
+                code: config.code || 'IMAGE_NOT_CONFIGURED',
+                message: config.message || USER_UNAVAILABLE_MESSAGE,
+                missingEnvVars: config.missing?.length ? config.missing : undefined,
+                configurationWarnings: config.warnings?.length ? config.warnings : undefined,
+            });
+        }
+
+        const generationParams = {
             generationPrompt,
             promptPayload,
             quality: promptPayload.quality,
             aspectRatio: promptPayload.aspectRatio,
             requestedModel: validation.value.model,
-        });
+        };
 
+        const wantsSync = req.body?.async === false || req.body?.async === 'false';
+
+        if (!wantsSync) {
+            const job = createImageJob({
+                userId: req.user?.id,
+                ...generationParams,
+            });
+            void runImageGenerationJob(job.id, generationParams);
+            return res.status(202).json({
+                success: true,
+                jobId: job.id,
+                status: 'processing',
+            });
+        }
+
+        const result = await generateImageWithFallback(generationParams);
         return res.status(result.clientStatus).json(result.body);
     } catch (error) {
-        console.log('[IMAGE] Request failed:', error.name, redactSecrets(error.message));
-        return res.status(error.name === 'TimeoutError' ? 504 : 503).json({
+        console.error('[IMAGE] Request failed:', error.name, redactSecrets(error.message));
+        return res.status(error.name === 'TimeoutError' ? 504 : 502).json({
             success: false,
             code: 'IMAGE_GENERATION_UNAVAILABLE',
             message: USER_UNAVAILABLE_MESSAGE,
+            retryable: true,
         });
     }
+};
+
+const getImageGenerationJob = (req, res) => {
+    const job = getImageJob(req.params.jobId, req.user?.id);
+    if (!job) {
+        return res.status(404).json({ success: false, message: 'Image job not found or expired.' });
+    }
+    const payload = publicJobPayload(job);
+    const statusCode = job.status === 'failed' ? 502 : 200;
+    return res.status(statusCode).json(payload);
 };
 
 const upscaleGeneratedImage = async (req, res) => {
@@ -146,7 +216,8 @@ const upscaleGeneratedImage = async (req, res) => {
 };
 
 const getImageGenerationStatus = (_req, res) => {
-    const providers = listConfiguredImageProviders();
+    const config = imageConfigurationReport();
+    const providers = config.providers?.length ? config.providers : listConfiguredImageProviders();
     const primary = providers[0] || resolveImageProvider().provider;
     const pollinationsKey = getPollinationsApiKey();
     const capabilities = primary && primary !== 'none' ? capabilitySummary(primary) : null;
@@ -154,7 +225,8 @@ const getImageGenerationStatus = (_req, res) => {
         provider: primary || 'none',
         providers,
         configured: providers.length > 0,
-        pollinations: Boolean(pollinationsKey),
+        comfyCloud: isProviderConfigured('comfy-cloud'),
+        pollinations: isProviderConfigured('pollinations'),
         openai: isProviderConfigured('openai'),
         cloudflare: isProviderConfigured('cloudflare'),
         model: configuredModel(primary),
@@ -164,7 +236,19 @@ const getImageGenerationStatus = (_req, res) => {
         sizes: capabilities?.sizes || null,
         maxResolution: capabilities?.maxResolution || null,
         qualityModels: capabilities?.qualityModels || null,
+        configuration: {
+            ok: config.ok,
+            code: config.code || null,
+            missingEnvVars: config.missing || [],
+            warnings: config.warnings || [],
+        },
+        pollinationsKeyPresent: Boolean(pollinationsKey),
     });
 };
 
-module.exports = { generateImage, getImageGenerationStatus, upscaleGeneratedImage };
+module.exports = {
+    generateImage,
+    getImageGenerationStatus,
+    getImageGenerationJob,
+    upscaleGeneratedImage,
+};

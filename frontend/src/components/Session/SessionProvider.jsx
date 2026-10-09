@@ -1,14 +1,15 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { bootstrapAuthenticatedUser } from '../../lib/authBootstrap.js';
-import { AUTH_STATUS, isAuthInitializing } from '../../lib/authSessionStatus.js';
+import { AUTH_INIT_TIMEOUT_MS, AUTH_STATUS, isAuthInitializing } from '../../lib/authSessionStatus.js';
 import {
+  hasSessionRestoreHint,
   restoreSession,
   SESSION_UPDATED_EVENT,
   subscribeSessionCleared,
 } from '../../lib/session.js';
 import {
-  isGoogleRedirectRecoveryPending,
   reconcileStaleRedirectIntent,
+  shouldShowGoogleRedirectRecoveryUI,
 } from '../../lib/socialSignIn.js';
 import { socialAuthDebug } from '../../lib/socialAuthDiagnostics.js';
 import { COOKIE_CONSENT_UPDATED_EVENT } from '../../lib/cookieConsent.js';
@@ -16,14 +17,17 @@ import { COOKIE_CONSENT_UPDATED_EVENT } from '../../lib/cookieConsent.js';
 export const SessionContext = createContext(null);
 
 function initialStatus() {
-  if (isGoogleRedirectRecoveryPending()) {
+  reconcileStaleRedirectIntent();
+  if (shouldShowGoogleRedirectRecoveryUI()) {
     return AUTH_STATUS.CHECKING_REDIRECT;
+  }
+  if (!hasSessionRestoreHint()) {
+    return AUTH_STATUS.UNAUTHENTICATED;
   }
   return AUTH_STATUS.INITIALIZING;
 }
 
 export function SessionProvider({ children }) {
-  const bootstrapStarted = useRef(false);
   const [state, setState] = useState(() => ({
     status: initialStatus(),
     user: null,
@@ -35,7 +39,7 @@ export function SessionProvider({ children }) {
       setState({ status: AUTH_STATUS.AUTHENTICATED, user });
       return;
     }
-    if (isGoogleRedirectRecoveryPending()) {
+    if (shouldShowGoogleRedirectRecoveryUI()) {
       setState({ status: AUTH_STATUS.CHECKING_REDIRECT, user: null });
       return;
     }
@@ -44,7 +48,7 @@ export function SessionProvider({ children }) {
   }, []);
 
   const refresh = useCallback(async ({ force = false } = {}) => {
-    if (isGoogleRedirectRecoveryPending()) {
+    if (shouldShowGoogleRedirectRecoveryUI()) {
       setState({ status: AUTH_STATUS.CHECKING_REDIRECT, user: null });
     } else {
       setState((current) => ({
@@ -66,8 +70,6 @@ export function SessionProvider({ children }) {
   }, [applySessionUser]);
 
   useEffect(() => {
-    if (bootstrapStarted.current) return undefined;
-    bootstrapStarted.current = true;
     let active = true;
     void bootstrapAuthenticatedUser()
       .then((user) => {
@@ -77,13 +79,26 @@ export function SessionProvider({ children }) {
         if (active) {
           socialAuthDebug('SESSION_PROVIDER_ERROR', { message: error?.message });
           reconcileStaleRedirectIntent();
-          setState({ status: AUTH_STATUS.ERROR, user: null });
+          setState({ status: AUTH_STATUS.UNAUTHENTICATED, user: null });
         }
       });
     return () => {
       active = false;
     };
   }, [applySessionUser]);
+
+  useEffect(() => {
+    if (!isAuthInitializing(state.status)) return undefined;
+    const timer = setTimeout(() => {
+      setState((current) => {
+        if (!isAuthInitializing(current.status)) return current;
+        socialAuthDebug('SESSION_PROVIDER_INIT_TIMEOUT', {});
+        reconcileStaleRedirectIntent();
+        return { status: AUTH_STATUS.UNAUTHENTICATED, user: null };
+      });
+    }, AUTH_INIT_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [state.status]);
 
   useEffect(() => subscribeSessionCleared(() => {
     setState({ status: AUTH_STATUS.UNAUTHENTICATED, user: null });

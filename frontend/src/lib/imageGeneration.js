@@ -37,12 +37,39 @@ export const ASPECT_LABELS = {
 export const IMAGE_UNAVAILABLE_MESSAGE =
   'Image generation is temporarily unavailable. Please try again in a moment.';
 
+export const IMAGE_NOT_CONFIGURED_MESSAGE =
+  'Image generation is not configured on the server yet. Ask the administrator to add an image API key on Render.';
+
 const PROVIDER_BILLING_LEAK =
   /pollen|pollinations\.ai|insufficient balance|top up at|available balance|credits remaining|platform\.openai\.com/i;
+
+export function formatImageServerError(data = {}, fallback = IMAGE_UNAVAILABLE_MESSAGE) {
+  if (data.code === 'IMAGE_NOT_CONFIGURED' || data.code === 'COMFY_CLOUD_NOT_CONFIGURED') {
+    const missing = data.missingEnvVars;
+    if (Array.isArray(missing) && missing.length) {
+      return `${IMAGE_NOT_CONFIGURED_MESSAGE} Required: ${missing.join('; ')}.`;
+    }
+    if (data.code === 'COMFY_CLOUD_NOT_CONFIGURED') {
+      return data.message || 'Comfy Cloud API key is missing on the server (COMFY_CLOUD_API_KEY).';
+    }
+    return data.message || IMAGE_NOT_CONFIGURED_MESSAGE;
+  }
+  if (data.code === 'IMAGE_GENERATION_UNAVAILABLE') {
+    return data.message && !PROVIDER_BILLING_LEAK.test(data.message) ? data.message : IMAGE_UNAVAILABLE_MESSAGE;
+  }
+  return null;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export const IMAGE_JOB_POLL_INTERVAL_MS = 2000;
+export const IMAGE_JOB_MAX_WAIT_MS = 120000;
 
 /** Never surface upstream billing or provider branding in the UI. */
 export function userFacingImageGenerationError(responseOk, data = {}) {
   if (responseOk && data.success !== false && data.imageUrl) return null;
+  const configured = formatImageServerError(data);
+  if (configured) return configured;
   if (data.code === 'IMAGE_GENERATION_UNAVAILABLE') return IMAGE_UNAVAILABLE_MESSAGE;
   const raw = String(data.message || '').trim();
   if (!raw || PROVIDER_BILLING_LEAK.test(raw)) return IMAGE_UNAVAILABLE_MESSAGE;
@@ -52,7 +79,13 @@ export function userFacingImageGenerationError(responseOk, data = {}) {
 export async function fetchImageGenerationStatus() {
   const response = await apiFetch('/api/images/status');
   if (!response.ok) {
-    return { configured: false, provider: 'none', pollinations: false, model: null };
+    return {
+      configured: false,
+      provider: 'none',
+      pollinations: false,
+      model: null,
+      configuration: { ok: false, missingEnvVars: [] },
+    };
   }
   return response.json();
 }
@@ -60,6 +93,9 @@ export async function fetchImageGenerationStatus() {
 export function imageProviderLabel(status, quality = 'hd') {
   if (!status?.configured) return null;
   const model = status.qualityModels?.[quality] || status.model;
+  if (status.provider === 'comfy-cloud') {
+    return `Comfy Cloud · ${model || 'Flux Schnell'}`;
+  }
   if (status.provider === 'pollinations') {
     return `Pollinations · ${model || 'flux'}`;
   }
@@ -128,22 +164,94 @@ export function buildImageRequestBody({
   return body;
 }
 
-export async function requestImageGeneration(body, signal) {
-  const response = await apiFetch('/api/images', {
+async function fetchImageJobStatus(jobId, signal) {
+  const paths = [
+    `/api/images/jobs/${encodeURIComponent(jobId)}`,
+    `/api/images/status/${encodeURIComponent(jobId)}`,
+  ];
+  let lastResponse;
+  let lastData = {};
+  for (const path of paths) {
+    lastResponse = await apiFetch(path, { signal });
+    lastData = await lastResponse.json().catch(() => ({}));
+    if (lastResponse.status !== 404) break;
+  }
+  return { response: lastResponse, data: lastData };
+}
+
+async function pollImageGenerationJob(jobId, signal, { onPoll } = {}) {
+  const deadline = Date.now() + IMAGE_JOB_MAX_WAIT_MS;
+  let polls = 0;
+  while (Date.now() < deadline) {
+    if (signal?.aborted) {
+      const abortError = new Error('Image generation was cancelled.');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
+    const { data } = await fetchImageJobStatus(jobId, signal);
+    polls += 1;
+    onPoll?.({ polls, status: data.status });
+    if (data.status === 'completed' && data.imageUrl) {
+      return { ok: true, data };
+    }
+    if (data.status === 'failed' || (data.success === false && data.status !== 'processing')) {
+      const userError = userFacingImageGenerationError(false, data);
+      const error = new Error(userError || IMAGE_UNAVAILABLE_MESSAGE);
+      error.code = data.code;
+      error.retryable = data.retryable !== false;
+      throw error;
+    }
+    await sleep(IMAGE_JOB_POLL_INTERVAL_MS);
+  }
+  const timeoutError = new Error('Image generation timed out. Try Standard quality or tap Retry.');
+  timeoutError.code = 'IMAGE_GENERATION_TIMEOUT';
+  timeoutError.retryable = true;
+  throw timeoutError;
+}
+
+/**
+ * Starts image generation (async job by default) and returns parsed success payload.
+ */
+async function postImageGeneration(body, signal, useAsync) {
+  return apiFetch('/api/images', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, async: useAsync }),
     signal,
   });
-  const data = await response.clone().json().catch(() => ({}));
+}
+
+export async function requestImageGeneration(body, signal, options = {}) {
+  const useAsync = options.async !== false;
+  let response = await postImageGeneration(body, signal, useAsync);
+  let data = await response.clone().json().catch(() => ({}));
+
+  if ((response.status === 502 || response.status === 503) && useAsync) {
+    await sleep(800);
+    response = await postImageGeneration(body, signal, useAsync);
+    data = await response.clone().json().catch(() => ({}));
+  }
+
+  if (response.status === 202 && data.jobId) {
+    const polled = await pollImageGenerationJob(data.jobId, signal, { onPoll: options.onPoll });
+    return polled.data;
+  }
+
   const userError = userFacingImageGenerationError(response.ok, data);
   if (userError) {
     const error = new Error(userError);
     error.code = data.code;
     error.response = response;
+    error.retryable = data.retryable !== false || response.status >= 500 || response.status === 429;
     throw error;
   }
-  return response;
+  if (!data?.imageUrl) {
+    const error = new Error(IMAGE_UNAVAILABLE_MESSAGE);
+    error.code = 'IMAGE_GENERATION_UNAVAILABLE';
+    error.retryable = true;
+    throw error;
+  }
+  return data;
 }
 
 export async function requestImageUpscale(imageUrl, signal) {

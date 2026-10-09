@@ -38,7 +38,9 @@ test('logout clears session and blocks protected routes', async () => {
     assert.equal((await agent.get('/api/auth/session')).status, 200);
     const logout = await agent.post('/api/auth/logout');
     assert.ok([200, 204].includes(logout.status), `unexpected logout status ${logout.status}`);
-    assert.equal((await agent.get('/api/auth/session')).status, 401);
+    const guest = await agent.get('/api/auth/session');
+    assert.equal(guest.status, 200);
+    assert.equal(guest.body.user, null);
     assert.equal((await agent.get('/api/credits')).status, 401);
 });
 

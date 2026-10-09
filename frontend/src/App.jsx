@@ -60,6 +60,7 @@ import NextThirty from "./components/NextThirty/NextThirty";
 import NextFifteen from "./components/NextFifteen/NextFifteen";
 import NextTwelve from "./components/NextTwelve/NextTwelve";
 import CookieConsent from "./components/CookieConsent/CookieConsent";
+import AuthSessionNotice from "./components/AuthSessionNotice/AuthSessionNotice";
 import ModelComparison from "./components/ModelComparison/ModelComparison";
 import UsageAnalytics from "./components/UsageAnalytics/UsageAnalytics";
 import ModelExplorer from "./components/ModelExplorer/ModelExplorer";
@@ -157,7 +158,7 @@ export default function App() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [pathname]);
   return (
-    <><GoogleRedirectRecoveryGate /><CommandPalette /><CookieConsent /><Routes>
+    <><GoogleRedirectRecoveryGate /><CommandPalette /><CookieConsent /><AuthSessionNotice /><Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/auth/callback" element={<SocialAuthCallback />} />
       <Route path="/auth/:provider" element={<SocialAuthCallback />} />

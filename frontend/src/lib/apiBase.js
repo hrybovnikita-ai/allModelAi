@@ -36,6 +36,17 @@ export function getCapacitorPlatform() {
   }
 }
 
+function isPrivateLanHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  if (!host) return false;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') return true;
+  if (host.endsWith('.local')) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+  return false;
+}
+
 /** True when the page is Vite (or preview) on loopback — use relative /api and the dev proxy. */
 export function isBrowserLocalhostDev(location = typeof window !== 'undefined' ? window.location : null) {
   if (!location) return false;
@@ -241,9 +252,18 @@ export function getApiBase() {
   return '';
 }
 
+const VITE_LAN_DEV_PORTS = new Set(['5173', '5174', '4173']);
+
 /** True when Vite dev server should keep relative /api paths (local proxy). */
 export function isViteDevServerHost(location = typeof window !== 'undefined' ? window.location : null) {
-  return isBrowserLocalhostDev(location);
+  if (isBrowserLocalhostDev(location)) return true;
+  if (!location) return false;
+  const protocol = String(location.protocol || '').toLowerCase();
+  if (protocol !== 'http:' && protocol !== 'https:') return false;
+  const hostname = String(location.hostname || '').toLowerCase();
+  const port = String(location.port || '');
+  if (!isPrivateLanHost(hostname) || !port) return false;
+  return VITE_LAN_DEV_PORTS.has(port);
 }
 
 /**

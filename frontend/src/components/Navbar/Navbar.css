@@ -84,10 +84,43 @@
 }
 
 .nav-auth-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   color: rgba(255, 255, 255, 0.72);
   font-size: 0.82rem;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.nav-auth-spinner {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(148, 163, 184, 0.35);
+  border-top-color: #a5b4fc;
+  animation: nav-auth-spin 0.75s linear infinite;
+}
+
+@keyframes nav-auth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .nav-auth-loading-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 
 .nav-user {

@@ -10,7 +10,6 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use((config) => {
   Object.assign(config.headers, nativeClientHeaders());
-
   const url = config.url || '';
   if (!url) return config;
 
@@ -22,5 +21,18 @@ apiClient.interceptors.request.use((config) => {
 
   return config;
 });
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const status = error.response?.status;
+    const url = error.config?.url || '';
+    if (status === 401 && !error.config?.skipAuthRedirect) {
+      const { handleUnauthorizedApiResponse } = await import('./clientAuthReset.js');
+      await handleUnauthorizedApiResponse(url);
+    }
+    return Promise.reject(error);
+  },
+);
 
 export default apiClient;

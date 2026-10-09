@@ -47,7 +47,10 @@ test('Google creates one SQL account, restores avatar/name and revokes the cooki
   assert.match(cookie, /HttpOnly/); assert.match(cookie, /SameSite=Lax/);
   assert.equal((await request(app).get('/api/auth/session').set('Cookie', cookie)).status, 200);
   await agent.post('/api/auth/logout');
-  assert.equal((await request(app).get('/api/auth/session').set('Cookie', cookie)).status, 401);
+  const expiredSession = await request(app).get('/api/auth/session').set('Cookie', cookie);
+  assert.equal(expiredSession.status, 200);
+  assert.equal(expiredSession.body.authenticated, false);
+  assert.equal(expiredSession.body.user, null);
   const again = await login(agent, 'google-new');
   assert.equal(again.body.user.id, result.body.user.id);
   assert.equal(db.prepare('SELECT count(*) AS n FROM users WHERE email = ?').get('google-new@example.com').n, 1);
@@ -57,7 +60,9 @@ test('invalid, expired, revoked, stale, unsupported and unverified tokens cannot
     const agent = request.agent(app);
     const result = await login(agent, value);
     assert.ok([401, 403].includes(result.status), JSON.stringify(result.body));
-    assert.equal((await agent.get('/api/auth/session')).status, 401);
+    const guest = await agent.get('/api/auth/session');
+    assert.equal(guest.status, 200);
+    assert.equal(guest.body.user, null);
   }
 });
 test('verified provider email links to existing password account and preserves data', async () => {

@@ -470,6 +470,8 @@ const googleCallback = (req, res) => res.status(410).send('This sign-in callback
 
 const { lookupSessionUser } = require('../middleware/auth');
 
+const guestSessionPayload = () => ({ user: null, authenticated: false });
+
 const getSession = async (req, res) => {
     let token = readSessionToken(req);
     if (!token) {
@@ -484,6 +486,7 @@ const getSession = async (req, res) => {
                     if (dbUser) {
                         authLog('SESSION_RESPONSE_SENT', { source: 'firebase-bearer' });
                         return res.status(200).json({
+                            authenticated: true,
                             user: {
                                 id: dbUser.id,
                                 name: dbUser.name,
@@ -497,7 +500,8 @@ const getSession = async (req, res) => {
                 authLog('SESSION_LOOKUP_FAILED', { source: 'firebase-bearer', code: error.code || 'unknown' });
             }
         }
-        return res.status(401).json({ message: 'No active session' });
+        authLog('SESSION_RESPONSE_SENT', { guest: true });
+        return res.status(200).json(guestSessionPayload());
     }
     authLog('SESSION_LOOKUP_START');
     const lookupStartedAt = Date.now();
@@ -507,9 +511,14 @@ const getSession = async (req, res) => {
             durationMs: Date.now() - lookupStartedAt,
             found: Boolean(user),
         });
-        if (!user) return res.status(401).json({ message: 'Session expired' });
+        if (!user) {
+            res.clearCookie(sessionCookie, sessionCookieOptions(req));
+            authLog('SESSION_RESPONSE_SENT', { guest: true, expired: true });
+            return res.status(200).json(guestSessionPayload());
+        }
         authLog('SESSION_RESPONSE_SENT');
         return res.status(200).json({
+            authenticated: true,
             user: {
                 id: user.id,
                 name: user.name,
@@ -1038,23 +1047,40 @@ const createCheckoutSession = async (req, res) => {
         return res.status(201).json({ developerAccess: true, purchase, redirectUrl: `${frontendOrigin(req)}/checkout?success=developer&plan=developer` });
     }
     if (plan.amount === 0) return res.status(403).json({ message: 'The Developer plan is available only to configured developer accounts.' });
+    const { stripeConfigurationReport, publishableKeyFromEnv } = require('../payments/stripeConfig');
+    const stripeConfig = stripeConfigurationReport({ planKey });
     const stripeGuard = assertStripeCheckoutAllowed();
     if (!stripeGuard.ok) {
-        return res.status(503).json({ message: stripeGuard.message, code: stripeGuard.code });
+        return res.status(503).json({
+            message: stripeGuard.message,
+            code: stripeGuard.code,
+            missingEnvVars: stripeConfig.missing,
+        });
+    }
+    if (!stripeConfig.ok) {
+        return res.status(503).json({
+            message: stripeConfig.message || 'Stripe is not fully configured on the server.',
+            code: stripeConfig.code || 'STRIPE_INCOMPLETE_CONFIG',
+            missingEnvVars: stripeConfig.missing,
+        });
     }
     if (wayforpayCheckoutAvailable() && !shouldPreferStripeOverWayforpay()) {
         return res.status(409).json({
-            message: 'Paid plan checkout uses WayForPay. Use /api/payments/wayforpay/create.',
+            message: 'Paid plan checkout uses WayForPay. Set PAYMENT_PROVIDER=stripe (or STRIPE_CHECKOUT_WHEN_WAYFORPAY=true) to use Stripe.',
             primaryProvider: 'wayforpay',
             useWayforpay: true,
         });
     }
     if (!stripeCheckoutEnabled()) {
-        return res.status(503).json({ message: 'Stripe checkout is not enabled for this deployment.' });
+        return res.status(503).json({
+            message: 'Stripe checkout is not enabled for this deployment. Set PAYMENT_PROVIDER=stripe and configure Stripe keys.',
+            code: 'STRIPE_CHECKOUT_DISABLED',
+            missingEnvVars: stripeConfig.missing,
+        });
     }
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
     const checkoutOrigin = frontendOrigin(req);
-    const embedded = req.body.embedded === true || req.body.flow === 'embedded';
+    const embedded = req.body.embedded !== false && req.body.flow !== 'hosted';
     await ensureStripePaymentMethodDomain(stripe, checkoutOrigin);
     const configuredPriceId = stripePriceIdForPlan(planKey);
     const lineItems = configuredPriceId
@@ -1072,17 +1098,20 @@ const createCheckoutSession = async (req, res) => {
             },
         }];
     const testMode = isStripeTestMode();
+    const planSlug = planSlugForKey(planKey);
+    const successReturn = `${checkoutOrigin}/checkout/success?plan=${encodeURIComponent(planSlug)}&session_id={CHECKOUT_SESSION_ID}`;
     const sessionParams = {
         mode: 'subscription',
         customer_email: email,
         client_reference_id: String(req.user.id),
-        billing_address_collection: 'required',
+        billing_address_collection: 'auto',
         phone_number_collection: { enabled: false },
         ...stripeCheckoutWalletOptions(),
         line_items: lineItems,
         metadata: {
             email,
             plan: planKey,
+            checkoutSlug: planSlug,
             userName: req.user.name || 'Subscriber',
             isTestMode: testMode ? 'true' : 'false',
         },
@@ -1090,30 +1119,40 @@ const createCheckoutSession = async (req, res) => {
     };
     if (embedded) {
         sessionParams.ui_mode = 'custom';
-        sessionParams.return_url = `${checkoutOrigin}/checkout?success=1&session_id={CHECKOUT_SESSION_ID}`;
+        sessionParams.return_url = successReturn;
     } else {
-        sessionParams.success_url = `${checkoutOrigin}/checkout?success=1&session_id={CHECKOUT_SESSION_ID}`;
-        sessionParams.cancel_url = `${checkoutOrigin}/checkout/cancel?plan=${encodeURIComponent(planSlugForKey(planKey))}`;
+        sessionParams.success_url = successReturn;
+        sessionParams.cancel_url = `${checkoutOrigin}/checkout/cancel?plan=${encodeURIComponent(planSlug)}`;
     }
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    const idempotencyKey = `amai_cs_${req.user.id}_${planKey}_${Math.floor(Date.now() / 5000)}`;
+    const session = await stripe.checkout.sessions.create(sessionParams, { idempotencyKey });
+    const publishableKey = publishableKeyFromEnv();
     if (embedded) {
         return res.status(201).json({
             clientSecret: session.client_secret,
             sessionId: session.id,
             embedded: true,
+            publishableKey,
+            plan: planSlug,
             stripeTestMode: testMode,
         });
     }
-    return res.status(201).json({ checkoutUrl: session.url, stripeTestMode: testMode });
+    return res.status(201).json({ checkoutUrl: session.url, stripeTestMode: testMode, publishableKey });
 };
 
 const getPaymentConfig = (_req, res) => {
-    const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY?.trim()
-        || process.env.VITE_STRIPE_PUBLISHABLE_KEY?.trim()
-        || null;
+    const { publishableKeyFromEnv, stripeConfigurationReport } = require('../payments/stripeConfig');
+    const publishableKey = publishableKeyFromEnv() || null;
+    const stripeConfig = stripeConfigurationReport();
     return res.json({
         ...buildCheckoutInfo(),
         publishableKey,
+        stripeConfiguration: {
+            ok: stripeConfig.ok,
+            missingEnvVars: stripeConfig.missing,
+            testMode: stripeConfig.testMode,
+            webhookConfigured: stripeConfig.webhookConfigured,
+        },
         wallets: { applePay: true, googlePay: true },
     });
 };

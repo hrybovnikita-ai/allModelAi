@@ -1,6 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+test('firebaseConfig module exposes allmodelai.firebaseapp.com as default auth domain', async () => {
+  const { DEFAULT_FIREBASE_AUTH_DOMAIN, getFirebaseConfig } = await import('../src/lib/firebaseConfig.js');
+  const { applyRuntimeFirebaseConfig } = await import('../src/lib/firebase.js');
+  assert.equal(DEFAULT_FIREBASE_AUTH_DOMAIN, 'allmodelai.firebaseapp.com');
+  applyRuntimeFirebaseConfig({
+    apiKey: 'AIzaSyRuntimeKey123456789012345',
+    authDomain: 'allmodelai.firebaseapp.com',
+    projectId: 'allmodelai',
+    appId: '1:123456789:web:abcdef123456',
+  });
+  assert.equal(getFirebaseConfig().authDomain, 'allmodelai.firebaseapp.com');
+});
+
 test('firebase config documents VITE_ environment variable names', async () => {
   const { getFirebaseConfigEnvKeys } = await import('../src/lib/firebase.js');
   assert.deepEqual(getFirebaseConfigEnvKeys(), {

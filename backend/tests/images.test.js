@@ -2,7 +2,7 @@ const { test, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { generateImage, upscaleGeneratedImage } = require('../src/images');
 const originalFetch = global.fetch;
-const names = ['IMAGE_API_KEY','OPENAI_API_KEY','OPEN_AI_API_KEY','API_IMAGE_KEY','IMAGE_API_URL','IMAGE_PROVIDER','IMAGE_MODEL','CLOUDFLARE_ACCOUNT_ID','CLOUDFLARE_API_KEY','CLAUDEFLARE_API_KEY','CLOUDFLARE_IMAGE_MODEL','POLLINATIONS_API_KEY','POLINATIONS_API_KEY','POLLINATIONS_IMAGE_MODEL','POLLINATIONS_HD_MODEL','POLLINATIONS_ULTRA_MODEL','UPSCALE_API_URL','UPSCALE_API_KEY'];
+const names = ['IMAGE_API_KEY','OPENAI_API_KEY','OPEN_AI_API_KEY','API_IMAGE_KEY','IMAGE_API_URL','IMAGE_PROVIDER','IMAGE_MODEL','CLOUDFLARE_ACCOUNT_ID','CLOUDFLARE_API_KEY','CLAUDEFLARE_API_KEY','CLOUDFLARE_IMAGE_MODEL','POLLINATIONS_API_KEY','POLINATIONS_API_KEY','POLLINATIONS_IMAGE_MODEL','POLLINATIONS_HD_MODEL','POLLINATIONS_ULTRA_MODEL','UPSCALE_API_URL','UPSCALE_API_KEY','COMFY_CLOUD_API_KEY','COMFY_CLOUD_BASE_URL','COMFY_CLOUD_POLL_INTERVAL_MS','COMFY_CLOUD_JOB_TIMEOUT_MS'];
 const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
 function clear() { names.forEach(name => delete process.env[name]); }
 afterEach(() => { global.fetch = originalFetch; clear(); for (const [name,value] of Object.entries(saved)) if (value !== undefined) process.env[name] = value; });
@@ -15,6 +15,19 @@ test('validates prompts before calling the provider', async () => {
     clear(); global.fetch = () => { throw new Error('must not fetch'); };
     for (const prompt of ['', ' ', {}, 'a'.repeat(4001)]) assert.equal((await generate(prompt)).statusCode, 400);
 });
+test('accepts POLINATIONS_API_KEY typo alias for Pollinations', async () => {
+    clear();
+    delete process.env.POLLINATIONS_API_KEY;
+    process.env.POLINATIONS_API_KEY = 'sk_pollinations_typo_alias';
+    global.fetch = async (_url, options) => {
+        assert.equal(options.headers.Authorization, 'Bearer sk_pollinations_typo_alias');
+        return Response.json({ data: [{ b64_json: 'aGVsbG8=' }] });
+    };
+    const result = await generate();
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.provider, 'pollinations');
+});
+
 test('uses Pollinations when sk_ pollinations key is configured', async () => {
     clear(); process.env.POLLINATIONS_API_KEY = 'sk_pollinations_test';
     global.fetch = async (url, options) => {
@@ -54,7 +67,8 @@ test('does not send an OpenRouter key to OpenAI', async () => {
     clear(); process.env.API_IMAGE_KEY = 'sk-or-test';
     const result = await generate();
     assert.equal(result.statusCode, 503);
-    assert.equal(result.body.code, 'IMAGE_GENERATION_UNAVAILABLE');
+    assert.equal(result.body.code, 'IMAGE_NOT_CONFIGURED');
+    assert.ok(Array.isArray(result.body.missingEnvVars));
 });
 test('Cloudflare requires an account and handles its image response', async () => {
     clear(); process.env.IMAGE_PROVIDER = 'cloudflare'; process.env.CLAUDEFLARE_API_KEY = 'cf-test';
@@ -87,7 +101,7 @@ test('handles rejected keys, quotas and malformed responses without leaking secr
     global.fetch = async () => Response.json({ data: [{ url: 'javascript:alert(1)' }] });
     assert.equal((await generate()).statusCode, 503);
     global.fetch = async () => { throw new DOMException('timeout', 'TimeoutError'); };
-    assert.equal((await generate()).statusCode, 503);
+    assert.equal((await generate()).statusCode, 504);
 });
 
 test('maps HD and Ultra to supported Pollinations models and sizes', async () => {

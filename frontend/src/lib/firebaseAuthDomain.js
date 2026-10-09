@@ -1,3 +1,6 @@
+/** Default Firebase Auth host (Google OAuth / __/auth/handler). */
+export const DEFAULT_FIREBASE_AUTH_DOMAIN = 'allmodelai.firebaseapp.com';
+
 export function isUsableFirebaseConfigValue(value) {
   const trimmed = String(value || '').trim();
   if (!trimmed) return false;
@@ -6,9 +9,13 @@ export function isUsableFirebaseConfigValue(value) {
   return true;
 }
 
+function isFirebaseAppDomain(domain) {
+  return /\.firebaseapp\.com$/i.test(String(domain || '').trim());
+}
+
 /**
  * @param {string} configuredAuthDomain
- * @param {{ envAuthDomain?: string, customAuthDomainEnabled?: boolean, hostedHostname?: string }} [options]
+ * @param {{ envAuthDomain?: string, customAuthDomainEnabled?: boolean, hostedHostname?: string, preferHostedAuthDomainWhenProxied?: boolean }} [options]
  */
 export function resolveAuthDomainForRuntime(configuredAuthDomain, options = {}) {
   const configured = String(configuredAuthDomain || '').trim();
@@ -19,19 +26,22 @@ export function resolveAuthDomainForRuntime(configuredAuthDomain, options = {}) 
     return envDomain;
   }
 
-  if (hosted) {
-    if (options.customAuthDomainEnabled) {
-      return hosted;
-    }
-    // Hosted SPA with /__/auth proxy (e.g. Vercel → firebaseapp.com): OAuth must use the site hostname.
-    if (
-      options.preferHostedAuthDomainWhenProxied
-      && configured.endsWith('.firebaseapp.com')
-      && !hosted.endsWith('.firebaseapp.com')
-    ) {
-      return hosted;
-    }
+  if (hosted && options.customAuthDomainEnabled) {
+    return hosted;
   }
 
-  return configured;
+  if (
+    options.preferHostedAuthDomainWhenProxied
+    && hosted
+    && isFirebaseAppDomain(configured)
+    && !isFirebaseAppDomain(hosted)
+  ) {
+    return hosted;
+  }
+
+  if (isUsableFirebaseConfigValue(configured)) {
+    return configured;
+  }
+
+  return DEFAULT_FIREBASE_AUTH_DOMAIN;
 }

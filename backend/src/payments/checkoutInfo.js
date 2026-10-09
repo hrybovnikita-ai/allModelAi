@@ -8,11 +8,13 @@ const {
     wayforpayCheckoutEnabledForDeployment,
     stripePaymentsConfigured,
 } = require('./paymentProvider');
+const { stripeConfigurationReport } = require('./stripeConfig');
 
 const TEST_MODE_BANNER = 'TEST MODE — No real money will be charged';
 
 const buildCheckoutInfo = () => {
     const stripeGuard = assertStripeCheckoutAllowed();
+    const stripeConfig = stripeConfigurationReport();
     const stripeKeyPresent = Boolean(process.env.STRIPE_SECRET_KEY?.trim());
     const stripeOn = stripePaymentsConfigured();
     const wayforpayOn = wayforpayCheckoutAvailable();
@@ -38,6 +40,8 @@ const buildCheckoutInfo = () => {
             : 'Payments are not configured. Add WayForPay or Stripe credentials on the server.';
     } else if (primaryProvider === 'stripe' && stripeKeyPresent && !stripeGuard.ok) {
         checkoutUnavailableMessage = stripeGuard.message;
+    } else if (primaryProvider === 'stripe' && !stripeConfig.ok) {
+        checkoutUnavailableMessage = stripeConfig.message || checkoutUnavailableMessage;
     }
 
     return {
@@ -53,6 +57,12 @@ const buildCheckoutInfo = () => {
         stripeTestMode,
         stripeCheckoutBlocked: stripeKeyPresent && !stripeGuard.ok,
         stripeCheckoutBlockedMessage: stripeGuard.ok ? null : stripeGuard.message,
+        stripeConfiguration: {
+            ok: stripeConfig.ok,
+            missingEnvVars: stripeConfig.missing,
+            testMode: stripeConfig.testMode,
+            webhookConfigured: stripeConfig.webhookConfigured,
+        },
         wayforpayConfigured: wayforpayConfigured(),
         wayforpayCheckoutAvailable: wayforpayOn,
         wayforpayCheckoutEnabled: wayforpayCheckoutEnabledForDeployment(),

@@ -14,12 +14,11 @@ export default function DashboardWorkspaceNav({ user: routeUser, onAuthError, on
   const user = routeUser?.email ? routeUser : sessionUser;
 
   const signOut = async () => {
-    try {
-      await performLogout();
-      navigate('/', { replace: true });
-    } catch (error) {
-      onAuthError?.(error.message);
+    const result = await performLogout();
+    if (result.warning) {
+      onAuthError?.(result.warning);
     }
+    navigate('/', { replace: true });
   };
 
   if (authLoading && !user?.email) {

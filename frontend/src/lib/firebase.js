@@ -9,13 +9,16 @@ import {
   setPersistence,
 } from 'firebase/auth';
 import { ensureFirebaseSocialConfigLoaded } from './loadFirebaseConfig.js';
-import { getBrowserApiOrigin, getPublicAppOrigin, isBrowserLocalhostDev, isHostedWebApp } from './apiBase.js';
+import { getBrowserApiOrigin, getPublicAppOrigin, isHostedWebApp } from './apiBase.js';
 import { isMobileWebSafari } from './socialSignInEnv.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
 import {
+  DEFAULT_FIREBASE_AUTH_DOMAIN,
   isUsableFirebaseConfigValue as isUsableFirebaseConfigValueCore,
   resolveAuthDomainForRuntime as resolveAuthDomainCore,
 } from './firebaseAuthDomain.js';
+
+export { DEFAULT_FIREBASE_AUTH_DOMAIN };
 
 const CONFIG_ENV_KEYS = {
   apiKey: 'VITE_FIREBASE_API_KEY',
@@ -27,11 +30,17 @@ const CONFIG_ENV_KEYS = {
 let runtimeFirebaseConfig = null;
 let auth;
 
+function readFirebaseAuthDomainFromEnv(viteEnv) {
+  return viteEnv.VITE_FIREBASE_AUTH_DOMAIN
+    || viteEnv.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    || '';
+}
+
 function readViteFirebaseEnv() {
   const viteEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
   return {
     apiKey: viteEnv.VITE_FIREBASE_API_KEY,
-    authDomain: viteEnv.VITE_FIREBASE_AUTH_DOMAIN,
+    authDomain: readFirebaseAuthDomainFromEnv(viteEnv),
     projectId: viteEnv.VITE_FIREBASE_PROJECT_ID,
     appId: viteEnv.VITE_FIREBASE_APP_ID,
   };
@@ -65,16 +74,17 @@ function hostedSiteAuthDomain() {
 
 /**
  * authDomain must match where /__/auth/handler is served (custom domain + proxy, or *.firebaseapp.com).
- * Set VITE_FIREBASE_AUTH_DOMAIN=all-model-ai.com in production, or VITE_FIREBASE_CUSTOM_AUTH_DOMAIN=true.
+ * Default: VITE_FIREBASE_AUTH_DOMAIN=allmodelai.firebaseapp.com (recommended for popup/redirect sign-in).
+ * Custom site domain only when VITE_FIREBASE_CUSTOM_AUTH_DOMAIN=true and /__/auth is proxied on that host.
  */
 export function resolveAuthDomainForRuntime(configuredAuthDomain) {
   const viteEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
-  const onHostedWeb = isHostedWebApp() && !isBrowserLocalhostDev();
+  const customAuth = isCustomAuthDomainEnabled();
   return resolveAuthDomainCore(configuredAuthDomain, {
-    envAuthDomain: viteEnv.VITE_FIREBASE_AUTH_DOMAIN,
-    customAuthDomainEnabled: isCustomAuthDomainEnabled(),
+    envAuthDomain: readFirebaseAuthDomainFromEnv(viteEnv),
+    customAuthDomainEnabled: customAuth,
     hostedHostname: hostedSiteAuthDomain(),
-    preferHostedAuthDomainWhenProxied: onHostedWeb,
+    preferHostedAuthDomainWhenProxied: customAuth,
   });
 }
 
@@ -88,6 +98,9 @@ export function buildFirebaseClientConfig() {
     appId: pickField(fromEnv.appId, runtime.appId),
   };
   merged.authDomain = resolveAuthDomainForRuntime(merged.authDomain);
+  if (!isUsableFirebaseConfigValue(merged.authDomain)) {
+    merged.authDomain = DEFAULT_FIREBASE_AUTH_DOMAIN;
+  }
   return merged;
 }
 
@@ -151,13 +164,11 @@ function stripPublicOrigin(value) {
   }
 }
 
+/** Prefer localStorage persistence so sessions survive reloads and app switches on mobile & desktop. */
 function persistenceChainForInit() {
-  if (isMobileWebSafari()) {
-    return [browserLocalPersistence, browserSessionPersistence, inMemoryPersistence];
-  }
   return [
-    indexedDBLocalPersistence,
     browserLocalPersistence,
+    indexedDBLocalPersistence,
     browserSessionPersistence,
     inMemoryPersistence,
   ];
@@ -192,9 +203,20 @@ function initializeSocialAuth(app) {
   return instance;
 }
 
-/** local → session → in-memory (Safari Private Browsing safe). */
+/** browserLocal → indexedDB → session → in-memory (Private Browsing safe). */
 export async function applyAuthPersistenceSafely(instance) {
-  const chain = persistenceChainForInit();
+  try {
+    await setPersistence(instance, browserLocalPersistence);
+    socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: 'browserLocal', phase: 'setPersistence' });
+    authRecoveryLog('Persistence ready before redirect checks', {
+      persistence: 'browserLocal',
+      safari: isMobileWebSafari(),
+    });
+    return 'browserLocal';
+  } catch {
+    /* fall through to chain */
+  }
+  const chain = persistenceChainForInit().filter((p) => p !== browserLocalPersistence);
   for (const persistence of chain) {
     try {
       await setPersistence(instance, persistence);

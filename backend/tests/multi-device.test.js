@@ -46,7 +46,9 @@ test('two devices share one account and history while keeping independent sessio
         assert.equal((await desktop.get('/api/auth/session')).status, 200);
         assert.equal((await phone.get('/api/auth/session')).status, 200);
         assert.equal((await desktop.post('/api/auth/logout')).status, 204);
-        assert.equal((await desktop.get('/api/auth/session')).status, 401);
+        const revoked = await desktop.get('/api/auth/session');
+        assert.equal(revoked.status, 200);
+        assert.equal(revoked.body.user, null);
         assert.equal((await phone.get('/api/auth/session')).status, 200);
     } finally {
         process.env.NODE_ENV = 'test';

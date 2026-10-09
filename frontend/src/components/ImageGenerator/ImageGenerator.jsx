@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { checkChatResponse } from '../../lib/api';
 import {
   ASPECT_LABELS,
   buildImageRequestBody,
@@ -9,6 +8,7 @@ import {
   IMAGE_QUALITIES,
   IMAGE_STYLES,
   imageProviderLabel,
+  IMAGE_NOT_CONFIGURED_MESSAGE,
   QUALITY_LABELS,
   requestImageGeneration,
   requestImageUpscale,
@@ -61,10 +61,8 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
     });
 
     try {
-      const response = await requestImageGeneration(body, controller.signal);
-      await checkChatResponse(response);
-      const result = await response.json();
-      if (!result.imageUrl) throw new Error('The service did not return an image. Please retry.');
+      const result = await requestImageGeneration(body, controller.signal);
+      if (!result?.imageUrl) throw new Error('The service did not return an image. Please retry.');
       if (!editText && !useOriginalPrompt) {
         originalPromptRef.current = userPrompt;
       }
@@ -127,6 +125,18 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
   };
 
   const showUpscale = Boolean(providerStatus?.upscaleSupported || image?.upscaleSupported);
+  const aspects = providerStatus?.aspects?.length
+    ? IMAGE_ASPECTS.filter((item) => providerStatus.aspects.includes(item.id))
+    : IMAGE_ASPECTS;
+  const qualities = providerStatus?.qualities?.length
+    ? IMAGE_QUALITIES.filter((item) => providerStatus.qualities.includes(item.id))
+    : IMAGE_QUALITIES;
+  const serverConfigured = providerStatus?.configured !== false;
+  const configHint = !serverConfigured && providerStatus?.configuration?.missingEnvVars?.length
+    ? `${IMAGE_NOT_CONFIGURED_MESSAGE} Required: ${providerStatus.configuration.missingEnvVars.join('; ')}.`
+    : !serverConfigured
+      ? IMAGE_NOT_CONFIGURED_MESSAGE
+      : '';
 
   return (
     <dialog ref={dialog} className="image-generator-dialog" aria-labelledby="image-generator-title" onCancel={onClose}>
@@ -140,6 +150,10 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
         </div>
         <button type="button" onClick={onClose} aria-label="Close image generator">×</button>
       </header>
+
+      {configHint && (
+        <p className="image-generator-config-notice" role="status">{configHint}</p>
+      )}
 
       <form onSubmit={generate}>
         <label htmlFor="image-description">Image description</label>
@@ -166,7 +180,7 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
           <label>
             Format
             <select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value)} aria-label="Image format">
-              {IMAGE_ASPECTS.map((item) => (
+              {aspects.map((item) => (
                 <option key={item.id} value={item.id}>{item.label}</option>
               ))}
             </select>
@@ -174,20 +188,32 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
           <label>
             Quality
             <select value={quality} onChange={(event) => setQuality(event.target.value)} aria-label="Quality">
-              {IMAGE_QUALITIES.map((item) => (
+              {qualities.map((item) => (
                 <option key={item.id} value={item.id}>{item.label}</option>
               ))}
             </select>
           </label>
         </div>
 
-        <button type="submit" disabled={busy || !prompt.trim()}>
+        <button type="submit" className="image-generator-primary" disabled={busy || !prompt.trim() || !serverConfigured}>
           {busy ? 'Creating image…' : 'Generate image'}
         </button>
       </form>
 
-      {busy && <p role="status">Generation may take a few minutes. Higher quality takes longer.</p>}
-      {error && <p role="alert">{error}</p>}
+      {busy && (
+        <div className="image-generator-loading" role="status" aria-live="polite">
+          <span className="image-generator-spinner" aria-hidden="true" />
+          <p>Creating your image… This may take up to a few minutes for HD or Ultra.</p>
+        </div>
+      )}
+      {error && (
+        <div className="image-generator-error">
+          <p role="alert">{error}</p>
+          <button type="button" disabled={busy || !serverConfigured} onClick={() => runGeneration()}>
+            Retry generation
+          </button>
+        </div>
+      )}
 
       {image && (
         <figure className="image-generator-result">

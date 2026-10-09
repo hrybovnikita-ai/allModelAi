@@ -9,6 +9,7 @@ const {
     extractPollinationsErrorMessage,
     resolveImageProvider,
 } = require('../pollinations');
+const { ComfyCloudError, generateComfyCloudImage, isComfyCloudConfigured } = require('../comfyCloud');
 const {
     buildImageGenerationPlan,
     redactSecrets,
@@ -50,13 +51,23 @@ const getCloudflareCredentials = () => ({
     key: strip(process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY || process.env.API_IMAGE_KEY),
 });
 
+const normalizeImageProviderId = (provider) => {
+    const key = strip(provider).toLowerCase();
+    if (key === 'comfy' || key === 'comfy_cloud' || key === 'comfy-cloud') return 'comfy-cloud';
+    return key;
+};
+
+const IMAGE_PROVIDER_IDS = ['comfy-cloud', 'pollinations', 'openai', 'cloudflare'];
+
 const isProviderConfigured = (provider) => {
-    if (provider === 'pollinations') {
+    const id = normalizeImageProviderId(provider);
+    if (id === 'comfy-cloud') return isComfyCloudConfigured();
+    if (id === 'pollinations') {
         const key = getPollinationsApiKey();
         return Boolean(key && isPollinationsKey(key));
     }
-    if (provider === 'openai') return Boolean(getOpenAiImageKey());
-    if (provider === 'cloudflare') {
+    if (id === 'openai') return Boolean(getOpenAiImageKey());
+    if (id === 'cloudflare') {
         const { account, key } = getCloudflareCredentials();
         return Boolean(account && key);
     }
@@ -64,24 +75,23 @@ const isProviderConfigured = (provider) => {
 };
 
 const listConfiguredImageProviders = () => {
-    const explicit = strip(process.env.IMAGE_PROVIDER).toLowerCase();
+    let explicit = normalizeImageProviderId(process.env.IMAGE_PROVIDER);
     const ordered = [];
     const pushUnique = (name) => {
-        if (!name || ordered.includes(name)) return;
-        if (isProviderConfigured(name)) ordered.push(name);
+        const id = normalizeImageProviderId(name);
+        if (!id || ordered.includes(id)) return;
+        if (isProviderConfigured(id)) ordered.push(id);
     };
 
-    if (explicit && ['pollinations', 'openai', 'cloudflare'].includes(explicit)) {
+    if (explicit && IMAGE_PROVIDER_IDS.includes(explicit)) {
         pushUnique(explicit);
-        ['pollinations', 'openai', 'cloudflare'].forEach((name) => {
+        IMAGE_PROVIDER_IDS.forEach((name) => {
             if (name !== explicit) pushUnique(name);
         });
         return ordered;
     }
 
-    pushUnique('pollinations');
-    pushUnique('openai');
-    pushUnique('cloudflare');
+    IMAGE_PROVIDER_IDS.forEach((name) => pushUnique(name));
     return ordered;
 };
 
@@ -101,6 +111,13 @@ const logImage = (message, extra) => {
         return;
     }
     console.log(`${LOG_PREFIX} ${message}`);
+};
+
+/** Try the next configured provider unless this failure invalidates the whole request. */
+const shouldAdvanceToNextProvider = (result, providerIndex, providerCount) => {
+    if (result.ok) return false;
+    if (result.status === 400) return false;
+    return providerIndex < providerCount - 1;
 };
 
 const mimeFromImageUrl = (imageUrl, base64) => {
@@ -161,6 +178,42 @@ async function generateWithProvider(provider, {
 
     const { account, key: cloudflareKey } = getCloudflareCredentials();
     const openAiKey = getOpenAiImageKey();
+
+    if (provider === 'comfy-cloud') {
+        try {
+            const result = await generateComfyCloudImage({
+                prompt: generationPrompt,
+                size: plan.size,
+                quality: plan.quality,
+            });
+            if (!safeImageUrl(result.imageUrl)) {
+                return {
+                    ok: false,
+                    retryable: true,
+                    status: 502,
+                    internalMessage: 'Comfy Cloud returned no image payload',
+                    provider: 'comfy-cloud',
+                };
+            }
+            return {
+                ok: true,
+                imageUrl: result.imageUrl,
+                mimeType: result.mimeType,
+                plan: { ...plan, model: result.model || plan.model },
+                provider: 'comfy-cloud',
+            };
+        } catch (error) {
+            const comfy = error instanceof ComfyCloudError ? error : null;
+            const status = comfy?.status || 502;
+            return {
+                ok: false,
+                retryable: status !== 400,
+                status,
+                internalMessage: redactSecrets(error.message),
+                provider: 'comfy-cloud',
+            };
+        }
+    }
 
     if (provider === 'pollinations') {
         const { response, data, model: pollinationsModel } = await generatePollinationsImage(
@@ -314,17 +367,14 @@ async function generateImageWithFallback({
                 detail: process.env.NODE_ENV === 'production' ? undefined : redactSecrets(result.internalMessage),
             });
 
-            if (!result.retryable) {
-                if (result.status === 400) {
-                    return {
-                        ok: false,
-                        clientStatus: 400,
-                        body: { message: result.internalMessage || 'Invalid image generation request.' },
-                    };
-                }
-                break;
+            if (result.status === 400) {
+                return {
+                    ok: false,
+                    clientStatus: 400,
+                    body: { message: result.internalMessage || 'Invalid image generation request.' },
+                };
             }
-            if (index >= providers.length - 1) {
+            if (!shouldAdvanceToNextProvider(result, index, providers.length)) {
                 break;
             }
             logImage('Trying fallback provider');
@@ -339,7 +389,9 @@ async function generateImageWithFallback({
             logImage(`${provider} failed: ${error.name}`, {
                 detail: process.env.NODE_ENV === 'production' ? undefined : redactSecrets(error.message),
             });
-            if (!retryable || index >= providers.length - 1) break;
+            if (!shouldAdvanceToNextProvider({ ok: false, status: error.name === 'TimeoutError' ? 504 : 502 }, index, providers.length)) {
+                break;
+            }
             logImage('Trying fallback provider');
         }
     }
@@ -352,13 +404,28 @@ async function generateImageWithFallback({
         })));
     }
 
+    const hadTimeout = attempts.some((a) => a.status === 504);
+    const authFailure = attempts.find((a) => a.status === 403 || a.status === 401);
+    let message = USER_UNAVAILABLE_MESSAGE;
+    if (hadTimeout) {
+        message = 'Image generation timed out. Try again with Standard quality or a shorter prompt.';
+    } else if (authFailure && attempts.length === 1) {
+        message = 'The primary image provider rejected the server API key. Check Comfy Cloud billing/tier or configure a fallback provider (Pollinations / OpenAI).';
+    }
+    const allAuthBlocked = attempts.length > 0 && attempts.every((a) => a.status === 401 || a.status === 403);
     return {
         ok: false,
-        clientStatus: 503,
+        clientStatus: hadTimeout ? 504 : (authFailure?.status === 500 ? 500 : 502),
         body: {
             success: false,
-            code: FAILURE_CODE,
-            message: USER_UNAVAILABLE_MESSAGE,
+            code: authFailure?.status === 500 ? 'COMFY_CLOUD_NOT_CONFIGURED' : FAILURE_CODE,
+            message: allAuthBlocked && attempts.length > 1
+                ? 'Image providers rejected the server API keys. Check Comfy Cloud tier and Pollinations/OpenAI keys on the server.'
+                : message,
+            retryable: true,
+            attempts: process.env.NODE_ENV === 'production'
+                ? undefined
+                : attempts.map((a) => ({ provider: a.provider, status: a.status })),
         },
     };
 }

@@ -72,13 +72,16 @@ test('performLogout treats missing session (401) as successful sign-out', async 
   assert.equal(globalThis.localStorage.getItem('allmodelai_user'), null);
 });
 
-test('performLogout surfaces real server failures without clearing session', async () => {
+test('performLogout clears client session even when server logout fails', async () => {
   installStorage();
   rememberSession({ id: 3, name: 'Tester', email: 'fail@example.com' });
   globalThis.fetch = async () => ({ ok: false, status: 503 });
 
-  await assert.rejects(() => performLogout(), /Could not sign out/);
-  assert.ok(globalThis.localStorage.getItem('allmodelai_user'));
+  const result = await performLogout();
+  assert.equal(result.ok, true);
+  assert.equal(result.serverOk, false);
+  assert.ok(result.warning);
+  assert.equal(globalThis.localStorage.getItem('allmodelai_user'), null);
 });
 
 test('session cleared event lets restoreSession return null after logout', async () => {

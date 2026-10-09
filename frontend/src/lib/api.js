@@ -38,8 +38,11 @@ export function apiFetch(url, options = {}) {
     ...(options.headers || {}),
   };
 
-  return fetch(resolveApiUrl(url), { ...options, credentials: 'include', headers })
-    .then((response) => {
+  const skipAuthRedirect = Boolean(options.skipAuthRedirect);
+  const { skipAuthRedirect: _drop, ...fetchOptions } = options;
+
+  return fetch(resolveApiUrl(url), { ...fetchOptions, credentials: 'include', headers })
+    .then(async (response) => {
       if (isLoggerEnabled()) {
         const durationMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - started);
         logger.api(`Response received`, {
@@ -54,6 +57,10 @@ export function apiFetch(url, options = {}) {
             statusText: response.statusText,
           });
         }
+      }
+      if (response.status === 401 && !skipAuthRedirect) {
+        const { handleUnauthorizedApiResponse } = await import('./clientAuthReset.js');
+        await handleUnauthorizedApiResponse(url);
       }
       return response;
     })

@@ -103,8 +103,17 @@ export default defineConfig(({ mode }) => {
   ],
   server: {
     host: '0.0.0.0',
+    port: Number(env.VITE_DEV_PORT) || 5173,
+    strictPort: false,
+    cors: true,
     proxy,
   },
-  preview: { host: '0.0.0.0', proxy },
+  preview: {
+    host: '0.0.0.0',
+    port: Number(env.VITE_PREVIEW_PORT) || 4173,
+    strictPort: false,
+    cors: true,
+    proxy,
+  },
  }
 })

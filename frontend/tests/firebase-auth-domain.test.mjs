@@ -13,33 +13,43 @@ test('resolveAuthDomainForRuntime keeps firebaseapp.com when no override', () =>
   );
 });
 
-test('VITE_FIREBASE_AUTH_DOMAIN overrides configured firebaseapp.com', () => {
+test('resolveAuthDomainForRuntime uses env auth domain when set', () => {
   assert.equal(
     resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {
-      envAuthDomain: 'all-model-ai.com',
+      envAuthDomain: 'allmodelai.firebaseapp.com',
     }),
-    'all-model-ai.com',
+    'allmodelai.firebaseapp.com',
   );
 });
 
-test('hosted production web auto-uses custom hostname when config is firebaseapp.com', () => {
+test('hosted production web does not replace firebaseapp.com unless custom auth flag', () => {
   assert.equal(
     resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {
       preferHostedAuthDomainWhenProxied: true,
-      hostedHostname: 'all-model-ai.com',
+      hostedHostname: 'allmodelai.com',
     }),
-    'all-model-ai.com',
+    'allmodelai.com',
+  );
+  assert.equal(
+    resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {
+      hostedHostname: 'allmodelai.com',
+    }),
+    'allmodelai.firebaseapp.com',
   );
 });
 
-test('custom auth domain flag uses hosted site hostname on production web', () => {
+test('custom auth domain flag uses hosted site hostname', () => {
   assert.equal(
     resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {
       customAuthDomainEnabled: true,
-      hostedHostname: 'all-model-ai.com',
+      hostedHostname: 'allmodelai.com',
     }),
-    'all-model-ai.com',
+    'allmodelai.com',
   );
+});
+
+test('empty configured domain falls back to default firebaseapp.com', () => {
+  assert.equal(resolveAuthDomainForRuntime(''), 'allmodelai.firebaseapp.com');
 });
 
 test('vercel.json proxies Firebase auth handler under /__/auth', () => {

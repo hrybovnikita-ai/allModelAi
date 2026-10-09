@@ -131,6 +131,15 @@ function hasFirebaseSessionFallback() {
   return Boolean(firebaseSessionFallbackHeaders().Authorization);
 }
 
+/** True when the client should ask the server to confirm session (cookie is not readable in JS). */
+export function hasSessionRestoreHint() {
+  if (getNativeSessionToken()) return true;
+  if (hasFirebaseSessionFallback()) return true;
+  if (isFreshLoginGraceActive()) return true;
+  if (readStoredSessionUser()) return true;
+  return false;
+}
+
 function sessionRestoreRetryDelays() {
   if (isFreshLoginGraceActive() || hasFirebaseSessionFallback()) {
     return [0, 200, 500];
@@ -159,11 +168,18 @@ export function rememberSession(user) {
   const storage = getStorage();
   storage.setItem('allmodelai_user', saved);
   verifiedSession = { user, saved: storage.getItem('allmodelai_user'), expiresAt: Date.now() + cacheDuration };
+  void import('./clientAuthReset.js').then(({ resetUnauthorizedRedirectGuard }) => {
+    resetUnauthorizedRedirectGuard();
+  }).catch(() => {});
   dispatchSessionUpdated(user);
   return user;
 }
 
-async function fetchSessionFromServer() {
+/**
+ * Single GET /api/auth/session call (credentials + native/Firebase headers).
+ * Prefer {@link restoreSession} for app bootstrap; use this for a raw probe or tests.
+ */
+export async function fetchSessionFromServer() {
   if (typeof document !== 'undefined' && !readCookieConsent()) {
     await waitForCookieConsentChoice(1500);
   }
@@ -182,16 +198,6 @@ async function fetchSessionFromServer() {
   return { response, data };
 }
 
-function sessionRestoreHintFromStorage(savedRaw) {
-  if (!savedRaw) return null;
-  try {
-    const parsed = JSON.parse(savedRaw);
-    return parsed?.email ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 export async function restoreSession({ force = false } = {}) {
   const storage = getStorage();
   const saved = storage.getItem('allmodelai_user');
@@ -205,6 +211,12 @@ export async function restoreSession({ force = false } = {}) {
   const generation = sessionGeneration;
   const request = { generation };
   request.promise = (async () => {
+    if (!force && !hasSessionRestoreHint()) {
+      socialAuthDebug('SESSION_RESTORE_SKIPPED', { reason: 'no-restore-hint' });
+      verifiedSession = null;
+      return null;
+    }
+
     const retryDelays = sessionRestoreRetryDelays();
 
     for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
@@ -224,6 +236,15 @@ export async function restoreSession({ force = false } = {}) {
       if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
 
       if (response.ok) {
+        if (!data?.user?.email) {
+          socialAuthDebug('SESSION_GUEST', { pathname: '/api/auth/session', attempt });
+          verifiedSession = null;
+          if (!isFreshLoginGraceActive()) {
+            storage.removeItem('allmodelai_user');
+          }
+          if (attempt < retryDelays.length - 1) continue;
+          return null;
+        }
         socialAuthDebug('SESSION_RESTORED', { source: 'api', attempt });
         clearFreshLoginMark();
         clearFirebaseIdTokenFallback();
@@ -349,6 +370,8 @@ export async function performLogout() {
     return { ok: true, skipped: true };
   }
   logoutInProgress = true;
+  let serverOk = false;
+  let warning = null;
   try {
     const response = await fetch(resolveAuthApiUrl('logout'), {
       method: 'POST',
@@ -360,15 +383,17 @@ export async function performLogout() {
         ...nativeSessionHeaders(),
       },
     });
-    if (!response.ok && response.status !== 401 && response.status !== 404) {
-      throw new Error('Could not sign out. Try again.');
+    if (response.ok || response.status === 401 || response.status === 404) {
+      serverOk = true;
+    } else {
+      warning = 'Could not confirm sign-out on the server. You were signed out on this device.';
     }
-    clearAllSessionData();
-    return { ok: true };
-  } catch (error) {
-    logoutInProgress = false;
-    throw error;
+  } catch {
+    warning = 'Could not reach the server. You were signed out on this device.';
   } finally {
+    const { purgeClientAuthState } = await import('./clientAuthReset.js');
+    await purgeClientAuthState();
     logoutInProgress = false;
   }
+  return { ok: true, serverOk, warning };
 }

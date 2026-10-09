@@ -22,6 +22,8 @@ test('navigation reuses server-verified sessions and never trusts a stored profi
   };
   try {
     const { restoreSession, rememberSession } = await import('../../frontend/src/lib/session.js');
+    values.set('allmodelai_user', JSON.stringify(user));
+    globalThis.document = { cookie: 'allmodelai_cookie_consent=accepted' };
     const restored = await Promise.all([restoreSession(), restoreSession()]);
     assert.deepEqual(restored, [user, user]);
     assert.equal(calls, 1);
@@ -41,8 +43,9 @@ test('navigation reuses server-verified sessions and never trusts a stored profi
     assert.equal(calls, callsAfterLogin);
     sessionStorage.removeItem('allmodelai_user');
     status = 503;
-    await assert.rejects(restoreSession(), /Could not verify/);
+    await assert.rejects(restoreSession({ force: true }), /Could not verify/);
     status = 200;
+    rememberSession(user);
     assert.deepEqual(await restoreSession(), user);
   } finally {
     global.fetch = oldFetch;

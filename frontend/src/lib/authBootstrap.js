@@ -4,6 +4,7 @@ import {
   clearSocialRedirectIntent,
   isGoogleRedirectRecoveryPending,
   reconcileStaleRedirectIntent,
+  shouldAttemptGoogleRedirectRecovery,
 } from './socialSignIn.js';
 import { restoreSession } from './session.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
@@ -12,6 +13,12 @@ import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
  * Single client auth bootstrap: finish Google redirect recovery (if pending), then restore backend session.
  */
 export async function bootstrapAuthenticatedUser() {
+  reconcileStaleRedirectIntent();
+
+  if (isGoogleRedirectRecoveryPending() && !shouldAttemptGoogleRedirectRecovery()) {
+    clearSocialRedirectIntent();
+  }
+
   if (isGoogleRedirectRecoveryPending()) {
     socialAuthDebug('REDIRECT_RECOVERY_START', {
       pathname: typeof window !== 'undefined' ? window.location.pathname : '',

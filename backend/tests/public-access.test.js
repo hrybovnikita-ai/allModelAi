@@ -60,7 +60,12 @@ test('production Vercel frontend is allowed even when FRONTEND_ORIGIN is unset o
 test('custom production domains are allowed even when FRONTEND_ORIGIN is unset on Render', async () => {
     delete process.env.FRONTEND_ORIGIN;
     delete process.env.PUBLIC_URL;
-    for (const origin of ['https://all-model-ai.com', 'https://www.all-model-ai.com']) {
+    for (const origin of [
+        'https://all-model-ai.com',
+        'https://www.all-model-ai.com',
+        'https://allmodelai.com',
+        'https://www.allmodelai.com',
+    ]) {
         const response = await request(app)
             .get('/api/health')
             .set('Origin', origin);

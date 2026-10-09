@@ -201,11 +201,17 @@ router.post('/apps/generate', requireAuth, prepareAppGeneration, createChatRespo
 router.post('/chat/improve-prompt', requireAuth, improvePrompt);
 router.post('/vision/analyze', requireAuth, analyzeVision);
 router.post('/router/preview', requireAuth, previewRouter);
-const { getImageGenerationStatus, upscaleGeneratedImage } = require('../images');
+const { getImageGenerationStatus, getImageGenerationJob, upscaleGeneratedImage } = require('../images');
 router.get('/images/status', requireAuth, getImageGenerationStatus);
+router.get('/images/jobs/:jobId', requireAuth, getImageGenerationJob);
+router.get('/images/status/:jobId', requireAuth, getImageGenerationJob);
 router.post('/images/upscale', requireAuth, upscaleGeneratedImage);
 router.post('/images', requireAuth, generateImage);
 router.post('/images/generate', requireAuth, generateImage);
+const { generateVideo, getVideoGenerationStatus } = require('../videos');
+router.get('/videos/status', requireAuth, getVideoGenerationStatus);
+router.post('/videos', requireAuth, generateVideo);
+router.post('/videos/generate', requireAuth, generateVideo);
 router.post('/purchases', requireAuth, createPurchase);
 router.get('/payments/checkout-info', getPublicCheckoutInfo);
 router.get('/payments/plans', getCheckoutPlans);

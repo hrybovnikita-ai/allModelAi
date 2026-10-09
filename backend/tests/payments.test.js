@@ -54,7 +54,9 @@ test('Payments: developer mock vs user Stripe checkout', async (t) => {
             .set('Cookie', cookie)
             .send({ plan: 'common' });
         assert.equal(res.status, 503);
-        assert.match(res.body.message || '', /STRIPE|Payments/i);
+        assert.match(res.body.message || '', /STRIPE|Payments|Configure/i);
+        assert.ok(Array.isArray(res.body.missingEnvVars));
+        assert.ok(res.body.missingEnvVars.includes('STRIPE_SECRET_KEY'));
     });
 
     await t.test('POST /api/payments/create-intent rejects invalid plan', async () => {

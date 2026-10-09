@@ -39,7 +39,7 @@ for (const method of ['register', 'login']) {
             assert.equal((await session.confirmSession(result.body.user)).email, account.email);
             for (const phase of ['refresh', 'restart']) {
                 const freshSession = await import(`../../frontend/src/lib/session.js?${method}-${phase}`);
-                assert.equal((await freshSession.restoreSession()).email, account.email);
+                assert.equal((await freshSession.restoreSession({ force: true })).email, account.email);
             }
         } finally {
             global.fetch = previousFetch;
@@ -52,7 +52,9 @@ for (const method of ['register', 'login']) {
         app.locals.db = require('../src/db').connectDatabase();
         assert.equal((await request(app).get('/api/auth/session').set('Cookie', cookie.split(';')[0])).status, 200);
         assert.equal((await request(app).post('/api/auth/logout').set('Cookie', cookie.split(';')[0])).status, 204);
-        assert.equal((await request(app).get('/api/auth/session').set('Cookie', cookie.split(';')[0])).status, 401);
+        const guest = await request(app).get('/api/auth/session').set('Cookie', cookie.split(';')[0]);
+        assert.equal(guest.status, 200);
+        assert.equal(guest.body.user, null);
     });
 }
 
@@ -61,9 +63,10 @@ test('expired and malformed cookies are rejected by session and protected endpoi
     const cookie = response.headers['set-cookie'][0].split(';')[0];
     app.locals.db.database.prepare('UPDATE auth_sessions SET expires_at = 0').run();
     for (const value of [cookie, 'allmodelai_session=invalid']) {
-        for (const endpoint of ['/api/auth/session', '/api/chat/history']) {
-            assert.equal((await request(app).get(endpoint).set('Cookie', value)).status, 401);
-        }
+        const session = await request(app).get('/api/auth/session').set('Cookie', value);
+        assert.equal(session.status, 200);
+        assert.equal(session.body.user, null);
+        assert.equal((await request(app).get('/api/chat/history').set('Cookie', value)).status, 401);
     }
 });
 

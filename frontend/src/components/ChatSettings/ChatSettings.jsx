@@ -49,7 +49,7 @@ export default function ChatSettings() {
       </div></article>
       <article><small>02 · {t('bubbleTitle')}</small><h2>{t('bubbleTitle')}</h2><p>{t('bubbleDescription')}</p>{colorChoices(colors,color,setColor)}</article>
     </section><aside className="settings-preview"><div><small>{t('liveResult')}</small><h2>{t('previewTitle')}</h2><p>{t('autoSaved')}</p></div><section>
-      <div className="preview-ai"><i>AI</i><p>{t('previewHello', {name:user.name?.split(' ')[0] || t('creator')})}</p></div>
+      <div className="preview-ai"><i>AI</i><p>{t('previewHello')}</p></div>
       <div className="preview-user"><p style={{backgroundColor:color,color:contrast(color)}}>{t('previewPrompt')}</p></div>
       <div className="preview-composer"><span>{t('messagePlaceholder')}</span><b aria-hidden="true">↑</b></div>
     </section><footer><span><i style={{backgroundColor:color}}/>{t('selected')}</span><strong>{t(colors.find(([,value]) => value === color)?.[0] || 'custom')} · {t(theme)}</strong></footer></aside></div>

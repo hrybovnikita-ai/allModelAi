@@ -21,8 +21,14 @@ test('register, restore session, logout, and login with normalized email', async
   assert.match(cookie, /Max-Age=/i);
   assert.equal((await agent.get('/api/auth/session')).body.user.email, 'auth@example.com');
   assert.equal((await agent.post('/api/auth/logout')).status, 204);
-  assert.equal((await request(app).get('/api/auth/session').set('Cookie', cookie.split(';')[0])).status, 401);
-  assert.equal((await agent.get('/api/auth/session')).status, 401);
+  const staleCookieSession = await request(app).get('/api/auth/session').set('Cookie', cookie.split(';')[0]);
+  assert.equal(staleCookieSession.status, 200);
+  assert.equal(staleCookieSession.body.authenticated, false);
+  assert.equal(staleCookieSession.body.user, null);
+  const guestSession = await agent.get('/api/auth/session');
+  assert.equal(guestSession.status, 200);
+  assert.equal(guestSession.body.authenticated, false);
+  assert.equal(guestSession.body.user, null);
   const login = await agent.post('/api/auth/login').send({ email: ' AUTH@example.com ', password: 'A secure password' });
   assert.equal(login.status, 200);
   assert.match(login.headers['set-cookie'][0], /Max-Age=2592000/i);

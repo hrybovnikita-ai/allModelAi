@@ -102,7 +102,8 @@ test('ten dashboard browser flows complete on postgres async paths', async () =>
                 .get('/api/auth/session')
                 .set('Cookie', cookie)
                 .timeout(deadline);
-            assert.equal(sessionAfterLogout.status, 401, `session after logout cycle ${cycle}`);
+            assert.equal(sessionAfterLogout.status, 200, `session after logout cycle ${cycle}`);
+            assert.equal(sessionAfterLogout.body.user, null, `session after logout cycle ${cycle}`);
         }
     } finally {
         db.restore();
@@ -219,7 +220,8 @@ test('realistic traffic: login through chat, history, analytics, workspace, logo
             assert.equal(logout.status, 204, `logout ${cycle}`);
 
             const sessionAfterLogout = await request(app).get('/api/auth/session').set('Cookie', cookie).timeout(deadline);
-            assert.equal(sessionAfterLogout.status, 401, `session after logout ${cycle}`);
+            assert.equal(sessionAfterLogout.status, 200, `session after logout ${cycle}`);
+            assert.equal(sessionAfterLogout.body.user, null, `session after logout ${cycle}`);
 
             assert.equal(db.getSyncViolationCount(), 0, `sync violations cycle ${cycle}`);
         }

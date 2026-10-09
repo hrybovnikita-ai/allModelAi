@@ -8,7 +8,7 @@ test('RequireAuth waits for authLoading before anonymous redirect', async () => 
     'utf8',
   );
   assert.match(source, /authLoading/);
-  const authLoadingGuard = source.indexOf('if (authLoading)');
+  const authLoadingGuard = source.indexOf('if (authLoading || protectedSessionProbe)');
   const anonymousGuard = source.indexOf("status === 'anonymous'");
   assert.ok(authLoadingGuard > 0 && anonymousGuard > authLoadingGuard);
 });
@@ -19,5 +19,6 @@ test('NavAuthSection shows loading before Sign in when authLoading', async () =>
     'utf8',
   );
   assert.match(source, /authLoading/);
-  assert.match(source, /status === 'authenticated'/);
+  assert.match(source, /AUTH_STATUS\.AUTHENTICATED/);
+  assert.match(source, /AUTH_INIT_TIMEOUT_MS/);
 });

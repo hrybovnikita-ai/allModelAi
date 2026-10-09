@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { restoreSession } from '../src/lib/session.js';
+import { fetchSessionFromServer, restoreSession } from '../src/lib/session.js';
 
 function mockStorage() {
   const map = new Map();
@@ -36,6 +36,19 @@ afterEach(() => {
   delete globalThis.document;
 });
 
+test('restoreSession skips the network when there is no session restore hint', async () => {
+  installStorage();
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return jsonResponse(200, { user: { email: 'x@example.com', name: 'X' } });
+  };
+
+  const user = await restoreSession();
+  assert.equal(calls, 0);
+  assert.equal(user, null);
+});
+
 test('restoreSession treats 401 as signed out and clears stale client hint', async () => {
   installStorage();
   globalThis.localStorage.setItem(
@@ -48,6 +61,26 @@ test('restoreSession treats 401 as signed out and clears stale client hint', asy
   globalThis.fetch = async () => {
     calls += 1;
     return jsonResponse(401, { message: 'No active session' });
+  };
+
+  const user = await restoreSession({ force: true });
+  assert.equal(calls, 1);
+  assert.equal(user, null);
+  assert.equal(globalThis.localStorage.getItem('allmodelai_user'), null);
+});
+
+test('restoreSession treats 200 guest payload as signed out', async () => {
+  installStorage();
+  globalThis.localStorage.setItem(
+    'allmodelai_user',
+    JSON.stringify({ email: 'stale@example.com', name: 'Stale' }),
+  );
+  globalThis.document = { cookie: 'allmodelai_cookie_consent=accepted' };
+
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return jsonResponse(200, { user: null, authenticated: false });
   };
 
   const user = await restoreSession({ force: true });
@@ -71,4 +104,15 @@ test('restoreSession retries on 401 only during fresh-login grace', async () => 
   const user = await restoreSession({ force: true });
   assert.ok(calls >= 2);
   assert.equal(user?.email, 'ok@example.com');
+});
+
+test('fetchSessionFromServer returns parsed session response', async () => {
+  globalThis.document = { cookie: 'allmodelai_cookie_consent=accepted' };
+  globalThis.fetch = async (url) => {
+    assert.match(String(url), /\/api\/auth\/session$/);
+    return jsonResponse(200, { user: { email: 'probe@example.com', name: 'Probe' } });
+  };
+  const { response, data } = await fetchSessionFromServer();
+  assert.equal(response.status, 200);
+  assert.equal(data.user.email, 'probe@example.com');
 });

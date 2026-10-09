@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useLanguage } from '../../lib/useLanguage';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { isGoogleRedirectRecoveryPending } from '../../lib/socialSignIn';
@@ -21,12 +22,28 @@ export default function RequireAuth() {
   const { t } = useLanguage();
   const location = useLocation();
   const { status, user, authLoading, refresh } = useSession();
+  const [protectedSessionProbe, setProtectedSessionProbe] = useState(() => !user?.email);
+
+  useEffect(() => {
+    if (!protectedSessionProbe) return;
+    if (user?.email && status === AUTH_STATUS.AUTHENTICATED) {
+      setProtectedSessionProbe(false);
+      return;
+    }
+    let active = true;
+    void refresh({ force: true }).finally(() => {
+      if (active) setProtectedSessionProbe(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [protectedSessionProbe, status, user, refresh]);
 
   if (isGoogleRedirectRecoveryPending()) {
     return <AuthLoadingSkeleton message={t('Finishing Google sign-in…')} />;
   }
 
-  if (authLoading) {
+  if (authLoading || protectedSessionProbe) {
     return <AuthLoadingSkeleton message={t('Checking your session...')} />;
   }
   if (status === 'error') {

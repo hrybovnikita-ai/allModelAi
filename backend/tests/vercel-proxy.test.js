@@ -36,7 +36,9 @@ test('separate Vercel proxy instances share durable sessions and logout revocati
         assert.equal(saved.status, 201);
         assert.equal((await request(first).get('/api/chat/history').set('Cookie', cookie)).body[0].id, saved.body.id);
         assert.equal((await request(second).post('/api/auth/logout').set('Cookie', cookie)).status, 204);
-        assert.equal((await request(first).get('/api/auth/session').set('Cookie', cookie)).status, 401);
+        const guest = await request(first).get('/api/auth/session').set('Cookie', cookie);
+        assert.equal(guest.status, 200);
+        assert.equal(guest.body.user, null);
     } finally {
         await new Promise((resolve) => server.close(resolve));
     }

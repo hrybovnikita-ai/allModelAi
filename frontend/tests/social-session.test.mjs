@@ -22,7 +22,7 @@ test('social login confirms the actual session cookie even without browser stora
 test('missing cookie and backend errors prevent successful login', async t => {
   const old = globalThis.fetch;
   t.after(() => { globalThis.fetch = old; clearAllSessionData(); });
-  globalThis.fetch = async url => url.endsWith('/session') ? Response.json({}, { status: 401 }) : Response.json({ state: 'state', user: { email: 'user@example.com' } });
+  globalThis.fetch = async url => url.endsWith('/session') ? Response.json({ user: null, authenticated: false }) : Response.json({ state: 'state', user: { email: 'user@example.com' } });
   await assert.rejects(exchangeSocialSession('token'), /could not be verified/);
   globalThis.fetch = async () => Response.json({ code: 'ACCOUNT_LINK_REQUIRED', message: 'Sign in first' }, { status: 409 });
   await assert.rejects(exchangeSocialSession('token'), error => error.code === 'ACCOUNT_LINK_REQUIRED');

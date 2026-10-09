@@ -3,10 +3,12 @@ import { afterEach, beforeEach, test } from 'node:test';
 import {
   REDIRECT_PENDING_KEY,
   clearSocialRedirectIntent,
+  hasFirebaseRedirectReturnHints,
   isGoogleRedirectRecoveryPending,
   markRedirectFlowCommitted,
   persistRedirectIntent,
   reconcileStaleRedirectIntent,
+  shouldShowGoogleRedirectRecoveryUI,
 } from '../src/lib/socialRedirectState.js';
 
 class MemoryStorage {
@@ -57,6 +59,30 @@ test('stale awaiting-google intent without redirect flag is cleared', () => {
 
 test('redirect pending key matches Safari fallback contract', () => {
   assert.equal(REDIRECT_PENDING_KEY, 'allmodelai_redirect_pending');
+});
+
+test('stale redirect intent outside recovery window is cleared on reconcile', () => {
+  persistRedirectIntent('Google', {}, 'awaiting-google-return');
+  markRedirectFlowCommitted();
+  const raw = globalThis.sessionStorage.getItem('allmodelai_social_redirect');
+  const parsed = JSON.parse(raw);
+  parsed.redirectStartedAt = Date.now() - 600000;
+  parsed.expires = Date.now() + 600000;
+  const stale = JSON.stringify(parsed);
+  globalThis.sessionStorage.setItem('allmodelai_social_redirect', stale);
+  globalThis.localStorage.setItem('allmodelai_social_redirect_backup', stale);
+  globalThis.window = { location: { pathname: '/', search: '', hash: '' } };
+  reconcileStaleRedirectIntent();
+  assert.equal(isGoogleRedirectRecoveryPending(), false);
+  delete globalThis.window;
+});
+
+test('shouldShowGoogleRedirectRecoveryUI requires pending flag or OAuth URL hints', () => {
+  persistRedirectIntent('Google', {}, 'awaiting-google-return');
+  markRedirectFlowCommitted();
+  globalThis.window = { location: { pathname: '/', search: '', hash: '' } };
+  assert.equal(shouldShowGoogleRedirectRecoveryUI(), true);
+  delete globalThis.window;
 });
 
 test('login launches popup synchronously before awaits', async () => {

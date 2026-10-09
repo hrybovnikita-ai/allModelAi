@@ -13,3 +13,6 @@ export function isAuthInitializing(status) {
     || status === 'loading'
     || status === 'restoring-session';
 }
+
+/** After this, UI may treat stuck bootstrap as guest (navbar, etc.). */
+export const AUTH_INIT_TIMEOUT_MS = 3000;

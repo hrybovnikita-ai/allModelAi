@@ -145,6 +145,7 @@ const sizeFor = (provider, model, aspect, quality) => {
         return GPT_IMAGE_SIZES[aspect];
     }
     if (provider === 'cloudflare') return null;
+    if (provider === 'comfy-cloud') return FLUX_SIZES[aspect];
     return FLUX_SIZES[aspect];
 };
 
@@ -210,6 +211,10 @@ const buildProviderRequest = ({ provider, model, quality, aspectRatio, size }) =
         return { steps: cloudflareSteps(quality) };
     }
 
+    if (provider === 'comfy-cloud') {
+        return { size, quality, aspectRatio };
+    }
+
     return { model, size, n: 1 };
 };
 
@@ -218,7 +223,9 @@ const sizesForQuality = (provider, quality) => {
         ? configuredPollinationsModel(quality)
         : provider === 'openai'
             ? strip(process.env.IMAGE_MODEL || 'gpt-image-1')
-            : strip(process.env.CLOUDFLARE_IMAGE_MODEL || CLOUDFLARE_MODELS[0]);
+            : provider === 'comfy-cloud'
+                ? strip(process.env.COMFY_CLOUD_CHECKPOINT) || 'flux1-schnell-fp8.safetensors'
+                : strip(process.env.CLOUDFLARE_IMAGE_MODEL || CLOUDFLARE_MODELS[0]);
     return Object.fromEntries(ASPECT_IDS.map((aspect) => [aspect, sizeFor(provider, model, aspect, quality)]));
 };
 
@@ -244,6 +251,8 @@ const buildImageGenerationPlan = ({ provider, quality, aspectRatio, requestedMod
             return { error: 'Unsupported image model for the active provider.' };
         }
         model = model || fallback;
+    } else if (provider === 'comfy-cloud') {
+        model = model || strip(process.env.COMFY_CLOUD_CHECKPOINT) || 'flux1-schnell-fp8.safetensors';
     } else {
         return { error: 'Image generation is not configured.' };
     }

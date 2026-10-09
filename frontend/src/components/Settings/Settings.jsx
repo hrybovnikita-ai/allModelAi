@@ -46,12 +46,11 @@ export default function Settings() {
     setNotice('notice');
   };
   const logout = async () => {
-    try {
-      await performLogout();
-      navigate('/', { replace: true });
-    } catch (error) {
-      setNotice(error.message);
+    const result = await performLogout();
+    if (result.warning) {
+      setNotice(result.warning);
     }
+    navigate('/', { replace: true });
   };
 
   return <main className="settings-page"><nav className="settings-nav"><Link to="/dashboard">← {t('Dashboard')}</Link><strong>AllModelAI ? {t('settings')}</strong><Link to="/chat">{t('Open chat')}</Link></nav><section className="settings-shell">

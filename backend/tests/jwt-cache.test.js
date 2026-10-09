@@ -25,7 +25,9 @@ test('JWT cookie authenticates and logout revokes a replay', async () => {
   assert.equal((await agent.get('/api/auth/session')).status, 200);
   assert.equal((await agent.get('/api/chat/history')).status, 200);
   await agent.post('/api/auth/logout');
-  assert.equal((await request(app).get('/api/auth/session').set('Cookie', cookie)).status, 401);
+  const guest = await request(app).get('/api/auth/session').set('Cookie', cookie);
+  assert.equal(guest.status, 200);
+  assert.equal(guest.body.user, null);
   assert.equal((await request(app).get('/api/chat/history').set('Cookie', cookie)).status, 401);
 });
 test('JWT rejects expired, tampered, wrong audience and wrong algorithm tokens', () => {
@@ -67,7 +69,8 @@ test('public model status is cached while session responses remain private', asy
   assert.equal(second.headers['x-cache'], 'HIT');
   assert.deepEqual(first.body, second.body);
   const session = await request(app).get('/api/auth/session');
-  assert.equal(session.status, 401);
+  assert.equal(session.status, 200);
+  assert.equal(session.body.user, null);
   assert.equal(session.headers['x-cache'], undefined);
   assert.equal(session.headers['cache-control'], 'no-store');
 });

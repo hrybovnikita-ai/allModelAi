@@ -3,12 +3,14 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import apiClient from '../../lib/apiClient';
 import './Checkout.css';
 import './CheckoutProduction.css';
+import './CheckoutDemo.css';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { fetchCheckoutInfo, fetchCheckoutPlan, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
 import { runTestWayforpayCheckout, submitWayforpayCheckout } from '../../lib/wayforpay';
 import { useSession } from '../Session/SessionProvider';
 import { isAuthInitializing } from '../../lib/authSessionStatus';
-import StripePlanCheckout from './StripePlanCheckout';
+import StripeEmbeddedCheckout from './StripeEmbeddedCheckout';
+import MockCheckoutForm from './MockCheckoutForm';
 import { IconCheck, IconLock, IconShield } from './CheckoutIcons';
 
 const DEVELOPER_FALLBACK = {
@@ -35,7 +37,7 @@ export default function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { status: sessionStatus } = useSession();
+  const { status: sessionStatus, user: sessionUser } = useSession();
   const planSlug = useMemo(() => {
     const fromQuery = searchParams.get('plan');
     if (fromQuery === 'developer') return 'developer';
@@ -55,13 +57,13 @@ export default function Checkout() {
   const [stripeClientSecret, setStripeClientSecret] = useState('');
   const [stripeReady, setStripeReady] = useState(false);
   const [ownerTestCheckout, setOwnerTestCheckout] = useState(false);
+  const [stripePanelOpen, setStripePanelOpen] = useState(false);
 
   const paymentProvider = checkoutInfo?.primaryProvider || null;
   const showTestBanner = Boolean(checkoutInfo?.showTestModeBanner)
     || (ownerTestCheckout && checkoutInfo?.wayforpayTestMode);
   const paymentsAvailable = Boolean(checkoutInfo?.checkoutAvailable);
   const providerLabel = checkoutInfo?.providerDisplayName || 'Payment provider';
-  const secureLabel = checkoutInfo?.secureCheckoutLabel || 'Secure payment';
 
   const summary = isDeveloper ? DEVELOPER_FALLBACK : planQuote;
   const priceLabel = summary
@@ -134,6 +136,14 @@ export default function Checkout() {
     }
   };
 
+  const formatStripeConfigError = (payload, fallback) => {
+    const missing = payload?.missingEnvVars;
+    if (Array.isArray(missing) && missing.length) {
+      return `${payload.message || fallback} Missing: ${missing.join(', ')}.`;
+    }
+    return payload?.message || fallback;
+  };
+
   const startStripeCheckout = useCallback(async () => {
     setCheckoutBusy(true);
     setError('');
@@ -141,14 +151,18 @@ export default function Checkout() {
     setStripePublishableKey('');
     setStripeReady(false);
     try {
-      const response = await apiClient.post('/api/payments/create-intent', { plan: planSlug });
+      const checkoutPlan = planSlug === 'enterprise' ? 'enterprise' : planSlug === 'pro' ? 'pro' : planSlug;
+      const response = await apiClient.post('/api/payments/checkout', {
+        plan: checkoutPlan,
+        embedded: true,
+      });
       let publishableKey = String(response.data.publishableKey || '').trim();
       if (!publishableKey) {
         const configRes = await apiClient.get('/api/payments/config');
         publishableKey = String(configRes.data.publishableKey || '').trim();
       }
       if (!publishableKey || !response.data.clientSecret) {
-        throw new Error('Secure checkout could not be started.');
+        throw new Error(formatStripeConfigError(response.data, 'Secure checkout could not be started.'));
       }
       if (publishableKey.startsWith('pk_live_') && checkoutInfo?.paymentMode === 'test') {
         throw new Error('Live payment keys cannot be used in test mode.');
@@ -156,8 +170,12 @@ export default function Checkout() {
       setStripePublishableKey(publishableKey);
       setStripeClientSecret(response.data.clientSecret);
       setStripeReady(true);
+      setStripePanelOpen(true);
     } catch (requestError) {
-      const message = requestError.response?.data?.message || requestError.message || 'Could not start secure checkout.';
+      const message = formatStripeConfigError(
+        requestError.response?.data,
+        requestError.response?.data?.message || requestError.message || 'Could not start secure checkout.',
+      );
       setError(message);
     } finally {
       setCheckoutBusy(false);
@@ -192,95 +210,78 @@ export default function Checkout() {
     }
   };
 
-  const handleContinueToPayment = async () => {
-    if (!paymentsAvailable) return;
-    if (paymentProvider === 'stripe') {
-      await startStripeCheckout();
-      return;
-    }
-    if (paymentProvider === 'wayforpay') {
-      await startWayforpayCheckout();
-    }
-  };
-
-  const handleStripePaymentSuccess = (paymentIntentId) => {
-    navigate(`/checkout/success?plan=${encodeURIComponent(planSlug)}&payment_intent=${encodeURIComponent(paymentIntentId)}`, { replace: true });
-  };
+  const stripeReturnUrl = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    const params = new URLSearchParams({
+      plan: planSlug,
+      session_id: '{CHECKOUT_SESSION_ID}',
+    });
+    return `${window.location.origin}/checkout/success?${params.toString()}`;
+  }, [planSlug]);
 
   const canceled = location.pathname.endsWith('/cancel') || new URLSearchParams(location.search).get('canceled') === '1';
+  const sessionReady = sessionStatus === 'authenticated';
 
   return (
-    <main className="checkout-page checkout-page--premium">
-      <nav className="checkout-nav">
-        <Link className="checkout-brand" to="/"><AllModelAILogoMark />AllModelAI</Link>
-        <Link to="/dashboard">Dashboard</Link>
-        <Link to="/pricing">Pricing</Link>
-      </nav>
+    <main className="checkout-page checkout-page--premium checkout-page--mock">
+      <header className="checkout-header">
+        <nav className="checkout-nav checkout-nav--premium" aria-label="Checkout">
+          <Link className="checkout-brand" to="/">
+            <AllModelAILogoMark />
+            <span>AllModelAI</span>
+          </Link>
+          <div className="checkout-nav-links">
+            <Link to="/">Home</Link>
+            <Link to="/pricing">Pricing</Link>
+            <Link to="/dashboard">Dashboard</Link>
+          </div>
+        </nav>
+      </header>
 
       {showTestBanner && (
         <p className="checkout-test-mode-banner checkout-test-mode-banner--prominent" role="status">{TEST_MODE_BANNER}</p>
       )}
 
-      <section className="checkout-layout checkout-layout--pricing">
-        <div className="checkout-intro">
-          <p className="checkout-eyebrow">AllModelAI {summary?.name || (isDeveloper ? 'Developer' : 'Pro')}</p>
-          <h1>{isDeveloper ? 'Developer access' : `Upgrade to ${summary?.name || 'Pro'}`}</h1>
+      <section className="checkout-layout checkout-layout--split">
+        <aside className="checkout-summary-panel glass-panel">
+          <p className="checkout-eyebrow">Order summary</p>
+          <h1>{isDeveloper ? 'Developer access' : `AllModelAI ${summary?.name || 'Pro'}`}</h1>
           {!isDeveloper && summary && (
-            <div className="checkout-plan checkout-plan--hero">
-              <span>{summary.requestLimit?.toLocaleString?.() || summary.requestLimit} requests / {summary.interval}</span>
-              <strong>{priceLabel}<small>/{summary.interval}</small></strong>
-            </div>
+            <>
+              <div className="checkout-plan checkout-plan--hero checkout-plan--glass">
+                <div>
+                  <span className="checkout-plan-label">Selected plan</span>
+                  <strong className="checkout-plan-name">{summary.name}</strong>
+                </div>
+                <div className="checkout-plan-price">
+                  <strong>{priceLabel}</strong>
+                  <small> / {summary.interval}</small>
+                </div>
+              </div>
+              <p className="checkout-summary-requests">
+                {summary.requestLimit?.toLocaleString?.() || summary.requestLimit} requests per {summary.interval}
+              </p>
+            </>
           )}
+          <h2 className="checkout-summary-features-title">Included</h2>
           <ul className="checkout-summary-list checkout-summary-list--intro">
             {(summary?.features || []).map((perk) => (
               <li key={perk}><IconCheck className="checkout-feature-icon" />{perk}</li>
             ))}
           </ul>
-        </div>
-
-        <section className="checkout-form stripe-checkout-card checkout-payment-card">
-          <div className="secure-row">
-            <span>{secureLabel}</span>
-            <small>{providerLabel}</small>
-          </div>
-          <h2>{isDeveloper ? 'Free developer plan' : 'Secure checkout'}</h2>
-
-          {!isDeveloper && summary && (
-            <div className="checkout-order-summary">
-              <div>
-                <span>Order summary</span>
-                <strong>AllModelAI {summary.name}</strong>
-              </div>
-              <strong>${summary.amountDisplay} / {summary.interval}</strong>
-            </div>
-          )}
-
           {!isDeveloper && (
-            <dl className="checkout-meta-list">
-              <div><dt>Billing</dt><dd>Monthly</dd></div>
-              <div><dt>Payment provider</dt><dd>{providerLabel}</dd></div>
-              {checkoutInfo?.supportedPaymentMethodsNote && (
-                <div><dt>Payment methods</dt><dd>{checkoutInfo.supportedPaymentMethodsNote}</dd></div>
-              )}
+            <dl className="checkout-meta-list checkout-meta-list--summary">
+              <div><dt>Billing cycle</dt><dd>Monthly</dd></div>
+              <div><dt>Provider</dt><dd>{providerLabel}</dd></div>
             </dl>
           )}
+          <ul className="checkout-trust-list checkout-trust-list--summary">
+            <li><IconLock className="checkout-trust-icon" /> Encrypted checkout</li>
+            <li><IconShield className="checkout-trust-icon" /> Cancel anytime</li>
+          </ul>
+        </aside>
 
-          {!isDeveloper && checkoutInfo?.renewalNotice && (
-            <p className="checkout-renewal-note" role="note">{checkoutInfo.renewalNotice}</p>
-          )}
-
-          {wayforpaySandboxForOwner && (
-            <p className="checkout-owner-test-note" role="status">
-              Owner test payment — simulated WayForPay only. No real money will be charged.
-            </p>
-          )}
-
-          {isDeveloper && (
-            <p className="developer-access-note">
-              Developer access is free for emails listed in server configuration. No card required.
-            </p>
-          )}
-
+        <section className="checkout-form-panel glass-panel checkout-payment-card">
           {canceled && (
             <div className="checkout-state checkout-state--cancel" role="status">
               <p>Payment wasn&apos;t completed.</p>
@@ -295,63 +296,109 @@ export default function Checkout() {
           )}
 
           {error && (
-            <p className="checkout-error" role="alert">{error}</p>
+            <p className="checkout-error checkout-error--left" role="alert">{error}</p>
           )}
 
           {isDeveloper && (
-            <button className="pay-button" type="button" disabled={checkoutBusy} onClick={activateDeveloperPlan}>
-              {checkoutBusy ? 'Activating…' : 'Activate developer access'}
-            </button>
-          )}
-
-          {!isDeveloper && paymentsAvailable && paymentProvider === 'stripe' && !stripeReady && (
-            <button className="pay-button" type="button" disabled={checkoutBusy || sessionStatus !== 'authenticated'} onClick={handleContinueToPayment}>
-              {checkoutBusy ? 'Preparing…' : 'Continue to secure payment'}
-            </button>
-          )}
-
-          {!isDeveloper && paymentsAvailable && paymentProvider === 'wayforpay' && (
-            <button className="pay-button" type="button" disabled={checkoutBusy || sessionStatus !== 'authenticated' || (checkoutInfo?.wayforpayTestMode && !ownerTestCheckout)} onClick={handleContinueToPayment}>
-              {checkoutBusy ? 'Processing…' : (wayforpaySandboxForOwner ? 'Complete test payment' : 'Continue to secure payment')}
-            </button>
-          )}
-
-          {!isDeveloper && paymentProvider === 'stripe' && stripeReady && stripeClientSecret && stripePublishableKey && (
             <>
-              <StripePlanCheckout
-                publishableKey={stripePublishableKey}
-                clientSecret={stripeClientSecret}
-                returnUrl={checkoutReturnUrl}
-                payLabel={`Pay $${summary?.amountDisplay || ''}`}
-                processingLabel="Processing payment…"
-                onSuccess={handleStripePaymentSuccess}
-                onError={(message) => setError(message || 'Payment could not be completed.')}
-              />
-              {checkoutInfo?.showStripeTestCardHint && (
-                <div className="checkout-dev-test-card" role="note">
-                  <strong>Stripe test card</strong>
-                  <span>4242 4242 4242 4242</span>
-                  <span>Any future expiry · Any CVC</span>
-                </div>
-              )}
+              <h2>Free developer plan</h2>
+              <p className="developer-access-note">
+                Developer access is free for emails listed in server configuration. No card required.
+              </p>
+              <button className="pay-button" type="button" disabled={checkoutBusy} onClick={activateDeveloperPlan}>
+                {checkoutBusy ? 'Activating…' : 'Activate developer access'}
+              </button>
             </>
           )}
 
-          <ul className="checkout-trust-list">
-            <li><IconLock className="checkout-trust-icon" /> Secure encrypted checkout</li>
-            <li><IconShield className="checkout-trust-icon" /> Cancel anytime</li>
-            <li>Subscription activates after payment confirmation</li>
-          </ul>
+          {!isDeveloper && (
+            <>
+              <MockCheckoutForm
+                planName={summary?.name || (planSlug === 'enterprise' ? 'Enterprise' : 'Pro')}
+                planSlug={planSlug}
+                priceLabel={priceLabel}
+                interval={summary?.interval || 'month'}
+                disabled={!sessionReady}
+                defaultEmail={sessionUser?.email || ''}
+                testModeLabel={showTestBanner ? TEST_MODE_BANNER : 'Demo checkout — use any test card details'}
+              />
+
+              {!sessionReady && !isAuthInitializing(sessionStatus) && (
+                <p className="checkout-signin-hint" role="note">Sign in to complete subscription.</p>
+              )}
+
+              {paymentsAvailable && paymentProvider === 'stripe' && (
+                <details
+                  className="checkout-stripe-advanced"
+                  open={stripePanelOpen}
+                  onToggle={(event) => setStripePanelOpen(event.currentTarget.open)}
+                >
+                  <summary>Alternative: Stripe secure checkout</summary>
+                  {!stripeReady ? (
+                    <button
+                      className="pay-button pay-button--secondary"
+                      type="button"
+                      disabled={checkoutBusy || !sessionReady}
+                      onClick={() => { void startStripeCheckout(); }}
+                    >
+                      {checkoutBusy ? 'Preparing…' : 'Load Stripe payment form'}
+                    </button>
+                  ) : (
+                    stripeClientSecret && stripePublishableKey && (
+                      <>
+                        <StripeEmbeddedCheckout
+                          publishableKey={stripePublishableKey}
+                          clientSecret={stripeClientSecret}
+                          returnUrl={stripeReturnUrl || checkoutReturnUrl}
+                          payLabel={`Subscribe · $${summary?.amountDisplay || ''} / month`}
+                          processingLabel="Processing payment…"
+                          onError={(message) => setError(message || 'Payment could not be completed.')}
+                        />
+                        {checkoutInfo?.showStripeTestCardHint && (
+                          <div className="checkout-dev-test-card" role="note">
+                            <strong>Stripe test mode</strong>
+                            <span>4242 4242 4242 4242 · any future expiry · any CVC</span>
+                          </div>
+                        )}
+                      </>
+                    )
+                  )}
+                </details>
+              )}
+
+              {paymentsAvailable && paymentProvider === 'wayforpay' && (
+                <div className="checkout-wayforpay-alt">
+                  {wayforpaySandboxForOwner && (
+                    <p className="checkout-owner-test-note" role="status">
+                      Owner test payment — simulated WayForPay only. No real money will be charged.
+                    </p>
+                  )}
+                  <button
+                    className="pay-button pay-button--secondary"
+                    type="button"
+                    disabled={checkoutBusy || !sessionReady || (checkoutInfo?.wayforpayTestMode && !ownerTestCheckout)}
+                    onClick={() => { void startWayforpayCheckout(); }}
+                  >
+                    {checkoutBusy ? 'Processing…' : (wayforpaySandboxForOwner ? 'Complete WayForPay test payment' : 'Continue with WayForPay')}
+                  </button>
+                </div>
+              )}
+
+              {checkoutInfo?.renewalNotice && (
+                <p className="checkout-renewal-note" role="note">{checkoutInfo.renewalNotice}</p>
+              )}
+
+              <small className="checkout-disclaimer checkout-disclaimer--left">
+                Demo checkout above does not charge your card. Live billing uses your configured payment provider after confirmation.
+              </small>
+            </>
+          )}
 
           {!isDeveloper && canceled && (
             <button type="button" className="checkout-link-button" onClick={() => navigate(`/checkout/${planSlug}`)}>
               Try again
             </button>
           )}
-
-          <small className="checkout-disclaimer">
-            Your plan activates only after the payment provider confirms the transaction on AllModelAI servers.
-          </small>
         </section>
       </section>
     </main>

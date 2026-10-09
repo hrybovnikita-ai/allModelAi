@@ -13,6 +13,7 @@ const {
     isAllModelAiProductionWebOrigin,
     isAllModelAiVercelProjectOrigin,
     isAllowedOrigin,
+    isLocalNetworkDevOrigin,
 } = require('../src/corsPolicy');
 
 process.env.NODE_ENV = 'test';
@@ -26,15 +27,26 @@ after(() => {
 });
 
 test('builtin production web origins include custom domain, www, and Vercel', () => {
-    assert.deepEqual(ALL_MODEL_AI_BUILTIN_PRODUCTION_ORIGINS, [
-        ALL_MODEL_AI_CUSTOM_PRODUCTION,
-        ALL_MODEL_AI_WWW_PRODUCTION,
-        ALL_MODEL_AI_VERCEL_PRODUCTION,
-    ]);
+    assert.ok(ALL_MODEL_AI_BUILTIN_PRODUCTION_ORIGINS.includes('https://allmodelai.com'));
+    assert.ok(ALL_MODEL_AI_BUILTIN_PRODUCTION_ORIGINS.includes(ALL_MODEL_AI_CUSTOM_PRODUCTION));
+    assert.ok(ALL_MODEL_AI_BUILTIN_PRODUCTION_ORIGINS.includes(ALL_MODEL_AI_WWW_PRODUCTION));
+    assert.ok(ALL_MODEL_AI_BUILTIN_PRODUCTION_ORIGINS.includes(ALL_MODEL_AI_VERCEL_PRODUCTION));
     assert.equal(isAllModelAiProductionWebOrigin(ALL_MODEL_AI_CUSTOM_PRODUCTION), true);
     assert.equal(isAllModelAiProductionWebOrigin(ALL_MODEL_AI_WWW_PRODUCTION), true);
     assert.equal(isAllModelAiProductionWebOrigin(ALL_MODEL_AI_VERCEL_PRODUCTION), true);
+    assert.equal(isAllModelAiProductionWebOrigin('https://allmodelai.com'), true);
     assert.equal(isAllModelAiProductionWebOrigin('https://evil.example'), false);
+});
+
+test('LAN dev origins are allowed in non-production for credentialed API calls', async () => {
+    const lanOrigin = 'http://192.168.1.42:5173';
+    assert.equal(isLocalNetworkDevOrigin(lanOrigin), true);
+    const response = await request(app)
+        .get('/api/health')
+        .set('Origin', lanOrigin);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers['access-control-allow-origin'], lanOrigin);
+    assert.equal(response.headers['access-control-allow-credentials'], 'true');
 });
 
 test('allows custom production domain origins with credentials', async () => {

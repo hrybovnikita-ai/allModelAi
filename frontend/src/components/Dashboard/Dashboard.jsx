@@ -1,5 +1,5 @@
 import { apiFetch } from '../../lib/api';
-import { clearAllSessionData } from '../../lib/session';
+import { deleteUserAccountAndSignOut } from '../../lib/clientAuthReset';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import { useSession } from '../Session/SessionProvider';
@@ -101,13 +101,22 @@ export default function Dashboard() {
     setIsDeleting(true);
     setDeleteError('');
     try {
-      const response = await apiFetch('/api/auth/account', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user?.email }) });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || 'Could not delete your account.');
-      clearAllSessionData();
-      navigate('/');
+      const { deleted, message } = await deleteUserAccountAndSignOut(user?.email);
+      setDeleteModalOpen(false);
+      if (message) {
+        try {
+          sessionStorage.setItem('allmodelai_auth_notice', message);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!deleted && message) {
+        setDeleteError(message);
+      }
+      navigate('/', { replace: true });
     } catch (error) {
-      setDeleteError(error.message);
+      setDeleteError(error?.message || 'Could not complete account deletion.');
+      navigate('/', { replace: true });
     } finally {
       setIsDeleting(false);
     }

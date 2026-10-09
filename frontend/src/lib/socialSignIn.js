@@ -23,6 +23,7 @@ import { consumeFirebaseRedirectResult, hasRedirectResultBeenConsumed } from './
 import { bootstrapGoogleRedirectRecovery, waitForGoogleRedirectRecovery } from './googleRedirectRecovery.js';
 import {
   clearSocialRedirectIntent,
+  hasFirebaseRedirectReturnHints,
   isGoogleRedirectRecoveryPending,
   isRedirectFlowCommitted,
   markRedirectFlowCommitted,
@@ -34,9 +35,13 @@ import { assertGoogleRedirectStorageAvailable } from './storageAvailability.js';
 
 export {
   clearSocialRedirectIntent,
+  FIREBASE_AUTH_REDIRECT_PENDING_KEY,
+  hasFirebaseRedirectReturnHints,
   isGoogleRedirectRecoveryPending,
   peekRedirectIntent,
   reconcileStaleRedirectIntent,
+  shouldAttemptGoogleRedirectRecovery,
+  shouldShowGoogleRedirectRecoveryUI,
 } from './socialRedirectState.js';
 
 const GOOGLE_PROVIDER = 'Google';
@@ -54,6 +59,8 @@ function providerFor(name) {
   if (name === GOOGLE_PROVIDER) {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
+    // OAuth redirect URI is derived from firebase.initializeApp({ authDomain }) — see getEffectiveFirebaseConfig().
+    socialAuthDebug('GOOGLE_PROVIDER_READY', { authDomain: getEffectiveFirebaseConfig().authDomain });
     return provider;
   }
   throw new Error('Unsupported provider.');
@@ -278,7 +285,7 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
     let redirectResult;
     try {
       redirectResult = await consumeFirebaseRedirectResult(auth, consumer, {
-        allowAuthStateFallback: true,
+        allowAuthStateFallback: hasFirebaseRedirectReturnHints() || isMobileWebSafari(),
       });
     } catch (error) {
       clearSocialRedirectIntent();
@@ -334,7 +341,7 @@ export async function awaitGoogleRedirectRecovery(consumer = 'RedirectRecovery')
   if (existing) {
     return existing;
   }
-  if (!isGoogleRedirectRecoveryPending()) {
+  if (!isGoogleRedirectRecoveryPending() || !shouldAttemptGoogleRedirectRecovery()) {
     return null;
   }
   return runGoogleRedirectRecovery(consumer);

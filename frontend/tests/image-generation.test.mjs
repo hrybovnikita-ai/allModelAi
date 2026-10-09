@@ -34,6 +34,21 @@ test('image request keeps the selected quality and aspect', () => {
     assert.equal(imageGeneration.IMAGE_QUALITIES.map((item) => item.label).join(','), 'Standard,HD,Ultra');
 });
 
+test('user-facing image errors surface server configuration hints', () => {
+    const { userFacingImageGenerationError, IMAGE_NOT_CONFIGURED_MESSAGE } = imageGeneration;
+    assert.match(
+        userFacingImageGenerationError(false, {
+            code: 'IMAGE_NOT_CONFIGURED',
+            missingEnvVars: ['POLLINATIONS_API_KEY (recommended; POLINATIONS_API_KEY alias accepted)'],
+        }),
+        /POLLINATIONS_API_KEY/,
+    );
+    assert.match(
+        userFacingImageGenerationError(false, { code: 'IMAGE_NOT_CONFIGURED' }),
+        new RegExp(IMAGE_NOT_CONFIGURED_MESSAGE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    );
+});
+
 test('user-facing image errors hide provider billing details', () => {
     const { userFacingImageGenerationError, IMAGE_UNAVAILABLE_MESSAGE } = imageGeneration;
     assert.equal(

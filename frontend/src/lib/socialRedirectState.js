@@ -1,15 +1,19 @@
 const REDIRECT_STORAGE_KEY = 'allmodelai_social_redirect';
 const REDIRECT_STORAGE_BACKUP_KEY = 'allmodelai_social_redirect_backup';
 export const REDIRECT_PENDING_KEY = 'allmodelai_redirect_pending';
+/** Same flag as REDIRECT_PENDING_KEY (Firebase redirect sign-in in progress). */
+export const FIREBASE_AUTH_REDIRECT_PENDING_KEY = REDIRECT_PENDING_KEY;
 
 function saveRedirectIntent(name, options = {}, extra = {}) {
+  const phase = extra.phase || 'idle';
   const payload = JSON.stringify({
     name,
     rememberMe: options.rememberMe !== false,
     link: Boolean(options.link),
     returnTo: '/dashboard',
-    phase: extra.phase || 'idle',
+    phase,
     expires: Date.now() + 600000,
+    redirectStartedAt: phase === 'awaiting-google-return' ? Date.now() : extra.redirectStartedAt,
   });
   try {
     sessionStorage.setItem(REDIRECT_STORAGE_KEY, payload);
@@ -114,6 +118,47 @@ export function isGoogleRedirectRecoveryPending() {
   return isRedirectFlowCommitted();
 }
 
+/** OAuth return navigation (Firebase handler or auth query params on the app URL). */
+export function hasFirebaseRedirectReturnHints() {
+  if (typeof window === 'undefined') return false;
+  const { pathname, search, hash } = window.location;
+  if (/\/__\/auth\/handler/i.test(pathname)) return true;
+  const combined = `${search}${hash}`;
+  return /(?:^|[?&#])(apiKey|authType|code|state|oauth|providerId|mode)=/i.test(combined);
+}
+
+export function hasActiveRedirectPendingFlag() {
+  try {
+    if (sessionStorage.getItem(REDIRECT_PENDING_KEY) === 'true') return true;
+  } catch {
+    /* ignore */
+  }
+  try {
+    return localStorage.getItem(REDIRECT_PENDING_BACKUP_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+const REDIRECT_RECOVERY_WINDOW_MS = 180000;
+
+/** True when we should call getRedirectResult / finish OAuth (not for stale abandoned redirects). */
+export function shouldAttemptGoogleRedirectRecovery() {
+  if (!isGoogleRedirectRecoveryPending()) return false;
+  if (hasFirebaseRedirectReturnHints()) return true;
+  const intent = peekRedirectIntent();
+  if (!intent) return false;
+  if (intent.expires < Date.now()) return false;
+  if (!intent.redirectStartedAt) return true;
+  return Date.now() - intent.redirectStartedAt < REDIRECT_RECOVERY_WINDOW_MS;
+}
+
+/** Full-screen “Finishing sign-in” — pending flag and/or OAuth return URL. */
+export function shouldShowGoogleRedirectRecoveryUI() {
+  if (!shouldAttemptGoogleRedirectRecovery()) return false;
+  return hasActiveRedirectPendingFlag() || hasFirebaseRedirectReturnHints();
+}
+
 export function reconcileStaleRedirectIntent() {
   const intent = peekRedirectIntent();
   if (!intent) {
@@ -122,7 +167,15 @@ export function reconcileStaleRedirectIntent() {
     }
     return;
   }
+  if (intent.expires < Date.now()) {
+    clearSocialRedirectIntent();
+    return;
+  }
   if (intent.phase === 'awaiting-google-return' && !isRedirectFlowCommitted()) {
+    clearSocialRedirectIntent();
+    return;
+  }
+  if (intent.phase === 'awaiting-google-return' && isRedirectFlowCommitted() && !shouldAttemptGoogleRedirectRecovery()) {
     clearSocialRedirectIntent();
   }
 }

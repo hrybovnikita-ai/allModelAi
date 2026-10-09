@@ -6,6 +6,13 @@ let cachedRedirectResult = undefined;
 let redirectResultInflight = null;
 let redirectResultConsumed = false;
 
+/** Max wait for getRedirectResult on a normal page load (ms). */
+export const REDIRECT_RESULT_TIMEOUT_MS = 800;
+/** Max wait for onAuthStateChanged fallback after redirect (ms). */
+export const AUTH_STATE_FALLBACK_TIMEOUT_MS = 1000;
+const IOS_REDIRECT_RESULT_TIMEOUT_MS = 1000;
+const IOS_AUTH_STATE_FALLBACK_TIMEOUT_MS = 1000;
+
 export function resetFirebaseRedirectCoordinatorForTests() {
   cachedRedirectResult = undefined;
   redirectResultInflight = null;
@@ -21,10 +28,14 @@ function isIosWebContext() {
 }
 
 function getRedirectResultTimeoutMs() {
-  return isIosWebContext() ? 10000 : 12000;
+  return isIosWebContext() ? IOS_REDIRECT_RESULT_TIMEOUT_MS : REDIRECT_RESULT_TIMEOUT_MS;
 }
 
-function waitForAuthStateUser(auth, timeoutMs = isIosWebContext() ? 12000 : 5000) {
+function getAuthStateFallbackTimeoutMs() {
+  return isIosWebContext() ? IOS_AUTH_STATE_FALLBACK_TIMEOUT_MS : AUTH_STATE_FALLBACK_TIMEOUT_MS;
+}
+
+function waitForAuthStateUser(auth, timeoutMs = getAuthStateFallbackTimeoutMs()) {
   if (auth.currentUser) {
     socialAuthDebug('FIREBASE_AUTH_STATE_RESTORED', { source: 'currentUser' });
     authRecoveryLog('Auth state already has currentUser');
@@ -59,7 +70,7 @@ function waitForAuthStateUser(auth, timeoutMs = isIosWebContext() ? 12000 : 5000
 }
 
 /**
- * WebKit may never settle getRedirectResult after OAuth; race with a timeout then use auth-state fallback.
+ * WebKit may never settle getRedirectResult after OAuth; race with a short timeout.
  */
 async function settleGetRedirectResult(auth) {
   const timeoutMs = getRedirectResultTimeoutMs();
