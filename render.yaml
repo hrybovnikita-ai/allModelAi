@@ -4,7 +4,9 @@ services:
     runtime: docker
     plan: starter
     healthCheckPath: /api/health
+    # Build context must be the monorepo root (not backend/) so workspace lockfiles resolve.
     dockerfilePath: ./Dockerfile
+    dockerContext: .
     autoDeploy: true
     disk:
       name: allmodelai-data
