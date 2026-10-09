@@ -76,7 +76,11 @@ test('Cloudflare requires an account and handles its image response', async () =
     clear(); process.env.IMAGE_PROVIDER = 'cloudflare'; process.env.CLAUDEFLARE_API_KEY = 'cf-test';
     assert.ok([502, 503].includes((await generate()).statusCode));
     process.env.CLOUDFLARE_ACCOUNT_ID = 'account';
-    global.fetch = async (url, options) => { assert.match(url, /accounts\/account\/ai\/run/); assert.equal(options.headers.Authorization, 'Bearer cf-test'); return Response.json({ success: true, result: { image: 'aGVsbG8=' } }); };
+    global.fetch = async (url, options) => {
+        assert.match(url, /accounts\/account\/ai\/run\/@cf\/black-forest-labs\/flux-1-schnell$/);
+        assert.equal(options.headers.Authorization, 'Bearer cf-test');
+        return Response.json({ success: true, result: { image: 'aGVsbG8=' } });
+    };
     assert.equal((await generate()).body.imageUrl, 'data:image/jpeg;base64,aGVsbG8=');
 });
 test('pollinations 402 without fallback returns sanitized unavailable error', async () => {

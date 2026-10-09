@@ -204,7 +204,7 @@ async function generateWithProvider(provider, {
 
     if (provider === 'cloudflare') {
         const cf = await generateCloudflareWorkersAiImage({
-            prompt: generationPrompt,
+            prompt: generationPrompt.slice(0, plan.maxPromptLength),
             steps: plan.request.steps,
             model: plan.model,
         });
