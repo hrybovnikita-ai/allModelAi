@@ -17,6 +17,8 @@ test('SessionProvider uses auth bootstrap instead of immediate restoreSession on
   const src = readFileSync(`${root}src/components/Session/SessionProvider.jsx`, 'utf8');
   assert.match(src, /bootstrapAuthenticatedUser/);
   assert.match(src, /CHECKING_REDIRECT|checking-redirect/);
+  assert.match(src, /CHECKING_SESSION|checking-session/);
+  assert.doesNotMatch(src, /function initialStatus[\s\S]*!hasSessionRestoreHint/);
 });
 
 test('SESSION_UPDATED_EVENT updates authenticated user email for listeners', async () => {

@@ -1,5 +1,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import { createElement as h } from 'react';
@@ -144,8 +146,11 @@ test('App Builder uses the verified session when browser storage is unavailable'
 });
 
 
-test('Chat includes the file creation mode', () => {
-  assert.match(renderChat(), />Create file<\/button>/);
+test('Chat includes the file creation mode in the plus menu', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const chatSource = fs.readFileSync(path.join(root, 'src/components/Chat/Chat.jsx'), 'utf8');
+  assert.match(chatSource, /Create files/);
+  assert.match(chatSource, /chooseSkill\('file'\)/);
 });
 
 test('file card opens a named file and the viewer renders code as text', async () => {

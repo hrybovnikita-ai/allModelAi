@@ -67,9 +67,11 @@ const buildCheckoutInfo = () => {
         wayforpayCheckoutAvailable: wayforpayOn,
         wayforpayCheckoutEnabled: wayforpayCheckoutEnabledForDeployment(),
         wayforpayTestMode,
-        wayforpayMockCheckout: false,
-        recurringBillingSupported: false,
-        renewalNotice: 'Each successful payment grants one month of access. Automatic card renewal is not enabled yet — renew manually before your period ends unless we enable WayForPay recurring billing.',
+        wayforpayMockCheckout: wayforpayTestMode,
+        recurringBillingSupported: primaryProvider === 'stripe',
+        renewalNotice: primaryProvider === 'stripe'
+            ? 'Subscriptions renew automatically each billing period until you cancel in the billing portal.'
+            : 'Each successful payment grants one month of access. Automatic card renewal is not enabled yet — renew manually before your period ends unless we enable WayForPay recurring billing.',
         supportedPaymentMethodsNote: primaryProvider === 'wayforpay'
             ? 'Visa, MasterCard, Google Pay, and Apple Pay through WayForPay secure checkout.'
             : primaryProvider === 'stripe'

@@ -19,7 +19,18 @@ export function classifyNetworkError(error, context = {}) {
     return { code: 'FIREBASE_UNAUTHORIZED_DOMAIN', message: 'This site domain is not authorized in Firebase Authentication.' };
   }
   if (firebaseCode === 'auth/network-request-failed') {
-    return { code: 'FIREBASE_NETWORK_ERROR', message: 'Could not reach Google/Firebase. Check your connection.' };
+    return {
+      code: 'FIREBASE_NETWORK_ERROR',
+      message:
+        'Could not reach Google sign-in (Firebase). This is usually a network, VPN, proxy, DNS, or firewall issue—not an AllModelAI app bug.',
+    };
+  }
+  if (/identitytoolkit\.googleapis\.com/i.test(msg) || /ERR_CONNECTION/i.test(msg)) {
+    return {
+      code: 'FIREBASE_NETWORK_ERROR',
+      message:
+        'Could not connect to Google Firebase Authentication. Check VPN/proxy, DNS, and firewall settings, then retry.',
+    };
   }
   if (firebaseCode === 'REDIRECT_RESULT_MISSING' || firebaseCode === 'auth/web-storage-unsupported') {
     return { code: 'GOOGLE_REDIRECT_FAILED', message: msg || 'Google redirect sign-in could not be completed.' };
@@ -38,6 +49,13 @@ export function classifyNetworkError(error, context = {}) {
     || msg.includes('ERR_CONNECTION')
     || error?.name === 'TypeError'
   ) {
+    if (/identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com/i.test(msg)) {
+      return {
+        code: 'FIREBASE_NETWORK_ERROR',
+        message:
+          'Could not connect to Google Firebase Authentication. Check VPN/proxy, DNS, and firewall settings, then retry.',
+      };
+    }
     if (isBrowserLocalhostDev()) {
       return {
         code: 'BACKEND_UNREACHABLE',

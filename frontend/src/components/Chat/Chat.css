@@ -357,6 +357,11 @@ html[data-theme="light"] .chat-page .chat-composer textarea::placeholder{
   cursor: pointer;
   transition: all 0.18s ease;
 }
+.composer-camera.is-busy {
+  opacity: 0.65;
+  cursor: wait;
+}
+
 .remove-attached-image:hover {
   background: #ef4444 !important;
   border-color: #ef4444 !important;

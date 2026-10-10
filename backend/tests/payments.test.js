@@ -2,8 +2,15 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
 
+const path = require('node:path');
+const os = require('node:os');
+const fs = require('node:fs');
+
 process.env.NODE_ENV = 'test';
+process.env.ENABLE_PLUS_TEST_MODE = 'true';
 process.env.DEVELOPER_EMAILS = 'owner@example.com';
+process.env.DB_FILE = path.join(os.tmpdir(), `allmodelai-payments-${process.pid}.sqlite`);
+fs.rmSync(process.env.DB_FILE, { force: true });
 delete process.env.STRIPE_SECRET_KEY;
 
 const app = require('../app');

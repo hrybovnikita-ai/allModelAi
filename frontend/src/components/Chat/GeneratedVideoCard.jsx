@@ -1,13 +1,49 @@
-import { downloadVideo } from '../../lib/videoGeneration';
+import { useEffect, useState } from 'react';
+import { apiFetch } from '../../lib/api';
+import { downloadVideo, resolveVideoPlaybackUrl } from '../../lib/videoGeneration';
 
 export default function GeneratedVideoCard({ message, onDownloadError, onRegenerate }) {
-  if (!message?.videoUrl) return null;
+  const [playbackSrc, setPlaybackSrc] = useState('');
+  const rawUrl = message?.videoUrl;
+
+  useEffect(() => {
+    if (!rawUrl) {
+      setPlaybackSrc('');
+      return undefined;
+    }
+    const resolved = resolveVideoPlaybackUrl(rawUrl);
+    if (!String(rawUrl).startsWith('/api/')) {
+      setPlaybackSrc(resolved);
+      return undefined;
+    }
+    let blobUrl = '';
+    let cancelled = false;
+    void apiFetch(rawUrl)
+      .then((response) => {
+        if (!response.ok) throw new Error('playback failed');
+        return response.blob();
+      })
+      .then((blob) => {
+        if (cancelled) return;
+        blobUrl = URL.createObjectURL(blob);
+        setPlaybackSrc(blobUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setPlaybackSrc(resolved);
+      });
+    return () => {
+      cancelled = true;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [rawUrl]);
+
+  if (!rawUrl) return null;
 
   return (
     <div className="generated-video-result">
       <video
         className="generated-video"
-        src={message.videoUrl}
+        src={playbackSrc || resolveVideoPlaybackUrl(rawUrl)}
         controls
         playsInline
         preload="metadata"
@@ -23,7 +59,7 @@ export default function GeneratedVideoCard({ message, onDownloadError, onRegener
       <div className="generated-image-actions">
         <button
           type="button"
-          onClick={() => downloadVideo(message.videoUrl).catch(() => onDownloadError?.('Could not download the video.'))}
+          onClick={() => downloadVideo(rawUrl).catch(() => onDownloadError?.('Could not download the video.'))}
         >
           Download video
         </button>

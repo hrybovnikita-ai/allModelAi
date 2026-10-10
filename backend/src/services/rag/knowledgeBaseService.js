@@ -3,6 +3,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { isPostgresConnection } = require('../../db/postgresHttpReads');
+const { queryPgPool, resolvePostgresAsyncPool } = require('../../db/pgPoolQuery');
+
+async function pgQuery(connection, text, values = []) {
+    return queryPgPool(resolvePostgresAsyncPool(connection), text, values);
+}
 const { splitPagesIntoChunks, splitTextIntoChunks } = require('./chunking');
 const { embedText, serializeEmbedding } = require('./embeddingProvider');
 const { rankChunks, DEFAULT_TOP_K } = require('./retriever');
@@ -25,7 +30,8 @@ function sanitizeFilename(name) {
 async function listDocuments(connection, email) {
     const normalized = String(email).trim().toLowerCase();
     if (isPostgresConnection(connection)) {
-        const result = await connection.pool.query(
+        const result = await pgQuery(
+            connection,
             `SELECT id, name, mime_type AS "mimeType", status, page_count AS "pageCount",
                     char_count AS "charCount", chunk_count AS "chunkCount", created_at AS "createdAt", updated_at AS "updatedAt"
              FROM knowledge_documents WHERE email = $1 ORDER BY updated_at DESC`,
@@ -43,7 +49,8 @@ async function listDocuments(connection, email) {
 async function getChunksForEmail(connection, email) {
     const normalized = String(email).trim().toLowerCase();
     if (isPostgresConnection(connection)) {
-        const result = await connection.pool.query(
+        const result = await pgQuery(
+            connection,
             `SELECT c.id, c.document_id, c.chunk_index, c.page_number, c.section_label, c.text, c.embedding_json,
                     d.name AS document_name
              FROM knowledge_chunks c
@@ -65,11 +72,12 @@ async function getChunksForEmail(connection, email) {
 async function deleteDocument(connection, email, documentId) {
     const normalized = String(email).trim().toLowerCase();
     if (isPostgresConnection(connection)) {
-        const row = await connection.pool.query(
+        const row = await pgQuery(
+            connection,
             'SELECT storage_path FROM knowledge_documents WHERE id = $1 AND email = $2',
             [documentId, normalized],
         );
-        await connection.pool.query('DELETE FROM knowledge_documents WHERE id = $1 AND email = $2', [documentId, normalized]);
+        await pgQuery(connection, 'DELETE FROM knowledge_documents WHERE id = $1 AND email = $2', [documentId, normalized]);
         const storagePath = row.rows[0]?.storage_path;
         if (storagePath && fs.existsSync(storagePath)) fs.unlinkSync(storagePath);
         return { deleted: true };
@@ -104,7 +112,8 @@ async function indexDocument(connection, email, input) {
     fs.writeFileSync(storagePath, JSON.stringify({ name, pages, content: content.slice(0, 50000) }), 'utf8');
 
     if (isPostgresConnection(connection)) {
-        await connection.pool.query(
+        await pgQuery(
+            connection,
             `INSERT INTO knowledge_documents
              (id, email, name, mime_type, status, page_count, char_count, chunk_count, storage_path, created_at, updated_at)
              VALUES ($1,$2,$3,$4,'processing',$5,$6,0,$7,$8,$8)
@@ -113,7 +122,7 @@ async function indexDocument(connection, email, input) {
              storage_path = EXCLUDED.storage_path, updated_at = EXCLUDED.updated_at`,
             [id, normalized, name, mimeType, pages?.length || 1, content.length, storagePath, now],
         );
-        await connection.pool.query('DELETE FROM knowledge_chunks WHERE document_id = $1 AND email = $2', [id, normalized]);
+        await pgQuery(connection, 'DELETE FROM knowledge_chunks WHERE document_id = $1 AND email = $2', [id, normalized]);
     } else {
         connection.database.prepare(
             `INSERT INTO knowledge_documents
@@ -132,7 +141,8 @@ async function indexDocument(connection, email, input) {
         const embedding = await embedText(chunk.text);
         const embeddingJson = serializeEmbedding(embedding);
         if (isPostgresConnection(connection)) {
-            await connection.pool.query(
+            await pgQuery(
+                connection,
                 `INSERT INTO knowledge_chunks
                  (id, document_id, email, chunk_index, page_number, section_label, text, embedding_json, created_at)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
@@ -169,7 +179,8 @@ async function indexDocument(connection, email, input) {
     }
 
     if (isPostgresConnection(connection)) {
-        await connection.pool.query(
+        await pgQuery(
+            connection,
             `UPDATE knowledge_documents SET status = 'ready', chunk_count = $1, updated_at = $2 WHERE id = $3 AND email = $4`,
             [inserted, now, id, normalized],
         );

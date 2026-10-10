@@ -37,6 +37,7 @@ const {
     getPublicCheckoutInfo,
     getCheckoutPlans,
     getCheckoutPlanQuote,
+    createBillingPortalSession,
     createChatResponse,
     analyzeVision,
     generateImage,
@@ -90,6 +91,7 @@ const {
     postAiPredict,
     getTrainingJob,
     getTrainingMetrics,
+    postImprovementAnalyze,
 } = require('../controllers/aiMlLearningController');
 const {
     getTrainingHealth,
@@ -108,7 +110,8 @@ const {
 } = require('../controllers/wayforpayController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { prepareAppGeneration } = require('../appGeneration');
-const { health, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
+const { health, healthDetailed, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
+const { getReady, getOpsDashboard, getOpsProviders } = require('../controllers/opsCenter');
 const { getAccountSecurity, setAccountPassword } = require('../accountPassword');
 const { getStorageOverview, listStorageIdea, createStorageIdea, deleteStorageIdea } = require('../controllers/storageIdeasController');
 const { getSubscriptionSummary, cancelTestSubscriptionHandler } = require('../controllers/subscriptionController');
@@ -166,6 +169,7 @@ router.post('/ai/train/pytorch-linear', requireAuth, postTrainPytorchLinear);
 router.post('/ai/predict', requireAuth, postAiPredict);
 router.get('/ai/training/:id', requireAuth, getTrainingJob);
 router.get('/ai/training/:id/metrics', requireAuth, getTrainingMetrics);
+router.post('/ai/improvement/analyze', requireAuth, postImprovementAnalyze);
 router.get('/training/health', getTrainingHealth);
 router.get('/training/models', getTrainingModels);
 router.post('/training/start', requireAuth, postTrainingStart);
@@ -176,6 +180,8 @@ router.get('/system/health', getSystemHealth);
 
 router.post('/auth/register', registerUser);
 router.post('/auth/login', logAuthStage('AUTH_ROUTE_ENTERED'), loginUser);
+router.get('/auth/account/security', requireAuth, getAccountSecurity);
+router.post('/auth/account/password', requireAuth, setAccountPassword);
 router.post('/auth/quick-social', quickSocialLogin);
 router.get('/auth/:provider/accounts', getSocialAccounts);
 router.post('/auth/social', socialLogin);
@@ -186,11 +192,33 @@ router.get('/auth/me', logAuthStage('SESSION_ROUTE_ENTERED'), getSession);
 router.post('/auth/logout', logout);
 router.post('/auth/password-reset/request', requestPasswordReset);
 router.post('/auth/password-reset/confirm', confirmPasswordReset);
-router.get('/auth/account/security', requireAuth, getAccountSecurity);
-router.post('/auth/account/password', requireAuth, setAccountPassword);
 router.get('/status/models', logAuthStage('MODELS_STATUS_ROUTE_ENTERED'), cachePublicResponse('allmodelai:public:model-status:v1'), getModelStatus);
 router.get('/health/providers', cachePublicResponse('allmodelai:public:provider-health:v1'), getProviderHealth);
 router.get('/health', health);
+router.get('/ready', getReady);
+router.get('/health/detailed', healthDetailed);
+router.get('/admin/ops/dashboard', requireAdmin, getOpsDashboard);
+router.get('/admin/ops/providers', requireAdmin, getOpsProviders);
+const {
+    getMemorySettings,
+    patchMemorySettings,
+    listUserMemories,
+    createUserMemory,
+    updateUserMemory,
+    deleteUserMemory,
+    clearUserMemories,
+    postResponseFeedback,
+    getAdminAiImprovementDashboard,
+} = require('../controllers/aiImprovementController');
+router.get('/ai/memory/settings', requireAuth, getMemorySettings);
+router.patch('/ai/memory/settings', requireAuth, patchMemorySettings);
+router.get('/ai/memory', requireAuth, listUserMemories);
+router.post('/ai/memory', requireAuth, createUserMemory);
+router.patch('/ai/memory/:id', requireAuth, updateUserMemory);
+router.delete('/ai/memory/:id', requireAuth, deleteUserMemory);
+router.delete('/ai/memory', requireAuth, clearUserMemories);
+router.post('/ai/feedback', requireAuth, postResponseFeedback);
+router.get('/admin/ai-improvement', getAdminAiImprovementDashboard);
 router.get('/public/firebase-config', cachePublicResponse('allmodelai:public:firebase-web-config:v1'), getPublicFirebaseConfig);
 router.get('/users', getPublicUsers);
 router.get('/community/users', getCommunityUsers);
@@ -212,9 +240,17 @@ router.post('/images/upscale', requireAuth, upscaleGeneratedImage);
 router.post('/images', requireAuth, generateImage);
 router.post('/images/generate', requireAuth, generateImage);
 const { generateVideo, getVideoGenerationStatus } = require('../videos');
+const {
+    postVideoGenerate,
+    getVideoJob,
+    streamVideoJob,
+} = require('../controllers/videoController');
 router.get('/videos/status', requireAuth, getVideoGenerationStatus);
 router.post('/videos', requireAuth, generateVideo);
 router.post('/videos/generate', requireAuth, generateVideo);
+router.post('/video/generate', requireAuth, postVideoGenerate);
+router.get('/video/jobs/:jobId', requireAuth, getVideoJob);
+router.get('/video/jobs/:jobId/stream', requireAuth, streamVideoJob);
 router.post('/purchases', requireAuth, createPurchase);
 router.get('/payments/checkout-info', getPublicCheckoutInfo);
 router.get('/payments/plans', getCheckoutPlans);
@@ -226,6 +262,7 @@ router.post('/payments/wayforpay/test-checkout', requireAuth, completeTestWayfor
 router.get('/payments/wayforpay/status/:orderReference', requireAuth, getWayforpayPaymentStatus);
 router.get('/payments/history', requireAuth, getPaymentHistory);
 router.post('/payments/checkout', requireAuth, createCheckoutSession);
+router.post('/payments/billing-portal', requireAuth, createBillingPortalSession);
 router.post('/payments/create-intent', requireAuth, createPaymentIntent);
 router.get('/payments/intent/:intentId', requireAuth, verifyPaymentIntent);
 router.post('/payments/mock-subscribe', requireAuth, mockDeveloperSubscribe);
@@ -272,6 +309,12 @@ router.get('/arena/leaderboard', requireAuth, getArenaLeaderboard);
 router.get('/developer/keys', requireAuth, listDeveloperKeys);
 router.post('/developer/keys', requireAuth, createDeveloperKey);
 router.delete('/developer/keys/:id', requireAuth, revokeDeveloperKey);
+const {
+    getModelDiagnosticsCatalog,
+    postModelDiagnosticTest,
+} = require('../controllers/modelDiagnosticsController');
+router.get('/developer/model-diagnostics', requireAuth, getModelDiagnosticsCatalog);
+router.post('/developer/model-diagnostics/test', requireAuth, postModelDiagnosticTest);
 router.get('/search', requireAuth, globalSearch);
 router.get('/jobs', requireAuth, listJobs);
 router.post('/jobs', requireAuth, createJob);

@@ -9,6 +9,8 @@ test('Smart Router attaches detected response language metadata', () => {
     assert.equal(route.responseLanguage?.code, 'en');
     const es = selectSmartRoute('Explica la sintaxis de Python.', { routerMode: 'balanced' });
     assert.equal(es.responseLanguage?.code, 'es');
+    const ru = selectSmartRoute('Расскажи мне страшную историю', { routerMode: 'balanced' });
+    assert.equal(ru.responseLanguage?.code, 'ru');
 });
 const { splitTextIntoChunks } = require('../src/services/rag/chunking');
 const { embedLocal, cosineSimilarity } = require('../src/services/rag/embeddingProvider');

@@ -19,6 +19,7 @@ from learning.keras.intro import keras_dense_demo
 from learning.pandas.basics import pandas_split_demo
 from learning.pytorch.linear_torch import train_pytorch_linear
 from learning.sklearn.linear_sklearn import run_sklearn_linear
+from learning.sklearn.logistic_sklearn import run_sklearn_logistic
 from learning.training import jobs
 
 
@@ -144,6 +145,10 @@ def register_ai_learning_routes(app: Any) -> None:
     @router.get("/demo/sklearn")
     def demo_sklearn(seed: int = 42):
         return run_sklearn_linear(seed=seed)
+
+    @router.get("/demo/sklearn-logistic")
+    def demo_sklearn_logistic(seed: int = 42):
+        return run_sklearn_logistic(seed=seed)
 
     @router.get("/demo/keras")
     def demo_keras(seed: int = 42):

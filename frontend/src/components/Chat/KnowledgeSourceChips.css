@@ -1,0 +1,30 @@
+.kb-source-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  margin-top: 0.55rem;
+}
+
+.kb-source-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-right: 0.25rem;
+}
+
+.kb-source-chip {
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: rgba(8, 47, 73, 0.35);
+  color: #a5f3fc;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.kb-source-chip:hover {
+  border-color: rgba(34, 211, 238, 0.65);
+  background: rgba(8, 47, 73, 0.55);
+}

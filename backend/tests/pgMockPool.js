@@ -127,14 +127,41 @@ function handleCommonDashboardQueries(text, queryValues, ctx) {
         const c = ctx.usageEvents?.length ? 1 : 0;
         return { rows: [{ c }], rowCount: 1 };
     }
-    if (/FROM account_access_modes/i.test(text)) {
-        return { rows: [], rowCount: 0 };
+    if (/account_access_modes/i.test(text)) {
+        if (!ctx.accessModes) ctx.accessModes = new Map();
+        if (/INSERT INTO account_access_modes/i.test(text)) {
+            ctx.accessModes.set(String(queryValues[0]).toLowerCase(), queryValues[1]);
+            return { rowCount: 1, rows: [] };
+        }
+        if (/FROM account_access_modes/i.test(text)) {
+            const mode = ctx.accessModes.get(String(queryValues[0]).toLowerCase());
+            return mode ? { rows: [{ mode }], rowCount: 1 } : { rows: [], rowCount: 0 };
+        }
+        if (/DELETE FROM account_access_modes/i.test(text)) {
+            ctx.accessModes.delete(String(queryValues[0]).toLowerCase());
+            return { rowCount: 1, rows: [] };
+        }
     }
     if (/FROM conversations/i.test(text)) {
         if (ctx.conversations) {
             return handleConversationSelect(text, queryValues, ctx);
         }
         return { rows: [], rowCount: 0 };
+    }
+    if (/FROM knowledge_chunks/i.test(text) || /FROM knowledge_documents/i.test(text)) {
+        return { rows: [], rowCount: 0 };
+    }
+    if (/FROM user_ai_settings/i.test(text) || /INSERT INTO user_ai_settings/i.test(text)) {
+        if (/INSERT INTO user_ai_settings/i.test(text)) {
+            return { rowCount: 1, rows: [] };
+        }
+        return { rows: [], rowCount: 0 };
+    }
+    if (/FROM user_ai_memories/i.test(text)) {
+        return { rows: [], rowCount: 0 };
+    }
+    if (/INSERT INTO router_metrics/i.test(text)) {
+        return { rowCount: 1, rows: [] };
     }
     if (/FROM workspace_items/i.test(text)) {
         if (/type = 'memory'/i.test(text) && ctx.memoryRows) {
@@ -384,6 +411,7 @@ function createPostgresHttpMockPool(initialUser, { trackChat = false, trackSocia
                 conversations: [],
                 usageEvents: [],
                 usageCounts: new Map(),
+                accessModes: new Map(),
                 memoryRows: [{ data: JSON.stringify({ name: 'Pinned fact' }) }],
                 documentRows: [],
             }

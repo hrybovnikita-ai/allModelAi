@@ -1,7 +1,7 @@
 import { applyAuthResponsePayload, confirmSession } from '../../lib/session';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { authPost } from '../../lib/authApi';
 import { validateRegistrationForm } from '../../lib/authValidation';
@@ -18,13 +18,15 @@ import {
 import { shouldPreferGoogleRedirectSignIn } from '../../lib/socialSignInEnv';
 import { canUseGoogleRedirectSignIn } from '../../lib/storageAvailability';
 import { markFreshLogin } from '../../lib/session';
-import { socialError } from '../../lib/socialSession';
+import { useSession } from '../Session/SessionProvider';
+import { isRetryableSocialSignInError, socialError } from '../../lib/socialSession';
 import AuthDebugPanel from '../SocialAuth/AuthDebugPanel';
 import GoogleSignInIcon from './GoogleSignInIcon';
 import './Login.css';
 
 export default function Login(props) {
-  return <LoginForm {...props} />;
+  const { ref: _ignoredRef, ...rest } = props;
+  return <LoginForm {...rest} />;
 }
 
 function LoginForm({
@@ -36,6 +38,7 @@ function LoginForm({
 }) {
   const signingUp = mode === 'signup';
   const navigate = useNavigate();
+  const { refresh } = useSession();
 
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
@@ -44,9 +47,12 @@ function LoginForm({
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [successNotice, setSuccessNotice] = useState('');
+  const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false);
   const [firebaseSocialReady, setFirebaseSocialReady] = useState(() => isFirebaseSocialConfigured());
   const [firebaseConfigChecked, setFirebaseConfigChecked] = useState(() => isFirebaseSocialConfigured());
   const [authReadyForGoogle, setAuthReadyForGoogle] = useState(false);
+  const [socialErrorCode, setSocialErrorCode] = useState('');
+  const googleSignInClickLock = useRef(false);
 
   useEffect(() => {
     if (isGoogleRedirectRecoveryPending()) {
@@ -85,7 +91,7 @@ function LoginForm({
   }, []);
 
   const handleSocialSignIn = (provider) => {
-    if (submitting || socialBusy || !authReadyForGoogle || !firebaseSocialReady) {
+    if (googleSignInClickLock.current || submitting || socialBusy || !authReadyForGoogle || !firebaseSocialReady) {
       if (!firebaseSocialReady && firebaseConfigChecked) {
         setError(
           `Google sign-in is not configured. Set ${getMissingFirebaseConfigKeys().join(', ')} in frontend/.env or FIREBASE_WEB_* on the backend.`,
@@ -93,7 +99,9 @@ function LoginForm({
       }
       return;
     }
+    googleSignInClickLock.current = true;
     setError('');
+    setSocialErrorCode('');
     setSocialBusy(provider);
 
     if (shouldPreferGoogleRedirectSignIn()) {
@@ -108,8 +116,10 @@ function LoginForm({
         try {
           await startGoogleRedirectSignIn(provider, { rememberMe }, 'ios-safari');
         } catch (requestError) {
+          setSocialErrorCode(requestError?.code || '');
           setError(socialError(requestError));
           setSocialBusy(null);
+          googleSignInClickLock.current = false;
         }
       })();
       return;
@@ -120,6 +130,8 @@ function LoginForm({
       launched = launchGooglePopupSignIn();
     } catch (launchError) {
       setSocialBusy(null);
+      googleSignInClickLock.current = false;
+      setSocialErrorCode(launchError?.code || '');
       setError(socialError(launchError));
       return;
     }
@@ -131,8 +143,10 @@ function LoginForm({
           return;
         }
         document.activeElement?.blur();
+        await refresh({ force: true });
         await navigateAfterSocialLogin(outcome, { navigate, replaceDashboard: true });
       } catch (requestError) {
+        setSocialErrorCode(requestError?.code || '');
         if (requestError.code === 'SESSION_NOT_CONFIRMED') {
           setError('Sign-in reached Google but your AllModelAI session could not be verified. Please try again.');
         } else {
@@ -140,6 +154,7 @@ function LoginForm({
         }
       } finally {
         setSocialBusy(null);
+        googleSignInClickLock.current = false;
       }
     })();
   };
@@ -148,6 +163,7 @@ function LoginForm({
     event.preventDefault();
     setError('');
     setSuccessNotice('');
+    setNeedsPasswordSetup(false);
 
     const formData = new FormData(event.currentTarget);
     const raw = Object.fromEntries(formData.entries());
@@ -211,6 +227,7 @@ function LoginForm({
       });
     } catch (requestError) {
       if (requestError.code === 'PASSWORD_SETUP_REQUIRED' && !signingUp) {
+        setNeedsPasswordSetup(true);
         setError(
           requestError.message ||
             'No password is set for this email. Sign in with Google, then set a password under Settings → Security.',
@@ -229,7 +246,7 @@ function LoginForm({
         setError(
           'Sign-in reached the server but your session could not be verified. Check that VITE_API_BASE_URL points to your Render backend and that Render allows cross-site cookies (COOKIE_SAME_SITE=none, COOKIE_SECURE=true, FRONTEND_ORIGIN).',
         );
-      } else if (requestError.status === 401 && !signingUp) {
+      } else if (requestError.status === 401 && !signingUp && requestError.code !== 'PASSWORD_SETUP_REQUIRED') {
         setError('Incorrect email or password');
       } else if (requestError.message?.includes('Failed to fetch')) {
         setError(
@@ -400,8 +417,28 @@ function LoginForm({
           )}
 
           {error && (
-            <p className="login-error" role="alert">
-              {error}
+            <div className="login-error-block" role="alert">
+              <p className="login-error">{error}</p>
+              {isRetryableSocialSignInError(socialErrorCode) && (
+                <button
+                  type="button"
+                  className="login-retry-btn"
+                  disabled={socialDisabled || !firebaseSocialReady}
+                  onClick={() => handleSocialSignIn('Google')}
+                >
+                  Retry Google sign-in
+                </button>
+              )}
+            </div>
+          )}
+
+          {needsPasswordSetup && !signingUp && (
+            <p className="login-password-setup-hint" role="status">
+              Use <strong>Continue with Google</strong> above, then open{' '}
+              <Link to="/settings#settings-security" onClick={onClose}>
+                Settings → Security
+              </Link>{' '}
+              to set an AllModelAI password for this email.
             </p>
           )}
 

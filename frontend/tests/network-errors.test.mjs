@@ -17,3 +17,11 @@ test('classifyNetworkError maps Firebase unauthorized domain', () => {
   const { code } = classifyNetworkError({ code: 'auth/unauthorized-domain', message: 'x' });
   assert.equal(code, 'FIREBASE_UNAUTHORIZED_DOMAIN');
 });
+
+test('classifyNetworkError maps identitytoolkit connection failures to Firebase network', () => {
+  const { code, message } = classifyNetworkError(
+    new TypeError('Failed to fetch https://identitytoolkit.googleapis.com/v1/projects'),
+  );
+  assert.equal(code, 'FIREBASE_NETWORK_ERROR');
+  assert.match(message, /Firebase|Google/i);
+});

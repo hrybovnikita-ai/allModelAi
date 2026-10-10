@@ -74,6 +74,8 @@ app.post(
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
+const { requestTelemetryMiddleware } = require('./src/middleware/requestTelemetry');
+app.use('/api', requestTelemetryMiddleware);
 const requestCounts = new Map();
 app.use('/api', (req, res, next) => {
     if (process.env.NODE_ENV !== 'production') return next();
@@ -114,6 +116,26 @@ if (fs.existsSync(frontendDist)) {
 
 app.use((req, res) => {
     res.status(404).json({ message: 'Route not found' });
+});
+
+app.use((err, req, res, _next) => {
+    const correlationId = req.correlationId || req.headers['x-request-id'] || 'unknown';
+    if (err?.type === 'entity.too.large') {
+        return res.status(413).json({
+            message: 'Request payload too large (often an oversized screenshot). Try a smaller image.',
+            code: 'PAYLOAD_TOO_LARGE',
+            correlationId,
+        });
+    }
+    console.error('[EXPRESS_ERROR]', correlationId, err?.name || 'Error', err?.message || err);
+    if (res.headersSent) {
+        return undefined;
+    }
+    return res.status(500).json({
+        message: 'The server could not process this request.',
+        code: 'CHAT_INTERNAL_ERROR',
+        correlationId,
+    });
 });
 
 module.exports = app;

@@ -113,9 +113,17 @@ function shouldPreferStripeOverWayforpay() {
 
 function stripePriceIdForPlan(planKey) {
     const key = String(planKey || '').toLowerCase();
-    if (key === 'common' || key === 'pro') return envTrim('STRIPE_PRO_PRICE_ID') || envTrim('STRIPE_PRICE_PRO');
-    if (key === 'plus' || key === 'power' || key === 'enterprise') {
-        return envTrim('STRIPE_ENTERPRISE_PRICE_ID') || envTrim('STRIPE_PRICE_ENTERPRISE') || envTrim('STRIPE_PRICE_PLUS');
+    if (key === 'starter') {
+        return envTrim('STRIPE_PRICE_STARTER') || envTrim('STRIPE_STARTER_PRICE_ID');
+    }
+    if (key === 'common' || key === 'pro') {
+        return envTrim('STRIPE_PRICE_PRO') || envTrim('STRIPE_PRO_PRICE_ID');
+    }
+    if (key === 'plus' || key === 'power' || key === 'enterprise' || key === 'unlimited') {
+        return envTrim('STRIPE_PRICE_UNLIMITED')
+            || envTrim('STRIPE_ENTERPRISE_PRICE_ID')
+            || envTrim('STRIPE_PRICE_ENTERPRISE')
+            || envTrim('STRIPE_PRICE_PLUS');
     }
     if (key === 'week') return envTrim('STRIPE_WEEKLY_PRICE_ID') || envTrim('STRIPE_PRICE_WEEK');
     return '';

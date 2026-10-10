@@ -5,6 +5,7 @@ import {
   downloadOriginalImage,
   fetchImageGenerationStatus,
   IMAGE_ASPECTS,
+  IMAGE_COUNT_OPTIONS,
   IMAGE_QUALITIES,
   IMAGE_STYLES,
   imageProviderLabel,
@@ -13,6 +14,7 @@ import {
   requestImageGeneration,
   requestImageUpscale,
 } from '../../lib/imageGeneration';
+import GeneratedImageGallery from '../Chat/GeneratedImageGallery';
 import './ImageGenerator.css';
 
 const formatSize = (size) => (size ? String(size).replace('x', '×') : '');
@@ -22,7 +24,9 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
   const [style, setStyle] = useState('auto');
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [quality, setQuality] = useState('hd');
+  const [imageCount, setImageCount] = useState(1);
   const [image, setImage] = useState(null);
+  const [generationProgress, setGenerationProgress] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [providerStatus, setProviderStatus] = useState(null);
@@ -58,15 +62,19 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
       style,
       aspectRatio,
       quality,
+      count: imageCount,
     });
 
     try {
-      const result = await requestImageGeneration(body, controller.signal);
+      const result = await requestImageGeneration(body, controller.signal, {
+        onPoll: ({ progress }) => setGenerationProgress(progress || null),
+      });
       if (!result?.imageUrl) throw new Error('The service did not return an image. Please retry.');
       if (!editText && !useOriginalPrompt) {
         originalPromptRef.current = userPrompt;
       }
       setImage(result);
+      setGenerationProgress(null);
       setEditOpen(false);
       setEditInstruction('');
     } catch (failure) {
@@ -168,6 +176,23 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
           placeholder="Example: a golden dragon with purple lightning on a black background"
         />
 
+        <div className="image-generator-count" role="group" aria-label="Number of images">
+          {IMAGE_COUNT_OPTIONS.map((count) => (
+            <button
+              key={count}
+              type="button"
+              className={imageCount === count ? 'is-active' : ''}
+              aria-pressed={imageCount === count}
+              disabled={busy}
+              onClick={() => setImageCount(count)}
+            >
+              {count === 1 ? '1 image' : `${count} images`}
+            </button>
+          ))}
+        </div>
+        {providerStatus?.multiImageBillingNote && imageCount > 1 && (
+          <p className="image-generator-billing-note" role="note">{providerStatus.multiImageBillingNote}</p>
+        )}
         <div className="image-generator-settings">
           <label>
             Style
@@ -203,7 +228,13 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
       {busy && (
         <div className="image-generator-loading" role="status" aria-live="polite">
           <span className="image-generator-spinner" aria-hidden="true" />
-          <p>Creating your image… This may take up to a few minutes for HD or Ultra.</p>
+          <p>
+            {generationProgress?.total
+              ? `Generated ${generationProgress.completed || 0} of ${generationProgress.total} images…`
+              : imageCount > 1
+                ? `Creating ${imageCount} images… This may take several minutes at HD quality.`
+                : 'Creating your image… This may take up to a few minutes for HD or Ultra.'}
+          </p>
         </div>
       )}
       {error && (
@@ -216,24 +247,44 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
       )}
 
       {image && (
-        <figure className="image-generator-result">
-          <img
-            src={image.imageUrl}
-            alt={image.prompt}
-            onError={() => setError('Could not load the image. Please try generating it again.')}
-          />
-          <div className="image-generator-meta">
-            <span>{QUALITY_LABELS[image.quality] || image.quality}</span>
-            <span>{ASPECT_LABELS[image.aspectRatio] || image.aspectRatio}</span>
-            {image.size && <span>{formatSize(image.size)}</span>}
-          </div>
-          <figcaption>{image.prompt}</figcaption>
-          <div className="image-generator-actions">
-            <button type="button" onClick={downloadImage}>Download image</button>
-            <button type="button" disabled={busy} onClick={regenerate}>Regenerate</button>
-            {showUpscale && <button type="button" disabled={busy} onClick={upscaleImage}>Upscale image</button>}
-            <button type="button" disabled={busy} onClick={() => setEditOpen((open) => !open)}>Edit</button>
-          </div>
+        <div className="image-generator-result">
+          {(image.images?.length || 0) > 1 ? (
+            <GeneratedImageGallery
+              message={{
+                ...image,
+                imageQuality: image.quality,
+                imageAspect: image.aspectRatio,
+                imageSize: image.size,
+                requestedImageCount: imageCount,
+                partial: image.partial,
+                imageGenerationWarning: image.warnings?.[0],
+              }}
+              onPreview={(url) => window.open(url, '_blank', 'noopener,noreferrer')}
+              onDownloadError={setError}
+              onRegenerate={regenerate}
+              showUpscale={showUpscale && image.images?.length === 1}
+            />
+          ) : (
+            <figure>
+              <img
+                src={image.imageUrl}
+                alt={image.prompt}
+                onError={() => setError('Could not load the image. Please try generating it again.')}
+              />
+              <div className="image-generator-meta">
+                <span>{QUALITY_LABELS[image.quality] || image.quality}</span>
+                <span>{ASPECT_LABELS[image.aspectRatio] || image.aspectRatio}</span>
+                {image.size && <span>{formatSize(image.size)}</span>}
+              </div>
+              <figcaption>{image.prompt}</figcaption>
+              <div className="image-generator-actions">
+                <button type="button" onClick={downloadImage}>Download image</button>
+                <button type="button" disabled={busy} onClick={regenerate}>Regenerate</button>
+                {showUpscale && <button type="button" disabled={busy} onClick={upscaleImage}>Upscale image</button>}
+                <button type="button" disabled={busy} onClick={() => setEditOpen((open) => !open)}>Edit</button>
+              </div>
+            </figure>
+          )}
           {editOpen && (
             <form className="image-generator-edit" onSubmit={applyEdit}>
               <label htmlFor="image-edit-instruction">Describe what to change</label>
@@ -248,7 +299,7 @@ export default function ImageGenerator({ initialPrompt = '', onClose }) {
               <button type="submit" disabled={busy || !editInstruction.trim()}>Apply edit</button>
             </form>
           )}
-        </figure>
+        </div>
       )}
     </dialog>
   );

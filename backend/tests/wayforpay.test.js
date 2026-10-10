@@ -9,8 +9,14 @@ const {
     buildCallbackAcceptResponse,
 } = require('../src/wayforpay/crypto');
 
+const path = require('node:path');
+const os = require('node:os');
+const fs = require('node:fs');
+
 process.env.NODE_ENV = 'test';
 process.env.DEVELOPER_EMAILS = 'owner@example.com';
+process.env.DB_FILE = path.join(os.tmpdir(), `allmodelai-wayforpay-${process.pid}.sqlite`);
+fs.rmSync(process.env.DB_FILE, { force: true });
 delete process.env.STRIPE_SECRET_KEY;
 
 const TEST_SECRET = 'dhkq3vUi94{Z!5frxs(02ML';
@@ -99,15 +105,17 @@ test('WayForPay HTTP integration', async (t) => {
         process.env.PAYMENT_OWNER_EMAILS = prev.paymentOwners;
     });
 
-    await t.test('TEST MODE create rejects non-owner accounts', async () => {
+    await t.test('TEST MODE create allows authenticated users in non-production', async () => {
         process.env.WAYFORPAY_TEST_MODE = 'true';
-        const cookie = await registerAndCookie(`wfp-deny-${Date.now()}@example.com`);
+        const cookie = await registerAndCookie(`wfp-allow-${Date.now()}@example.com`);
         const res = await request(app)
             .post('/api/payments/wayforpay/create')
             .set('Cookie', cookie)
-            .send({ plan: 'week' });
-        assert.equal(res.status, 403);
-        assert.equal(res.body.code, 'PAYMENT_SANDBOX_FORBIDDEN');
+            .send({ plan: 'starter' });
+        assert.equal(res.status, 201);
+        assert.equal(res.body.mockCheckout, true);
+        assert.equal(res.body.testMode, true);
+        assert.ok(res.body.orderReference);
     });
 
     await t.test('TEST MODE create returns mock checkout without payUrl', async () => {

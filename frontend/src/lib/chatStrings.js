@@ -286,6 +286,8 @@ export const CHAT_STRINGS = {
     "Loading account": "Loading account",
     "Retrying…": "Retrying…",
     "Could not connect. Please try again.": "Could not connect. Please try again.",
+    "Reconnecting to the server. Some features may be unavailable until your session is confirmed.": "Reconnecting to the server. Some features may be unavailable until your session is confirmed.",
+    "If you were signed in, the app will restore your workspace once the server responds.": "If you were signed in, the app will restore your workspace once the server responds.",
     "Write a short story about a time traveler.": "Write a short story about a time traveler.",
     "Summarize the main benefits of daily exercise.": "Summarize the main benefits of daily exercise.",
     "Help me plan a budget for a trip to Europe.": "Help me plan a budget for a trip to Europe."

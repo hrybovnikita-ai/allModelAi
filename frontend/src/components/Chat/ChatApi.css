@@ -790,6 +790,33 @@ html[data-theme="light"] .chat-message.assistant p{color:#202123}html[data-theme
 .generated-image-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .generated-image-actions button, .lightbox-actions button { padding: 7px 12px; border: 1px solid #4c3d86; border-radius: 8px; background: #1a1428; color: #e9e4ff; font: inherit; font-size: .75rem; cursor: pointer; }
 .generated-image-actions button:first-child, .lightbox-actions button { border-color: #7c5cff; }
+.generated-image-gallery { display: grid; gap: 12px; width: 100%; max-width: min(100%, 960px); }
+.generated-image-gallery--1 { grid-template-columns: 1fr; }
+.generated-image-gallery--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.generated-image-gallery--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.generated-image-gallery--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.generated-image-gallery__item { display: grid; gap: 8px; margin: 0; min-width: 0; }
+.generated-image-gallery__item .generated-image { width: 100%; max-width: 100%; }
+.generated-image-actions--compact { gap: 6px; }
+.generated-image-partial { margin: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(251, 191, 36, 0.35); background: rgba(69, 26, 3, 0.35); color: #fde68a; font-size: 0.75rem; line-height: 1.45; }
+.image-skill-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 14px; margin: 10px 0 4px; padding: 12px 14px; border: 1px solid #4c3d86; border-radius: 12px; background: rgba(20, 12, 36, 0.65); }
+.image-skill-panel label { display: grid; gap: 6px; font-size: 0.72rem; color: #c4b5fd; }
+.image-skill-panel select { padding: 8px 10px; border-radius: 8px; border: 1px solid #5b4a9a; background: #120a22; color: #f5f3ff; font: inherit; }
+.image-count-switch { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.image-count-switch button { min-height: 40px; padding: 8px 14px; border: 1px solid #5b4a9a; border-radius: 999px; background: #120a22; color: #e9e4ff; font: inherit; font-size: 0.78rem; cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease; }
+.image-count-switch button.is-active { border-color: #a78bfa; background: rgba(99, 102, 241, 0.22); color: #f5f3ff; box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.35); }
+.image-count-switch button:focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; }
+.image-skill-hint { grid-column: 1 / -1; margin: 0; font-size: 0.68rem; color: #a8a29e; line-height: 1.4; }
+@media (max-width: 560px) {
+  .generated-image-gallery--2,
+  .generated-image-gallery--3,
+  .generated-image-gallery--4 { grid-template-columns: 1fr; }
+}
+.video-skill-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 14px; margin: 10px 0 4px; padding: 12px 14px; border: 1px solid #4c3d86; border-radius: 12px; background: rgba(20, 12, 36, 0.65); }
+.video-skill-panel label { display: grid; gap: 6px; font-size: 0.72rem; color: #c4b5fd; }
+.video-skill-panel select { padding: 8px 10px; border-radius: 8px; border: 1px solid #5b4a9a; background: #120a22; color: #f5f3ff; font: inherit; }
+.video-skill-checkbox { display: flex !important; align-items: center; gap: 8px; grid-column: 1 / -1; }
+.video-skill-hint { grid-column: 1 / -1; margin: 0; font-size: 0.68rem; color: #a8a29e; line-height: 1.4; }
 .generated-video-result { display: grid; gap: 10px; margin-top: 12px; justify-items: start; max-width: 100%; }
 .generated-video-result .generated-video { display: block; width: 100%; max-width: min(100%, 720px); max-height: min(70vh, 480px); border-radius: 14px; border: 1px solid #4c3d86; background: #0a0a10; }
 
@@ -832,6 +859,22 @@ html[data-theme="light"] .chat-message.assistant p{color:#202123}html[data-theme
   .chat-page .response-code-block { border-radius: 16px; }
   .chat-page .response-code-block header { padding-inline: 12px; }
   .chat-page .response-code-block pre { padding-inline: 12px !important; }
+}
+
+.plus-test-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #f5f3ff;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.45), rgba(91, 33, 182, 0.55));
+  border: 1px solid rgba(167, 139, 250, 0.55);
+  box-shadow: 0 0 12px rgba(124, 92, 255, 0.25);
 }
 
 .access-mode-control {

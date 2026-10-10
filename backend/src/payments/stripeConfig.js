@@ -4,6 +4,7 @@ const {
     isStripeTestMode,
     stripePriceIdForPlan,
 } = require('./stripeMode');
+const { stripeUserMessageFromReport } = require('./stripeUserMessages');
 
 const envTrim = (name) => String(process.env[name] || '').trim();
 
@@ -58,6 +59,10 @@ function stripeConfigurationReport(options = {}) {
         missing,
         warnings,
         message,
+        userMessage: stripeUserMessageFromReport({
+            ok,
+            code: guard.code || (missing.length ? 'STRIPE_INCOMPLETE_CONFIG' : null),
+        }),
         code: guard.code || (missing.length ? 'STRIPE_INCOMPLETE_CONFIG' : null),
         mode: getStripeMode(),
         testMode: isStripeTestMode(),

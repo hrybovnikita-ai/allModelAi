@@ -1,8 +1,8 @@
 import { authGet, authPost } from './authApi.js';
+import { readJsonBody } from './httpJson.js';
 
 export async function fetchAccountSecurity() {
   const response = await authGet('account/security');
-  const { readJsonBody } = await import('./httpJson.js');
   const { data, parseError } = await readJsonBody(response);
   if (parseError) throw parseError;
   if (!response.ok) {

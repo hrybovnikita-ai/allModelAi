@@ -11,8 +11,10 @@ const {
 } = require('../billing/subscriptionLifecycle');
 const { getCreditStatusCoreAsync } = require('../billing/creditStatusAsync');
 const { applyOwnerAccess } = require('../billing/accessControl');
+const { applyPlusTestCreditStatus, isAllowlistedDeveloper } = require('../billing/plusTestMode');
 const { readUserRoleSync } = require('../billing/userRole');
 const { canUsePaymentSandboxAsync } = require('../payments/paymentSandbox');
+const { canUseWayforpayTestCheckoutAsync } = require('../payments/wayforpayTestAccess');
 const { authLog } = require('../authHelpers');
 
 function readUsageCount(database, normalizedEmail) {
@@ -30,31 +32,21 @@ const getCreditStatusCore = (database, email) => {
     const detailActive = detail && detail.status === 'active' && (!detail.periodEnd || Date.parse(detail.periodEnd) > Date.now());
     const storedPlanKey = detail ? resolveStoredPlanKey(detail.plan) : 'free';
     const plan = detailActive ? storedPlanKey : 'free';
-    const developerEmails = () => new Set(
-        String(process.env.DEVELOPER_EMAILS || '')
-            .split(',')
-            .map((item) => item.trim().toLowerCase())
-            .filter(Boolean),
-    );
     const creditLimits = Object.fromEntries(Object.entries(subscriptionPlans).map(([key, p]) => [key, p.limit]));
     const creditLimitsEnabled = () => process.env.ENFORCE_CREDIT_LIMITS === 'true';
-    const isDeveloper = developerEmails().has(normalizedEmail);
     const hasSubscription = Boolean(detailActive && subscriptionPlans[plan]?.amount > 0);
-    const canUseDeveloper = isDeveloper || hasSubscription;
     const savedMode = database.database.prepare('SELECT mode FROM account_access_modes WHERE email = ?').get(normalizedEmail)?.mode;
-    const mode = canUseDeveloper && savedMode !== 'user' ? 'developer' : 'user';
-    const fullAccess = mode === 'developer' && canUseDeveloper;
     const planDefinition = subscriptionPlans[plan] || subscriptionPlans.free;
     const limit = detailActive ? detail.requestLimit : (creditLimits[plan] || creditLimits.free);
     const used = readUsageCount(database, normalizedEmail);
     const remaining = Math.max(limit - used, 0);
     const billingInterval = detail?.billingInterval || planDefinition.interval;
     const subscriptionView = buildSubscriptionPublicView(detail, plan, limit, used, remaining, billingInterval, {
-        isDeveloper,
+        isDeveloper: isAllowlistedDeveloper(normalizedEmail),
         hasPaidSubscription: hasSubscription,
     });
 
-    const base = {
+    const base = applyPlusTestCreditStatus({
         email: normalizedEmail,
         plan,
         limit,
@@ -62,16 +54,13 @@ const getCreditStatusCore = (database, email) => {
         remaining,
         billingInterval,
         periodEnd: detailActive ? detail.periodEnd : null,
-        models: fullAccess ? ['all'] : (subscriptionPlans[plan]?.models || subscriptionPlans.free.models),
-        enforced: !fullAccess && creditLimitsEnabled(),
-        isDeveloper,
+        models: subscriptionPlans[plan]?.models || subscriptionPlans.free.models,
+        enforced: creditLimitsEnabled(),
         hasSubscription,
-        canUseDeveloper,
-        mode,
-        unlimited: fullAccess,
+        savedMode,
         active: Boolean(detailActive && hasSubscription),
         ...subscriptionView,
-    };
+    });
     const role = readUserRoleSync(database, normalizedEmail);
     return applyOwnerAccess(base, role);
 };
@@ -83,6 +72,7 @@ const getSubscriptionSummary = async (req, res) => {
         const status = await getCreditStatusCoreAsync(req.app.locals.db, req.user.email);
         const checkoutFlags = buildCheckoutInfo();
         const canUseOwnerTestCheckout = await canUsePaymentSandboxAsync(req.app.locals.db, req.user);
+        const canUseWayforpayTestCheckout = await canUseWayforpayTestCheckoutAsync(req.app.locals.db, req.user);
         authLog('SUBSCRIPTION_ROUTE_SUCCESS', { durationMs: Date.now() - startedAt });
         return res.json({
             ...checkoutFlags,
@@ -90,6 +80,7 @@ const getSubscriptionSummary = async (req, res) => {
             currentPlan: status.currentPlan || status.planDisplayName,
             planKey: status.planKey || status.planSlug,
             canUseOwnerTestCheckout,
+            canUseWayforpayTestCheckout,
             manageTestSubscription: canUseOwnerTestCheckout
                 && wayforpayTestModeEnabled()
                 && status.hasSubscription

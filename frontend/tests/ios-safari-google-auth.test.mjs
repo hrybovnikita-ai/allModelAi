@@ -81,6 +81,8 @@ test('redirect coordinator awaits prerequisites and can retry null on Safari', a
   assert.match(coordinator, /ensureRedirectPrerequisitesReady/);
   assert.match(coordinator, /GET_REDIRECT_RESULT_RETRY/);
   assert.match(coordinator, /settleGetRedirectResultIos/);
+  assert.match(coordinator, /GET_REDIRECT_RESULT_SKIPPED/);
+  assert.match(coordinator, /popup-active/);
 });
 
 test('social redirect recovery always mints a fresh backend challenge after Safari return', async () => {
@@ -104,6 +106,7 @@ test('recovery gate surfaces failures instead of silent guest state', async () =
   assert.match(gate, /refresh\(\{ force: true \}\)/);
   assert.match(gate, /ensureRedirectPrerequisitesReady/);
   assert.match(gate, /consumeStoredSocialAuthErrorCode/);
+  assert.match(gate, /GOOGLE_POPUP_SIGNIN_EVENT/);
 });
 
 test('session provider and navbar defer guest UI during redirect recovery', async () => {
@@ -115,12 +118,13 @@ test('session provider and navbar defer guest UI during redirect recovery', asyn
   assert.match(navbar, /AUTH_REDIRECT_RECOVERY_TIMEOUT_MS/);
 });
 
-test('social session marks fresh login before confirmSession (Safari cookie propagation)', async () => {
+test('social session uses establishSessionFromAuthExchange (Safari cookie propagation)', async () => {
   const socialSession = await readFile(new URL('../src/lib/socialSession.js', import.meta.url), 'utf8');
   const session = await readFile(new URL('../src/lib/session.js', import.meta.url), 'utf8');
-  assert.match(socialSession, /markFreshLogin\(\)/);
+  assert.match(socialSession, /establishSessionFromAuthExchange/);
+  assert.doesNotMatch(socialSession, /confirmSession\(/);
   assert.match(session, /getNativeSessionToken\(\)/);
-  assert.match(session, /markFreshLogin\(\)/);
+  assert.match(session, /establishSessionFromAuthExchange[\s\S]*markFreshLogin\(\)/);
 });
 
 test('redirect reconcile is blocked while recovery pipeline runs', async () => {

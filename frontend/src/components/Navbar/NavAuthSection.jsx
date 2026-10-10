@@ -48,9 +48,14 @@ export default function NavAuthSection({ onOpenAuth }) {
   }, [authLoading, redirectRecoveryActive, status]);
 
   const isLoading = (authLoading || redirectRecoveryActive) && !loadingTimedOut;
-  const isAuthenticated = status === AUTH_STATUS.AUTHENTICATED && Boolean(user?.email);
+  const isAuthenticated = (
+    status === AUTH_STATUS.AUTHENTICATED
+    || status === AUTH_STATUS.CONNECTION_ISSUE
+  ) && Boolean(user?.email);
   const showSessionError =
     status === AUTH_STATUS.ERROR
+    || status === 'error'
+    || status === 'authentication-error'
     || ((authLoading && !redirectRecoveryActive) && loadingTimedOut);
 
   const signOut = async () => {

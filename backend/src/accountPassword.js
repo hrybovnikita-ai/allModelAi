@@ -1,7 +1,8 @@
 const users = require('./data/data');
 const { hashPassword, verifyPassword } = require('./password');
 const { extractPasswordHash } = require('./authPasswordHash');
-const { authLog, validatePasswordEnrollmentInput } = require('./authHelpers');
+const { authLog, normalizeLoginEmail, validatePasswordEnrollmentInput } = require('./authHelpers');
+const { loadAuthUserByEmailAsync } = require('./authUser');
 const { isPostgresConnection } = require('./db/postgresHttpReads');
 const { getPasswordHashByUserIdAsync } = require('./db/postgresHttpAuth');
 const { updateUserPasswordAsync } = require('./db/postgresHttpProduction');
@@ -31,6 +32,26 @@ function syncUserPasswordCache(userId, passwordHash) {
     const index = users.findIndex((entry) => entry.id === userId);
     if (index < 0) return;
     users[index] = { ...users[index], passwordHash };
+}
+
+async function refreshCachedAuthUser(connection, email) {
+    const normalized = normalizeLoginEmail(email);
+    if (!normalized) return null;
+    const refreshed = await loadAuthUserByEmailAsync(connection, normalized);
+    if (!refreshed?.id) return null;
+    const index = users.findIndex((entry) => entry.id === refreshed.id);
+    const entry = {
+        id: refreshed.id,
+        name: refreshed.name,
+        email: refreshed.email,
+        passwordHash: refreshed.passwordHash ?? null,
+    };
+    if (index >= 0) {
+        users[index] = { ...users[index], ...entry };
+    } else {
+        users.push(entry);
+    }
+    return refreshed;
 }
 
 const getAccountSecurity = async (req, res) => {
@@ -101,6 +122,7 @@ const setAccountPassword = async (req, res) => {
                 .run(nextHash, userId);
         }
         syncUserPasswordCache(userId, nextHash);
+        await refreshCachedAuthUser(connection, req.user.email);
         authLog('PASSWORD_ENROLL_SUCCESS', { userId, hadPassword: passwordEnabled });
         return res.json({
             message: passwordEnabled ? 'Password updated.' : 'Password created. You can sign in with email and password or Google.',

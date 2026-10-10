@@ -77,7 +77,15 @@ function pruneExpiredJobs() {
     }
 }
 
-function createImageJob({ userId, promptPayload, generationPrompt, quality, aspectRatio, requestedModel }) {
+function createImageJob({
+    userId,
+    promptPayload,
+    generationPrompt,
+    quality,
+    aspectRatio,
+    requestedModel,
+    imageCount = 1,
+}) {
     pruneExpiredJobs();
     const id = crypto.randomUUID();
     const job = {
@@ -89,6 +97,8 @@ function createImageJob({ userId, promptPayload, generationPrompt, quality, aspe
         quality,
         aspectRatio,
         requestedModel,
+        imageCount,
+        progress: null,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         result: null,
@@ -144,7 +154,12 @@ function publicJobPayload(job) {
         };
     }
     if (job.status === 'queued' || job.status === 'processing') {
-        return { ...base, success: true };
+        return {
+            ...base,
+            success: true,
+            progress: job.progress || null,
+            imageCount: job.imageCount || 1,
+        };
     }
     return base;
 }

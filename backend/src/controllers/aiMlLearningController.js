@@ -73,6 +73,15 @@ async function getTrainingJob(req, res) {
     }
 }
 
+async function postImprovementAnalyze(req, res) {
+    try {
+        const data = await aiMlLearningGateway.proxyPost('/improvement/analyze', req.body || {});
+        return res.json(data);
+    } catch (error) {
+        return res.status(error.status || 503).json({ message: error.message || 'Improvement analysis failed' });
+    }
+}
+
 async function getTrainingMetrics(req, res) {
     try {
         const data = await aiMlLearningGateway.proxyGet(
@@ -94,4 +103,5 @@ module.exports = {
     postAiPredict,
     getTrainingJob,
     getTrainingMetrics,
+    postImprovementAnalyze,
 };

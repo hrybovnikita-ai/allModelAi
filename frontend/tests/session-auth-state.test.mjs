@@ -8,9 +8,11 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 
 test('auth status machine marks initializing states', () => {
   assert.equal(isAuthInitializing(AUTH_STATUS.INITIALIZING), true);
+  assert.equal(isAuthInitializing(AUTH_STATUS.CHECKING_SESSION), true);
   assert.equal(isAuthInitializing(AUTH_STATUS.CHECKING_REDIRECT), true);
   assert.equal(isAuthInitializing(AUTH_STATUS.AUTHENTICATED), false);
   assert.equal(isAuthInitializing(AUTH_STATUS.UNAUTHENTICATED), false);
+  assert.equal(AUTH_STATUS.ERROR, 'authentication-error');
 });
 
 test('RequireAuth sends unauthenticated users to /login', () => {
@@ -32,8 +34,9 @@ test('auth bootstrap clears stale redirect intent after failed recovery', () => 
 
 test('auth bootstrap deduplicates concurrent initialization', () => {
   const src = readFileSync(`${root}src/lib/authBootstrap.js`, 'utf8');
-  assert.match(src, /bootstrapPromise/);
+  assert.match(src, /bootstrapInflight/);
   assert.match(src, /bootstrapAuthenticatedUser/);
+  assert.match(src, /bootstrapInflight = null/);
 });
 
 test('navbar uses skeleton instead of checking session copy', () => {

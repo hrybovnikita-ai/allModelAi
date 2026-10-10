@@ -20,6 +20,21 @@ export default function ManageSubscriptionModal({ onClose, onUpdated }) {
       .catch(() => setError('Could not load subscription details.'));
   }, []);
 
+  const openStripePortal = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const response = await apiFetch('/api/payments/billing-portal', { method: 'POST' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.userMessage || data.message || 'Could not open billing portal.');
+      if (data.url) window.location.assign(data.url);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const endTestSubscription = async () => {
     setBusy(true);
     setError('');
@@ -76,6 +91,11 @@ export default function ManageSubscriptionModal({ onClose, onUpdated }) {
           </div>
         )}
         {error && <p className="dashboard-modal-error" role="alert">{error}</p>}
+        {summary?.paymentProvider === 'stripe' && summary?.hasSubscription && (
+          <button type="button" className="dashboard-modal-primary" disabled={busy} onClick={openStripePortal}>
+            {busy ? 'Opening…' : 'Manage billing in Stripe'}
+          </button>
+        )}
         {summary?.manageTestSubscription && (
           <button type="button" className="dashboard-modal-danger" disabled={busy} onClick={endTestSubscription}>
             {busy ? 'Ending…' : 'End test subscription (return to Free)'}

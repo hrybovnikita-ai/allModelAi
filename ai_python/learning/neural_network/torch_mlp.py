@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 
 from learning.training.limits import MAX_DATA_POINTS, MAX_EPOCHS, MIN_EPOCHS
+from learning.training.validation import train_val_indices
 
 
 class SmallMLP(nn.Module):
@@ -58,14 +59,19 @@ def train_neural_network(
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
+    train_idx, val_idx = train_val_indices(n, seed)
+    train_idx_t = torch.from_numpy(train_idx.astype(np.int64))
+    val_idx_t = torch.from_numpy(val_idx.astype(np.int64))
+
     loss_history: List[float] = []
+    validation_loss_history: List[float] = []
     accuracy_history: List[float] = []
 
     for epoch in range(1, epochs + 1):
-        perm = torch.randperm(n)
+        perm = train_idx_t[torch.randperm(len(train_idx_t))]
         epoch_loss = 0.0
         steps = 0
-        for start in range(0, n, batch_size):
+        for start in range(0, len(perm), batch_size):
             idx = perm[start : start + batch_size]
             xb, yb = x_t[idx], y_t[idx]
             optimizer.zero_grad()
@@ -77,11 +83,14 @@ def train_neural_network(
             steps += 1
         avg_loss = epoch_loss / max(steps, 1)
         with torch.no_grad():
-            acc = float((model(x_t).argmax(dim=1).eq(y_t).float().mean()).item())
+            val_logits = model(x_t[val_idx_t])
+            val_loss = float(criterion(val_logits, y_t[val_idx_t]).item())
+            acc = float((val_logits.argmax(dim=1).eq(y_t[val_idx_t]).float().mean()).item())
         loss_history.append(avg_loss)
+        validation_loss_history.append(val_loss)
         accuracy_history.append(acc)
         if on_epoch:
-            on_epoch(epoch, epochs, avg_loss, accuracy=acc)
+            on_epoch(epoch, epochs, avg_loss, accuracy=acc, validation_loss=val_loss)
 
     return {
         "ok": True,
@@ -90,6 +99,8 @@ def train_neural_network(
         "finalLoss": loss_history[-1],
         "finalAccuracy": accuracy_history[-1],
         "lossHistory": loss_history,
+        "validationLossHistory": validation_loss_history,
+        "validationLoss": validation_loss_history[-1] if validation_loss_history else loss_history[-1],
         "accuracyHistory": accuracy_history,
         "epochs": epochs,
         "learningRate": lr,

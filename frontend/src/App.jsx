@@ -73,6 +73,7 @@ import KnowledgeBasePage from "./components/KnowledgeBase/KnowledgeBasePage";
 import LessonPage from "./components/AiTraining/LessonPage";
 import AiLearningLab from "./components/AiLearning/AiLearningLab";
 import ModelLab from "./components/ModelLab/ModelLab";
+import ModelDiagnostics from "./components/Developer/ModelDiagnostics";
 import StorageHub from "./components/StorageHub/StorageHub";
 
 function HomePage() {
@@ -192,6 +193,7 @@ export default function App() {
       <Route path="/settings" element={<Settings />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="/chat" element={<Chat />} />
+      <Route path="/developer/model-diagnostics" element={<ModelDiagnostics />} />
       <Route path="/knowledge" element={<KnowledgeBasePage />} />
       <Route path="/files/:conversationId/:fileId" element={<GeneratedFile />} />
       <Route path="/model-comparison" element={<ModelComparison />} />

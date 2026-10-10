@@ -1,7 +1,11 @@
 import { getRedirectResult, onAuthStateChanged } from 'firebase/auth';
 import { ensureRedirectPrerequisitesReady } from './authRedirectPreload.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
-import { isGoogleRedirectRecoveryPending } from './socialRedirectState.js';
+import {
+  hasFirebaseRedirectReturnHints,
+  isGooglePopupSignInActive,
+  isGoogleRedirectRecoveryPending,
+} from './socialRedirectState.js';
 import { isMobileWebSafari } from './socialSignInEnv.js';
 
 let cachedRedirectResult = undefined;
@@ -26,6 +30,11 @@ export function resetFirebaseRedirectCoordinatorForTests() {
   redirectResultInflight = null;
   redirectResultConsumed = false;
   redirectResultAttemptCount = 0;
+}
+
+/** Clear cached redirect nulls before a popup sign-in (no redirect was started). */
+export function prepareFirebaseRedirectCoordinatorForPopup() {
+  resetFirebaseRedirectCoordinatorForTests();
 }
 
 export function hasRedirectResultBeenConsumed() {
@@ -221,6 +230,15 @@ async function resolveRedirectUser(auth, allowAuthStateFallback) {
  * Call ensureRedirectPrerequisitesReady() before this on OAuth return.
  */
 export async function consumeFirebaseRedirectResult(auth, consumer, { allowAuthStateFallback = false } = {}) {
+  if (isGooglePopupSignInActive()) {
+    socialAuthDebug('GET_REDIRECT_RESULT_SKIPPED', { consumer, reason: 'popup-active' });
+    return null;
+  }
+  if (!isGoogleRedirectRecoveryPending() && !hasFirebaseRedirectReturnHints()) {
+    socialAuthDebug('GET_REDIRECT_RESULT_SKIPPED', { consumer, reason: 'no-redirect-pending' });
+    return null;
+  }
+
   socialAuthDebug('GET_REDIRECT_RESULT_BEGIN', { consumer, attempt: redirectResultAttemptCount + 1 });
   authRecoveryLog('consumeFirebaseRedirectResult begin', { consumer });
 

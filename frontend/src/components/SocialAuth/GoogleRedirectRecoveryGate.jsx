@@ -8,6 +8,7 @@ import {
   reconcileStaleRedirectIntent,
   shouldShowGoogleRedirectRecoveryUI,
 } from '../../lib/socialSignIn';
+import { GOOGLE_POPUP_SIGNIN_EVENT } from '../../lib/socialRedirectState.js';
 import { ensureRedirectPrerequisitesReady } from '../../lib/authRedirectPreload';
 import { authRecoveryLog, consumeStoredSocialAuthErrorCode } from '../../lib/socialAuthDiagnostics';
 import { socialError } from '../../lib/socialSession';
@@ -31,16 +32,42 @@ export default function GoogleRedirectRecoveryGate() {
   const navigate = useNavigate();
   const { refresh } = useSession();
   const startedRef = useRef(false);
+  const cancelRecoveryRef = useRef(false);
   const [recovering, setRecovering] = useState(readInitialRecoveringState);
   const [failureMessage, setFailureMessage] = useState('');
 
   useEffect(() => {
-    reconcileStaleRedirectIntent();
-    if (!shouldShowGoogleRedirectRecoveryUI()) {
-      setRecovering(false);
-      return undefined;
+    cancelRecoveryRef.current = false;
+
+    const dismissIfIdle = () => {
+      reconcileStaleRedirectIntent();
+      if (!shouldShowGoogleRedirectRecoveryUI()) {
+        startedRef.current = false;
+        setRecovering(false);
+        return true;
+      }
+      return false;
+    };
+
+    const onPopupSignIn = (event) => {
+      if (event?.detail?.active) {
+        cancelRecoveryRef.current = true;
+        startedRef.current = false;
+        setRecovering(false);
+        setFailureMessage('');
+      }
+      if (dismissIfIdle()) {
+        setFailureMessage('');
+      }
+    };
+
+    window.addEventListener(GOOGLE_POPUP_SIGNIN_EVENT, onPopupSignIn);
+    if (dismissIfIdle()) {
+      return () => window.removeEventListener(GOOGLE_POPUP_SIGNIN_EVENT, onPopupSignIn);
     }
-    if (startedRef.current) return undefined;
+    if (startedRef.current) {
+      return () => window.removeEventListener(GOOGLE_POPUP_SIGNIN_EVENT, onPopupSignIn);
+    }
     startedRef.current = true;
     setRecovering(true);
     setFailureMessage('');
@@ -62,9 +89,11 @@ export default function GoogleRedirectRecoveryGate() {
 
     (async () => {
       try {
+        if (cancelRecoveryRef.current) return;
         await ensureRedirectPrerequisitesReady();
+        if (cancelRecoveryRef.current || !active) return;
         const user = await awaitGoogleRedirectRecovery('GoogleRedirectRecoveryGate');
-        if (!active) return;
+        if (cancelRecoveryRef.current || !active) return;
         clearTimeout(safetyTimer);
         if (!user?.email) {
           const stored = consumeStoredSocialAuthError();
@@ -102,6 +131,7 @@ export default function GoogleRedirectRecoveryGate() {
     return () => {
       active = false;
       clearTimeout(safetyTimer);
+      window.removeEventListener(GOOGLE_POPUP_SIGNIN_EVENT, onPopupSignIn);
     };
   }, [navigate, refresh]);
 

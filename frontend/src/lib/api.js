@@ -83,11 +83,30 @@ export async function checkChatResponse(response) {
   if (response.status === 401) {
     sessionExpired = (await restoreSession({ force: true })) === null;
   }
+  let message = data.message;
+  if (!message) {
+    if (data.code === 'VISION_NOT_CONFIGURED') message = 'Image analysis is not configured on the server (vision API keys missing).';
+    else if (data.code === 'VISION_UNSUPPORTED_MODEL') message = 'The selected model cannot analyze images. Use Smart Router, Gemini, or GPT.';
+    else if (data.code === 'VISION_IMAGE_TOO_LARGE') message = 'Image is too large for analysis. Use a smaller screenshot.';
+    else if (data.code === 'CHAT_INTERNAL_ERROR') {
+      message = data.message || 'The chat server hit an unexpected error. Please retry in a moment.';
+    }
+    else if (data.code === 'PAYLOAD_TOO_LARGE') message = 'The upload is too large for the server. Use a smaller screenshot.';
+    else if (data.code === 'VISION_INVALID_IMAGE' || data.code === 'VISION_UNSUPPORTED_FORMAT') message = 'Invalid or unsupported image format.';
+    else if (response.status === 402) message = 'Insufficient credits or quota for this request.';
+    else if (response.status === 413) message = 'Request payload too large (often an oversized image). Try a smaller screenshot.';
+    else if (response.status === 429) message = 'The server is rate-limiting requests. Wait a moment and try again.';
+    else if (response.status === 504) message = 'The AI server took too long to respond. Try again with a shorter prompt.';
+    else if (response.status >= 500) message = `AI server error (${response.status}). Try again in a moment.`;
+    else if (response.status === 404) message = 'The requested API endpoint was not found. Check that the backend is up to date.';
+    else if (response.status >= 400) message = `Request failed (${response.status}).`;
+    else message = 'Could not connect to the AI server. Please try again.';
+  }
   const error = new Error(sessionExpired
     ? 'Your session has expired. Sign in below, then retry your message. Your conversation is still open.'
-    : response.status === 401
+    : response.status === 401 && !sessionExpired
       ? 'Your session is active, but the request was rejected. Please retry your message.'
-      : data.message || 'Could not connect to the AI server. Please try again.');
+      : message);
   error.status = response.status;
   error.sessionExpired = sessionExpired;
   if (data.code) error.code = data.code;

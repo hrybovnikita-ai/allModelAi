@@ -17,6 +17,7 @@ from learning.neural_network.torch_mlp import train_neural_network
 from learning.pytorch.linear_torch import train_pytorch_linear
 from learning.training.async_runner import start_training_job
 from learning.training import jobs
+from learning.training.sklearn_lab import train_sklearn_linear_lab, train_sklearn_logistic_lab
 from learning.training.limits import MAX_BATCH_SIZE, MAX_EPOCHS, MIN_EPOCHS, MIN_LEARNING_RATE, MAX_LEARNING_RATE
 from openai_service.fine_tuning import fine_tuning_enabled, validate_jsonl_lines
 from openai_service.inference import chat_completion
@@ -27,12 +28,20 @@ MODEL_CATALOG = [
     {"id": "linear-regression", "name": "Linear Regression", "engine": "pytorch-local"},
     {"id": "logistic-regression", "name": "Logistic Regression", "engine": "pytorch-local"},
     {"id": "neural-network", "name": "Neural Network", "engine": "pytorch-local"},
+    {"id": "sklearn-linear-regression", "name": "Linear Regression (scikit-learn)", "engine": "sklearn"},
+    {"id": "sklearn-logistic-regression", "name": "Logistic Regression (scikit-learn)", "engine": "sklearn"},
     {"id": "openai", "name": "OpenAI API", "engine": "openai-api"},
 ]
 
 
 class StartTrainingRequest(BaseModel):
-    modelType: Literal["linear-regression", "logistic-regression", "neural-network"]
+    modelType: Literal[
+        "linear-regression",
+        "logistic-regression",
+        "neural-network",
+        "sklearn-linear-regression",
+        "sklearn-logistic-regression",
+    ]
     epochs: int = Field(100, ge=MIN_EPOCHS, le=MAX_EPOCHS)
     learningRate: float = Field(0.01, ge=MIN_LEARNING_RATE, le=MAX_LEARNING_RATE)
     batchSize: int = Field(32, ge=1, le=MAX_BATCH_SIZE)
@@ -58,6 +67,10 @@ def _train_dispatch(model_type: str):
         return train_pytorch_linear
     if model_type == "logistic-regression":
         return train_logistic_regression
+    if model_type == "sklearn-linear-regression":
+        return train_sklearn_linear_lab
+    if model_type == "sklearn-logistic-regression":
+        return train_sklearn_logistic_lab
     return train_neural_network
 
 

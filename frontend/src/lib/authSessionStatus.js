@@ -1,14 +1,18 @@
 /** Client auth state machine (SessionProvider). */
 export const AUTH_STATUS = {
   INITIALIZING: 'initializing',
+  CHECKING_SESSION: 'checking-session',
   CHECKING_REDIRECT: 'checking-redirect',
   AUTHENTICATED: 'authenticated',
+  /** Server session not confirmed; UI may show cached profile with a connection warning. */
+  CONNECTION_ISSUE: 'connection-issue',
   UNAUTHENTICATED: 'unauthenticated',
-  ERROR: 'error',
+  ERROR: 'authentication-error',
 };
 
 export function isAuthInitializing(status) {
   return status === AUTH_STATUS.INITIALIZING
+    || status === AUTH_STATUS.CHECKING_SESSION
     || status === AUTH_STATUS.CHECKING_REDIRECT
     || status === 'loading'
     || status === 'restoring-session';
@@ -23,6 +27,9 @@ export const AUTH_REDIRECT_RECOVERY_TIMEOUT_MS = 45000;
 export function authBootstrapTimeoutMs(status) {
   if (status === AUTH_STATUS.CHECKING_REDIRECT) {
     return AUTH_REDIRECT_RECOVERY_TIMEOUT_MS;
+  }
+  if (status === AUTH_STATUS.CHECKING_SESSION || status === AUTH_STATUS.INITIALIZING) {
+    return AUTH_INIT_TIMEOUT_MS;
   }
   return AUTH_INIT_TIMEOUT_MS;
 }

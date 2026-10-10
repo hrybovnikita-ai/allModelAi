@@ -8,18 +8,36 @@ import {
   shouldAttemptGoogleRedirectRecovery,
 } from './socialRedirectState.js';
 import { ensureRedirectPrerequisitesReady } from './authRedirectPreload.js';
-import { restoreSession } from './session.js';
+import { isFreshLoginGraceActive, restoreSession } from './session.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
 import { isGoogleRedirectRecoveryInFlight } from './googleRedirectRecovery.js';
-import { shouldShowGoogleRedirectRecoveryUI } from './socialRedirectState.js';
+import {
+  isGooglePopupSignInActive,
+  shouldShowGoogleRedirectRecoveryUI,
+} from './socialRedirectState.js';
 
-let bootstrapPromise = null;
+let bootstrapInflight = null;
 
 async function runBootstrapAuthenticatedUser() {
   reconcileStaleRedirectIntent();
 
   if (isGoogleRedirectRecoveryPending() && !shouldAttemptGoogleRedirectRecovery()) {
     clearSocialRedirectIntent();
+  }
+
+  if (isGooglePopupSignInActive() || isFreshLoginGraceActive()) {
+    socialAuthDebug('SESSION_CONFIRM_START', {
+      sameOrigin: prefersSameOriginApi(),
+      pathname: '/api/auth/session',
+      method: 'GET',
+      phase: 'fresh-login-or-popup',
+    });
+    const user = await restoreSession({ force: true });
+    if (user?.email) {
+      socialAuthDebug('SESSION_CONFIRM_OK', { email: user.email });
+      socialAuthDebug('SESSION_PROVIDER_AUTHENTICATED', { source: 'restoreSession' });
+    }
+    return user;
   }
 
   if (shouldShowGoogleRedirectRecoveryUI() || isGoogleRedirectRecoveryPending()) {
@@ -71,15 +89,24 @@ async function runBootstrapAuthenticatedUser() {
  * Concurrent callers share one in-flight promise (StrictMode-safe).
  */
 export function bootstrapAuthenticatedUser() {
-  if (!bootstrapPromise) {
-    bootstrapPromise = runBootstrapAuthenticatedUser().catch((error) => {
-      bootstrapPromise = null;
-      throw error;
-    });
+  if (bootstrapInflight) {
+    return bootstrapInflight;
   }
-  return bootstrapPromise;
+  bootstrapInflight = runBootstrapAuthenticatedUser()
+    .catch((error) => {
+      throw error;
+    })
+    .finally(() => {
+      bootstrapInflight = null;
+    });
+  return bootstrapInflight;
 }
 
 export function resetAuthBootstrapForTests() {
-  bootstrapPromise = null;
+  bootstrapInflight = null;
+}
+
+/** Drop in-flight bootstrap so a fresh login re-reads the session (avoids stale null from redirect defer). */
+export function invalidateAuthBootstrap() {
+  bootstrapInflight = null;
 }

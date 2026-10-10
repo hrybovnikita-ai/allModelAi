@@ -43,6 +43,9 @@ def _worker(job_id: str, model_type: str, params: Dict[str, Any], train_fn: Call
         if "accuracy" in extra:
             patch["accuracy"] = extra["accuracy"]
             jobs.append_accuracy(job_id, float(extra["accuracy"]))
+        if "validation_loss" in extra:
+            patch["validationLoss"] = extra["validation_loss"]
+            jobs.append_validation_loss(job_id, float(extra["validation_loss"]))
         if "weight" in extra:
             patch["weight"] = extra["weight"]
         if "bias" in extra:

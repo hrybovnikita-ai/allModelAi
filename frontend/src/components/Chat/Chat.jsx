@@ -3,6 +3,8 @@ import { FileCard } from '../GeneratedFile/GeneratedFile';
 import { createVoiceInput } from '../../lib/voiceInput';
 import GeneratedImageCard from './GeneratedImageCard';
 import GeneratedVideoCard from './GeneratedVideoCard';
+import VideoGenerationPanel from './VideoGenerationPanel';
+import './VideoGenerationPanel.css';
 import { useLanguage } from '../../lib/useLanguage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams, useOutletContext } from 'react-router-dom';
@@ -10,14 +12,25 @@ import { Highlight } from 'prism-react-renderer';
 import { Prism, codeTheme, languageAliases } from '../../lib/codeHighlight';
 import { dashboardModels } from '../../data/dashboardModels';
 import { apiFetch, checkChatResponse } from '../../lib/api';
+import { formatChatVisionError, prepareChatImageAttachment } from '../../lib/imageAttachment';
 import {
   buildImageRequestBody,
   downloadOriginalImage,
   fetchImageGenerationStatus,
+  IMAGE_ASPECTS,
+  IMAGE_COUNT_OPTIONS,
+  IMAGE_QUALITIES,
   requestImageGeneration,
 } from '../../lib/imageGeneration';
-import { buildVideoRequestBody, requestVideoGeneration } from '../../lib/videoGeneration';
+import {
+  buildVideoRequestBody,
+  fetchVideoGenerationStatus,
+  formatVideoJobStatus,
+  pollVideoJob,
+  requestVideoGeneration,
+} from '../../lib/videoGeneration';
 import { logger, timingElapsed, timingNow } from '../../lib/logger';
+import { submitResponseFeedback } from '../../lib/aiImprovement';
 import { deleteUserAccountAndSignOut } from '../../lib/clientAuthReset';
 import SessionRecovery from './SessionRecovery';
 import WebSources, { WebSearchStatus } from './WebSources';
@@ -35,20 +48,38 @@ import './ChatDarkViolet.css';
 import './ChatSidebarCollapse.css';
 import './ChatPremium.css';
 import './ComposerInput.css';
+import './ComposerModern.css';
+import {
+  IconArrowRight,
+  IconCamera,
+  IconFileCode,
+  IconGitBranch,
+  IconGlobe,
+  IconImage,
+  IconMessageSquare,
+  IconMic,
+  IconPaperclip,
+  IconPlus,
+  IconSearchDeep,
+  IconSendUp,
+  IconStar,
+  IconVideo,
+  IconVolume,
+} from './ComposerIcons';
 import CreateProjectModal, { ProjectIconBadge } from './CreateProjectModal';
 import AccountDeleteModal from '../AccountDeleteModal';
 import { isStandaloneApp } from '../../lib/appMode';
 import { readResponsePrefs } from '../../lib/responseLanguagePrefs.js';
-import SubscribeStripeEmbedded from './SubscribeStripeEmbedded';
-import { submitWayforpayCheckout } from '../../lib/wayforpay';
+import { formatPaymentError } from '../../lib/formatPaymentError';
+import { runTestWayforpayCheckout, submitWayforpayCheckout } from '../../lib/wayforpay';
+import './SubscribeModalPremium.css';
 import { copyToClipboard } from '../../lib/clipboard';
 import MessageActions from './MessageActions';
 import ChatSidebar from './ChatSidebar';
 import { IconToolKnowledgeBase } from './ChatSidebarIcons';
-import SmartRouterStatus, { KnowledgeSourceChips } from './SmartRouterStatus';
-import './SmartRouterStatus.css';
+import KnowledgeSourceChips from './KnowledgeSourceChips';
 
-const CHAT_PLAN_TO_CHECKOUT = { starter: 'week', pro: 'common', unlimited: 'plus' };
+const CHAT_PLAN_TO_CHECKOUT = { starter: 'starter', pro: 'common', unlimited: 'plus' };
 
 function ModelSpeedBadge({ speed }) {
   if (!speed || !['Fast', 'Medium', 'High'].includes(speed)) return null;
@@ -314,10 +345,11 @@ export default function Chat() {
   const messagesContainer = useRef(null);
   const fileInput = useRef(null);
   const composerInputRef = useRef(null);
+  const composerShellRef = useRef(null);
   const activeRequest = useRef(null);
   const deepResearchPendingRef = useRef(null);
   const speechRecognition = useRef(null);
-  const { user } = useOutletContext();
+  const { user, sessionVerified } = useOutletContext();
   const isGuest = user?.guest === true;
   const [selectedSlug, setSelectedSlug] = useState(() => {
     const requested =
@@ -396,27 +428,44 @@ export default function Chat() {
   const [subscribeForm, setSubscribeForm] = useState({ cardNumber: '', holder: '', email: '', city: '', birthDate: '', expiry: '', cvc: '' });
   const [subscribeBusy, setSubscribeBusy] = useState(false);
   const [subscribeError, setSubscribeError] = useState('');
-  const [subscribeStripeSecret, setSubscribeStripeSecret] = useState('');
-  const [subscribeStripePublishableKey, setSubscribeStripePublishableKey] = useState('');
-  const [subscribeStripeLoading, setSubscribeStripeLoading] = useState(false);
   const [primaryPaymentProvider, setPrimaryPaymentProvider] = useState(null);
+  const [wayforpayTestMode, setWayforpayTestMode] = useState(false);
+  const [paymentsConfigLoaded, setPaymentsConfigLoaded] = useState(false);
 
   const standaloneApp = useMemo(() => isStandaloneApp(), []);
-  const subscribeStripeReturnUrl = useMemo(() => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${origin}/chat?subscribe=success&session_id={CHECKOUT_SESSION_ID}`;
-  }, []);
 
   const subscriptionPlans = [
-    { id: 'starter', icon: '🌱', name: t('Starter'), price: '$5', period: t('per month'), features: [t('Basic models included'), t('Standard response speed'), t('Email support')] },
-    { id: 'pro', icon: '🚀', name: t('Pro'), price: '$15', period: t('per month'), popular: true, features: [t('All AI models included'), t('Priority response speed'), t('Image generation'), t('Priority support')] },
-    { id: 'unlimited', icon: '♾️', name: t('Unlimited'), price: '$30', period: t('per month'), features: [t('All AI models included'), t('Maximum response speed'), t('Unlimited image generation'), t('24/7 support')] },
+    {
+      id: 'starter',
+      icon: '🌱',
+      name: t('Starter'),
+      price: '$5',
+      period: t('per month'),
+      features: [t('Core AI models'), t('800 requests per month'), t('Standard response speed'), t('Email support')],
+    },
+    {
+      id: 'pro',
+      icon: '🚀',
+      name: t('Pro'),
+      price: '$15',
+      period: t('per month'),
+      popular: true,
+      features: [t('Premium model access'), t('3,000 requests per month'), t('Priority routing'), t('Image generation'), t('Priority support')],
+    },
+    {
+      id: 'unlimited',
+      icon: '♾️',
+      name: t('Unlimited'),
+      price: '$30',
+      period: t('per month'),
+      features: [t('All connected providers'), t('6,000 requests per month'), t('Highest routing priority'), t('Image generation'), t('Dedicated support')],
+    },
   ];
 
   const openSubscribe = () => {
     setSubscribeError('');
     setSubscribePlan(null);
-    setSubscribeStripeSecret('');
+    setPaymentsConfigLoaded(false);
     setSubscribeForm({ cardNumber: '', holder: '', email: user.email || '', city: '', birthDate: '', expiry: '', cvc: '' });
     setSubscribeModalOpen(true);
   };
@@ -425,27 +474,28 @@ export default function Chat() {
 
   const startWayforpayCheckout = async (planId) => {
     const checkoutPlan = CHAT_PLAN_TO_CHECKOUT[planId] || 'common';
+    if (wayforpayTestMode) {
+      const result = await runTestWayforpayCheckout(apiFetch, checkoutPlan);
+      if (!result?.paid) {
+        throw new Error(result?.message || t('Test payment could not be confirmed.'));
+      }
+      const creditsRes = await apiFetch(`/api/credits?email=${encodeURIComponent(user.email)}`);
+      if (creditsRes.ok) setCreditStatus(await creditsRes.json());
+      setSubscribeModalOpen(false);
+      logger.success('WayForPay test subscription activated (simulated, no charge)');
+      return;
+    }
     const response = await apiFetch('/api/payments/wayforpay/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ plan: checkoutPlan }),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.message || t('Could not start WayForPay checkout.'));
+    if (!response.ok) {
+      throw new Error(data.message || data.userMessage || t('Could not start WayForPay checkout.'));
+    }
     if (data.mockCheckout) {
-      const completeRes = await apiFetch('/api/payments/wayforpay/mock-complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderReference: data.orderReference }),
-      });
-      const completed = await completeRes.json().catch(() => ({}));
-      if (!completeRes.ok || !completed.paid) {
-        throw new Error(completed.message || t('Test payment could not be confirmed.'));
-      }
-      const creditsRes = await apiFetch(`/api/credits?email=${encodeURIComponent(user.email)}`);
-      if (creditsRes.ok) setCreditStatus(await creditsRes.json());
-      setSubscribeModalOpen(false);
-      return;
+      throw new Error(t('Test checkout should use the simulated payment flow. Refresh and try again.'));
     }
     submitWayforpayCheckout(data);
   };
@@ -471,15 +521,15 @@ export default function Chat() {
         logger.success('Developer test subscription activated (no charge)');
       } else if (primaryPaymentProvider === 'wayforpay') {
         await startWayforpayCheckout(subscribePlan.id);
-      } else if (!subscribeStripeSecret) {
+      } else {
         const checkoutPlan = CHAT_PLAN_TO_CHECKOUT[subscribePlan.id] || 'common';
         const response = await apiFetch('/api/payments/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ plan: checkoutPlan, embedded: false }),
+          body: JSON.stringify({ plan: checkoutPlan, embedded: false, flow: 'hosted' }),
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.message || t('Could not start secure checkout.'));
+        if (!response.ok) throw new Error(formatPaymentError(data, t('Could not start secure checkout.')));
         if (data.checkoutUrl) {
           window.location.assign(data.checkoutUrl);
           return;
@@ -509,6 +559,19 @@ export default function Chat() {
   const [speechLanguage, setSpeechLanguage] = useState(() => safeStorageGet('localStorage', 'allmodelai_voice_language') || globalThis.navigator?.language || 'en-US');
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoice, setSelectedVoice] = useState(() => safeStorageGet('localStorage', 'allmodelai_voice_name') || '');
+  const [videoAspectRatio, setVideoAspectRatio] = useState('16:9');
+  const [videoResolution, setVideoResolution] = useState('720p');
+  const [videoDurationSeconds, setVideoDurationSeconds] = useState(5);
+  const [videoUseLastImage, setVideoUseLastImage] = useState(false);
+  const [videoMode, setVideoMode] = useState('text-to-video');
+  const [videoDraftPrompt, setVideoDraftPrompt] = useState('');
+  const [videoReferenceImage, setVideoReferenceImage] = useState('');
+  const [videoProvider, setVideoProvider] = useState('');
+  const [videoProviderStatus, setVideoProviderStatus] = useState(null);
+  const [imageGenerationCount, setImageGenerationCount] = useState(1);
+  const [imageGenerationQuality, setImageGenerationQuality] = useState('hd');
+  const [imageGenerationAspect, setImageGenerationAspect] = useState('1:1');
+  const [imageProviderStatus, setImageProviderStatus] = useState(null);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [editDraft, setEditDraft] = useState('');
   const [modelStatus, setModelStatus] = useState({});
@@ -521,12 +584,40 @@ export default function Chat() {
     return typeof savedColor !== 'string' || !savedColor || savedColor.toLowerCase() === '#ffffff' ? '#8b5cf6' : savedColor;
   });
   const [attachedImage, setAttachedImage] = useState(null);
+  const [imageUploadBusy, setImageUploadBusy] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [previewModalImage, setPreviewModalImage] = useState(null);
   const [contextSuggestions, setContextSuggestions] = useState([]);
   const activeConversationIdRef = useRef(null);
   const activeProjectRef = useRef(null);
+  const contextSuggestionsAbortRef = useRef(null);
+  const lastSuggestionsQueryRef = useRef('');
   const selectedModel = dashboardModels.find((model) => model.slug === selectedSlug) || fallbackModel;
+  const lastAssistantImageUrl = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role === 'assistant' && message.imageUrl) return message.imageUrl;
+    }
+    return '';
+  }, [messages]);
+
+  useEffect(() => {
+    if (selectedSkill !== 'video') return undefined;
+    let active = true;
+    void fetchVideoGenerationStatus().then((status) => {
+      if (active) setVideoProviderStatus(status);
+    });
+    return () => { active = false; };
+  }, [selectedSkill]);
+
+  useEffect(() => {
+    if (selectedSkill !== 'image') return undefined;
+    let active = true;
+    void fetchImageGenerationStatus().then((status) => {
+      if (active) setImageProviderStatus(status);
+    });
+    return () => { active = false; };
+  }, [selectedSkill]);
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
@@ -584,9 +675,69 @@ export default function Chat() {
     document.documentElement.style.setProperty('--composer-text', '#ffffff');
   }, [prompt, isSending, selectedSkill, attachedImage]);
 
+  useEffect(() => {
+    const el = composerInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [prompt, selectedSkill, attachedImage, isSending]);
+
+  useEffect(() => {
+    if (!composerMenuOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setComposerMenuOpen(false);
+    };
+    const onPointerDown = (event) => {
+      if (composerShellRef.current && !composerShellRef.current.contains(event.target)) {
+        setComposerMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+    };
+  }, [composerMenuOpen]);
+
+  const composerPlaceholder = useMemo(() => {
+    if (selectedSkill === 'file' && !isSending) {
+      return 'For example: create a Python script, an HTML page, or a project plan in Markdown...';
+    }
+    if (isSending) {
+      if (selectedSkill === 'image') return 'Generating image…';
+      if (selectedSkill === 'web') return 'Searching the web…';
+      return 'You can type your next message while the answer is being generated…';
+    }
+    if (attachedImage) return 'Ask anything about this screenshot (e.g. "What do you see?")';
+    if (selectedSkill === 'image') {
+      return 'Describe the image and press Send — for example: a golden dragon with purple lightning…';
+    }
+    if (selectedSkill === 'video') return 'Describe the video you want to create...';
+    if (selectedSkill === 'web') return 'What do you want to find on the internet?';
+    if (selectedSkill === 'deep-research') return 'What should Deep Research investigate?';
+    return 'Ask AllModelAI anything...';
+  }, [attachedImage, isSending, selectedSkill]);
+
+  const composerStatusText = useMemo(() => {
+    if (selectedSkill === 'web') return 'Web search enabled';
+    if (selectedSkill === 'image' && isSending) return 'Generating image…';
+    if (selectedSkill === 'image') return 'Image mode — describe and send';
+    if (selectedSkill === 'deep-research') return 'Deep Research — ask your research question';
+    if (selectedSkill === 'file') return 'Create file mode';
+    if (selectedSkill === 'video') return 'Video mode';
+    if (voiceInputState === 'requesting') return 'Allow microphone access...';
+    if (isListening) return t('Listening…');
+    if (isSending) return t('Generating — you can keep typing');
+    if (attachedImage) return t('Screenshot ready to send');
+    return `${selectedModel.name} · ${t('Ready · replies in your language')}`;
+  }, [attachedImage, isListening, isSending, selectedModel.name, selectedSkill, t, voiceInputState]);
+
   const modelIsOnline = (slug) => {
     if (!Object.keys(modelStatus).length || slug === 'smart') return true;
-    const statusKey = ['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'grok'].includes(slug) ? slug : 'others';
+    const statusKey = ['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'grok', 'perplexity'].includes(slug) ? slug : 'others';
     return modelStatus[statusKey] !== false;
   };
 
@@ -595,7 +746,7 @@ export default function Chat() {
     || Boolean(creditStatus?.models?.includes('all') || creditStatus?.models?.includes(slug));
 
   const changeAccessMode = async (mode) => {
-    if (!creditStatus?.isDeveloper || isSending || accessModeSaving) return;
+    if (!creditStatus?.canUseDeveloper || isSending || accessModeSaving) return;
     setAccessModeSaving(true);
     setChatError('');
     try {
@@ -737,16 +888,33 @@ export default function Chat() {
 
   const loadContextSuggestions = useCallback(async (text) => {
     const value = String(text || '').trim();
-    if (!value || isSending || isGuest) { setContextSuggestions([]); return; }
+    if (!value || value.length < 12 || isSending || isGuest) {
+      contextSuggestionsAbortRef.current?.abort();
+      lastSuggestionsQueryRef.current = '';
+      setContextSuggestions([]);
+      return;
+    }
+    if (value === lastSuggestionsQueryRef.current) return;
+    lastSuggestionsQueryRef.current = value;
+    contextSuggestionsAbortRef.current?.abort();
+    const controller = new AbortController();
+    contextSuggestionsAbortRef.current = controller;
     try {
-      const response = await apiFetch('/api/chat/suggestions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lastMessage: value }) });
+      const response = await apiFetch('/api/chat/suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lastMessage: value }),
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
       if (!response.ok) return;
       const data = await response.json();
       setContextSuggestions(Array.isArray(data.suggestions) ? data.suggestions.slice(0, 3) : []);
-    } catch {
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
       setContextSuggestions([]);
     }
-  }, [isGuest, isSending, setContextSuggestions]);
+  }, [isGuest, isSending]);
 
   const conversationPreview = (conversation) => {
     const firstUserMessage = conversation.messages?.find((message) => message.role === 'user');
@@ -804,32 +972,24 @@ export default function Chat() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [historyFeedOpen, user?.email]);
-  const handleImageUpload = (file) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setChatError('Please select a valid image or screenshot file (PNG, JPG, WebP, GIF, etc.).');
-      return;
-    }
-    if (file.size > 25 * 1024 * 1024) {
-      setChatError('Image file is too large (max 25MB).');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target.result;
+  const handleImageUpload = async (file) => {
+    if (!file || imageUploadBusy) return;
+    setImageUploadBusy(true);
+    setChatError('');
+    try {
+      const prepared = await prepareChatImageAttachment(file);
       setAttachedImage({
-        url: dataUrl,
-        name: file.name || 'screenshot.png',
-        size: `${(file.size / 1024).toFixed(0)} KB`,
-        type: file.type,
+        url: prepared.dataUrl,
+        name: prepared.name,
+        size: prepared.sizeLabel,
+        type: prepared.type,
       });
-      logger.action('Attachment selected', { name: file.name || 'screenshot.png', type: file.type, sizeKb: Math.round(file.size / 1024) });
-      setChatError('');
-    };
-    reader.onerror = () => {
-      setChatError('Could not read the selected image file.');
-    };
-    reader.readAsDataURL(file);
+      logger.action('Attachment selected', { name: prepared.name, type: prepared.type, sizeKb: prepared.sizeLabel });
+    } catch (error) {
+      setChatError(error.message || 'Could not prepare the image for upload.');
+    } finally {
+      setImageUploadBusy(false);
+    }
   };
 
   const readFile = async (event) => {
@@ -899,6 +1059,28 @@ export default function Chat() {
       }
     } catch (error) { setChatError(error.message || 'Could not share this message.'); }
   };
+  const mapFeedbackCategory = (reason) => {
+    const value = String(reason || '').toLowerCase();
+    if (value.includes('incorrect')) return 'incorrect';
+    if (value.includes('not helpful') || value.includes('incomplete')) return 'incomplete';
+    if (value.includes('outdated')) return 'incorrect';
+    if (value.includes("didn't follow") || value.includes('instructions')) return 'off_topic';
+    if (value.startsWith('other')) return 'other';
+    return value ? 'other' : null;
+  };
+
+  const persistServerFeedback = (index, { rating, reasonCategory, correctionText }) => {
+    void submitResponseFeedback({
+      conversationId: activeConversationId,
+      messageIndex: index,
+      rating,
+      reasonCategory,
+      correctionText,
+      modelSlug: selectedSlug,
+      routedModel: messages[index]?.modelSlug || selectedSlug,
+    }).catch(() => {});
+  };
+
   const rateMessage = (index, rating) => {
     setMessageRatings((ratings) => {
       const next = { ...ratings };
@@ -913,6 +1095,7 @@ export default function Chat() {
         safeStorageSet('localStorage', 'allmodelai_message_likes', JSON.stringify(next));
         return next;
       });
+      persistServerFeedback(index, { rating: 'up' });
     }
   };
   const setFeedbackReason = (index, reason) => {
@@ -923,6 +1106,13 @@ export default function Chat() {
       safeStorageSet('localStorage', 'allmodelai_message_feedback', JSON.stringify(next));
       return next;
     });
+    if (reason) {
+      persistServerFeedback(index, {
+        rating: 'down',
+        reasonCategory: mapFeedbackCategory(reason),
+        correctionText: reason,
+      });
+    }
   };
   const openFeedback = (index) => { setFeedbackMessageIndex(index); setFeedbackText(''); setFeedbackModalOpen(true); };
   const submitFeedback = () => {
@@ -1070,63 +1260,27 @@ export default function Chat() {
   }, [subscribeModalOpen]);
 
   useEffect(() => {
-    if (!subscribeModalOpen || !subscribePlan || creditStatus?.isDeveloper || isGuest) {
-      return undefined;
-    }
-
+    if (!subscribeModalOpen || isGuest) return undefined;
     let cancelled = false;
     (async () => {
-      setSubscribeStripeLoading(true);
       setSubscribeError('');
       try {
         const configRes = await apiFetch('/api/payments/config');
         const config = configRes.ok ? await configRes.json() : {};
-        const provider = config.primaryProvider || null;
-        if (!cancelled) setPrimaryPaymentProvider(provider);
-        if (provider === 'wayforpay') {
-          return;
+        if (cancelled) return;
+        setPrimaryPaymentProvider(config.primaryProvider || null);
+        setWayforpayTestMode(Boolean(config.wayforpayTestMode));
+        if (config.primaryProvider === 'stripe' && !config.stripeConfiguration?.ok) {
+          setSubscribeError(formatPaymentError(config, t('Secure checkout is temporarily unavailable.')));
         }
-        const publishableKey = config.publishableKey || import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
-        if (!config.stripeConfigured && !config.stripeConfiguration?.ok) {
-          const missing = config.stripeConfiguration?.missingEnvVars;
-          throw new Error(
-            missing?.length
-              ? `${t('Stripe is not configured on the server.')}: ${missing.join(', ')}`
-              : t('Payments are not configured. Add payment keys on the server.'),
-          );
-        }
-        if (!publishableKey) {
-          throw new Error(t('Missing STRIPE_PUBLISHABLE_KEY / VITE_STRIPE_PUBLISHABLE_KEY on Render.'));
-        }
-        if (!cancelled) setSubscribeStripePublishableKey(publishableKey);
-
-        const checkoutPlan = CHAT_PLAN_TO_CHECKOUT[subscribePlan.id] || 'common';
-        const res = await apiFetch('/api/payments/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ plan: checkoutPlan, embedded: true }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          const missing = data.missingEnvVars;
-          throw new Error(
-            missing?.length
-              ? `${data.message || t('Could not load payment form.')} (${missing.join(', ')})`
-              : (data.message || t('Could not load payment form.')),
-          );
-        }
-        if (!cancelled && data.clientSecret) setSubscribeStripeSecret(data.clientSecret);
-      } catch (error) {
-        if (!cancelled) setSubscribeError(error.message);
+      } catch {
+        if (!cancelled) setSubscribeError(t('Secure checkout is temporarily unavailable.'));
       } finally {
-        if (!cancelled) setSubscribeStripeLoading(false);
+        if (!cancelled) setPaymentsConfigLoaded(true);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [subscribeModalOpen, subscribePlan?.id, creditStatus?.isDeveloper, isGuest]);
+    return () => { cancelled = true; };
+  }, [subscribeModalOpen, isGuest, t]);
 
   useEffect(() => {
     if (!user?.email || isGuest) return;
@@ -1144,12 +1298,18 @@ export default function Chat() {
         }
       })
       .catch(() => {});
-  }, [user?.email, isGuest]);
+  }, [user?.email, isGuest, sessionVerified]);
 
   useEffect(() => {
-    const handler = setTimeout(() => loadContextSuggestions(prompt), 220);
+    if (selectedSkill === 'video' || selectedSkill === 'image' || selectedSkill === 'file') {
+      contextSuggestionsAbortRef.current?.abort();
+      lastSuggestionsQueryRef.current = '';
+      setContextSuggestions([]);
+      return undefined;
+    }
+    const handler = setTimeout(() => loadContextSuggestions(prompt), 450);
     return () => clearTimeout(handler);
-  }, [prompt, isSending, loadContextSuggestions]);
+  }, [prompt, isSending, loadContextSuggestions, selectedSkill]);
 
   useEffect(() => {
     sidebarWidthRef.current = sidebarWidth;
@@ -1432,6 +1592,8 @@ export default function Chat() {
     event?.preventDefault();
     const rawText = String(overrideText ?? prompt).trim();
     const currentAttachment = overrideAttachment ?? attachedImage;
+    const attachmentSnapshot = currentAttachment?.url ? { ...currentAttachment } : null;
+    const hadImageAttachment = Boolean(attachmentSnapshot?.url);
     const text = rawText || (currentAttachment ? 'Analyze this screenshot: describe in detail what is shown here and give me step-by-step guidance on where to click and what to do.' : '');
     if (!text || isSending) return;
     const generatingFile = selectedSkill === 'file';
@@ -1453,7 +1615,17 @@ export default function Chat() {
     const controller = new AbortController();
     activeRequest.current = controller;
     const assistantIndex = nextMessages.length;
-    setMessages([...nextMessages, { role: 'assistant', text: generatingVideo ? 'Creating your video… This can take several minutes.' : generatingImage ? 'Generating image…' : selectedSkill === 'web' ? 'Searching the web…' : selectedSkill === 'deep-research' ? 'Starting Deep Research…' : '', modelSlug: selectedSlug, generatingFile, generatingVideo, generatingImage, webSearching:selectedSkill === 'web' || selectedSkill === 'deep-research', deepResearch: selectedSkill === 'deep-research' }]);
+    setMessages([...nextMessages, {
+      role: 'assistant',
+      text: generatingVideo ? 'Creating your video… This can take several minutes.' : generatingImage ? 'Generating image…' : hadImageAttachment ? 'Analyzing your screenshot with vision AI…' : selectedSkill === 'web' ? 'Searching the web…' : selectedSkill === 'deep-research' ? 'Starting Deep Research…' : '',
+      modelSlug: selectedSlug,
+      generatingFile,
+      generatingVideo,
+      generatingImage,
+      visionAnalyzing: hadImageAttachment,
+      webSearching: selectedSkill === 'web' || selectedSkill === 'deep-research',
+      deepResearch: selectedSkill === 'deep-research',
+    }]);
 
     const requestStartedAt = timingNow();
     logger.chat('Message submitted', {
@@ -1537,20 +1709,29 @@ export default function Chat() {
       if (generatingImage) {
         logger.action('Generate image', { promptLength: text.length });
         const imageStatus = await fetchImageGenerationStatus().catch(() => null);
+        const requestedCount = options.imageCount || imageGenerationCount || 1;
         const imageData = await requestImageGeneration(
           buildImageRequestBody({
             prompt: text,
-            quality: options.quality || 'hd',
-            aspectRatio: options.aspectRatio || '1:1',
+            quality: options.quality || imageGenerationQuality || 'hd',
+            aspectRatio: options.aspectRatio || imageGenerationAspect || '1:1',
+            count: requestedCount,
             style: options.style || 'auto',
             ...(imageStatus?.configured && imageStatus?.cloudflare ? { provider: 'cloudflare' } : {}),
           }),
           controller.signal,
           {
-            onPoll: ({ polls }) => {
-              let imageStatusLabel = 'Generating your image…';
-              if (polls >= 2) imageStatusLabel = 'Generating your image…';
-              if (polls >= 5) imageStatusLabel = 'Still generating your image…';
+            onPoll: ({ polls, progress }) => {
+              let imageStatusLabel = requestedCount > 1
+                ? `Generating image 1 of ${requestedCount}…`
+                : 'Generating your image…';
+              if (progress?.completed != null && progress?.total) {
+                imageStatusLabel = `Generated ${progress.completed} of ${progress.total} images…`;
+              } else if (polls >= 5) {
+                imageStatusLabel = requestedCount > 1
+                  ? `Still generating your images (${requestedCount} requested)…`
+                  : 'Still generating your image…';
+              }
               setMessages((current) => current.map((message, index) => (
                 index === assistantIndex
                   ? {
@@ -1558,6 +1739,8 @@ export default function Chat() {
                     text: imageStatusLabel,
                     generatingImage: true,
                     imageStatusLabel,
+                    imageGenerationProgress: progress || null,
+                    requestedImageCount: requestedCount,
                   }
                   : message
               )));
@@ -1567,10 +1750,15 @@ export default function Chat() {
         if (!imageData?.imageUrl) {
           throw new Error('The server did not return an image. Tap Retry to try again.');
         }
+        const imageCount = imageData.images?.length || 1;
         const answer = {
           role: 'assistant',
-          text: 'Done! Here is your image.',
+          text: imageCount > 1 ? `Done! Here are your ${imageCount} images.` : 'Done! Here is your image.',
           imageUrl: imageData.imageUrl,
+          images: imageData.images,
+          requestedImageCount: requestedCount,
+          partial: imageData.partial === true,
+          imageGenerationWarning: imageData.warnings?.[0],
           imageQuality: imageData.quality,
           imageAspect: imageData.aspectRatio,
           imageSize: imageData.size,
@@ -1585,7 +1773,12 @@ export default function Chat() {
           try {
             const cached = safeJSON(safeStorageGet('localStorage', 'allmodelai_image_gallery'), []);
             const gallery = Array.isArray(cached) ? cached : [];
-            safeStorageSet('localStorage', 'allmodelai_image_gallery', JSON.stringify([{ id: `${text.slice(0, 24)}-${imageData.imageUrl.slice(-16)}`, prompt: text, imageUrl: imageData.imageUrl }, ...gallery].slice(0, 5)));
+            const galleryEntries = (imageData.images?.length ? imageData.images : [{ imageUrl: imageData.imageUrl }]).map((item, idx) => ({
+              id: `${text.slice(0, 24)}-${idx}-${item.imageUrl.slice(-16)}`,
+              prompt: text,
+              imageUrl: item.imageUrl,
+            }));
+            safeStorageSet('localStorage', 'allmodelai_image_gallery', JSON.stringify([...galleryEntries, ...gallery].slice(0, 8)));
           } catch { /* The server history remains the durable copy. */ }
           try {
             const saved = await apiFetch(startedConversationId ? `/api/chat/history/${startedConversationId}` : '/api/chat/history', {
@@ -1608,27 +1801,59 @@ export default function Chat() {
       }
       if (generatingVideo) {
         logger.action('Generate video', { promptLength: text.length });
-        const videoResponse = await requestVideoGeneration(
+        const stillOpen = () => activeConversationIdRef.current === startedConversationId;
+        const imageToVideo = options.videoMode === 'image-to-video' || videoMode === 'image-to-video';
+        const referenceImage = imageToVideo
+          ? (options.imageUrl
+            || (videoUseLastImage ? lastAssistantImageUrl : '')
+            || videoReferenceImage
+            || '')
+          : '';
+        const { data: videoData } = await requestVideoGeneration(
           buildVideoRequestBody({
             prompt: text,
-            aspectRatio: options.aspectRatio || '16:9',
-            resolution: options.resolution || '720p',
-            imageUrl: currentAttachment?.url || '',
+            aspectRatio: options.aspectRatio || videoAspectRatio,
+            resolution: options.resolution || videoResolution,
+            durationSeconds: options.durationSeconds || videoDurationSeconds,
+            imageUrl: referenceImage,
+            wait: options.wait === true,
+            provider: options.provider || videoProvider,
           }),
           controller.signal,
         );
-        await checkChatResponse(videoResponse);
-        const videoData = await videoResponse.json().catch(() => ({}));
+        let finalVideo = videoData;
+        if (finalVideo.jobId && finalVideo.status !== 'completed') {
+          finalVideo = await pollVideoJob(finalVideo.jobId, {
+            signal: controller.signal,
+            onUpdate: (job) => {
+              if (!stillOpen()) return;
+              setMessages((current) => {
+                if (!current.length) return current;
+                const copy = [...current];
+                const last = copy[copy.length - 1];
+                if (!last?.generatingVideo) return current;
+                copy[copy.length - 1] = {
+                  ...last,
+                  text: `${formatVideoJobStatus(job.status)}…`,
+                  videoJobStatus: job.status,
+                  creditsEstimated: job.creditsEstimated,
+                  creditsCharged: job.creditsCharged,
+                };
+                return copy;
+              });
+            },
+          });
+        }
         const answer = {
           role: 'assistant',
           text: 'Done! Here is your video.',
-          videoUrl: videoData.videoUrl,
-          videoModel: videoData.model,
-          videoAspect: videoData.aspectRatio,
-          videoResolution: videoData.resolution,
-          videoMimeType: videoData.mimeType,
+          videoUrl: finalVideo.videoUrl,
+          videoModel: finalVideo.model,
+          videoAspect: finalVideo.aspectRatio,
+          videoResolution: finalVideo.resolution,
+          videoMimeType: finalVideo.mimeType,
+          videoJobId: finalVideo.jobId,
         };
-        const stillOpen = () => activeConversationIdRef.current === startedConversationId;
         if (stillOpen()) setMessages([...nextMessages, answer]);
         if (!temporaryChat) {
           try {
@@ -1886,9 +2111,7 @@ export default function Chat() {
         const wasWebSearch = messages[assistantIndex]?.webSearching || messages[assistantIndex]?.webSearchStatus;
         const fallbackMessage = wasWebSearch
           ? 'Web search is temporarily unavailable. I can still answer using the AI model\'s existing knowledge.'
-          : requestError.message === 'Failed to fetch'
-            ? 'Could not connect to the server. Check your connection and try again.'
-            : (requestError.message || 'Could not connect to the AI server.');
+          : formatChatVisionError(requestError, { hadImage: hadImageAttachment });
         if (wasWebSearch) {
           logger.searchError('Search failed', { message: requestError.message, name: requestError.name });
           setMessages((current) => current.map((message, index) => (
@@ -1915,7 +2138,19 @@ export default function Chat() {
           )));
         } else {
           setChatError(fallbackMessage);
-          setMessages((current) => current.filter((_, index) => index !== assistantIndex));
+          if (hadImageAttachment && attachmentSnapshot?.url) {
+            setAttachedImage(attachmentSnapshot);
+          }
+          setMessages((current) => current.map((message, index) => (
+            index === assistantIndex
+              ? {
+                ...message,
+                text: fallbackMessage,
+                visionAnalyzing: false,
+                visionFailed: hadImageAttachment,
+              }
+              : message
+          )));
         }
       }
     } finally {
@@ -2374,24 +2609,29 @@ export default function Chat() {
           <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? t("Temporary chat") : activeProject ? activeProject.name : t("Chatting with")}</small><strong>{selectedModel.name}{selectedVersion ? ` · ${selectedVersion.name}` : ''}</strong></span><i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? t("Online") : t("API needed")}</i></div>
           {!isGuest && creditStatus && (
             <div className="access-mode-control">
+              {creditStatus.plusTestMode && (
+                <span className="plus-test-mode-badge" role="status" title={t('Local developer Plus Test Mode')}>
+                  Plus Test Mode
+                </span>
+              )}
               <div className="access-mode-switch" role="group" aria-label="Access mode">
                 <button
                   type="button"
                   aria-pressed={(creditStatus.mode || 'user') === 'user'}
                   disabled={isSending || accessModeSaving}
-                  onClick={() => creditStatus.isDeveloper && changeAccessMode('user')}
+                  onClick={() => creditStatus.canUseDeveloper && changeAccessMode('user')}
                 >
                   {t('User')}
                 </button>
-                {creditStatus.isDeveloper ? (
+                {creditStatus.canUseDeveloper ? (
                   <button
                     type="button"
                     aria-pressed={creditStatus.mode === 'developer'}
                     disabled={isSending || accessModeSaving}
                     onClick={() => changeAccessMode('developer')}
-                    title={t('All models')}
+                    title={creditStatus.plusTestMode ? t('Plus Test Mode — all models') : t('All models')}
                   >
-                    Developer
+                    {creditStatus.plusTestEligible && !creditStatus.hasSubscription ? t('Plus Test') : t('Developer')}
                   </button>
                 ) : (
                   <button
@@ -2411,10 +2651,18 @@ export default function Chat() {
                   ? t('Saving…')
                   : creditStatus.isOwner
                     ? t('Owner · Unlimited')
-                    : creditStatus.isDeveloper && creditStatus.mode === 'developer'
-                      ? t('All models')
-                      : t('5 free models')}
-                {!creditStatus.isDeveloper && !creditStatus.hasSubscription && (
+                    : creditStatus.plusTestMode
+                      ? t('Plus Test Mode · all models')
+                      : creditStatus.mode === 'developer' && creditStatus.hasSubscription
+                        ? t('All models')
+                        : t('5 free models')}
+                {creditStatus.canAccessModelDiagnostics && (
+                  <>
+                    {' · '}
+                    <Link to="/developer/model-diagnostics" className="access-subscribe-inline">{t('Model diagnostics')}</Link>
+                  </>
+                )}
+                {!creditStatus.canUseDeveloper && !creditStatus.hasSubscription && (
                   <button type="button" className="access-subscribe-inline" onClick={openPlusSubscription}>
                     {t('Subscription')} ↗
                   </button>
@@ -2511,13 +2759,13 @@ export default function Chat() {
             const filePending = message.generatingFile && isSending && index === messages.length - 1;
             const imagePending = message.generatingImage && isSending && index === messages.length - 1;
             const messageImage = message.role === 'user' ? message.image || message.imageUrl : null;
-            if (!text && !messageImage && !message.videoUrl && !message.imageUrl && message.role === 'assistant' && isSending && index === messages.length - 1) return null;
+            if (!text && !messageImage && !message.videoUrl && !message.imageUrl && !(message.images?.length) && message.role === 'assistant' && isSending && index === messages.length - 1) return null;
             const activelyStreaming = isStreamingResponse && isSending && index === messages.length - 1 && message.role === 'assistant';
             const editing = message.role === 'user' && editingMessageIndex === index;
             const feedback = messageFeedback[index];
             const favoriteEntry = favorites.some((item) => item.text === text);
             return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : message.deepResearch ? <DeepResearchMessageBlock message={message} onClarifyStart={(answers) => handleDeepResearchClarification(index, answers, false)} onClarifySkip={() => handleDeepResearchClarification(index, null, true)} onStopResearch={stopGenerating} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1)); }} /> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : imagePending ? <div className="image-gen-status" role="status" aria-live="polite"><span className="image-gen-status__spinner" aria-hidden="true" /><b>{message.imageStatusLabel || 'Generating image…'}</b></div> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} citationSources={message.webSources} /> : <p>{text}</p>)}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
-{message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} />}{message.role === 'assistant' && selectedSlug === 'smart' && message.router && <SmartRouterStatus router={message.router} routedModel={message.modelSlug} displayName={message.routeDisplayName} />}{message.knowledgeSources?.length > 0 && <KnowledgeSourceChips sources={message.knowledgeSources} onSourceClick={() => navigate('/knowledge')} />}{message.imageUrl && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || 'hd', aspectRatio: message.imageAspect || '1:1' }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{message.videoUrl && message.role !== 'user' && <GeneratedVideoCard message={message} onDownloadError={setChatError} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceVideo: true, aspectRatio: message.videoAspect || '16:9', resolution: message.videoResolution || '720p' }); }} />}{text && !activelyStreaming && !editing && (
+{message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} />}{message.knowledgeSources?.length > 0 && <KnowledgeSourceChips sources={message.knowledgeSources} onSourceClick={() => navigate('/knowledge')} />}{(message.imageUrl || message.images?.length) && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || imageGenerationQuality || 'hd', aspectRatio: message.imageAspect || imageGenerationAspect || '1:1', imageCount: message.requestedImageCount || imageGenerationCount || 1 }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{message.videoUrl && message.role !== 'user' && <GeneratedVideoCard message={message} onDownloadError={setChatError} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceVideo: true, aspectRatio: message.videoAspect || '16:9', resolution: message.videoResolution || '720p' }); }} />}{text && !activelyStreaming && !editing && (
               <MessageActions
                 role={message.role}
                 text={text}
@@ -2568,37 +2816,117 @@ export default function Chat() {
           <div className="chat-scroll-tail" ref={messagesEnd} aria-hidden="true" />
         </div>
 
-        <form className={`chat-composer ${messages.length === 0 ? 'welcome-composer' : 'conversation-composer'}`} onSubmit={sendMessage}>
+        <form className={`chat-composer chat-composer-modern ${messages.length === 0 ? 'welcome-composer' : 'conversation-composer'}`} onSubmit={sendMessage}>
           <div className="composer-quick-texts">
             <button type="button" onClick={() => chooseSuggestion(t('Write a short story about a time traveler.'))}>{t('Write a short story about a time traveler.')}</button>
             <button type="button" onClick={() => chooseSuggestion(t('Summarize the main benefits of daily exercise.'))}>{t('Summarize the main benefits of daily exercise.')}</button>
             <button type="button" onClick={() => chooseSuggestion(t('Help me plan a budget for a trip to Europe.'))}>{t('Help me plan a budget for a trip to Europe.')}</button>
           </div>
-          <div className="composer-shell">
-            {composerMenuOpen && <div className="composer-menu">
-              <button type="button" onClick={() => { setComposerMenuOpen(false); setVoicePanelOpen((open) => !open); }}><span>♫</span> Voice mode</button>
-              <button type="button" onClick={() => { setComposerMenuOpen(false); fileInput.current?.click(); }}><span>📷</span> Send screenshot / photo (Ctrl+V)</button>
-              <button type="button" onClick={() => { setComposerMenuOpen(false); fileInput.current?.click(); }}><span>⌕</span> Attach files &amp; documents</button>
-              <button type="button" onClick={() => chooseSkill('image')}><span>✦</span> Create image (generation)</button>
-              <button type="button" onClick={() => chooseSkill('file')}><span>{'</>'}</span> Create file</button>
-              <button type="button" onClick={() => chooseSkill('video')}><span>▶</span> Make video</button>
-              <button type="button" onClick={() => chooseSkill('web')}><span>🌐</span> Search the web</button>
-              <button type="button" onClick={toggleKnowledgeBaseFromMenu} aria-pressed={useKnowledgeBase}>
-                <span className="composer-menu-svg" aria-hidden="true"><IconToolKnowledgeBase /></span>
-                {useKnowledgeBase ? 'Knowledge Base on' : 'Use Knowledge Base'}
-              </button>
-              <button type="button" onClick={() => chooseSkill('deep-research')}><span>🔎</span> Deep Research</button>
-              <button type="button" disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))} onClick={() => { setComposerMenuOpen(false); sendMessage(null, 'Continue the previous answer from exactly where it stopped. Do not repeat completed content.'); }}><span>→</span> Continue last answer</button>
-              <button type="button" disabled={!activeConversationId || !messages.length} onClick={() => { setComposerMenuOpen(false); branchCurrentConversation(); }}><span>⑂</span> Branch conversation</button>
-              <button type="button" disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))} onClick={() => { const last = [...messages].reverse().find((message) => message.role === 'assistant' && (message.text || message.content)); if (last) toggleFavorite(last.text || last.content, last.modelSlug); setComposerMenuOpen(false); }}><span>★</span> Save last answer</button>
-            </div>}
-            <div className="composer-box">
-              <div className="image-mode-switch" role="group" aria-label="Response mode">
-                <button type="button" disabled={isSending} aria-pressed={!selectedSkill} onClick={() => setSelectedSkill(null)}>Chat</button>
-                <button type="button" disabled={isSending} className={selectedSkill === 'image' ? 'image-mode-active' : ''} aria-pressed={selectedSkill === 'image'} onClick={toggleImageSkill}>✦ Create image</button>
-                <button type="button" disabled={isSending} aria-pressed={selectedSkill === 'file'} onClick={() => chooseSkill('file')}>Create file</button>
-                <button type="button" disabled={isSending} className={selectedSkill === 'deep-research' ? 'deep-research-active' : ''} aria-pressed={selectedSkill === 'deep-research'} onClick={() => chooseSkill('deep-research')}>🔎 Deep Research</button>
+          <div className="composer-shell" ref={composerShellRef}>
+            {composerMenuOpen && (
+              <div className="composer-menu" role="menu" aria-label={t('Composer tools')}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-pressed={!selectedSkill}
+                  disabled={isSending}
+                  onClick={() => {
+                    setSelectedSkill(null);
+                    setComposerMenuOpen(false);
+                    document.querySelector('.chat-composer textarea')?.focus();
+                  }}
+                >
+                  <span className="composer-menu-icon"><IconMessageSquare /></span>
+                  Chat
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-pressed={selectedSkill === 'file'}
+                  disabled={isSending}
+                  onClick={() => chooseSkill('file')}
+                >
+                  <span className="composer-menu-icon"><IconFileCode /></span>
+                  Create files
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-pressed={selectedSkill === 'image'}
+                  disabled={isSending}
+                  onClick={() => {
+                    toggleImageSkill();
+                    setComposerMenuOpen(false);
+                  }}
+                >
+                  <span className="composer-menu-icon"><IconImage /></span>
+                  Image
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-pressed={selectedSkill === 'deep-research'}
+                  disabled={isSending}
+                  onClick={() => chooseSkill('deep-research')}
+                >
+                  <span className="composer-menu-icon"><IconSearchDeep /></span>
+                  Deep Research
+                </button>
+                <div className="composer-menu-divider" role="separator" aria-hidden="true" />
+                <button type="button" role="menuitem" onClick={() => { setComposerMenuOpen(false); setVoicePanelOpen((open) => !open); }}>
+                  <span className="composer-menu-icon"><IconVolume /></span>
+                  Voice mode
+                </button>
+                <button type="button" role="menuitem" onClick={() => { setComposerMenuOpen(false); fileInput.current?.click(); }}>
+                  <span className="composer-menu-icon"><IconCamera /></span>
+                  Send screenshot / photo (Ctrl+V)
+                </button>
+                <button type="button" role="menuitem" onClick={() => { setComposerMenuOpen(false); fileInput.current?.click(); }}>
+                  <span className="composer-menu-icon"><IconPaperclip /></span>
+                  Attach files &amp; documents
+                </button>
+                <button type="button" role="menuitem" onClick={() => chooseSkill('video')}>
+                  <span className="composer-menu-icon"><IconVideo /></span>
+                  Make video
+                </button>
+                <button type="button" role="menuitem" onClick={() => chooseSkill('web')}>
+                  <span className="composer-menu-icon"><IconGlobe /></span>
+                  Search the web
+                </button>
+                <button type="button" role="menuitem" onClick={toggleKnowledgeBaseFromMenu} aria-pressed={useKnowledgeBase}>
+                  <span className="composer-menu-icon"><IconToolKnowledgeBase /></span>
+                  {useKnowledgeBase ? 'Knowledge Base on' : 'Use Knowledge Base'}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))}
+                  onClick={() => { setComposerMenuOpen(false); sendMessage(null, 'Continue the previous answer from exactly where it stopped. Do not repeat completed content.'); }}
+                >
+                  <span className="composer-menu-icon"><IconArrowRight /></span>
+                  Continue last answer
+                </button>
+                <button type="button" role="menuitem" disabled={!activeConversationId || !messages.length} onClick={() => { setComposerMenuOpen(false); branchCurrentConversation(); }}>
+                  <span className="composer-menu-icon"><IconGitBranch /></span>
+                  Branch conversation
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!messages.some((message) => message.role === 'assistant' && (message.text || message.content))}
+                  onClick={() => {
+                    const last = [...messages].reverse().find((message) => message.role === 'assistant' && (message.text || message.content));
+                    if (last) toggleFavorite(last.text || last.content, last.modelSlug);
+                    setComposerMenuOpen(false);
+                  }}
+                >
+                  <span className="composer-menu-icon"><IconStar /></span>
+                  Save last answer
+                </button>
               </div>
+            )}
+            <div className="composer-box">
+              <div className="composer-box-extras">
               {selectedSkill === 'deep-research' && (
                 <div className="research-depth-switch" role="group" aria-label="Research depth">
                   {['quick', 'deep', 'maximum'].map((level) => (
@@ -2641,13 +2969,101 @@ export default function Chat() {
                 <span><strong>{selectedSkill === 'file' ? 'Create file' : selectedSkill === 'image' ? 'Create image' : selectedSkill === 'web' ? 'Search the web' : selectedSkill === 'deep-research' ? 'Deep Research' : 'Make a video'}</strong><small>{selectedSkill === 'file' ? 'Describe a text or code file. Open, copy and download the result.' : selectedSkill === 'image' ? 'Write a description and press send'  : selectedSkill === 'web' ? 'Current information with sources' : selectedSkill === 'deep-research' ? 'Multi-step web research with live progress and cited sources' : 'Describe the video you want to create'}</small></span>
                 <button type="button" className="selected-skill-remove" onClick={() => setSelectedSkill(null)} aria-label="Remove selected skill" title="Remove skill">×</button>
               </div>}
+              {selectedSkill === 'image' && (
+                <div className="image-skill-panel" aria-label="Image generation options">
+                  <div className="image-count-switch" role="group" aria-label="Number of images">
+                    {IMAGE_COUNT_OPTIONS.map((count) => (
+                      <button
+                        key={count}
+                        type="button"
+                        aria-pressed={imageGenerationCount === count}
+                        className={imageGenerationCount === count ? 'is-active' : ''}
+                        disabled={isSending}
+                        onClick={() => setImageGenerationCount(count)}
+                      >
+                        {count === 1 ? '1 image' : `${count} images`}
+                      </button>
+                    ))}
+                  </div>
+                  <label>
+                    Quality
+                    <select
+                      value={imageGenerationQuality}
+                      onChange={(event) => setImageGenerationQuality(event.target.value)}
+                      aria-label="Image quality"
+                    >
+                      {(imageProviderStatus?.qualities?.length
+                        ? IMAGE_QUALITIES.filter((item) => imageProviderStatus.qualities.includes(item.id))
+                        : IMAGE_QUALITIES
+                      ).map((item) => (
+                        <option key={item.id} value={item.id}>{item.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Format
+                    <select
+                      value={imageGenerationAspect}
+                      onChange={(event) => setImageGenerationAspect(event.target.value)}
+                      aria-label="Image format"
+                    >
+                      {(imageProviderStatus?.aspects?.length
+                        ? IMAGE_ASPECTS.filter((item) => imageProviderStatus.aspects.includes(item.id))
+                        : IMAGE_ASPECTS
+                      ).map((item) => (
+                        <option key={item.id} value={item.id}>{item.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {imageProviderStatus?.multiImageBillingNote && imageGenerationCount > 1 && (
+                    <p className="image-skill-hint" role="note">
+                      {imageProviderStatus.batchInSingleRequest && imageGenerationCount <= (imageProviderStatus.maxBatchCount || 4)
+                        ? `Up to ${imageGenerationCount} images in one provider request when supported. `
+                        : ''}
+                      {imageProviderStatus.multiImageBillingNote}
+                    </p>
+                  )}
+                </div>
+              )}
+              {selectedSkill === 'video' && (
+                <VideoGenerationPanel
+                  prompt={videoDraftPrompt}
+                  onPromptChange={setVideoDraftPrompt}
+                  mode={videoMode}
+                  onModeChange={setVideoMode}
+                  aspectRatio={videoAspectRatio}
+                  onAspectRatioChange={setVideoAspectRatio}
+                  resolution={videoResolution}
+                  onResolutionChange={setVideoResolution}
+                  durationSeconds={videoDurationSeconds}
+                  onDurationChange={setVideoDurationSeconds}
+                  provider={videoProvider}
+                  onProviderChange={setVideoProvider}
+                  referenceImageUrl={videoReferenceImage}
+                  onReferenceImageChange={setVideoReferenceImage}
+                  useLastImage={videoUseLastImage}
+                  onUseLastImageChange={setVideoUseLastImage}
+                  lastAssistantImageUrl={lastAssistantImageUrl}
+                  providerStatus={videoProviderStatus}
+                  busy={isSending}
+                  onGenerate={() => {
+                    const prompt = videoDraftPrompt.trim() || input.trim();
+                    if (!prompt || isSending) return;
+                    void sendMessage(null, prompt, undefined, null, {
+                      forceVideo: true,
+                      videoMode,
+                      wait: false,
+                    });
+                  }}
+                />
+              )}
               {attachedImage && (
                 <div className="attached-image-preview">
                   <div className="attached-image-info">
                     <img src={attachedImage.url} alt="Attached screenshot preview" onClick={() => setPreviewModalImage(attachedImage.url)} title="Click to preview" />
                     <div className="attached-image-meta">
                       <strong>📷 {attachedImage.name}</strong>
-                      <small>{attachedImage.size} · Screenshot attached</small>
+                      <small>{attachedImage.size} · {imageUploadBusy ? 'Preparing image…' : 'Screenshot attached · vision ready'}</small>
                     </div>
                     <button type="button" className="remove-attached-image" onClick={() => setAttachedImage(null)} title="Remove attached image" aria-label="Remove attached image">✕</button>
                   </div>
@@ -2659,10 +3075,75 @@ export default function Chat() {
                   </div>
                 </div>
               )}
+              </div>
               <input ref={fileInput} className="chat-file-input" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.bmp,.pdf,.txt,.md,.json,.csv,.js,.jsx,.ts,.tsx,.py,.html,.css" onChange={readFile} />
-              <textarea ref={composerInputRef} className="composer-prompt-input" value={prompt} onChange={(event) => { setPrompt(event.target.value); loadContextSuggestions(event.target.value); }} onPaste={handlePaste} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!isSending) sendMessage(); } }} placeholder={selectedSkill === 'file' && !isSending ? 'For example: create a Python script, an HTML page, or a project plan in Markdown...' : isSending ? selectedSkill === 'image' ? 'Generating image…' : selectedSkill === 'web' ? 'Searching the web…' : 'You can type your next message while the answer is being generated…' : attachedImage ? 'Ask anything about this screenshot (e.g. "Where should I click?") or press Send...' : selectedSkill === 'image' ? 'Describe the image and press Send — for example: a golden dragon with purple lightning on a black background…' : selectedSkill === 'video' ? 'Describe the video you want to create...' : selectedSkill === 'web' ? 'What do you want to find on the internet?' : t('messagePlaceholder').replace('AllModelAI', selectedModel.name)} rows="1" aria-label={t("Chat message")} />
-              {contextSuggestions.length > 0 && !isSending && !attachedImage && <div className="context-suggestions">{contextSuggestions.map((item) => <button key={item} type="button" onClick={() => { setPrompt(item); setContextSuggestions([]); document.querySelector('.chat-composer textarea')?.focus(); }}>{item}</button>)}</div>}
-              <div className="composer-tools"><div><button type="button" className="composer-plus" onClick={() => setComposerMenuOpen((open) => !open)} aria-label={t("Open tools")} aria-expanded={composerMenuOpen}>＋</button><button type="button" className={`composer-web-toggle ${selectedSkill === 'web' ? 'active' : ''}`} onClick={toggleWebSearch} aria-pressed={selectedSkill === 'web'} aria-label="Search the web" title="Search the web for current information"><span className="globe-icon">🌐</span></button><button type="button" className="composer-camera" onClick={() => fileInput.current?.click()} aria-label={t("Upload screenshot or image")} title="Upload screenshot or image (or paste Ctrl+V)">📷</button></div><span>{selectedSkill === 'web' ? '🌐 Web search enabled' : selectedSkill === 'image' && isSending ? '✦ Generating image…' : selectedSkill === 'image' ? '✦ Image mode — describe and send' : `${selectedModel.name} · ${voiceInputState === 'requesting' ? 'Allow microphone access...' : isListening ? t("Listening\u2026") : isSending ? t("Generating \u2014 you can keep typing") : attachedImage ? t("Screenshot ready to send") : t("Ready \u00b7 replies in your language")}`}</span><div className="composer-actions"><button type="button" className={voiceInputState !== 'idle' ? 'voice-active' : ''} onClick={toggleVoiceInput} aria-pressed={voiceInputState !== 'idle'} aria-label={voiceInputState !== 'idle' ? 'Stop microphone' : t("Use microphone")} title={voiceInputState !== 'idle' ? 'Stop microphone' : t("Use microphone")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></button>{isSending ? <button className="stop-generation" type="button" onClick={stopGenerating} aria-label={t("Stop generating")} title={t("Stop generating")}><i /></button> : <button className="send-message" type="submit" disabled={!prompt.trim() && !attachedImage} aria-label={t("Send message")}>↑</button>}</div></div>
+              <div className="composer-input-row">
+                <button
+                  type="button"
+                  className="composer-plus"
+                  onClick={() => setComposerMenuOpen((open) => !open)}
+                  aria-label={t('Open tools')}
+                  aria-expanded={composerMenuOpen}
+                  aria-haspopup="menu"
+                >
+                  <IconPlus />
+                </button>
+                <textarea
+                  ref={composerInputRef}
+                  className="composer-prompt-input"
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  onPaste={handlePaste}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      if (!isSending) sendMessage();
+                    }
+                  }}
+                  placeholder={composerPlaceholder}
+                  rows={1}
+                  aria-label={t('Chat message')}
+                />
+                <div className="composer-actions">
+                  <button
+                    type="button"
+                    className={voiceInputState !== 'idle' ? 'voice-active' : ''}
+                    onClick={toggleVoiceInput}
+                    aria-pressed={voiceInputState !== 'idle'}
+                    aria-label={voiceInputState !== 'idle' ? 'Stop microphone' : t('Use microphone')}
+                    title={voiceInputState !== 'idle' ? 'Stop microphone' : t('Use microphone')}
+                  >
+                    <IconMic />
+                  </button>
+                  {isSending ? (
+                    <button className="stop-generation" type="button" onClick={stopGenerating} aria-label={t('Stop generating')} title={t('Stop generating')}>
+                      <i />
+                    </button>
+                  ) : (
+                    <button className="send-message" type="submit" disabled={!prompt.trim() && !attachedImage} aria-label={t('Send message')} title={t('Send message')}>
+                      <IconSendUp />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {contextSuggestions.length > 0 && !isSending && !attachedImage && (
+                <div className="context-suggestions">
+                  {contextSuggestions.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => {
+                        setPrompt(item);
+                        setContextSuggestions([]);
+                        composerInputRef.current?.focus();
+                      }}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="composer-status" aria-live="polite">{composerStatusText}</p>
             </div>
           </div>
           <p>{selectedModel.name} can make mistakes. Check important information.</p>
@@ -2692,7 +3173,7 @@ export default function Chat() {
         {!subscribePlan ? <>
           <h2>{t('Choose your subscription plan')}</h2>
           <div className="subscribe-plans">
-            {subscriptionPlans.map((plan) => <button type="button" key={plan.id} className={`subscribe-plan ${plan.popular ? 'popular' : ''}`} onClick={() => { setSubscribeStripeSecret(''); setSubscribeError(''); setSubscribePlan(plan); }}>
+            {subscriptionPlans.map((plan) => <button type="button" key={plan.id} className={`subscribe-plan ${plan.popular ? 'popular' : ''}`} onClick={() => { setSubscribeError(''); setSubscribePlan(plan); }}>
               <span className="subscribe-plan-icon">{plan.icon}</span>
               <strong>{plan.name}</strong>
               <em>{plan.price} / {plan.period}</em>
@@ -2732,52 +3213,53 @@ export default function Chat() {
             </>
           ) : (
             <>
-              <p className="subscribe-stripe-label">{t('Apple Pay, Google Pay, or card — secure checkout via Stripe')}</p>
-              <div className="subscribe-stripe-slot" aria-busy={subscribeStripeLoading}>
-                {subscribeStripeLoading && !subscribeStripeSecret && !subscribeError && (
-                  <div className="subscribe-stripe-slot__loader">
-                    <span>{t('Loading payment form…')}</span>
-                  </div>
-                )}
-                {subscribeError && !subscribeStripeSecret && (
-                  <div className="subscribe-stripe-slot__error" role="alert">{subscribeError}</div>
-                )}
-                {subscribeStripeSecret && subscribeStripePublishableKey && (
-                  <SubscribeStripeEmbedded
-                    publishableKey={subscribeStripePublishableKey}
-                    clientSecret={subscribeStripeSecret}
-                    returnUrl={subscribeStripeReturnUrl}
-                    onError={(message) => setSubscribeError(message)}
-                    payLabel={`${t('Subscribe')} · ${subscribePlan.price}`}
-                    processingLabel={t('Processing…')}
-                  />
-                )}
+              <div className="subscribe-checkout-review">
+                <dl>
+                  <div><dt>{t('Plan')}</dt><dd>{subscribePlan.name}</dd></div>
+                  <div><dt>{t('Price')}</dt><dd>{subscribePlan.price} / {subscribePlan.period}</dd></div>
+                  <div><dt>{t('Total due today')}</dt><dd>{subscribePlan.price}</dd></div>
+                  <div><dt>{t('Billing')}</dt><dd>{t('Renews monthly until you cancel')}</dd></div>
+                </dl>
+                <ul>
+                  {subscribePlan.features.map((feature) => (
+                    <li key={feature}>✓ {feature}</li>
+                  ))}
+                </ul>
+                <p className="subscribe-secure-note">
+                  {t('You will complete payment on Stripe’s secure checkout (cards, Apple Pay, Google Pay, and Link when available). We never store your card details.')}
+                </p>
               </div>
+              {subscribeError && (
+                <div className="subscribe-stripe-slot__error" role="alert">{subscribeError}</div>
+              )}
+              <button
+                disabled={subscribeBusy || !paymentsConfigLoaded}
+                className="subscribe-confirm"
+                type="button"
+                onClick={submitSubscription}
+              >
+                {subscribeBusy ? t('Processing…') : t('Continue to secure checkout')}
+              </button>
+              <button
+                type="button"
+                className="subscribe-confirm subscribe-confirm-secondary"
+                onClick={() => { setSubscribePlan(null); setSubscribeError(''); }}
+              >
+                {t('Change plan')}
+              </button>
             </>
           )}
-          {subscribeError && <p className="subscribe-error" role="alert">{subscribeError}</p>}
           {creditStatus?.isDeveloper ? (
             <button disabled={subscribeBusy} className="subscribe-confirm" type="button" onClick={submitSubscription}>
               {subscribeBusy ? t('Processing…') : `${t('Activate test plan')} · ${subscribePlan.price}`}
             </button>
-          ) : primaryPaymentProvider === 'wayforpay' ? null : (
-            <div className={`subscribe-checkout-foot ${subscribeStripeSecret ? 'is-embedded-active' : ''}`}>
-              <button
-                disabled={subscribeBusy || subscribeStripeLoading}
-                className="subscribe-confirm subscribe-confirm-fallback"
-                type="button"
-                onClick={submitSubscription}
-              >
-                {subscribeBusy ? t('Processing…') : t('Open Stripe checkout in browser')}
-              </button>
-            </div>
-          )}
+          ) : null}
           <button
             type="button"
             className="modal-cancel"
             onClick={() => {
               setSubscribePlan(null);
-              setSubscribeStripeSecret('');
+              setSubscribeError('');
             }}
           >
             ← {t('Back to plans')}

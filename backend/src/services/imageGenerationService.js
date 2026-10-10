@@ -12,9 +12,13 @@ const {
 const { ComfyCloudError, generateComfyCloudImage, isComfyCloudConfigured } = require('../comfyCloud');
 const {
     buildImageGenerationPlan,
+    imageBatchCapabilities,
+    parseImageCount,
     redactSecrets,
     sniffImageMime,
 } = require('../imageProviderAdapter');
+
+const SEQUENTIAL_IMAGE_CONCURRENCY = 2;
 const {
     generateCloudflareWorkersAiImage,
     isCloudflareImageConfigured,
@@ -157,19 +161,40 @@ const extractOpenAiErrorMessage = (data) => {
     return null;
 };
 
+const imagesFromOpenAiStyleData = (data) => {
+    const entries = Array.isArray(data?.data) ? data.data : [];
+    return entries.map((image) => {
+        const base64 = image?.b64_json;
+        const mimeType = base64 ? sniffImageMime(base64) : mimeFromImageUrl(image?.url);
+        const imageUrl = base64 ? `data:${mimeType};base64,${base64}` : image?.url;
+        return safeImageUrl(imageUrl) ? { imageUrl, mimeType } : null;
+    }).filter(Boolean);
+};
+
 const normalizeSuccessPayload = ({
     imageUrl,
+    images,
     provider,
     model,
     size,
     mimeType,
     promptPayload,
     plan,
+    requestedCount,
+    partial,
+    warnings,
 }) => {
     const { width, height } = parseSizeDimensions(size || plan.size);
+    const normalizedImages = (images?.length ? images : [{ imageUrl, mimeType }]).filter((item) => safeImageUrl(item.imageUrl));
+    const primary = normalizedImages[0];
     return {
         success: true,
-        imageUrl,
+        imageUrl: primary?.imageUrl || imageUrl,
+        images: normalizedImages,
+        imageCount: normalizedImages.length,
+        requestedCount: requestedCount || normalizedImages.length,
+        partial: partial === true,
+        warnings: warnings?.length ? warnings : undefined,
         provider,
         model,
         width,
@@ -179,9 +204,15 @@ const normalizeSuccessPayload = ({
         aspectRatio: plan.aspectRatio,
         quality: plan.quality,
         size: plan.size,
-        mimeType,
+        mimeType: primary?.mimeType || mimeType,
         upscaleSupported: plan.upscaleSupported,
+        batchInSingleRequest: plan.batchCapabilities?.batchInSingleRequest,
+        multiImageBillingNote: plan.batchCapabilities?.billingNote,
     };
+};
+
+const reportImageProgress = (onProgress, patch) => {
+    if (typeof onProgress === 'function') onProgress(patch);
 };
 
 async function generateWithProvider(provider, {
@@ -189,12 +220,14 @@ async function generateWithProvider(provider, {
     quality,
     aspectRatio,
     requestedModel,
+    imageCount = 1,
 }) {
     const plan = buildImageGenerationPlan({
         provider,
         quality,
         aspectRatio,
         requestedModel,
+        imageCount,
     });
     if (plan.error) {
         return { ok: false, retryable: false, status: 400, internalMessage: plan.error, provider };
@@ -228,9 +261,11 @@ async function generateWithProvider(provider, {
                 provider: 'cloudflare',
             };
         }
+        const images = [{ imageUrl: cf.imageUrl, mimeType: cf.mimeType }];
         return {
             ok: true,
             imageUrl: cf.imageUrl,
+            images,
             mimeType: cf.mimeType,
             plan,
             provider: 'cloudflare',
@@ -253,9 +288,11 @@ async function generateWithProvider(provider, {
                     provider: 'comfy-cloud',
                 };
             }
+            const images = [{ imageUrl: result.imageUrl, mimeType: result.mimeType }];
             return {
                 ok: true,
                 imageUrl: result.imageUrl,
+                images,
                 mimeType: result.mimeType,
                 plan: { ...plan, model: result.model || plan.model },
                 provider: 'comfy-cloud',
@@ -288,11 +325,8 @@ async function generateWithProvider(provider, {
                 provider: 'pollinations',
             };
         }
-        const image = data?.data?.[0];
-        const base64 = image?.b64_json;
-        const mimeType = base64 ? sniffImageMime(base64) : mimeFromImageUrl(image?.url);
-        const imageUrl = base64 ? `data:${mimeType};base64,${base64}` : image?.url;
-        if (!safeImageUrl(imageUrl)) {
+        const images = imagesFromOpenAiStyleData(data);
+        if (!images.length) {
             return {
                 ok: false,
                 retryable: true,
@@ -303,8 +337,9 @@ async function generateWithProvider(provider, {
         }
         return {
             ok: true,
-            imageUrl,
-            mimeType,
+            imageUrl: images[0].imageUrl,
+            images,
+            mimeType: images[0].mimeType,
             plan: { ...plan, model: pollinationsModel || plan.model },
             provider: 'pollinations',
         };
@@ -338,13 +373,8 @@ async function generateWithProvider(provider, {
         };
     }
 
-    const image = data?.data?.[0];
-    const base64 = image?.b64_json;
-    const mimeType = base64
-        ? sniffImageMime(base64, 'image/png')
-        : mimeFromImageUrl(image?.url);
-    const imageUrl = base64 ? `data:${mimeType};base64,${base64}` : image?.url;
-    if (!safeImageUrl(imageUrl)) {
+    const images = imagesFromOpenAiStyleData(data);
+    if (!images.length) {
         return {
             ok: false,
             retryable: true,
@@ -354,7 +384,52 @@ async function generateWithProvider(provider, {
         };
     }
 
-    return { ok: true, imageUrl, mimeType, plan, provider };
+    return {
+        ok: true,
+        imageUrl: images[0].imageUrl,
+        images,
+        mimeType: images[0].mimeType,
+        plan,
+        provider,
+    };
+}
+
+const isQuotaOrAuthFailure = (result) => {
+    if (!result || result.ok) return false;
+    const category = classifyProviderFailure(result.status, result.internalMessage);
+    return category === 'QUOTA' || category === 'AUTH' || category === 'AUTH_TIER';
+};
+
+async function generateSequentialImagesWithProvider(provider, params, total, onProgress) {
+    const images = [];
+    const failures = [];
+    let completed = 0;
+
+    while (completed < total) {
+        const chunkSize = Math.min(SEQUENTIAL_IMAGE_CONCURRENCY, total - completed);
+        const chunk = await Promise.all(Array.from({ length: chunkSize }, async () => generateWithProvider(provider, {
+            ...params,
+            imageCount: 1,
+        })));
+        for (const result of chunk) {
+            completed += 1;
+            if (result.ok && result.images?.length) {
+                images.push(...result.images);
+            } else {
+                failures.push(result);
+                if (isQuotaOrAuthFailure(result)) break;
+            }
+            reportImageProgress(onProgress, {
+                completed: images.length,
+                total,
+                failed: failures.length,
+                mode: 'sequential',
+            });
+        }
+        if (failures.some(isQuotaOrAuthFailure)) break;
+    }
+
+    return { images, failures };
 }
 
 async function generateImageWithFallback({
@@ -365,7 +440,10 @@ async function generateImageWithFallback({
     requestedModel,
     preferredProvider,
     jobId,
+    imageCount: rawImageCount,
+    onProgress,
 }) {
+    const imageCount = parseImageCount(rawImageCount);
     const startedAt = Date.now();
     const preferred = preferredProvider ? normalizeImageProviderId(preferredProvider) : '';
     const providers = preferred && isProviderConfigured(preferred)
@@ -391,37 +469,122 @@ async function generateImageWithFallback({
     logImage('Generation started', {
         jobId: jobId || undefined,
         providers: providers.join(' → '),
+        imageCount,
     });
     const attempts = [];
+    const providerParams = {
+        generationPrompt,
+        quality,
+        aspectRatio,
+    };
 
     for (let index = 0; index < providers.length; index += 1) {
         const provider = providers[index];
         logImage(`Trying provider: ${provider}`);
         try {
-            const result = await generateWithProvider(provider, {
-                generationPrompt,
+            const modelForCaps = buildImageGenerationPlan({
+                provider,
                 quality,
                 aspectRatio,
                 requestedModel: index === 0 ? requestedModel : '',
-            });
+                imageCount: 1,
+            }).model;
+            const caps = imageBatchCapabilities(provider, modelForCaps);
+            const useBatchRequest = imageCount > 1 && caps.batchInSingleRequest && imageCount <= caps.maxBatch;
+
+            let result;
+            if (imageCount === 1 || useBatchRequest) {
+                result = await generateWithProvider(provider, {
+                    ...providerParams,
+                    requestedModel: index === 0 ? requestedModel : '',
+                    imageCount: useBatchRequest ? imageCount : 1,
+                });
+            } else {
+                const sequential = await generateSequentialImagesWithProvider(
+                    provider,
+                    { ...providerParams, requestedModel: index === 0 ? requestedModel : '' },
+                    imageCount,
+                    onProgress,
+                );
+                if (sequential.images.length) {
+                    const partial = sequential.images.length < imageCount;
+                    const warnings = partial
+                        ? [`Generated ${sequential.images.length} of ${imageCount} images. ${caps.billingNote}`]
+                        : undefined;
+                    logImage('Generation completed (sequential)', {
+                        jobId: jobId || undefined,
+                        providerUsed: provider,
+                        durationMs: Date.now() - startedAt,
+                        imageCount: sequential.images.length,
+                        partial,
+                    });
+                    const plan = buildImageGenerationPlan({
+                        provider,
+                        quality,
+                        aspectRatio,
+                        requestedModel: index === 0 ? requestedModel : '',
+                        imageCount,
+                    });
+                    return {
+                        ok: true,
+                        clientStatus: partial ? 207 : 200,
+                        body: normalizeSuccessPayload({
+                            images: sequential.images,
+                            provider,
+                            model: plan.model,
+                            size: plan.size,
+                            mimeType: sequential.images[0].mimeType,
+                            promptPayload,
+                            plan,
+                            requestedCount: imageCount,
+                            partial,
+                            warnings,
+                        }),
+                    };
+                }
+                result = sequential.failures[sequential.failures.length - 1] || {
+                    ok: false,
+                    retryable: true,
+                    status: 502,
+                    internalMessage: 'No images were generated',
+                    provider,
+                };
+            }
 
             if (result.ok) {
+                const images = result.images?.length
+                    ? result.images
+                    : [{ imageUrl: result.imageUrl, mimeType: result.mimeType }];
+                const partial = images.length < imageCount;
                 logImage('Generation completed', {
                     jobId: jobId || undefined,
                     providerUsed: provider,
                     durationMs: Date.now() - startedAt,
+                    imageCount: images.length,
+                    partial,
+                });
+                reportImageProgress(onProgress, {
+                    completed: images.length,
+                    total: imageCount,
+                    failed: Math.max(0, imageCount - images.length),
+                    mode: useBatchRequest ? 'batch' : 'single',
                 });
                 return {
                     ok: true,
-                    clientStatus: 200,
+                    clientStatus: partial ? 207 : 200,
                     body: normalizeSuccessPayload({
-                        imageUrl: result.imageUrl,
+                        images,
                         provider: result.provider,
                         model: result.plan.model,
                         size: result.plan.size,
                         mimeType: result.mimeType,
                         promptPayload,
                         plan: result.plan,
+                        requestedCount: imageCount,
+                        partial,
+                        warnings: partial
+                            ? [`Generated ${images.length} of ${imageCount} images.`]
+                            : undefined,
                     }),
                 };
             }

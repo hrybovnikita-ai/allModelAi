@@ -268,7 +268,10 @@ const searchDuckDuckGo = async (searchQuery) => {
 };
 
 const searchWikipedia = async (searchQuery) => {
-    const language = /[а-яіїєґ]/i.test(searchQuery) ? 'uk' : 'en';
+    const { resolveResponseLanguage } = require('./responseLanguage');
+    const resolved = resolveResponseLanguage({ latestUserText: searchQuery, preference: 'auto' });
+    const wikiLangMap = { ru: 'ru', uk: 'uk', en: 'en', de: 'de', fr: 'fr', es: 'es', pl: 'pl', it: 'it', pt: 'pt', ja: 'ja', zh: 'zh' };
+    const language = wikiLangMap[resolved.code] || 'en';
     const wikiUrl = `https://${language}.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(searchQuery)}&gsrlimit=6&prop=extracts|info&exintro=1&explaintext=1&inprop=url&format=json&origin=*`;
     const wikiResponse = await fetch(wikiUrl, {
         headers: { 'User-Agent': USER_AGENT },

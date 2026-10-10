@@ -29,9 +29,9 @@
     {"id":"full","name":"GPT-4.1 (OpenAI)","speed":"High","gateway":"openai/gpt-4.1","direct":"gpt-4.1"}
   ],
   "perplexity": [
-    {"id":"sonar","name":"Sonar","speed":"Fast","gateway":"perplexity/sonar"},
-    {"id":"pro","name":"Sonar Pro","speed":"Medium","gateway":"perplexity/sonar-pro"},
-    {"id":"reasoning","name":"Sonar Reasoning Pro","speed":"High","gateway":"perplexity/sonar-reasoning-pro"}
+    {"id":"sonar","name":"Sonar","speed":"Fast","gateway":"perplexity/sonar","direct":"sonar"},
+    {"id":"pro","name":"Sonar Pro","speed":"Medium","gateway":"perplexity/sonar-pro","direct":"sonar-pro"},
+    {"id":"reasoning","name":"Sonar Reasoning Pro","speed":"High","gateway":"perplexity/sonar-reasoning-pro","direct":"sonar-reasoning-pro"}
   ],
   "kimi": [
     {"id":"k2","name":"Kimi K2","speed":"Medium","gateway":"moonshotai/kimi-k2","direct":"kimi-k2-0711-preview"},

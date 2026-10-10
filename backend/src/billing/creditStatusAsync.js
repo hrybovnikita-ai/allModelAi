@@ -6,6 +6,7 @@ const {
 } = require('./subscriptionLifecycle');
 const { queryPgPool, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
 const { applyOwnerAccess } = require('./accessControl');
+const { applyPlusTestCreditStatus, isAllowlistedDeveloper } = require('./plusTestMode');
 const { readUserRoleAsync } = require('./userRole');
 
 function mapSubscriptionDetailRow(row) {
@@ -132,31 +133,21 @@ async function buildCreditStatusPostgres(connection, email) {
         && (!detail.periodEnd || Date.parse(detail.periodEnd) > Date.now());
     const storedPlanKey = detail ? resolveStoredPlanKey(detail.plan) : 'free';
     const plan = detailActive ? storedPlanKey : 'free';
-    const developerEmails = () => new Set(
-        String(process.env.DEVELOPER_EMAILS || '')
-            .split(',')
-            .map((item) => item.trim().toLowerCase())
-            .filter(Boolean),
-    );
     const creditLimits = Object.fromEntries(Object.entries(subscriptionPlans).map(([key, p]) => [key, p.limit]));
     const creditLimitsEnabled = () => process.env.ENFORCE_CREDIT_LIMITS === 'true';
-    const isDeveloper = developerEmails().has(normalizedEmail);
     const hasSubscription = Boolean(detailActive && subscriptionPlans[plan]?.amount > 0);
-    const canUseDeveloper = isDeveloper || hasSubscription;
     const savedMode = await readAccessModeAsync(connection, normalizedEmail);
-    const mode = canUseDeveloper && savedMode !== 'user' ? 'developer' : 'user';
-    const fullAccess = mode === 'developer' && canUseDeveloper;
     const planDefinition = subscriptionPlans[plan] || subscriptionPlans.free;
     const limit = detailActive ? detail.requestLimit : (creditLimits[plan] || creditLimits.free);
     const used = await readUsageCountAsync(connection, normalizedEmail);
     const remaining = Math.max(limit - used, 0);
     const billingInterval = detail?.billingInterval || planDefinition.interval;
     const subscriptionView = buildSubscriptionPublicView(detail, plan, limit, used, remaining, billingInterval, {
-        isDeveloper,
+        isDeveloper: isAllowlistedDeveloper(normalizedEmail),
         hasPaidSubscription: hasSubscription,
     });
 
-    const base = {
+    const base = applyPlusTestCreditStatus({
         email: normalizedEmail,
         plan,
         limit,
@@ -164,16 +155,13 @@ async function buildCreditStatusPostgres(connection, email) {
         remaining,
         billingInterval,
         periodEnd: detailActive ? detail.periodEnd : null,
-        models: fullAccess ? ['all'] : (subscriptionPlans[plan]?.models || subscriptionPlans.free.models),
-        enforced: !fullAccess && creditLimitsEnabled(),
-        isDeveloper,
+        models: subscriptionPlans[plan]?.models || subscriptionPlans.free.models,
+        enforced: creditLimitsEnabled(),
         hasSubscription,
-        canUseDeveloper,
-        mode,
-        unlimited: fullAccess,
+        savedMode,
         active: Boolean(detailActive && hasSubscription),
         ...subscriptionView,
-    };
+    });
     const role = await readUserRoleAsync(connection, normalizedEmail);
     return applyOwnerAccess(base, role);
 }

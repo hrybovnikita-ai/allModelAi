@@ -1,5 +1,8 @@
 import { authPost, resolveAuthApiUrl } from './authApi.js';
-import { applyAuthResponsePayload, confirmSession, markFreshLogin } from './session.js';
+import {
+  applyAuthResponsePayload,
+  establishSessionFromAuthExchange,
+} from './session.js';
 import { socialAuthDebug } from './socialAuthDiagnostics.js';
 
 async function post(path, body) {
@@ -56,9 +59,22 @@ export async function exchangeSocialSession(idToken, {
   }
   const data = await post('firebase', body);
   applyAuthResponsePayload(data);
-  markFreshLogin();
   socialAuthDebug('BACKEND_SET_SESSION_COMPLETE', { email: data.user?.email });
-  return confirmSession(data.user);
+  return establishSessionFromAuthExchange(data.user);
+}
+
+const RETRYABLE_SOCIAL_SIGNIN_CODES = new Set([
+  'auth/network-request-failed',
+  'AUTH_API_NETWORK_ERROR',
+  'FIREBASE_NETWORK_ERROR',
+  'SESSION_NOT_CONFIRMED',
+  'AUTH_API_SERVER_ERROR',
+  'SOCIAL_AUTH_FAILED',
+]);
+
+export function isRetryableSocialSignInError(error) {
+  const code = typeof error === 'string' ? error : error?.code;
+  return Boolean(code && RETRYABLE_SOCIAL_SIGNIN_CODES.has(code));
 }
 
 export function socialError(error) {
@@ -66,7 +82,8 @@ export function socialError(error) {
     'auth/popup-closed-by-user': 'Google sign-in was cancelled.',
     'auth/cancelled-popup-request': 'Another sign-in window is open. Complete it or try again.',
     'auth/popup-blocked': 'Your browser blocked the sign-in window. Allow popups, or you will be redirected automatically.',
-    'auth/network-request-failed': 'Could not reach the provider. Check your connection and retry.',
+    'auth/network-request-failed':
+      'Could not reach Google sign-in (Firebase). Check your internet connection, VPN, proxy, or firewall, then tap Retry below.',
     'auth/redirect-uri-mismatch':
       'Google OAuth redirect URI mismatch. Add the exact Firebase handler URL to Google Cloud → Credentials → OAuth client → Authorized redirect URIs (see project docs).',
     'auth/redirect-operation-pending': 'Google sign-in is already in progress. Wait a moment and try again.',

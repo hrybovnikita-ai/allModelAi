@@ -28,6 +28,7 @@ def create_job(kind: str, params: Dict[str, Any], status: str = "running") -> st
             "learningRate": params.get("learning_rate"),
             "metrics": {},
             "lossHistory": [],
+            "validationLossHistory": [],
             "accuracyHistory": [],
             "result": None,
             "error": None,
@@ -47,6 +48,13 @@ def append_loss(job_id: str, value: float) -> None:
         job = _jobs.get(job_id)
         if job:
             job.setdefault("lossHistory", []).append(value)
+
+
+def append_validation_loss(job_id: str, value: float) -> None:
+    with _lock:
+        job = _jobs.get(job_id)
+        if job:
+            job.setdefault("validationLossHistory", []).append(value)
 
 
 def append_accuracy(job_id: str, value: float) -> None:
@@ -93,7 +101,10 @@ def get_metrics(job_id: str) -> Optional[Dict[str, Any]]:
         "learningRate": job.get("learningRate"),
         "metrics": job.get("metrics") or {},
         "lossHistory": job.get("lossHistory") or (job.get("result") or {}).get("lossHistory", []),
+        "validationLossHistory": job.get("validationLossHistory")
+        or (job.get("result") or {}).get("validationLossHistory", []),
         "accuracyHistory": job.get("accuracyHistory") or (job.get("result") or {}).get("accuracyHistory", []),
+        "checkpointPath": (job.get("result") or {}).get("storagePath"),
         "accuracy": job.get("accuracy"),
         "weight": job.get("weight"),
         "bias": job.get("bias"),

@@ -1,6 +1,8 @@
 const QUALITY_IDS = ['standard', 'hd', 'ultra'];
 const ASPECT_IDS = ['1:1', '16:9', '9:16'];
 const STYLE_IDS = ['auto', 'photorealistic', 'cinematic', 'anime', 'digital-art', '3d'];
+const MAX_IMAGE_COUNT = 4;
+const IMAGE_COUNT_OPTIONS = [1, 2, 3, 4];
 
 const FLUX_SIZES = {
     '1:1': '1024x1024',
@@ -74,6 +76,52 @@ const parseStyle = (value, { strict = false } = {}) => {
     const key = String(value).trim().toLowerCase();
     if (STYLE_IDS.includes(key)) return key;
     return strict ? null : 'auto';
+};
+
+const parseImageCount = (value, { strict = false } = {}) => {
+    if (value == null || value === '') return 1;
+    const parsed = Number.parseInt(String(value).trim(), 10);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_IMAGE_COUNT) {
+        return strict ? null : 1;
+    }
+    return parsed;
+};
+
+/** Whether the provider can return multiple images in one HTTP request (OpenAI-style `n`). */
+const imageBatchCapabilities = (provider, model) => {
+    const base = {
+        maxImages: MAX_IMAGE_COUNT,
+        maxBatch: 1,
+        batchInSingleRequest: false,
+        billingNote: 'Each image uses a separate provider API request.',
+    };
+    if (provider === 'pollinations') {
+        return {
+            ...base,
+            maxBatch: MAX_IMAGE_COUNT,
+            batchInSingleRequest: true,
+            billingNote: 'Multiple images may be requested in one API call when supported; provider billing still applies per image.',
+        };
+    }
+    if (provider === 'openai') {
+        const kind = openAiKind(model);
+        if (kind === 'dalle3') {
+            return { ...base, billingNote: 'DALL·E 3 generates one image per API request. Choosing 2–4 images runs separate requests.' };
+        }
+        return {
+            ...base,
+            maxBatch: MAX_IMAGE_COUNT,
+            batchInSingleRequest: true,
+            billingNote: 'Multiple images may be requested in one API call when supported; provider billing still applies per image.',
+        };
+    }
+    if (provider === 'cloudflare') {
+        return { ...base, billingNote: 'Cloudflare Workers AI generates one image per request. Choosing 2–4 images runs separate requests.' };
+    }
+    if (provider === 'comfy-cloud') {
+        return { ...base, billingNote: 'Comfy Cloud generates one image per job. Choosing 2–4 images runs separate requests.' };
+    }
+    return base;
 };
 
 const pollinationsSupportsQuality = (model) => /gptimage|gpt-image|grok-imagine-image-2/i.test(String(model || ''));
@@ -155,12 +203,13 @@ const cloudflareSteps = (quality) => {
     return 4;
 };
 
-const buildProviderRequest = ({ provider, model, quality, aspectRatio, size }) => {
+const buildProviderRequest = ({ provider, model, quality, aspectRatio, size, count = 1 }) => {
+    const batchCount = Math.min(Math.max(1, parseImageCount(count)), MAX_IMAGE_COUNT);
     if (provider === 'pollinations') {
         const request = {
             model,
             size,
-            n: 1,
+            n: batchCount,
             response_format: 'b64_json',
         };
         if (pollinationsSupportsQuality(model)) {
@@ -182,7 +231,7 @@ const buildProviderRequest = ({ provider, model, quality, aspectRatio, size }) =
             return {
                 model,
                 size,
-                n: 1,
+                n: batchCount,
                 quality: quality === 'standard' ? 'medium' : 'high',
                 output_format: 'png',
             };
@@ -200,11 +249,11 @@ const buildProviderRequest = ({ provider, model, quality, aspectRatio, size }) =
             return {
                 model,
                 size: '1024x1024',
-                n: 1,
+                n: batchCount,
                 response_format: 'b64_json',
             };
         }
-        return { model, size, n: 1 };
+        return { model, size, n: batchCount };
     }
 
     if (provider === 'cloudflare') {
@@ -215,7 +264,7 @@ const buildProviderRequest = ({ provider, model, quality, aspectRatio, size }) =
         return { size, quality, aspectRatio };
     }
 
-    return { model, size, n: 1 };
+    return { model, size, n: batchCount };
 };
 
 const sizesForQuality = (provider, quality) => {
@@ -229,7 +278,7 @@ const sizesForQuality = (provider, quality) => {
     return Object.fromEntries(ASPECT_IDS.map((aspect) => [aspect, sizeFor(provider, model, aspect, quality)]));
 };
 
-const buildImageGenerationPlan = ({ provider, quality, aspectRatio, requestedModel }) => {
+const buildImageGenerationPlan = ({ provider, quality, aspectRatio, requestedModel, imageCount = 1 }) => {
     const normalizedQuality = parseQuality(quality);
     const normalizedAspect = parseAspect(aspectRatio);
     let model = requestedModel ? strip(requestedModel) : '';
@@ -258,12 +307,18 @@ const buildImageGenerationPlan = ({ provider, quality, aspectRatio, requestedMod
     }
 
     const size = sizeFor(provider, model, normalizedAspect, normalizedQuality);
+    const caps = imageBatchCapabilities(provider, model);
+    const requested = parseImageCount(imageCount);
+    const batchN = caps.batchInSingleRequest
+        ? Math.min(requested, caps.maxBatch)
+        : 1;
     const request = buildProviderRequest({
         provider,
         model,
         quality: normalizedQuality,
         aspectRatio: normalizedAspect,
         size,
+        count: batchN,
     });
 
     return {
@@ -273,6 +328,8 @@ const buildImageGenerationPlan = ({ provider, quality, aspectRatio, requestedMod
         model,
         size,
         request,
+        imageCount: requested,
+        batchCapabilities: caps,
         upscaleSupported: upscaleSupported(),
         maxPromptLength: provider === 'cloudflare' ? 2048 : 4000,
     };
@@ -350,12 +407,27 @@ const capabilitySummary = (provider) => {
         const pixels = (value) => value.split('x').reduce((product, part) => product * Number(part), 1);
         return pixels(b) - pixels(a);
     })[0] || null;
+    const modelForCaps = provider === 'pollinations'
+        ? configuredPollinationsModel('hd')
+        : provider === 'openai'
+            ? strip(process.env.IMAGE_MODEL || 'gpt-image-1')
+            : provider === 'cloudflare'
+                ? strip(process.env.CLOUDFLARE_IMAGE_MODEL || CLOUDFLARE_MODELS[0])
+                : provider === 'comfy-cloud'
+                    ? strip(process.env.COMFY_CLOUD_CHECKPOINT) || 'flux1-schnell-fp8.safetensors'
+                    : '';
+    const providerBatch = imageBatchCapabilities(provider, modelForCaps);
     return {
         qualities,
         aspects: ASPECT_IDS,
         sizes,
         maxResolution,
         upscaleSupported: upscaleSupported(),
+        maxImageCount: MAX_IMAGE_COUNT,
+        imageCountOptions: IMAGE_COUNT_OPTIONS,
+        batchInSingleRequest: providerBatch.batchInSingleRequest,
+        maxBatchCount: providerBatch.maxBatch,
+        multiImageBillingNote: providerBatch.billingNote,
         qualityModels: provider === 'pollinations'
             ? {
                 standard: configuredPollinationsModel('standard'),
@@ -367,9 +439,13 @@ const capabilitySummary = (provider) => {
 };
 
 module.exports = {
+    MAX_IMAGE_COUNT,
+    IMAGE_COUNT_OPTIONS,
     QUALITY_IDS,
     ASPECT_IDS,
     STYLE_IDS,
+    parseImageCount,
+    imageBatchCapabilities,
     FLUX_SIZES,
     GPT_IMAGE_SIZES,
     DALLE3_SIZES,

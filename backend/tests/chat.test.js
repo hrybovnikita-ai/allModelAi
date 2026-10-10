@@ -1,7 +1,7 @@
 const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path'); const request = require('supertest');
-process.env.NODE_ENV='test';process.env.DEVELOPER_EMAILS='tester@example.com';process.env.DB_FILE=path.join(os.tmpdir(),`allmodelai-chat-secure-${process.pid}.sqlite`);process.env.API_KEY='test-key';fs.rmSync(process.env.DB_FILE,{force:true});
+process.env.NODE_ENV='test';process.env.ENABLE_PLUS_TEST_MODE='true';process.env.DEVELOPER_EMAILS='tester@example.com';process.env.DB_FILE=path.join(os.tmpdir(),`allmodelai-chat-secure-${process.pid}.sqlite`);process.env.API_KEY='test-key';fs.rmSync(process.env.DB_FILE,{force:true});
 const app=require('../app'); let api; let originalFetch;
 const upstream=()=>{const encoder=new TextEncoder();return new Response(new ReadableStream({start(controller){controller.enqueue(encoder.encode(`data: ${JSON.stringify({choices:[{delta:{content:'Secure answer'}}]})}\n\ndata: [DONE]\n\n`));controller.close()}}),{status:200})};
 describe('secure chat and knowledge API',()=>{
@@ -88,7 +88,7 @@ describe('secure chat and knowledge API',()=>{
  test('creates, lists, and revokes a developer API key',async()=>{const created=await api.post('/api/developer/keys').send({name:'Test SDK'});assert.equal(created.status,201);assert.match(created.body.secret,/^amai_/);const listed=await api.get('/api/developer/keys');assert.equal(listed.body[0].name,'Test SDK');assert.equal(listed.body[0].secret,undefined);assert.equal((await api.delete(`/api/developer/keys/${created.body.id}`)).status,200)});
  test('authenticates API requests with a budgeted Bearer key',async()=>{const created=await api.post('/api/developer/keys').send({name:'Automation',requestLimit:10});const response=await request(app).get('/api/search?q=Aurora').set('Authorization',`Bearer ${created.body.secret}`);assert.equal(response.status,200);assert.equal(response.body.results[0].name,'Launch plan');await api.delete(`/api/developer/keys/${created.body.id}`)});
  test('queues persistent background work and exports private data',async()=>{const job=await api.post('/api/jobs').send({type:'research',payload:{objective:'Aurora launch'}});assert.equal(job.status,202);assert.equal(job.body.status,'queued');const jobs=await api.get('/api/jobs');assert.equal(jobs.body[0].id,job.body.id);const exported=await api.get('/api/privacy/export');assert.equal(exported.status,200);assert.equal(exported.body.user.email,'tester@example.com');assert.ok(Array.isArray(exported.body.workspace))});
- test('publishes a deployment health check',async()=>{const response=await request(app).get('/api/health');assert.equal(response.status,200);assert.equal(response.body.checks.database,true)});
+ test('publishes a deployment health check',async()=>{const live=await request(app).get('/api/health');assert.equal(live.status,200);assert.equal(live.body.status,'ok');const ready=await request(app).get('/api/ready');assert.equal(ready.status,200);assert.equal(ready.body.database.connected,true)});
 
  test('Smart Router recovers from a provider timeout through the gateway', async () => {
    const previous = process.env.GEMINI_API_KEY;

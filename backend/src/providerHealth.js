@@ -43,6 +43,30 @@ function providerCatalog() {
             modelEnv: 'KIMI_MODEL',
             defaultModel: 'moonshot-v1-8k',
         },
+        deepseek: {
+            keys: ['DEEPSEEK_API_KEY'],
+            modelEnv: 'DEEPSEEK_MODEL',
+            defaultModel: 'deepseek-chat',
+        },
+        perplexity: {
+            keys: ['PERPLEXITY_API_KEY'],
+            modelEnv: 'PERPLEXITY_MODEL',
+            defaultModel: 'sonar',
+        },
+        qwen: {
+            keys: ['QWEN_API_KEY', 'DASHSCOPE_API_KEY'],
+            modelEnv: 'QWEN_MODEL',
+            defaultModel: 'qwen-plus',
+        },
+        cohere: {
+            keys: ['COHERE_API_KEY'],
+            modelEnv: 'COHERE_MODEL',
+            defaultModel: 'command-r-plus',
+        },
+        cloudflare: {
+            keys: ['CLOUDFLARE_API_KEY', 'CLAUDEFLARE_API_KEY'],
+            also: ['CLOUDFLARE_ACCOUNT_ID'],
+        },
         tavily: {
             keys: ['TAVILY_API_KEY'],
         },
@@ -183,6 +207,38 @@ function logStartupConfig() {
     } catch (error) {
         console.warn('[CONFIG] Image generation status log skipped:', error.message);
     }
+    try {
+        const { getMagicHourVideoStatus } = require('./services/magicHourVideoService');
+        const { getGeminiVideoStatus } = require('./services/geminiVideoService');
+        const { resolveVideoProviderPreference } = require('./services/magicHourConfig');
+        const mh = getMagicHourVideoStatus();
+        const gemini = getGeminiVideoStatus();
+        const activeProvider = resolveVideoProviderPreference();
+        const configured = activeProvider === 'magichour' ? mh.configured : gemini.configured;
+        console.log(
+            `[CONFIG] video generation: ${configured ? 'ready' : 'not ready'} `
+            + `(provider=${activeProvider || 'none'}, `
+            + `magicHourKey=${mh.apiKeyPresent ? 'set' : 'MISSING'}, `
+            + `magicHourKeySource=${mh.apiKeySource || 'none'}, model=${mh.model || 'default'})`,
+        );
+        if (mh.apiKeyPresent) {
+            const { probeMagicHourAuth } = require('./services/magicHourClient');
+            void probeMagicHourAuth().then((probe) => {
+                if (probe.keyConfigured && probe.ok) {
+                    console.log('[CONFIG] Magic Hour API auth: ok');
+                } else if (probe.keyConfigured && probe.httpStatus === 401) {
+                    console.warn(
+                        '[CONFIG] Magic Hour API key is present but rejected (HTTP 401). '
+                        + 'Regenerate the key at https://magichour.ai/developer and set MAGIC_HOUR_API_KEY in backend/.env',
+                    );
+                } else if (probe.keyConfigured && !probe.ok && !probe.transient) {
+                    console.warn(`[CONFIG] Magic Hour API auth check failed (HTTP ${probe.httpStatus || 'unknown'})`);
+                }
+            }).catch(() => {});
+        }
+    } catch (error) {
+        console.warn('[CONFIG] Video generation status log skipped:', error.message);
+    }
 }
 
 function getCachedProbeStatus(providerId) {
@@ -209,6 +265,7 @@ function openRouterUsable(snapshot) {
 function providerAvailabilityForRouter() {
     const snapshot = buildProviderSnapshot();
     const viaOpenRouter = openRouterUsable(snapshot);
+    const perplexity = directProviderUsable('perplexity', snapshot) || viaOpenRouter;
     return {
         gpt: directProviderUsable('openai', snapshot) || viaOpenRouter,
         gemini: directProviderUsable('gemini', snapshot) || viaOpenRouter,
@@ -216,6 +273,7 @@ function providerAvailabilityForRouter() {
         grok: directProviderUsable('grok', snapshot) || viaOpenRouter,
         mistral: directProviderUsable('mistral', snapshot) || viaOpenRouter,
         kimi: directProviderUsable('kimi', snapshot) || viaOpenRouter,
+        perplexity,
         others: viaOpenRouter,
     };
 }
@@ -239,7 +297,7 @@ function isRoutedModelAvailable(modelSlug, availability) {
         kimi: 'kimi',
         deepseek: 'others',
         llama: 'others',
-        perplexity: 'others',
+        perplexity: 'perplexity',
         qwen: 'others',
         cohere: 'others',
     }[modelSlug];

@@ -25,14 +25,63 @@ export const DEFAULT_RESPONSE_PREFS = {
   responseLanguage: 'auto',
 };
 
+const UI_LANGUAGE_TO_RESPONSE_PREF = {
+  English: 'english',
+  Russian: 'russian',
+  Ukrainian: 'ukrainian',
+  Polish: 'polish',
+  German: 'german',
+  French: 'french',
+  Spanish: 'spanish',
+  Italian: 'italian',
+  Portuguese: 'portuguese',
+  Chinese: 'chinese',
+  Japanese: 'japanese',
+  Arabic: 'arabic',
+};
+
+export function profileLanguageToResponsePref(profile = {}) {
+  if (profile.responseLanguage) return profile.responseLanguage;
+  const fromUi = UI_LANGUAGE_TO_RESPONSE_PREF[profile.language];
+  return fromUi || 'auto';
+}
+
 export function readResponsePrefs(storage = typeof localStorage !== 'undefined' ? localStorage : null) {
   try {
     const raw = storage?.getItem('allmodelai_response_prefs');
     const parsed = raw ? JSON.parse(raw) : {};
-    return { ...DEFAULT_RESPONSE_PREFS, ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+    let profile = {};
+    try {
+      profile = JSON.parse(storage?.getItem('allmodelai_profile') || '{}') || {};
+    } catch {
+      profile = {};
+    }
+    const merged = { ...DEFAULT_RESPONSE_PREFS, ...(parsed && typeof parsed === 'object' ? parsed : {}) };
+    // AI response language only — never map website UI language (e.g. Ukrainian UI) into model replies when auto-detect is on.
+    merged.profileLanguage = merged.responseLanguage !== 'auto'
+      ? merged.responseLanguage
+      : (profile.responseLanguage && profile.responseLanguage !== 'auto' ? profile.responseLanguage : 'auto');
+    return merged;
   } catch {
-    return { ...DEFAULT_RESPONSE_PREFS };
+    return { ...DEFAULT_RESPONSE_PREFS, profileLanguage: 'auto' };
   }
+}
+
+export async function persistResponseLanguagePreference(responseLanguage, { storage, syncChatSettings } = {}) {
+  const store = storage || (typeof localStorage !== 'undefined' ? localStorage : null);
+  const prefs = readResponsePrefs(store);
+  const next = { ...prefs, responseLanguage };
+  writeResponsePrefs(next, store);
+  try {
+    const profile = JSON.parse(store?.getItem('allmodelai_profile') || '{}') || {};
+    store?.setItem('allmodelai_profile', JSON.stringify({ ...profile, responseLanguage }));
+  } catch {
+    /* ignore */
+  }
+  if (typeof syncChatSettings === 'function') {
+    await syncChatSettings({ responseLanguage });
+  }
+  return next;
 }
 
 export function writeResponsePrefs(prefs, storage = typeof localStorage !== 'undefined' ? localStorage : null) {

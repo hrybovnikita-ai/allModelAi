@@ -4,6 +4,8 @@ import { socialAuthDebug } from './socialAuthDiagnostics.js';
 import { readJsonBody } from './httpJson.js';
 import { clearFirebaseIdTokenFallback, firebaseSessionFallbackHeaders } from './firebaseSessionFallback.js';
 import { readCookieConsent, waitForCookieConsentChoice } from './cookieConsent.js';
+import { classifyNetworkError } from './networkErrors.js';
+import { setSessionRestoreMeta } from './sessionRestoreMeta.js';
 
 const SESSION_CLEARED_EVENT = 'allmodelai:session-cleared';
 export const SESSION_UPDATED_EVENT = 'allmodelai:session-updated';
@@ -142,15 +144,41 @@ export function hasSessionRestoreHint() {
   return false;
 }
 
-/** Bounded retries: only for fresh-login cookie propagation or transient network failures. */
+/** Bounded retries for cookie propagation, cold backend wake-up, and transient network failures. */
 function sessionRestoreRetryDelays() {
   if (getNativeSessionToken()) {
-    return [0, 150, 400, 800, 1500];
+    return [0, 150, 400, 800, 1500, 2500];
   }
   if (isFreshLoginGraceActive()) {
-    return [0, 200, 500, 1000];
+    return [0, 200, 500, 1000, 2000];
   }
-  return [0];
+  if (hasSessionRestoreHint()) {
+    return [0, 400, 1000, 2000, 4000];
+  }
+  return [0, 500, 1500, 3000];
+}
+
+function isTransientSessionFetchError(error) {
+  const name = error?.name;
+  if (name === 'AbortError' || name === 'TimeoutError') return true;
+  const msg = String(error?.message || '');
+  return (
+    msg.includes('Failed to fetch')
+    || msg.includes('Network request failed')
+    || msg.includes('ERR_CONNECTION')
+    || msg.includes('fetch failed')
+    || error?.name === 'TypeError'
+  );
+}
+
+function tryDegradedSessionRestore(error) {
+  if (!hasSessionRestoreHint()) return null;
+  const cached = readStoredSessionUser();
+  if (!cached?.email) return null;
+  const issue = classifyNetworkError(error, { phase: 'session' });
+  setSessionRestoreMeta({ verified: false, issue });
+  socialAuthDebug('SESSION_RESTORE_DEGRADED', { code: issue.code });
+  return cached;
 }
 
 const SESSION_FETCH_TIMEOUT_MS = 12000;
@@ -180,6 +208,7 @@ export function readStoredSessionUser() {
 export function rememberSession(user) {
   if (!user?.email) throw new Error('Missing session user');
   sessionRevokedLocally = false;
+  setSessionRestoreMeta({ verified: true, issue: null });
   const saved = JSON.stringify(user);
   const storage = getStorage();
   storage.setItem('allmodelai_user', saved);
@@ -229,61 +258,83 @@ export async function restoreSession({ force = false } = {}) {
   const generation = sessionGeneration;
   const request = { generation };
   request.promise = (async () => {
-    const mustVerifyWithServer = force || sessionRevokedLocally;
-    if (!mustVerifyWithServer && !hasSessionRestoreHint()) {
-      socialAuthDebug('SESSION_RESTORE_SKIPPED', { reason: 'no-restore-hint' });
-      verifiedSession = null;
-      return null;
-    }
-
-    const retryDelays = sessionRestoreRetryDelays();
-
-    for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
-      if (retryDelays[attempt] > 0) {
-        await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+    try {
+      if (sessionRevokedLocally && !force) {
+        socialAuthDebug('SESSION_RESTORE_SKIPPED', { reason: 'revoked-locally' });
+        verifiedSession = null;
+        setSessionRestoreMeta({ verified: false, issue: null });
+        return null;
       }
-      if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
 
-      let response;
-      let data;
-      try {
-        ({ response, data } = await fetchSessionFromServer());
-      } catch (networkError) {
-        if (attempt === retryDelays.length - 1) throw networkError;
-        continue;
-      }
-      if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
+      const retryDelays = sessionRestoreRetryDelays();
 
-      if (response.ok) {
-        if (!data?.user?.email) {
-          socialAuthDebug('SESSION_GUEST', { pathname: '/api/auth/session', attempt });
-          verifiedSession = null;
-          if (!isFreshLoginGraceActive()) {
-            storage.removeItem('allmodelai_user');
-          }
-          if (isFreshLoginGraceActive() && attempt < retryDelays.length - 1) continue;
-          return null;
+      for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
+        if (retryDelays[attempt] > 0) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
         }
-        socialAuthDebug('SESSION_RESTORED', { source: 'api', attempt });
-        clearFreshLoginMark();
-        clearFirebaseIdTokenFallback();
-        return rememberSession(data.user);
-      }
-      if (response.status === 401) {
-        socialAuthDebug('SESSION_CONFIRM_401', { pathname: '/api/auth/session', attempt });
-        sessionRevokedLocally = false;
-        if (shouldRetrySessionAfterResponse(response, attempt, retryDelays.length)) continue;
-        break;
-      }
-      if (shouldRetrySessionAfterResponse(response, attempt, retryDelays.length)) continue;
-      throw new Error(data?.message || 'Could not verify your session. Please try again.');
-    }
+        if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
 
-    verifiedSession = null;
-    if (!isFreshLoginGraceActive()) {
-      storage.removeItem('allmodelai_user');
+        let response;
+        let data;
+        try {
+          ({ response, data } = await fetchSessionFromServer());
+        } catch (networkError) {
+          if (attempt < retryDelays.length - 1) continue;
+          const degraded = tryDegradedSessionRestore(networkError);
+          if (degraded) return degraded;
+          throw networkError;
+        }
+        if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
+
+        if (response.ok) {
+          if (!data?.user?.email) {
+            socialAuthDebug('SESSION_GUEST', { pathname: '/api/auth/session', attempt });
+            verifiedSession = null;
+            setSessionRestoreMeta({ verified: false, issue: null });
+            if (!isFreshLoginGraceActive()) {
+              storage.removeItem('allmodelai_user');
+            }
+            if (isFreshLoginGraceActive() && attempt < retryDelays.length - 1) continue;
+            return null;
+          }
+          socialAuthDebug('SESSION_RESTORED', { source: 'api', attempt });
+          clearFreshLoginMark();
+          clearFirebaseIdTokenFallback();
+          return rememberSession(data.user);
+        }
+        if (response.status === 401) {
+          socialAuthDebug('SESSION_CONFIRM_401', { pathname: '/api/auth/session', attempt });
+          sessionRevokedLocally = false;
+          setSessionRestoreMeta({ verified: false, issue: null });
+          if (shouldRetrySessionAfterResponse(response, attempt, retryDelays.length)) continue;
+          break;
+        }
+        if (shouldRetrySessionAfterResponse(response, attempt, retryDelays.length)) continue;
+        const serverError = Object.assign(
+          new Error(data?.message || 'Could not verify your session. Please try again.'),
+          { status: response.status },
+        );
+        if (response.status >= 500 && attempt === retryDelays.length - 1) {
+          const degraded = tryDegradedSessionRestore(serverError);
+          if (degraded) return degraded;
+        }
+        throw serverError;
+      }
+
+      verifiedSession = null;
+      setSessionRestoreMeta({ verified: false, issue: null });
+      if (!isFreshLoginGraceActive()) {
+        storage.removeItem('allmodelai_user');
+      }
+      return null;
+    } catch (error) {
+      if (isTransientSessionFetchError(error)) {
+        const degraded = tryDegradedSessionRestore(error);
+        if (degraded) return degraded;
+      }
+      setSessionRestoreMeta({ verified: false, issue: null });
+      throw error;
     }
-    return null;
   })();
   pendingSession = request;
   try {
@@ -291,6 +342,46 @@ export async function restoreSession({ force = false } = {}) {
   } finally {
     if (pendingSession === request) pendingSession = null;
   }
+}
+
+/**
+ * After POST /api/auth/firebase succeeds: persist client hint, then verify HttpOnly cookie once.
+ * Does not clear session on a single lagging GET — the exchange already validated the ID token.
+ */
+export async function establishSessionFromAuthExchange(user) {
+  if (!user?.email) {
+    throw new Error('Your sign-in could not be verified. Please retry.');
+  }
+  sessionGeneration += 1;
+  sessionRevokedLocally = false;
+  markFreshLogin();
+  rememberSession(user);
+  void import('./authBootstrap.js').then(({ invalidateAuthBootstrap }) => {
+    invalidateAuthBootstrap();
+  }).catch(() => {});
+  socialAuthDebug('SESSION_EXCHANGE_STORED', { email: user.email });
+
+  let verified = null;
+  try {
+    verified = await restoreSession({ force: true });
+  } catch (error) {
+    socialAuthDebug('SESSION_EXCHANGE_VERIFY_ERROR', { message: error?.message });
+  }
+
+  if (verified?.email?.toLowerCase() === user.email.toLowerCase()) {
+    socialAuthDebug('SESSION_CONFIRM_OK', { email: verified.email, source: 'exchange-verify' });
+    return verified;
+  }
+
+  const stored = readStoredSessionUser();
+  if (stored?.email?.toLowerCase() === user.email.toLowerCase()) {
+    socialAuthDebug('SESSION_EXCHANGE_VERIFY_LAG', { email: user.email });
+    return stored;
+  }
+
+  throw Object.assign(new Error('Your sign-in could not be verified. Please retry.'), {
+    code: 'SESSION_NOT_CONFIRMED',
+  });
 }
 
 // Verify backend session (cookie and/or native token) before treating the user as signed in.
@@ -328,7 +419,7 @@ export async function confirmSession(user) {
     }
   }
 
-  if (getNativeSessionToken()) {
+  if (getNativeSessionToken() || firebaseSessionFallbackHeaders().Authorization) {
     try {
       const verified = await restoreSession({ force: true });
       if (matchesUser(verified)) {
@@ -339,6 +430,11 @@ export async function confirmSession(user) {
     } catch (error) {
       lastError = error;
     }
+  }
+
+  if (isFreshLoginGraceActive()) {
+    socialAuthDebug('SESSION_CONFIRM_FALLBACK', { source: 'exchange-user', email: user.email });
+    return rememberSession(user);
   }
 
   clearAllSessionData();

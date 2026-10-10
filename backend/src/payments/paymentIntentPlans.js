@@ -1,16 +1,19 @@
 const { subscriptionPlans } = require('../billing/plans');
 
 const PAID_CHECKOUT_SLUGS = {
+    starter: 'starter',
     pro: 'common',
+    common: 'common',
+    unlimited: 'plus',
     enterprise: 'plus',
     power: 'plus',
-    common: 'common',
     plus: 'plus',
 };
 
 const PLAN_AMOUNTS_CENTS = {
-    common: subscriptionPlans.common?.amount ?? 1900,
-    plus: subscriptionPlans.plus?.amount ?? 4900,
+    starter: subscriptionPlans.starter?.amount ?? 500,
+    common: subscriptionPlans.common?.amount ?? 1500,
+    plus: subscriptionPlans.plus?.amount ?? 3000,
 };
 
 function resolvePaidCheckoutPlan(rawPlan) {
@@ -19,7 +22,8 @@ function resolvePaidCheckoutPlan(rawPlan) {
     if (!planKey) return null;
     const plan = subscriptionPlans[planKey];
     if (!plan || !plan.amount) return null;
-    return { slug, planKey, plan, amountCents: PLAN_AMOUNTS_CENTS[planKey] ?? plan.amount };
+    const publicSlug = slug === 'common' ? 'pro' : slug === 'plus' ? 'unlimited' : slug;
+    return { slug: publicSlug, planKey, plan, amountCents: PLAN_AMOUNTS_CENTS[planKey] ?? plan.amount };
 }
 
 module.exports = {

@@ -25,10 +25,12 @@ test('image request keeps the selected quality and aspect', () => {
         quality: 'ultra',
         aspectRatio: '9:16',
         style: 'anime',
+        count: 4,
     });
     assert.equal(body.quality, 'ultra');
     assert.equal(body.aspectRatio, '9:16');
     assert.equal(body.style, 'anime');
+    assert.equal(body.count, 4);
     assert.equal(imageGeneration.QUALITY_LABELS.ultra, 'Ultra');
     assert.equal(imageGeneration.ASPECT_LABELS['16:9'], 'Landscape (16:9)');
     assert.equal(imageGeneration.IMAGE_QUALITIES.map((item) => item.label).join(','), 'Standard,HD,Ultra');
@@ -65,6 +67,15 @@ test('user-facing image errors hide provider billing details', () => {
         IMAGE_UNAVAILABLE_MESSAGE,
     );
     assert.equal(userFacingImageGenerationError(true, { success: true, imageUrl: 'https://example.com/a.png' }), null);
+});
+
+test('normalizeImageGenerationResult prefers images array', () => {
+    const normalized = imageGeneration.normalizeImageGenerationResult({
+        imageUrl: 'https://example.com/one.png',
+        images: [{ imageUrl: 'https://example.com/a.png' }, { imageUrl: 'https://example.com/b.png' }],
+    });
+    assert.equal(normalized.imageCount, 2);
+    assert.equal(normalized.imageUrl, 'https://example.com/a.png');
 });
 
 test('download bytes are the original base64 payload', () => {

@@ -3,12 +3,17 @@ import { useLanguage } from '../../lib/useLanguage';
 import { useEffect, useState } from 'react';
 import Login from '../Login/Login';
 import NavAuthSection from './NavAuthSection';
+import { useSession } from '../Session/SessionProvider';
+import { AUTH_STATUS } from '../../lib/authSessionStatus';
+import { DASHBOARD_NAV_ACCOUNT_LINKS } from '../Dashboard/dashboardNavLinks';
 import './Navbar.css';
 
 export default function Navbar() {
   const { t } = useLanguage();
+  const { status, user } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const [authMode, setAuthMode] = useState(null);
+  const isAuthenticated = status === AUTH_STATUS.AUTHENTICATED && Boolean(user?.email);
 
   useEffect(() => {
     if (!authMode) return;
@@ -21,6 +26,19 @@ export default function Navbar() {
     };
   }, [authMode]);
 
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onEscape = (event) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('keydown', onEscape);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onEscape);
+      document.body.style.overflow = '';
+    };
+  }, [menuOpen]);
+
   const closeMenu = () => setMenuOpen(false);
 
   return (
@@ -28,6 +46,20 @@ export default function Navbar() {
       <nav className="navbar" aria-label="Main navigation">
         <a href="#home" className="nav-brand" onClick={closeMenu}>AllModelAI</a>
         <div className={`nav-links ${menuOpen ? 'is-open' : ''}`}>
+          {isAuthenticated ? (
+            <div className="nav-links-account" role="group" aria-label={t('account')}>
+              {DASHBOARD_NAV_ACCOUNT_LINKS.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className="nav-links-account-item"
+                  onClick={closeMenu}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          ) : null}
           <a href="#home" onClick={closeMenu}>{t("Home")}</a>
           <a href="#about" onClick={closeMenu}>{t("About")}</a>
           <a href="#pricing" onClick={closeMenu}>{t("Pricing")}</a>

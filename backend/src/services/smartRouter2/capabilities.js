@@ -27,7 +27,7 @@ const MODEL_CAPABILITIES = {
         model: 'claude-haiku-4.5',
         coding: true,
         reasoning: true,
-        vision: false,
+        vision: true,
         longContext: true,
         fast: false,
         research: false,

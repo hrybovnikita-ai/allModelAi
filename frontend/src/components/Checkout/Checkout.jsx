@@ -60,6 +60,7 @@ export default function Checkout() {
   const [stripeClientSecret, setStripeClientSecret] = useState('');
   const [stripeReady, setStripeReady] = useState(false);
   const [ownerTestCheckout, setOwnerTestCheckout] = useState(false);
+  const [canUseWayforpayTestCheckout, setCanUseWayforpayTestCheckout] = useState(false);
   const [stripePanelOpen, setStripePanelOpen] = useState(false);
 
   const paymentProvider = checkoutInfo?.primaryProvider || null;
@@ -85,7 +86,10 @@ export default function Checkout() {
     let cancelled = false;
     apiClient.get('/api/subscription')
       .then((response) => {
-        if (!cancelled) setOwnerTestCheckout(Boolean(response.data?.canUseOwnerTestCheckout));
+        if (!cancelled) {
+          setOwnerTestCheckout(Boolean(response.data?.canUseOwnerTestCheckout));
+          setCanUseWayforpayTestCheckout(Boolean(response.data?.canUseWayforpayTestCheckout));
+        }
       })
       .catch(() => {
         if (!cancelled) setOwnerTestCheckout(false);
@@ -185,18 +189,20 @@ export default function Checkout() {
     }
   }, [planSlug, checkoutInfo?.paymentMode]);
 
-  const wayforpaySandboxForOwner = Boolean(
-    checkoutInfo?.wayforpayTestMode && ownerTestCheckout && paymentProvider === 'wayforpay',
+  const wayforpayTestFlow = Boolean(
+    checkoutInfo?.wayforpayTestMode
+    && paymentProvider === 'wayforpay'
+    && (canUseWayforpayTestCheckout || ownerTestCheckout),
   );
 
   const startWayforpayCheckout = async () => {
     setCheckoutBusy(true);
     setError('');
     try {
-      if (checkoutInfo?.wayforpayTestMode && !ownerTestCheckout) {
-        throw new Error('Paid checkout is unavailable in the test environment. Live WayForPay checkout activates when the server is configured for production payments.');
+      if (checkoutInfo?.wayforpayTestMode && !canUseWayforpayTestCheckout && !ownerTestCheckout) {
+        throw new Error('WayForPay test checkout is not available for this account in this environment.');
       }
-      if (wayforpaySandboxForOwner) {
+      if (wayforpayTestFlow) {
         const result = await runTestWayforpayCheckout(apiClient, planSlug);
         navigate(`/checkout/success?plan=${encodeURIComponent(planSlug)}&orderReference=${encodeURIComponent(result.orderReference)}`, { replace: true });
         return;
@@ -207,7 +213,8 @@ export default function Checkout() {
       }
       submitWayforpayCheckout(response.data);
     } catch (requestError) {
-      setError(requestError.response?.data?.message || requestError.message || 'Payment could not be started.');
+      const payload = requestError.response?.data;
+      setError(payload?.message || payload?.userMessage || requestError.message || 'Payment could not be started.');
     } finally {
       setCheckoutBusy(false);
     }
@@ -346,9 +353,9 @@ export default function Checkout() {
 
                   {paymentProvider === 'wayforpay' && (
                     <div className="checkout-wayforpay-alt">
-                      {wayforpaySandboxForOwner && (
+                      {wayforpayTestFlow && (
                         <p className="checkout-owner-test-note" role="status">
-                          Owner test payment — simulated WayForPay only. No real money will be charged.
+                          Simulated WayForPay test payment — no redirect, no real charge. Subscription activates only after server confirms the mock callback.
                         </p>
                       )}
                       <PaymentButton
@@ -356,10 +363,10 @@ export default function Checkout() {
                         type="button"
                         loading={checkoutBusy}
                         loadingLabel="Processing…"
-                        disabled={!sessionReady || (checkoutInfo?.wayforpayTestMode && !ownerTestCheckout)}
+                        disabled={!sessionReady || (checkoutInfo?.wayforpayTestMode && !canUseWayforpayTestCheckout && !ownerTestCheckout)}
                         onClick={() => { void startWayforpayCheckout(); }}
                       >
-                        {wayforpaySandboxForOwner ? 'Complete WayForPay test payment' : 'Continue with WayForPay'}
+                        {wayforpayTestFlow ? 'Complete WayForPay test payment' : 'Continue with WayForPay'}
                       </PaymentButton>
                     </div>
                   )}

@@ -52,11 +52,31 @@ async function audit(req, action, targetType, targetId, metadata = {}) {
     connection.database.prepare('INSERT INTO audit_events (email, action, target_type, target_id, metadata, ip, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(req.user.email, action, targetType || null, targetId || null, JSON.stringify(metadata), req.ip || null, now());
 }
 
+/** Lightweight liveness probe — no database or provider calls (Render/Docker use this). */
 const health = async (req, res) => {
+    return res.status(200).json({
+        status: 'ok',
+        service: 'allmodelai-backend',
+        version: process.env.APP_VERSION || '1.0.0',
+        uptimeSeconds: Math.floor(process.uptime()),
+        timestamp: now(),
+    });
+};
+
+/** Detailed dependency check for operators (also exposed as GET /api/ready). */
+const healthDetailed = async (req, res) => {
     const connection = req.app.locals.db;
     const engine = connection.engine || getDatabaseEngine();
     const { isOpenRouterConfigured } = require('../openRouterConfig');
-    const checks = { database: false, openai: Boolean(process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY), openrouter: isOpenRouterConfigured(), email: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM), payments: Boolean(process.env.STRIPE_SECRET_KEY) || Boolean(process.env.WAYFORPAY_SECRET_KEY?.trim() && process.env.WAYFORPAY_MERCHANT_ACCOUNT?.trim()), monitoring: Boolean(process.env.SENTRY_DSN) };
+    const checks = {
+        database: false,
+        openai: Boolean(process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY),
+        openrouter: isOpenRouterConfigured(),
+        email: Boolean(process.env.RESEND_API_KEY && process.env.EMAIL_FROM),
+        payments: Boolean(process.env.STRIPE_SECRET_KEY)
+            || Boolean(process.env.WAYFORPAY_SECRET_KEY?.trim() && process.env.WAYFORPAY_MERCHANT_ACCOUNT?.trim()),
+        monitoring: Boolean(process.env.SENTRY_DSN),
+    };
     try {
         if (isPostgresConnection(connection)) {
             await pingPostgresAsync(connection);
@@ -75,11 +95,13 @@ const health = async (req, res) => {
     }
     return res.status(ready ? 200 : 503).json({
         status: ready ? 'healthy' : 'degraded',
-        service: 'AllModelAI',
+        service: 'allmodelai-backend',
         database: {
             engine,
             connected: checks.database,
-            fingerprint: checks.database && !isPostgresConnection(connection) ? databaseFingerprint(connection.database) : null,
+            fingerprint: checks.database && !isPostgresConnection(connection)
+                ? databaseFingerprint(connection.database)
+                : null,
         },
         version: process.env.APP_VERSION || '1.0.0',
         uptimeSeconds: Math.floor(process.uptime()),
@@ -416,6 +438,7 @@ const confirmPasswordReset = async (req, res) => {
 
 module.exports = {
     health,
+    healthDetailed,
     globalSearch,
     listJobs,
     createJob,

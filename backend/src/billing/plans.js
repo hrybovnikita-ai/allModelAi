@@ -1,32 +1,76 @@
 const subscriptionPlans = {
-    free: { name: 'User', amount: 0, interval: 'month', limit: 5000, models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'mistral', 'qwen', 'cloudflare'] },
-    week: { name: 'Weekly', amount: 599, interval: 'week', limit: 500, models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'cloudflare'] },
-    common: { name: 'Pro Monthly', amount: 1900, interval: 'month', limit: 3000, models: ['smart', 'gemini', 'gpt', 'claude', 'llama', 'grok', 'copilot', 'perplexity', 'kimi', 'deepseek', 'mistral', 'qwen', 'cohere', 'cloudflare'] },
-    plus: { name: 'Power Monthly', amount: 4900, interval: 'month', limit: 12000, models: ['all'] },
+    free: {
+        name: 'User',
+        amount: 0,
+        interval: 'month',
+        limit: 5000,
+        models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'mistral', 'qwen', 'cloudflare'],
+    },
+    week: {
+        name: 'Weekly',
+        amount: 599,
+        interval: 'week',
+        limit: 500,
+        models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'cloudflare'],
+    },
+    starter: {
+        name: 'Starter Monthly',
+        amount: 500,
+        interval: 'month',
+        limit: 800,
+        models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'mistral', 'cloudflare'],
+    },
+    common: {
+        name: 'Pro Monthly',
+        amount: 1500,
+        interval: 'month',
+        limit: 3000,
+        models: [
+            'smart', 'gemini', 'gpt', 'claude', 'llama', 'grok', 'copilot', 'perplexity', 'kimi',
+            'deepseek', 'mistral', 'qwen', 'cohere', 'cloudflare',
+        ],
+    },
+    plus: {
+        name: 'Unlimited Monthly',
+        amount: 3000,
+        interval: 'month',
+        limit: 6000,
+        models: ['all'],
+    },
 };
 
 const normalizePlanKey = (value) => (
-    { starter: 'free', developer: 'free', pro: 'common', monthly: 'common', power: 'plus', enterprise: 'plus' }[String(value || '').toLowerCase()]
+    {
+        starter: 'starter',
+        pro: 'common',
+        monthly: 'common',
+        unlimited: 'plus',
+        power: 'plus',
+        enterprise: 'plus',
+        developer: 'free',
+    }[String(value || '').toLowerCase()]
     || String(value || '').toLowerCase()
 );
 
-/** Public checkout slug (pro, power, week) for API/UI — internal DB key may be common/plus. */
+/** Public checkout slug stored in subscription_details.plan */
 const planSlugForKey = (planKey) => {
     const key = normalizePlanKey(planKey);
+    if (key === 'starter') return 'starter';
     if (key === 'common') return 'pro';
-    if (key === 'plus') return 'power';
+    if (key === 'plus') return 'unlimited';
     if (key === 'week') return 'week';
     if (key === 'free') return 'free';
     return key;
 };
 
-/** UI labels for stored plan keys and internal billing keys. */
 const PLAN_UI_LABELS = {
     free: 'Common',
-    common: 'Common',
-    pro: 'Pro Monthly',
-    plus: 'Power Monthly',
-    power: 'Power Monthly',
+    starter: 'Starter',
+    common: 'Pro',
+    pro: 'Pro',
+    plus: 'Unlimited',
+    unlimited: 'Unlimited',
+    power: 'Unlimited',
     week: 'Weekly',
     weekly: 'Weekly',
     developer: 'Developer',
@@ -51,7 +95,6 @@ const planAmountDecimal = (planKey) => {
     return (plan.amount / 100).toFixed(2);
 };
 
-/** Value stored in subscription_details.plan (checkout slug: pro, power, week, free). */
 const planStorageValue = (planKey) => planSlugForKey(normalizePlanKey(planKey));
 
 module.exports = {

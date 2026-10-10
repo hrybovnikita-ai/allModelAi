@@ -4,10 +4,14 @@ import {
   REDIRECT_PENDING_KEY,
   clearSocialRedirectIntent,
   hasFirebaseRedirectReturnHints,
+  isGooglePopupSignInActive,
   isGoogleRedirectRecoveryPending,
+  markGooglePopupSignInEnded,
+  markGooglePopupSignInStarted,
   markRedirectFlowCommitted,
   persistRedirectIntent,
   reconcileStaleRedirectIntent,
+  shouldAttemptGoogleRedirectRecovery,
   shouldShowGoogleRedirectRecoveryUI,
 } from '../src/lib/socialRedirectState.js';
 
@@ -85,6 +89,19 @@ test('shouldShowGoogleRedirectRecoveryUI requires pending flag or OAuth URL hint
   delete globalThis.window;
 });
 
+test('popup sign-in suppresses redirect recovery and clears stale markers', () => {
+  persistRedirectIntent('Google', {}, 'awaiting-google-return');
+  markRedirectFlowCommitted();
+  assert.equal(isGoogleRedirectRecoveryPending(), true);
+  markGooglePopupSignInStarted();
+  assert.equal(isGooglePopupSignInActive(), true);
+  assert.equal(isGoogleRedirectRecoveryPending(), false);
+  assert.equal(shouldAttemptGoogleRedirectRecovery(), false);
+  assert.equal(shouldShowGoogleRedirectRecoveryUI(), false);
+  markGooglePopupSignInEnded();
+  assert.equal(isGooglePopupSignInActive(), false);
+});
+
 test('login launches popup synchronously before awaits', async () => {
   const { readFile } = await import('node:fs/promises');
   const login = await readFile(new URL('../src/components/Login/Login.jsx', import.meta.url), 'utf8');
@@ -95,4 +112,6 @@ test('login launches popup synchronously before awaits', async () => {
   assert.match(signIn, /export function launchGooglePopupSignIn/);
   assert.match(signIn, /signInWithPopup\(auth, provider\)/);
   assert.match(signIn, /markRedirectFlowCommitted/);
+  assert.match(signIn, /markGooglePopupSignInStarted/);
+  assert.match(signIn, /prepareFirebaseRedirectCoordinatorForPopup/);
 });

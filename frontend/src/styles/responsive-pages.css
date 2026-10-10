@@ -1,0 +1,233 @@
+/**
+ * Shared responsive rules for app shells, hubs, checkout, and modals.
+ * Breakpoint tiers (content-driven, not device-specific):
+ * 320–374 phone-sm | 375–430 phone | 431–767 phone-lg | 768–1023 tablet
+ * 1024–1279 laptop-sm | 1280–1919 laptop | 1920+ desktop / ultrawide
+ */
+
+:root {
+  --bp-phone-sm: 374px;
+  --bp-phone: 767px;
+  --bp-tablet: 1023px;
+  --bp-laptop-sm: 1279px;
+  --bp-laptop: 1919px;
+  --nav-radius: 11px;
+  --keyboard-inset: 0px;
+  --visual-viewport-height: 100dvh;
+}
+
+/* Prevent flex/grid children from forcing horizontal scroll */
+.min-w-0,
+.settings-page,
+.checkout-page,
+.dashboard-page,
+.forgot-page,
+.chat-page,
+.control-page,
+.studio-page,
+.dashboard-grid > *,
+.pricing-grid > *,
+.skill-grid > *,
+.feature-grid > *,
+.hub-grid > *,
+.card-grid > * {
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+
+  dialog,
+  .settings-modal,
+  .login-modal,
+  .image-generator-dialog,
+  .checkout-page,
+  .forgot-page section {
+    max-width: min(100%, calc(100vw - 24px - var(--safe-left) - var(--safe-right)));
+  }
+
+  .settings-modal-backdrop,
+  .login-overlay {
+    padding:
+      max(12px, var(--safe-top))
+      max(12px, var(--safe-right))
+      max(12px, calc(var(--safe-bottom) + var(--keyboard-inset)))
+      max(12px, var(--safe-left));
+    align-items: flex-start;
+  }
+
+  .forgot-page {
+    min-height: 100dvh;
+    padding:
+      max(20px, var(--safe-top))
+      max(16px, var(--safe-right))
+      max(24px, calc(var(--safe-bottom) + var(--keyboard-inset)))
+      max(16px, var(--safe-left));
+  }
+
+  .forgot-page h1 {
+    font-size: clamp(1.65rem, 6vw, 2.25rem);
+  }
+}
+
+/* Hub / dashboard card grids */
+.skill-grid,
+.feature-grid,
+.hub-grid,
+.card-grid,
+.dashboard-feature-grid,
+.innovation-grid,
+.suite-grid {
+  display: grid;
+  gap: clamp(12px, 2.5vw, 18px);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  align-items: stretch;
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .skill-grid,
+  .feature-grid,
+  .hub-grid,
+  .card-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .skill-grid,
+  .feature-grid,
+  .hub-grid,
+  .card-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+}
+
+/* Pricing — readable on narrow phones */
+.pricing-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+}
+
+@media (max-width: 430px) {
+  .pricing-card {
+    padding: clamp(24px, 6vw, 32px) clamp(18px, 5vw, 22px);
+  }
+
+  .pricing-card.featured {
+    transform: none;
+    margin-top: 8px;
+  }
+}
+
+/* Checkout & payment dialogs */
+@media (max-width: 767px) {
+  .checkout-page,
+  .purchase-success-page {
+    padding-inline: max(14px, var(--safe-left)) max(14px, var(--safe-right)) !important;
+  }
+
+  .checkout-layout,
+  .checkout-form-row,
+  .demo-payment-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .stripe-checkout-card,
+  .checkout-payment-card {
+    position: static;
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+/* Settings in-page section nav (mobile) */
+.settings-section-nav {
+  display: none;
+  gap: 8px;
+  margin: 20px 0 8px;
+  flex-wrap: wrap;
+}
+
+.settings-section-nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target, 44px);
+  padding: 10px 14px;
+  border-radius: var(--nav-radius, 11px);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  background: rgba(99, 102, 241, 0.12);
+  color: #c7d2fe;
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.settings-section-nav a:focus-visible {
+  outline: 2px solid rgba(129, 140, 248, 0.85);
+  outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  .settings-section-nav {
+    display: flex;
+  }
+
+  .settings-nav {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding-inline: max(14px, var(--safe-left)) max(14px, var(--safe-right));
+    min-height: auto;
+    padding-top: max(14px, var(--safe-top));
+    padding-bottom: 12px;
+  }
+
+  .settings-shell {
+    margin-top: clamp(32px, 8vw, 45px);
+    width: min(820px, 100%);
+  }
+}
+
+/* Ultrawide — cap readable line length on marketing hero copy */
+@media (min-width: 1920px) {
+  .hero-copy {
+    max-width: 42rem;
+  }
+
+  .tagline {
+    max-width: 36rem;
+  }
+}
+
+@media (min-width: 2560px) {
+  .container,
+  .home-layout {
+    max-width: var(--ama-container-ultra, 1840px);
+    margin-inline: auto;
+  }
+}
+
+/* Mobile keyboard — chat composer stays above software keyboard */
+@media (max-width: 767px) {
+  html[data-keyboard-open='true'] .chat-page {
+    height: var(--visual-viewport-height, 100dvh);
+    max-height: var(--visual-viewport-height, 100dvh);
+  }
+
+  html[data-keyboard-open='true'] .chat-page .chat-composer {
+    padding-bottom: max(8px, calc(6px + var(--keyboard-inset)));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pricing-card,
+  .skill-card,
+  .about-card,
+  .nav-links,
+  .login-modal {
+    transition: none !important;
+  }
+}

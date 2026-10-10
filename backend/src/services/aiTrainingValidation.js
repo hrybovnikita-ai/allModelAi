@@ -55,13 +55,22 @@ const validateLabTrainBody = (body = {}) => {
     };
 };
 
-const MODEL_LAB_TYPES = new Set(['linear-regression', 'logistic-regression', 'neural-network']);
+const MODEL_LAB_TYPES = new Set([
+    'linear-regression',
+    'logistic-regression',
+    'neural-network',
+    'sklearn-linear-regression',
+    'sklearn-logistic-regression',
+]);
 const MAX_BATCH_SIZE = Math.min(128, Math.max(8, parseInt(process.env.AI_TRAINING_MAX_BATCH_SIZE || '128', 10)));
 
 const validateModelLabStartBody = (body = {}) => {
     const modelType = String(body.modelType || body.model_type || '').trim();
     if (!MODEL_LAB_TYPES.has(modelType)) {
-        return { ok: false, message: 'modelType must be linear-regression, logistic-regression, or neural-network' };
+        return {
+            ok: false,
+            message: 'modelType must be linear-regression, logistic-regression, neural-network, sklearn-linear-regression, or sklearn-logistic-regression',
+        };
     }
     const learningRate = Number(body.learningRate ?? body.learning_rate ?? 0.01);
     const epochs = parseInt(body.epochs ?? 100, 10);

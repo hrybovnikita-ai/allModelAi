@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../../lib/useLanguage';
-import { validatePasswordEnrollmentForm } from '../../lib/authValidation';
-import { fetchAccountSecurity, setAccountPassword } from '../../lib/accountSecurity';
+import { validatePasswordEnrollmentForm } from '../../lib/authValidation.js';
+import { fetchAccountSecurity, setAccountPassword } from '../../lib/accountSecurity.js';
 
 const PROVIDER_LABELS = {
   'google.com': 'Google',
@@ -32,6 +32,16 @@ export default function AccountSecurity() {
       })
       .catch((requestError) => {
         if (!active) return;
+        if (requestError.status === 404) {
+          setError(
+            'Password settings are unavailable on this server. Restart the backend (node server.js) so /api/auth/account/security is registered.',
+          );
+          return;
+        }
+        if (requestError.status === 401) {
+          setError('Your session expired. Sign in again, then return to Settings.');
+          return;
+        }
         setError(requestError.message || 'Could not load security settings.');
       })
       .finally(() => {
@@ -74,7 +84,7 @@ export default function AccountSecurity() {
   };
 
   return (
-    <section className="settings-card settings-security">
+    <section id="settings-security" className="settings-card settings-security">
       <div>
         <span>{t('security')}</span>
         <h2>{t('securityHeading')}</h2>
@@ -92,7 +102,11 @@ export default function AccountSecurity() {
 
       {loading ? (
         <p className="settings-security-hint" role="status">{t('loadingSecurity')}</p>
-      ) : (
+      ) : null}
+      {!loading && error && !success ? (
+        <p className="settings-password-error" role="alert">{error}</p>
+      ) : null}
+      {!loading ? (
         <form className="settings-password-form" onSubmit={handleSubmit}>
           {passwordEnabled ? (
             <label>
@@ -125,8 +139,8 @@ export default function AccountSecurity() {
               minLength={8}
             />
           </label>
-          {error ? <p className="settings-password-error" role="alert">{error}</p> : null}
           {success ? <p className="settings-password-success" role="status">{success}</p> : null}
+          {error && !success ? <p className="settings-password-error" role="alert">{error}</p> : null}
           <div className="settings-password-actions">
             <button type="submit" className="settings-save" disabled={submitting}>
               {passwordEnabled ? t('changePassword') : t('setPassword')}
@@ -134,7 +148,7 @@ export default function AccountSecurity() {
             <Link className="settings-security-link" to="/forgot-password">{t('forgotPasswordLink')}</Link>
           </div>
         </form>
-      )}
+      ) : null}
     </section>
   );
 }

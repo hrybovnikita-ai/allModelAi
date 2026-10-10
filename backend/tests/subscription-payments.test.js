@@ -1,10 +1,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
+const path = require('node:path');
+const os = require('node:os');
+const fs = require('node:fs');
 const { signCallbackPayload } = require('../src/wayforpay/crypto');
 
 process.env.NODE_ENV = 'test';
+process.env.ENABLE_PLUS_TEST_MODE = 'true';
 process.env.DEVELOPER_EMAILS = 'dev@example.com';
+process.env.DB_FILE = path.join(os.tmpdir(), `allmodelai-sub-pay-${process.pid}.sqlite`);
+fs.rmSync(process.env.DB_FILE, { force: true });
 delete process.env.STRIPE_SECRET_KEY;
 
 const TEST_SECRET = 'dhkq3vUi94{Z!5frxs(02ML';
@@ -63,8 +69,8 @@ test('Subscription & payment lifecycle', async (t) => {
         assert.equal(sub.body.plan, 'common');
         assert.equal(sub.body.planKey, 'pro');
         assert.equal(sub.body.planSlug, 'pro');
-        assert.equal(sub.body.planDisplayName, 'Pro Monthly');
-        assert.equal(sub.body.currentPlan, 'Pro Monthly');
+        assert.equal(sub.body.planDisplayName, 'Pro');
+        assert.equal(sub.body.currentPlan, 'Pro');
         assert.notEqual(sub.body.currentPlan, 'common');
         assert.equal(sub.body.limit, 3000);
         assert.equal(sub.body.remaining, 3000);
@@ -73,7 +79,7 @@ test('Subscription & payment lifecycle', async (t) => {
         assert.ok(sub.body.orderReference);
 
         const credits = await request(app).get('/api/credits').set('Cookie', cookie);
-        assert.equal(credits.body.planDisplayName, 'Pro Monthly');
+        assert.equal(credits.body.planDisplayName, 'Pro');
         assert.equal(credits.body.subscriptionStatus, 'active');
 
         const session = await request(app).get('/api/auth/session').set('Cookie', cookie);
@@ -97,8 +103,8 @@ test('Subscription & payment lifecycle', async (t) => {
         const powerCookie = await registerSandboxCheckoutCookie(`sub-power-${Date.now()}@example.com`);
         await request(app).post('/api/payments/wayforpay/test-checkout').set('Cookie', powerCookie).send({ plan: 'power' });
         const powerCredits = await request(app).get('/api/credits').set('Cookie', powerCookie);
-        assert.equal(powerCredits.body.planDisplayName, 'Power Monthly');
-        assert.equal(powerCredits.body.remaining, 12000);
+        assert.equal(powerCredits.body.planDisplayName, 'Unlimited');
+        assert.equal(powerCredits.body.remaining, 6000);
     });
 
     await t.test('legacy plan=common with 3000 limit migrates to pro slug', async () => {
@@ -113,12 +119,12 @@ test('Subscription & payment lifecycle', async (t) => {
 
         const credits = await request(app).get('/api/credits').set('Cookie', cookie);
         assert.equal(credits.body.planKey, 'pro');
-        assert.equal(credits.body.currentPlan, 'Pro Monthly');
+        assert.equal(credits.body.currentPlan, 'Pro');
         const dbRow = app.locals.db.database.prepare('SELECT plan FROM subscription_details WHERE email = ?').get(email);
         assert.equal(dbRow.plan, 'pro');
     });
 
-    await t.test('legacy plan=pro row resolves to Pro Monthly on credits', async () => {
+    await t.test('legacy plan=pro row resolves to Pro on credits', async () => {
         const email = `sub-legacy-${Date.now()}@example.com`;
         const cookie = await registerAndCookie(email);
         const end = new Date(Date.now() + 86400000 * 20).toISOString();
@@ -131,7 +137,7 @@ test('Subscription & payment lifecycle', async (t) => {
 
         const credits = await request(app).get('/api/credits').set('Cookie', cookie);
         assert.equal(credits.body.plan, 'common');
-        assert.equal(credits.body.planDisplayName, 'Pro Monthly');
+        assert.equal(credits.body.planDisplayName, 'Pro');
         assert.equal(credits.body.subscriptionStatus, 'active');
         assert.equal(credits.body.remaining, 3000);
     });
@@ -181,7 +187,7 @@ test('Subscription & payment lifecycle', async (t) => {
             .set('Cookie', devCookie)
             .send({ plan: 'plus' });
         assert.equal(devRes.status, 201);
-        assert.equal(devRes.body.limit, 12000);
+        assert.equal(devRes.body.limit, 6000);
     });
 
     await t.test('live callback: failed payment and invalid signature', async () => {
@@ -245,22 +251,16 @@ test('Subscription & payment lifecycle', async (t) => {
         assert.equal(res.status, 403);
     });
 
-    await t.test('TEST MODE create is owner-only', async () => {
+    await t.test('TEST MODE create returns mock checkout for authenticated users in non-production', async () => {
         process.env.WAYFORPAY_TEST_MODE = 'true';
-        const cookie = await registerAndCookie(`sub-block-${Date.now()}@example.com`);
-        const denied = await request(app)
+        const cookie = await registerAndCookie(`sub-mock-${Date.now()}@example.com`);
+        const create = await request(app)
             .post('/api/payments/wayforpay/create')
             .set('Cookie', cookie)
             .send({ plan: 'common' });
-        assert.equal(denied.status, 403);
-
-        const ownerCookie = await registerSandboxCheckoutCookie(`sub-block-owner-${Date.now()}@example.com`);
-        const create = await request(app)
-            .post('/api/payments/wayforpay/create')
-            .set('Cookie', ownerCookie)
-            .send({ plan: 'common' });
         assert.equal(create.status, 201);
         assert.equal(create.body.mockCheckout, true);
+        assert.equal(create.body.testMode, true);
         assert.equal(create.body.payUrl, undefined);
     });
 });

@@ -1,0 +1,46 @@
+.connection-issue-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.35);
+  background: linear-gradient(90deg, rgba(30, 27, 75, 0.95), rgba(15, 23, 42, 0.98));
+  color: #e2e8f0;
+  font-size: 0.875rem;
+  z-index: 40;
+}
+
+.connection-issue-banner--compact {
+  margin: 0 12px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+}
+
+.connection-issue-banner__text {
+  margin: 0;
+  flex: 1 1 200px;
+  line-height: 1.45;
+}
+
+.connection-issue-banner__retry {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(167, 139, 250, 0.55);
+  background: rgba(99, 102, 241, 0.2);
+  color: #f8fafc;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.connection-issue-banner__retry:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.connection-issue-banner__retry:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.35);
+}

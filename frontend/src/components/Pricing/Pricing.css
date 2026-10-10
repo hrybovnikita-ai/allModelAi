@@ -27,8 +27,8 @@
 
 .pricing-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 30px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: clamp(18px, 4vw, 30px);
   margin-top: 52px;
   align-items: stretch;
 }
@@ -102,7 +102,7 @@
 }
 
 .price {
-  font-size: 3rem;
+  font-size: clamp(2.1rem, 6vw, 3rem);
   font-weight: 800;
   color: var(--text);
   margin-bottom: 15px;
@@ -147,8 +147,9 @@
 
 .pricing-btn {
   width: 100%;
+  min-height: var(--touch-target, 44px);
   padding: 14px;
-  border-radius: 10px;
+  border-radius: var(--nav-radius, 11px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.05);
   color: white;

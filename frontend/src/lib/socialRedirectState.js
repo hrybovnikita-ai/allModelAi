@@ -143,6 +143,59 @@ export function hasActiveRedirectPendingFlag() {
 
 const REDIRECT_RECOVERY_WINDOW_MS = 180000;
 let redirectIntentReconcileBlocked = false;
+let googlePopupSignInActive = false;
+/** Synchronous guard: one Google OAuth flow (popup or redirect) at a time. */
+let googleSignInFlowActive = false;
+
+export const GOOGLE_POPUP_SIGNIN_EVENT = 'allmodelai-google-popup-signin';
+
+export function isGooglePopupSignInActive() {
+  return googlePopupSignInActive;
+}
+
+export function isGoogleSignInFlowActive() {
+  return googleSignInFlowActive || googlePopupSignInActive;
+}
+
+/** @returns {boolean} true when this caller may start OAuth */
+export function beginGoogleSignInFlow() {
+  if (googleSignInFlowActive || googlePopupSignInActive) {
+    return false;
+  }
+  googleSignInFlowActive = true;
+  return true;
+}
+
+export function endGoogleSignInFlow() {
+  googleSignInFlowActive = false;
+}
+
+export function resetGoogleSignInFlowForTests() {
+  googleSignInFlowActive = false;
+  googlePopupSignInActive = false;
+  redirectIntentReconcileBlocked = false;
+}
+
+/** Desktop/Android popup flow — must not run redirect recovery or getRedirectResult in parallel. */
+export function markGooglePopupSignInStarted() {
+  googlePopupSignInActive = true;
+  setRedirectIntentReconcileBlocked(true);
+  clearSocialRedirectIntent();
+  void import('./authBootstrap.js').then(({ invalidateAuthBootstrap }) => {
+    invalidateAuthBootstrap();
+  }).catch(() => {});
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(GOOGLE_POPUP_SIGNIN_EVENT, { detail: { active: true } }));
+  }
+}
+
+export function markGooglePopupSignInEnded() {
+  googlePopupSignInActive = false;
+  setRedirectIntentReconcileBlocked(false);
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(GOOGLE_POPUP_SIGNIN_EVENT, { detail: { active: false } }));
+  }
+}
 
 export function setRedirectIntentReconcileBlocked(blocked) {
   redirectIntentReconcileBlocked = Boolean(blocked);
@@ -154,6 +207,7 @@ export function isRedirectIntentReconcileBlocked() {
 
 /** True when we should call getRedirectResult / finish OAuth (not for stale abandoned redirects). */
 export function shouldAttemptGoogleRedirectRecovery() {
+  if (isGooglePopupSignInActive()) return false;
   if (!isGoogleRedirectRecoveryPending()) return false;
   if (hasFirebaseRedirectReturnHints()) return true;
   const intent = peekRedirectIntent();
@@ -165,6 +219,7 @@ export function shouldAttemptGoogleRedirectRecovery() {
 
 /** Full-screen “Finishing sign-in” — pending flag and/or OAuth return URL. */
 export function shouldShowGoogleRedirectRecoveryUI() {
+  if (isGooglePopupSignInActive()) return false;
   if (!shouldAttemptGoogleRedirectRecovery()) return false;
   return hasActiveRedirectPendingFlag() || hasFirebaseRedirectReturnHints();
 }

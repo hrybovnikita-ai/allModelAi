@@ -6,8 +6,9 @@ import {
   requestImageUpscale,
 } from '../../lib/imageGeneration';
 import { checkChatResponse } from '../../lib/api';
+import GeneratedImageGallery from './GeneratedImageGallery';
 
-export default function GeneratedImageCard({
+function GeneratedImageSingle({
   message,
   onPreview,
   onDownloadError,
@@ -77,4 +78,13 @@ export default function GeneratedImageCard({
       </div>
     </div>
   );
+}
+
+export default function GeneratedImageCard(props) {
+  const { message } = props;
+  const galleryCount = Array.isArray(message.images) ? message.images.length : 0;
+  if (galleryCount > 1) {
+    return <GeneratedImageGallery {...props} />;
+  }
+  return <GeneratedImageSingle {...props} />;
 }

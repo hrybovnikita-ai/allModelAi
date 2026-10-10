@@ -12,6 +12,7 @@ def test_linear_regression_learns_approx_3x_plus_2():
     assert 2.0 < out["finalWeight"] < 4.0
     assert 1.0 < out["finalBias"] < 3.5
     assert len(out["lossHistory"]) == 80
+    assert len(out["validationLossHistory"]) == 80
     assert out["lossHistory"][-1] <= out["lossHistory"][0]
 
 

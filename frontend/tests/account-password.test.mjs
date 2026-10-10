@@ -44,8 +44,23 @@ test('settings security UI exposes password enrollment for signed-in users', asy
   assert.match(security, /validatePasswordEnrollmentForm/);
 });
 
+test('login surfaces PASSWORD_SETUP_REQUIRED guidance', async () => {
+  const login = await readFile(new URL('../src/components/Login/Login.jsx', import.meta.url), 'utf8');
+  assert.match(login, /PASSWORD_SETUP_REQUIRED/);
+  assert.match(login, /needsPasswordSetup/);
+  assert.match(login, /settings#settings-security/);
+});
+
+test('Tooltip merges refs via props.ref (React 19)', async () => {
+  const tooltip = await readFile(new URL('../src/components/Chat/Tooltip.jsx', import.meta.url), 'utf8');
+  assert.match(tooltip, /children\.props\.ref/);
+  assert.doesNotMatch(tooltip, /const \{ ref \} = children/);
+});
+
 test('account security API client uses authenticated routes', async () => {
   const client = await readFile(new URL('../src/lib/accountSecurity.js', import.meta.url), 'utf8');
   assert.match(client, /account\/security/);
   assert.match(client, /account\/password/);
+  assert.match(client, /readJsonBody/);
+  assert.doesNotMatch(client, /await import\(/);
 });

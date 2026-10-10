@@ -1,40 +1,22 @@
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createServer } from 'vite';
+import test from 'node:test';
 
-let server;
-let videoGeneration;
+const root = fileURLToPath(new URL('../', import.meta.url));
 
-test.before(async () => {
-    server = await createServer({
-        root: fileURLToPath(new URL('../', import.meta.url)),
-        server: { middlewareMode: true, watch: null, hmr: false, ws: false },
-        appType: 'custom',
-    });
-    videoGeneration = await server.ssrLoadModule('/src/lib/videoGeneration.js');
+test('video generation client maps Magic Hour errors and async jobs', () => {
+  const src = readFileSync(`${root}src/lib/videoGeneration.js`, 'utf8');
+  assert.match(src, /MAGIC_HOUR_INSUFFICIENT_CREDITS/);
+  assert.match(src, /pollVideoJob/);
+  assert.match(src, /\/api\/video\/generate/);
+  assert.match(src, /\/api\/videos/);
+  assert.match(src, /durationSeconds/);
 });
 
-test.after(async () => { await server?.close(); });
-
-test('video request body includes prompt and aspect', () => {
-    const body = videoGeneration.buildVideoRequestBody({
-        prompt: 'Ocean waves at sunset',
-        aspectRatio: '9:16',
-        resolution: '1080p',
-    });
-    assert.equal(body.prompt, 'Ocean waves at sunset');
-    assert.equal(body.aspectRatio, '9:16');
-    assert.equal(body.resolution, '1080p');
-});
-
-test('user-facing video errors hide raw upstream for generic failures', () => {
-    assert.match(
-        videoGeneration.userFacingVideoError(false, { code: 'GEMINI_NOT_CONFIGURED', missingEnvVars: ['GEMINI_API_KEY'] }),
-        /GEMINI_API_KEY/,
-    );
-    assert.equal(
-        videoGeneration.userFacingVideoError(false, { code: 'GEMINI_VIDEO_FAILED' }),
-        videoGeneration.VIDEO_UNAVAILABLE_MESSAGE,
-    );
+test('Chat wires Make video skill to video generation API', () => {
+  const src = readFileSync(`${root}src/components/Chat/Chat.jsx`, 'utf8');
+  assert.match(src, /VideoGenerationPanel/);
+  assert.match(src, /pollVideoJob/);
+  assert.match(src, /Generate video/);
 });

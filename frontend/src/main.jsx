@@ -21,7 +21,7 @@ import { initPwaInstallPrompt } from './lib/pwaInstall.js'
 import { initServiceWorker } from './lib/serviceWorker.js'
 import { startRedirectPrerequisitesPreload } from './lib/authRedirectPreload.js'
 import { ensureSocialAuthReady } from './lib/firebase.js'
-import { isGoogleRedirectRecoveryPending, reconcileStaleRedirectIntent } from './lib/socialRedirectState.js'
+import { reconcileStaleRedirectIntent } from './lib/socialRedirectState.js'
 
 installNativeFetchInterceptor()
 void startRedirectPrerequisitesPreload().catch(() => {
@@ -29,10 +29,8 @@ void startRedirectPrerequisitesPreload().catch(() => {
 })
 void ensureSocialAuthReady().catch(() => {})
 void Promise.resolve().then(() => {
-  if (!isGoogleRedirectRecoveryPending()) {
-    reconcileStaleRedirectIntent();
-  }
-})
+  reconcileStaleRedirectIntent();
+});
 
 function readAppearance() {
   try {

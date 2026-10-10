@@ -41,7 +41,10 @@ svg {
   height: auto;
 }
 
-html[data-viewport='phone'] {
+html[data-viewport='phone'],
+html[data-viewport-tier='phone-sm'],
+html[data-viewport-tier='phone'],
+html[data-viewport-tier='phone-lg'] {
   --page-gutter: max(14px, var(--safe-left));
 }
 

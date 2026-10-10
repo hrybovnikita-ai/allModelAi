@@ -13,6 +13,10 @@ export function installHooksDevDiagnostics() {
       previous('[AllModelAI hook-order]', ...args);
       return;
     }
+    if (/Accessing element\.ref was removed in React 19/i.test(combined)) {
+      previous('[AllModelAI react-19-ref]', ...args);
+      return;
+    }
     previous(...args);
   };
 }

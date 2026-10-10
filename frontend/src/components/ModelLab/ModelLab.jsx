@@ -9,6 +9,8 @@ const MODEL_CARDS = [
   { id: 'linear-regression', title: 'Linear Regression', blurb: 'Learn y ≈ 3x + 2 with gradient descent (PyTorch).' },
   { id: 'logistic-regression', title: 'Logistic Regression', blurb: 'Binary classification with BCE loss.' },
   { id: 'neural-network', title: 'Neural Network', blurb: 'Small MLP: Linear → ReLU → Linear.' },
+  { id: 'sklearn-linear-regression', title: 'Linear (scikit-learn)', blurb: 'Closed-form fit with train/validation MSE.' },
+  { id: 'sklearn-logistic-regression', title: 'Logistic (scikit-learn)', blurb: 'Binary classifier with validation accuracy.' },
   { id: 'openai', title: 'OpenAI', blurb: 'API inference only — not local foundation-model training.' },
 ];
 
@@ -39,11 +41,15 @@ function MetricChart({ history = [], label = 'Loss', color = '#818cf8' }) {
     const y = h - 6 - ((v - min) / range) * (h - 12);
     return `${x},${y}`;
   }).join(' ');
+  const gridY = [0.25, 0.5, 0.75].map((t) => h - 6 - t * (h - 12));
   return (
     <div className="mlab-chart-wrap">
       <small>{label}</small>
       <svg className="mlab-chart" viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${label} chart`}>
-        <polyline fill="none" stroke={color} strokeWidth="2" points={points} />
+        {gridY.map((y) => (
+          <line key={y} className="mlab-chart-grid" x1={4} x2={w - 4} y1={y} y2={y} />
+        ))}
+        <polyline className="mlab-chart-line" fill="none" stroke={color} strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" points={points} />
       </svg>
     </div>
   );
@@ -64,6 +70,7 @@ export default function ModelLab() {
   const pollRef = useRef(null);
 
   const isLocalModel = selected !== 'openai';
+  const supportsPredict = !selected.startsWith('sklearn-') && selected !== 'openai';
   const progressPct = useMemo(() => {
     if (!run?.totalEpochs) return 0;
     return Math.min(100, Math.round((run.currentEpoch / run.totalEpochs) * 100));
@@ -164,7 +171,9 @@ export default function ModelLab() {
   }
 
   const lossHistory = run?.lossHistory || run?.result?.lossHistory || [];
+  const valHistory = run?.validationLossHistory || run?.result?.validationLossHistory || [];
   const accHistory = run?.accuracyHistory || run?.result?.accuracyHistory || [];
+  const checkpointPath = run?.result?.storagePath || run?.checkpointPath;
   const completed = run?.status === 'completed';
   const training = run?.status === 'training' || run?.status === 'queued';
 
@@ -180,7 +189,7 @@ export default function ModelLab() {
       <section className="mlab-hero">
         <p className="mlab-eyebrow">Model Lab</p>
         <h1>AI Training Lab</h1>
-        <p>Train, visualize and test machine-learning models locally with PyTorch. OpenAI is API inference only.</p>
+        <p className="mlab-hero-lead">Train, visualize and test machine-learning models locally with PyTorch. OpenAI is API inference only.</p>
       </section>
 
       <div className="mlab-cards">
@@ -220,26 +229,46 @@ export default function ModelLab() {
             </details>
           </section>
 
-          <section className="mlab-panel mlab-progress">
+          <section
+            className={`mlab-panel mlab-progress${training ? ' is-training' : ''}${completed ? ' is-complete' : ''}`}
+          >
             <h2>{training ? `Training ${MODEL_CARDS.find((c) => c.id === selected)?.title}` : completed ? 'Training complete' : 'Progress'}</h2>
             {run && (
               <>
-                <p>Epoch {run.currentEpoch || 0} / {run.totalEpochs || epochs}</p>
-                <div className="mlab-bar" aria-hidden="true"><span style={{ width: `${progressPct}%` }} /></div>
+                <div className="mlab-epoch-row">
+                  <span>
+                    Epoch <strong>{run.currentEpoch || 0}</strong> / {run.totalEpochs || epochs}
+                  </span>
+                  <span className="mlab-epoch-pct">{progressPct}%</span>
+                </div>
+                <div className="mlab-bar" role="progressbar" aria-valuenow={progressPct} aria-valuemin={0} aria-valuemax={100}>
+                  <span style={{ width: `${progressPct}%` }} />
+                </div>
                 <ul className="mlab-stats">
                   <li><span>Loss</span><strong>{run.loss != null ? Number(run.loss).toFixed(4) : '—'}</strong></li>
                   <li><span>Learning rate</span><strong>{learningRate}</strong></li>
+                  {(run.validationLoss != null || run.result?.validationLoss != null) && (
+                    <li><span>Validation loss</span><strong>{Number(run.validationLoss ?? run.result?.validationLoss).toFixed(4)}</strong></li>
+                  )}
                   {run.accuracy != null && <li><span>Accuracy</span><strong>{(run.accuracy * 100).toFixed(1)}%</strong></li>}
                   {run.weight != null && <li><span>Weight</span><strong>{Number(run.weight).toFixed(3)}</strong></li>}
                   {run.bias != null && <li><span>Bias</span><strong>{Number(run.bias).toFixed(3)}</strong></li>}
-                  <li><span>Status</span><strong>{run.status}</strong></li>
+                  <li><span>Status</span><strong className="mlab-status-badge">{run.status}</strong></li>
                 </ul>
-                <MetricChart history={lossHistory} label="Loss vs epoch" />
+                <MetricChart history={lossHistory} label="Training loss vs epoch" />
+                {valHistory.length > 0 && <MetricChart history={valHistory} label="Validation loss vs epoch" color="#f472b6" />}
                 {accHistory.length > 0 && <MetricChart history={accHistory} label="Accuracy vs epoch" color="#34d399" />}
                 {completed && (
                   <div className="mlab-done">
                     <p>Final loss: {run.result?.finalLoss?.toFixed?.(4) ?? run.loss}</p>
                     {run.result?.finalAccuracy != null && <p>Final accuracy: {(run.result.finalAccuracy * 100).toFixed(1)}%</p>}
+                    {run.result?.validationLoss != null && <p>Final validation loss: {Number(run.result.validationLoss).toFixed(4)}</p>}
+                    {checkpointPath && (
+                      <p className="mlab-checkpoint">
+                        <span className="mlab-checkpoint-label">Checkpoint</span>
+                        <code className="mlab-checkpoint-value">{checkpointPath}</code>
+                      </p>
+                    )}
                     <div className="mlab-actions">
                       <button type="button" className="mlab-btn" onClick={() => { setRun(null); setRunId(''); }}>Train again</button>
                     </div>
@@ -247,13 +276,17 @@ export default function ModelLab() {
                 )}
               </>
             )}
-            {!run && <p className="mlab-muted">Start training to see live metrics from the Python service.</p>}
+            {!run && (
+              <p className="mlab-empty-state">
+                Start training to see live metrics, loss curves, and checkpoints from the Python service.
+              </p>
+            )}
           </section>
 
-          {completed && (
-            <section className="mlab-panel">
+          {completed && supportsPredict && (
+            <section className="mlab-panel mlab-panel-test">
               <h2>Test model</h2>
-              <p className="mlab-muted">Linear: one number (x). Classification / MLP: two features comma-separated.</p>
+              <p className="mlab-muted mlab-empty-hint">Linear: one number (x). Classification / MLP: two features comma-separated.</p>
               <label>Input<input value={predictInput} onChange={(e) => setPredictInput(e.target.value)} placeholder="10 or 0.5, -1.2" /></label>
               <button type="button" className="mlab-btn primary" onClick={runPredict}>Predict</button>
               {predictOut && (

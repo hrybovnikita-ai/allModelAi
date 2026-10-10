@@ -9,7 +9,8 @@ import {
 } from 'firebase/auth';
 import { ensureSocialAuthReady, getEffectiveFirebaseConfig, getFirebaseOAuthOrigin, getSocialAuth } from './firebase.js';
 import { isCapacitorNative, prefersSameOriginApi } from './apiBase.js';
-import { isFreshLoginGraceActive, rememberSession, restoreSession } from './session.js';
+import { rememberSession, restoreSession } from './session.js';
+import { invalidateAuthBootstrap } from './authBootstrap.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
 import { SOCIAL_PROVIDER_LABELS } from './socialProviders.js';
 import { authLog, describeRedirectRecoveryFailure, socialAuthDebug } from './socialAuthDiagnostics.js';
@@ -19,7 +20,11 @@ import {
   shouldPreferGoogleRedirectSignIn,
   shouldTryGooglePopupFirst,
 } from './socialSignInEnv.js';
-import { consumeFirebaseRedirectResult, hasRedirectResultBeenConsumed } from './firebaseRedirectCoordinator.js';
+import {
+  consumeFirebaseRedirectResult,
+  hasRedirectResultBeenConsumed,
+  prepareFirebaseRedirectCoordinatorForPopup,
+} from './firebaseRedirectCoordinator.js';
 import {
   bootstrapGoogleRedirectRecovery,
   getRedirectRecoveryPromise,
@@ -29,10 +34,15 @@ import {
   hasFirebaseRedirectReturnHints,
   isGoogleRedirectRecoveryPending,
   isRedirectFlowCommitted,
+  markGooglePopupSignInEnded,
+  markGooglePopupSignInStarted,
   markRedirectFlowCommitted,
   peekRedirectIntent,
   persistRedirectIntent,
   reconcileStaleRedirectIntent,
+  isGooglePopupSignInActive,
+  beginGoogleSignInFlow,
+  endGoogleSignInFlow,
   shouldAttemptGoogleRedirectRecovery,
   shouldShowGoogleRedirectRecoveryUI,
 } from './socialRedirectState.js';
@@ -108,6 +118,7 @@ async function completeFromFirebaseUser(firebaseUser, options) {
     stashFirebaseIdToken(idToken);
     authLog('Firebase ID token ready for session exchange');
     const user = await exchangeSocialSession(idToken, options);
+    invalidateAuthBootstrap();
     socialAuthDebug('BACKEND_SESSION_EXCHANGE_SUCCESS', { email: user?.email });
     socialAuthDebug('BACKEND_SET_SESSION_COMPLETE', { email: user?.email });
     return user;
@@ -140,25 +151,35 @@ export async function startGoogleRedirectSignIn(name, options = {}, reason = 'io
 }
 
 async function beginRedirectSignIn(auth, name, options, reason) {
-  assertGoogleRedirectStorageAvailable();
-  socialAuthDebug('GOOGLE_AUTH_START', {
-    path: typeof window !== 'undefined' ? window.location.pathname : '',
-    mobileSafari: isMobileWebSafari(),
-    reason,
-  });
-  persistRedirectIntent(name, options, 'preparing');
-  const challenge = await prepareBackendChallenge(options);
-  persistRedirectIntent(name, { ...options, challengeState: challenge?.state }, 'awaiting-google-return');
-  socialAuthDebug('GOOGLE_AUTH_STRATEGY', { mode: 'redirect', reason });
-  socialAuthDebug('FIREBASE_REDIRECT_START', {
-    path: typeof window !== 'undefined' ? window.location.pathname : '',
-    authDomain: getEffectiveFirebaseConfig().authDomain,
-    reason,
-  });
-  markRedirectFlowCommitted();
-  authLog('Redirect flow committed — starting signInWithRedirect', { reason });
-  await signInWithRedirect(auth, providerFor(name));
-  return { redirected: true };
+  if (!beginGoogleSignInFlow()) {
+    throw Object.assign(new Error('Google sign-in is already in progress.'), {
+      code: 'auth/redirect-operation-pending',
+    });
+  }
+  try {
+    assertGoogleRedirectStorageAvailable();
+    socialAuthDebug('GOOGLE_AUTH_START', {
+      path: typeof window !== 'undefined' ? window.location.pathname : '',
+      mobileSafari: isMobileWebSafari(),
+      reason,
+    });
+    persistRedirectIntent(name, options, 'preparing');
+    const challenge = await prepareBackendChallenge(options);
+    persistRedirectIntent(name, { ...options, challengeState: challenge?.state }, 'awaiting-google-return');
+    socialAuthDebug('GOOGLE_AUTH_STRATEGY', { mode: 'redirect', reason });
+    socialAuthDebug('FIREBASE_REDIRECT_START', {
+      path: typeof window !== 'undefined' ? window.location.pathname : '',
+      authDomain: getEffectiveFirebaseConfig().authDomain,
+      reason,
+    });
+    markRedirectFlowCommitted();
+    authLog('Redirect flow committed — starting signInWithRedirect', { reason });
+    await signInWithRedirect(auth, providerFor(name));
+    return { redirected: true };
+  } catch (error) {
+    endGoogleSignInFlow();
+    throw error;
+  }
 }
 
 /**
@@ -169,22 +190,34 @@ export function launchGooglePopupSignIn() {
   if (shouldPreferGoogleRedirectSignIn()) {
     throw Object.assign(new Error('Use redirect sign-in on this device.'), { code: 'auth/redirect-required' });
   }
-  reconcileStaleRedirectIntent();
-  clearSocialRedirectIntent();
-  if (typeof window !== 'undefined' && !getFirebaseOAuthOrigin()) {
-    throw new Error('Sign-in requires a browser origin. Open AllModelAI from your site URL, not a file:// link.');
+  if (!beginGoogleSignInFlow()) {
+    throw Object.assign(new Error('Google sign-in is already in progress.'), {
+      code: 'auth/redirect-operation-pending',
+    });
   }
-  const auth = getSocialAuth();
-  const provider = providerFor(GOOGLE_PROVIDER);
-  socialAuthDebug('GOOGLE_AUTH_START', {
-    path: typeof window !== 'undefined' ? window.location.pathname : '',
-    mobileSafari: isMobileWebSafari(),
-    syncLaunch: true,
-  });
-  socialAuthDebug('GOOGLE_AUTH_STRATEGY', { mode: 'popup', syncLaunch: true });
-  authLog('Launching popup synchronously (preserving Safari user activation)');
-  const popupPromise = signInWithPopup(auth, provider);
-  return { auth, popupPromise };
+  try {
+    reconcileStaleRedirectIntent();
+    prepareFirebaseRedirectCoordinatorForPopup();
+    markGooglePopupSignInStarted();
+    if (typeof window !== 'undefined' && !getFirebaseOAuthOrigin()) {
+      throw new Error('Sign-in requires a browser origin. Open AllModelAI from your site URL, not a file:// link.');
+    }
+    const auth = getSocialAuth();
+    const provider = providerFor(GOOGLE_PROVIDER);
+    socialAuthDebug('GOOGLE_AUTH_START', {
+      path: typeof window !== 'undefined' ? window.location.pathname : '',
+      mobileSafari: isMobileWebSafari(),
+      syncLaunch: true,
+    });
+    socialAuthDebug('GOOGLE_AUTH_STRATEGY', { mode: 'popup', syncLaunch: true });
+    authLog('Launching popup synchronously (preserving Safari user activation)');
+    const popupPromise = signInWithPopup(auth, provider);
+    return { auth, popupPromise };
+  } catch (error) {
+    endGoogleSignInFlow();
+    markGooglePopupSignInEnded();
+    throw error;
+  }
 }
 
 export async function completeGooglePopupSignIn(auth, popupPromise, name, options = {}) {
@@ -193,31 +226,48 @@ export async function completeGooglePopupSignIn(auth, popupPromise, name, option
   }
   pendingLink = null;
   let redirected = false;
+  let succeeded = false;
   try {
     if (shouldUseRedirectSignInFirst()) {
+      markGooglePopupSignInEnded();
+      endGoogleSignInFlow();
       redirected = true;
       return beginRedirectSignIn(auth, name, options, 'capacitor-native');
     }
     if (!shouldTryGooglePopupFirst()) {
+      markGooglePopupSignInEnded();
+      endGoogleSignInFlow();
       redirected = true;
       return beginRedirectSignIn(auth, name, options, 'popup-unavailable');
     }
     const result = await popupPromise;
     authLog('Popup sign-in resolved');
     const challenge = await prepareBackendChallenge(options);
-    return await complete(result, { ...options, challenge });
+    const user = await complete(result, { ...options, challenge });
+    succeeded = true;
+    clearSocialRedirectIntent();
+    return user;
   } catch (error) {
     if (error.code === 'auth/popup-closed-by-user') {
       throw error;
     }
     if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
-      redirected = true;
-      return beginRedirectSignIn(auth, name, options, error.code);
+      if (shouldUseRedirectSignInFirst() || shouldPreferGoogleRedirectSignIn()) {
+        markGooglePopupSignInEnded();
+        endGoogleSignInFlow();
+        redirected = true;
+        return beginRedirectSignIn(auth, name, options, error.code);
+      }
+      throw error;
     }
     throw error;
   } finally {
-    if (!redirected && !peekRedirectIntent()) {
-      await signOut(auth).catch(() => {});
+    markGooglePopupSignInEnded();
+    if (!redirected) {
+      endGoogleSignInFlow();
+      if (!succeeded && !peekRedirectIntent()) {
+        await signOut(auth).catch(() => {});
+      }
     }
   }
 }
@@ -288,8 +338,15 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
   }
 
   redirectRecoveryPromise = (async () => {
+    if (isGooglePopupSignInActive()) {
+      return null;
+    }
     const pending = peekRedirectIntent();
     if (!pending || pending.phase !== 'awaiting-google-return' || !isRedirectFlowCommitted()) {
+      return null;
+    }
+    if (!shouldAttemptGoogleRedirectRecovery()) {
+      clearSocialRedirectIntent();
       return null;
     }
 
@@ -313,6 +370,10 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
     }
 
     if (!redirectResult?.user) {
+      if (isGooglePopupSignInActive() || !isGoogleRedirectRecoveryPending()) {
+        clearSocialRedirectIntent();
+        return null;
+      }
       const authDomain = getEffectiveFirebaseConfig().authDomain;
       const failure = describeRedirectRecoveryFailure({
         consumer,
@@ -386,20 +447,15 @@ export async function navigateAfterSocialLogin(user, { navigate, replaceDashboar
   const sameEmail = (left, right) =>
     left?.email?.toLowerCase() === right?.email?.toLowerCase();
 
-  let sessionUser = await restoreSession({ force: true });
-  if (!sameEmail(sessionUser, user)) {
-    if (isFreshLoginGraceActive()) {
-      socialAuthDebug('SESSION_RESTORE_LAG_AFTER_EXCHANGE', { phase: 'retry-restore' });
-      sessionUser = await restoreSession({ force: true });
+  let sessionUser = user;
+  try {
+    const verified = await restoreSession({ force: true });
+    if (sameEmail(verified, user)) {
+      sessionUser = verified;
     }
+  } catch {
+    /* exchange already stored session; proceed with known user */
   }
-  if (!sameEmail(sessionUser, user)) {
-    socialAuthDebug('DASHBOARD_REDIRECT_BLOCKED', { reason: 'session-not-confirmed' });
-    throw Object.assign(new Error('Your session could not be confirmed. Please try signing in again.'), {
-      code: 'SESSION_NOT_CONFIRMED',
-    });
-  }
-
   rememberSession(sessionUser);
   const useSpaNav = prefersSameOriginApi() && typeof navigate === 'function';
   if (useSpaNav) {

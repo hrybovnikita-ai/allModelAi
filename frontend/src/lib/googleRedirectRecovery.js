@@ -1,6 +1,7 @@
 import { persistSocialAuthError, socialAuthDebug } from './socialAuthDiagnostics.js';
 import { socialError } from './socialSession.js';
 import {
+  isGooglePopupSignInActive,
   isGoogleRedirectRecoveryPending,
   setRedirectIntentReconcileBlocked,
   shouldAttemptGoogleRedirectRecovery,
@@ -22,6 +23,9 @@ export function bootstrapGoogleRedirectRecovery(runPipeline) {
     return bootstrapPromise;
   }
 
+  if (isGooglePopupSignInActive()) {
+    return Promise.resolve(null);
+  }
   if (!isGoogleRedirectRecoveryPending() || !shouldAttemptGoogleRedirectRecovery()) {
     return Promise.resolve(null);
   }

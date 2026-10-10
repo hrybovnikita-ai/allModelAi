@@ -161,6 +161,46 @@ test('rejects invalid quality, aspect, model, and provider before calling upstre
     assert.equal((await generate('cat', { aspectRatio: '4:3' })).statusCode, 400);
     assert.equal((await generate('cat', { model: 'not-a-real-model' })).statusCode, 400);
     assert.equal((await generate('cat', { provider: 'openai' })).statusCode, 400);
+    assert.equal((await generate('cat', { count: 5 })).statusCode, 400);
+    assert.equal((await generate('cat', { count: 0 })).statusCode, 400);
+});
+
+test('Pollinations batch request sends n and returns multiple images', async () => {
+    clear(); process.env.POLLINATIONS_API_KEY = 'sk_pollinations_test';
+    let sent;
+    global.fetch = async (_url, options) => {
+        sent = JSON.parse(options.body);
+        return Response.json({
+            data: [
+                { b64_json: 'aGVsbG8=' },
+                { b64_json: 'aGVsbG8=' },
+                { b64_json: 'aGVsbG8=' },
+                { b64_json: 'aGVsbG8=' },
+            ],
+        });
+    };
+    const result = await generate('golden dragon', { quality: 'hd', count: 4 });
+    assert.equal(sent.n, 4);
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.imageCount, 4);
+    assert.equal(result.body.images.length, 4);
+    assert.ok(result.body.imageUrl.startsWith('data:image/'));
+});
+
+test('Cloudflare multi-image uses separate sequential requests', async () => {
+    clear();
+    process.env.IMAGE_PROVIDER = 'cloudflare';
+    process.env.CLOUDFLARE_API_KEY = 'cf-test';
+    process.env.CLOUDFLARE_ACCOUNT_ID = 'account';
+    let calls = 0;
+    global.fetch = async () => {
+        calls += 1;
+        return Response.json({ success: true, result: { image: 'aGVsbG8=' } });
+    };
+    const result = await generate('A portrait set', { quality: 'hd', count: 4 });
+    assert.equal(calls, 4);
+    assert.equal(result.body.imageCount, 4);
+    assert.equal(result.body.images.length, 4);
 });
 
 test('dall-e-3 ultra uses hd quality and the closest supported landscape size', async () => {

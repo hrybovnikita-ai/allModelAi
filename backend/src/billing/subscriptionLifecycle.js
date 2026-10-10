@@ -7,8 +7,9 @@ const {
 const PLAN_LABELS = {
     free: 'Free',
     week: 'Weekly',
-    common: 'Pro Monthly',
-    plus: 'Power Monthly',
+    starter: 'Starter',
+    common: 'Pro',
+    plus: 'Unlimited',
 };
 
 const resolveStoredPlanKey = (rawPlan) => {
@@ -22,9 +23,12 @@ const canonicalPlanSlug = (rawPlan, requestLimit = null) => {
     const raw = String(rawPlan || '').toLowerCase();
     const internal = resolveStoredPlanKey(raw);
     const slug = planStorageValue(internal);
-    if (slug === 'pro' || slug === 'power' || slug === 'week' || slug === 'free') return slug;
+    if (slug === 'starter' || slug === 'pro' || slug === 'unlimited' || slug === 'power' || slug === 'week' || slug === 'free') {
+        return slug === 'power' ? 'unlimited' : slug;
+    }
     if (Number(requestLimit) === 3000) return 'pro';
-    if (Number(requestLimit) === 12000) return 'power';
+    if (Number(requestLimit) === 6000 || Number(requestLimit) === 12000) return 'unlimited';
+    if (Number(requestLimit) === 800) return 'starter';
     if (Number(requestLimit) === 500) return 'week';
     return slug;
 };
@@ -169,6 +173,7 @@ const readSubscriptionDetail = (database, email) => {
             amount,
             currency,
             activated_at AS activatedAt,
+            stripe_customer_id AS stripeCustomerId,
             stripe_subscription_id AS stripeSubscriptionId,
             updated_at AS updatedAt
         FROM subscription_details

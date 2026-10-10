@@ -7,12 +7,17 @@ test('paymentIntentPlans resolves server-side amounts only', () => {
     assert.ok(pro);
     assert.equal(pro.planKey, 'common');
     assert.equal(pro.amountCents, PLAN_AMOUNTS_CENTS.common);
-    assert.equal(pro.amountCents, 1900);
+    assert.equal(pro.amountCents, 1500);
 
     const enterprise = resolvePaidCheckoutPlan('enterprise');
     assert.ok(enterprise);
     assert.equal(enterprise.planKey, 'plus');
-    assert.equal(enterprise.amountCents, 4900);
+    assert.equal(enterprise.amountCents, 3000);
+
+    const starter = resolvePaidCheckoutPlan('starter');
+    assert.ok(starter);
+    assert.equal(starter.planKey, 'starter');
+    assert.equal(starter.amountCents, 500);
 
     assert.equal(resolvePaidCheckoutPlan('developer'), null);
     assert.equal(resolvePaidCheckoutPlan(''), null);

@@ -1,8 +1,10 @@
+import { useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { performLogout } from '../../lib/session';
 import { useSession } from '../Session/SessionProvider';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import {
+  DASHBOARD_NAV_ACCOUNT_LINKS,
   DASHBOARD_NAV_DESKTOP_MAIN,
   DASHBOARD_NAV_DESKTOP_MORE,
   DASHBOARD_NAV_LINKS,
@@ -10,8 +12,15 @@ import {
 
 export default function DashboardWorkspaceNav({ user: routeUser, onAuthError, onDeleteAccount }) {
   const navigate = useNavigate();
+  const mobileMenuRef = useRef(null);
   const { user: sessionUser, authLoading } = useSession();
   const user = routeUser?.email ? routeUser : sessionUser;
+
+  const closeMobileMenu = () => {
+    if (mobileMenuRef.current) {
+      mobileMenuRef.current.open = false;
+    }
+  };
 
   const signOut = async () => {
     const result = await performLogout();
@@ -62,11 +71,27 @@ export default function DashboardWorkspaceNav({ user: routeUser, onAuthError, on
           </details>
         </nav>
         <div className="header-account dashboard-nav-right">
-          <details className="dashboard-nav-mobile">
+          <details className="dashboard-nav-mobile" ref={mobileMenuRef}>
             <summary>Menu</summary>
             <div className="dashboard-nav-mobile-panel" role="menu">
-              {DASHBOARD_NAV_LINKS.map((item) => (
-                <Link key={item.to} to={item.to} role="menuitem">
+              <div className="dashboard-nav-mobile-account" role="group" aria-label="Account">
+                {DASHBOARD_NAV_ACCOUNT_LINKS.map((item) => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    role="menuitem"
+                    className="dashboard-nav-mobile-account-link"
+                    onClick={closeMobileMenu}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+              <p className="dashboard-nav-mobile-divider" aria-hidden="true">Workspace</p>
+              {DASHBOARD_NAV_LINKS.filter(
+                (item) => !DASHBOARD_NAV_ACCOUNT_LINKS.some((account) => account.to === item.to),
+              ).map((item) => (
+                <Link key={item.to} to={item.to} role="menuitem" onClick={closeMobileMenu}>
                   {item.label}
                 </Link>
               ))}

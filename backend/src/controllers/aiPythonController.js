@@ -8,7 +8,7 @@ const {
 } = require('../services/aiPythonQuotas');
 const { watchTrainingUntilSettled } = require('../services/aiPythonWebhooks');
 const { recordTrainingRun } = require('./storageIdeasController');
-const { health: baseHealth } = require('./production');
+const { healthDetailed: baseHealthDetailed } = require('./production');
 
 const getPyTorchStatus = async (req, res) => {
     try {
@@ -272,8 +272,10 @@ const getSystemHealth = async (req, res) => {
             return payload;
         },
     };
-    baseHealth(req, mockRes);
-    const core = mockRes.payload || {};
+    const { buildReadinessPayload } = require('./opsCenter.js');
+    const readiness = await buildReadinessPayload(req.app.locals.db);
+    baseHealthDetailed(req, mockRes);
+    const core = { ...mockRes.payload, readiness };
 
     return res.json({
         ...core,

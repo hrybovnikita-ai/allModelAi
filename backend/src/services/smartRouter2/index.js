@@ -1,5 +1,5 @@
 const { classifyTask } = require('./classifyTask');
-const { detectLanguageFromText } = require('../responseLanguage');
+const { resolveResponseLanguage } = require('../responseLanguage');
 const {
     getCapabilities,
     displayModelName,
@@ -7,6 +7,7 @@ const {
     TASK_TO_CAPABILITY,
 } = require('./capabilities');
 const { findRoutedModelWithApiKey } = require('../../chatProviderRuntime');
+const { findVisionRoutedModel, visionSlugAllowed } = require('../visionSupport');
 
 const MODE_OVERRIDES = {
     economy: {
@@ -43,18 +44,20 @@ function scoreSlugForTask(slug, taskType, preferSpeed) {
     return score;
 }
 
-function pickBestSlug(taskType, preferSpeed, modelAllowed) {
+function pickBestSlug(taskType, preferSpeed, modelAllowed, performanceMap = {}) {
     const preferred = TASK_PICKS[taskType]?.slug || 'gemini';
     if (modelAllowed(preferred) && findRoutedModelWithApiKey(preferred, modelAllowed)) {
         return preferred;
     }
     const candidates = Object.keys(require('./capabilities').MODEL_CAPABILITIES);
+    const { performanceBoost } = require('./routerPolicy');
 
     let best = preferred;
     let bestScore = -1;
     for (const slug of candidates) {
         if (!modelAllowed(slug)) continue;
-        const score = scoreSlugForTask(slug, taskType, preferSpeed);
+        let score = scoreSlugForTask(slug, taskType, preferSpeed);
+        score += performanceBoost(slug, performanceMap);
         if (score > bestScore && findRoutedModelWithApiKey(slug, modelAllowed)) {
             bestScore = score;
             best = slug;
@@ -74,6 +77,7 @@ function selectSmartRoute(prompt, options = {}) {
         routerMode = 'balanced',
         hasImage = false,
         modelAllowed = () => true,
+        routerPerformance = {},
     } = options;
 
     const taskMeta = classifyTask(prompt, {
@@ -95,25 +99,44 @@ function selectSmartRoute(prompt, options = {}) {
         slug = MODE_OVERRIDES[routerMode].slug;
         reason = MODE_OVERRIDES[routerMode].reason;
     } else {
-        slug = pickBestSlug(taskMeta.taskType, taskMeta.preferSpeed, modelAllowed);
+        slug = pickBestSlug(taskMeta.taskType, taskMeta.preferSpeed, modelAllowed, routerPerformance);
         reason = TASK_PICKS[taskMeta.taskType]?.reason || TASK_PICKS.general.reason;
     }
 
-    const available = findRoutedModelWithApiKey(slug, modelAllowed);
-    const fallbacks = defaultFallbackChain(slug)
-        .filter((candidate) => modelAllowed(candidate) && findRoutedModelWithApiKey(candidate, modelAllowed))
-        .slice(0, 4);
+    let fallbacks;
+    if (hasImage) {
+        const resolved = findVisionRoutedModel(slug, modelAllowed);
+        if (resolved) {
+            if (resolved !== slug) {
+                reason = `${reason} (using ${displayModelName(resolved)} — vision provider.)`;
+            }
+            slug = resolved;
+        }
+        fallbacks = defaultFallbackChain(slug)
+            .filter((candidate) => visionSlugAllowed(candidate, modelAllowed))
+            .slice(0, 4);
+    } else {
+        const available = findRoutedModelWithApiKey(slug, modelAllowed);
+        fallbacks = defaultFallbackChain(slug)
+            .filter((candidate) => modelAllowed(candidate) && findRoutedModelWithApiKey(candidate, modelAllowed))
+            .slice(0, 4);
 
-    if (available && available !== slug) {
-        reason = `${reason} (using ${displayModelName(available)} — preferred provider unavailable.)`;
-        slug = available;
-    } else if (!available && fallbacks.length) {
-        slug = fallbacks[0];
-        reason = `${reason} (switched to ${displayModelName(slug)}.)`;
+        if (available && available !== slug) {
+            reason = `${reason} (using ${displayModelName(available)} — preferred provider unavailable.)`;
+            slug = available;
+        } else if (!available && fallbacks.length) {
+            slug = fallbacks[0];
+            reason = `${reason} (switched to ${displayModelName(slug)}.)`;
+        }
     }
 
     const cap = getCapabilities(slug);
-    const responseLanguage = detectLanguageFromText(prompt);
+    const responseLanguage = resolveResponseLanguage({
+        latestUserText: prompt,
+        preference: options.responseLanguagePreference,
+        profileLanguage: options.profileLanguage,
+        priorMessages: options.priorMessages,
+    });
 
     return {
         model: slug,

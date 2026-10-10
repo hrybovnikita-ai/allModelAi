@@ -1,8 +1,11 @@
 /* Layout / responsive shell — visual tokens stay in DashboardDarkViolet.css */
 .dashboard-page.dashboard-violet {
-  --dash-gutter: clamp(20px, 2.5vw, 48px);
-  --dash-shell-max: clamp(1480px, 88vw, 1720px);
-  --dash-shell-width: min(calc(100% - 2 * var(--dash-gutter)), var(--dash-shell-max));
+  --dash-gutter: clamp(16px, 2vw, 40px);
+  --dash-shell-max: 1760px;
+  --dash-shell-width: min(96%, var(--dash-shell-max));
+  --dash-body: clamp(0.9375rem, 0.88rem + 0.15vw, 1rem);
+  --dash-card-title: clamp(1rem, 0.92rem + 0.35vw, 1.25rem);
+  --dash-section-title: clamp(1.5rem, 1.2rem + 1.1vw, 2rem);
   padding-inline: 0;
   padding-bottom: clamp(64px, 8vw, 96px);
   overflow-x: clip;
@@ -185,7 +188,10 @@
   }
 
   .dashboard-violet .dashboard-orbit {
-    display: none;
+    display: grid;
+    justify-self: center;
+    width: min(72vw, 280px);
+    margin-top: 8px;
   }
 
   .dashboard-violet .dashboard-grid,

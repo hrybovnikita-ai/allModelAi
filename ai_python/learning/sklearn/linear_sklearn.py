@@ -18,17 +18,25 @@ def run_sklearn_linear(seed: int = 42, n: int = 120) -> Dict[str, Any]:
     x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.25, random_state=seed)
     model = LinearRegression()
     model.fit(x_train, y_train)
-    preds = model.predict(x_test)
-    mse = float(mean_squared_error(y_test, preds))
+    train_preds = model.predict(x_train)
+    val_preds = model.predict(x_test)
+    train_mse = float(mean_squared_error(y_train, train_preds))
+    val_mse = float(mean_squared_error(y_test, val_preds))
 
     return {
         "ok": True,
         "engine": "sklearn",
+        "modelType": "sklearn-linear-regression",
         "coefficient": float(model.coef_.ravel()[0]),
         "intercept": float(model.intercept_),
-        "validationMse": mse,
+        "trainLoss": train_mse,
+        "validationLoss": val_mse,
+        "finalLoss": val_mse,
+        "validationMse": val_mse,
+        "lossHistory": [train_mse, val_mse],
+        "validationLossHistory": [val_mse],
         "samplePredictions": [
-            {"x": float(x_test[i, 0]), "yTrue": float(y_test[i]), "yPred": float(preds[i])}
+            {"x": float(x_test[i, 0]), "yTrue": float(y_test[i]), "yPred": float(val_preds[i])}
             for i in range(min(5, len(x_test)))
         ],
     }

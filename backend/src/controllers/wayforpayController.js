@@ -19,7 +19,7 @@ const {
     WAYFORPAY_PAY_URL,
 } = require('../wayforpay/config');
 const { assertWayforpayCheckoutAllowed } = require('../payments/checkoutInfo');
-const { requirePaymentSandboxUser } = require('../payments/paymentSandbox');
+const { assertWayforpayTestCheckoutAllowed } = require('../payments/wayforpayTestAccess');
 const {
     signPurchaseRequest,
     signCallbackPayload,
@@ -288,7 +288,7 @@ const createWayforpayPayment = async (req, res) => {
     });
 
     if (cfg.testMode) {
-        if (!(await requirePaymentSandboxUser(req, res))) return undefined;
+        if (!(await assertWayforpayTestCheckoutAllowed(req, res))) return undefined;
         logPayment('Checkout created (TEST MODE mock)', { orderReference, plan: planKey, email });
         return res.status(201).json({
             provider: 'wayforpay',
@@ -385,7 +385,7 @@ const completeMockWayforpayPayment = async (req, res) => {
         if (!cfg.testMode) {
             return res.status(403).json({ message: 'Mock checkout is only available when WAYFORPAY_TEST_MODE=true.' });
         }
-        if (!(await requirePaymentSandboxUser(req, res))) return undefined;
+        if (!(await assertWayforpayTestCheckoutAllowed(req, res))) return undefined;
         if (!wayforpayCheckoutAvailable()) {
             return res.status(503).json({ message: 'WayForPay test checkout is not configured.' });
         }
@@ -436,7 +436,7 @@ const completeTestWayforpayCheckout = async (req, res) => {
         if (!cfg.testMode) {
             return res.status(403).json({ message: 'Test checkout is only available when WAYFORPAY_TEST_MODE=true.' });
         }
-        if (!(await requirePaymentSandboxUser(req, res))) return undefined;
+        if (!(await assertWayforpayTestCheckoutAllowed(req, res))) return undefined;
         if (!wayforpayCheckoutAvailable()) {
             return res.status(503).json({ message: 'WayForPay test checkout is not configured.' });
         }

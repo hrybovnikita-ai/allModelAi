@@ -99,12 +99,15 @@ const generatePollinationsImage = async (prompt, options = {}) => {
     const size = stripQuotes(options.size || '1024x1024');
     const baseUrl = stripQuotes(process.env.POLLINATIONS_API_URL || 'https://gen.pollinations.ai');
     const url = `${baseUrl.replace(/\/$/, '')}/v1/images/generations`;
+    const requestedCount = Number.parseInt(options.n, 10);
     const body = {
         prompt: String(prompt || '').slice(0, 4000),
         model,
         size,
-        n: 1,
-        response_format: 'b64_json',
+        n: Number.isInteger(requestedCount) && requestedCount >= 1 && requestedCount <= 4
+            ? requestedCount
+            : 1,
+        response_format: options.response_format || 'b64_json',
     };
     for (const key of ['quality', 'negative_prompt', 'resolution']) {
         if (options[key] != null && options[key] !== '') body[key] = options[key];

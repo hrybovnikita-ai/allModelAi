@@ -31,6 +31,22 @@
   animation: auth-skeleton-shimmer 1.2s ease-in-out infinite;
 }
 .auth-loading-skeleton-bar--short { width: min(200px, 50vw); }
+
+.require-auth-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding-top: 0;
+}
+
+.require-auth-fallback__hint {
+  margin: 1.25rem 5vw 0;
+  max-width: 42rem;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
 @keyframes auth-skeleton-shimmer {
   0% { background-position: 100% 0; }
   100% { background-position: -100% 0; }

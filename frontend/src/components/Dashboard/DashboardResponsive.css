@@ -1,0 +1,310 @@
+/**
+ * Full-width dashboard typography & section polish (loads after base dashboard CSS).
+ */
+
+.dashboard-page.dashboard-violet {
+  font-size: var(--dash-body, 1rem);
+  line-height: 1.55;
+}
+
+/* —— Subscription / usage —— */
+.dashboard-violet .dashboard-subscription-card {
+  border-radius: 16px;
+  border-color: rgba(124, 92, 255, 0.22);
+  background: linear-gradient(145deg, rgba(21, 21, 29, 0.95), rgba(15, 23, 42, 0.88));
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+}
+
+.dashboard-violet .dashboard-subscription-head {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: clamp(12px, 2vw, 20px);
+}
+
+.dashboard-violet .dashboard-usage span,
+.dashboard-violet .dashboard-subscription-head span {
+  font-size: clamp(0.68rem, 0.65rem + 0.08vw, 0.78rem);
+  letter-spacing: 0.08em;
+}
+
+.dashboard-violet .dashboard-usage strong,
+.dashboard-violet .dashboard-subscription-head strong {
+  font-size: clamp(1.05rem, 0.95rem + 0.4vw, 1.35rem);
+  margin-top: 6px;
+  color: #f1f5f9;
+}
+
+.dashboard-violet .usage-track {
+  height: 10px;
+  border-radius: 999px;
+}
+
+.dashboard-violet .dashboard-sub-manage,
+.dashboard-violet .dashboard-subscription-actions a {
+  min-height: 44px;
+  padding: 10px 16px;
+  font-size: clamp(0.8125rem, 0.78rem + 0.1vw, 0.9375rem);
+  border-radius: 10px;
+}
+
+.dashboard-violet .dashboard-subscription-actions a {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* —— Workspace overview —— */
+.dashboard-violet .personal-overview {
+  border-color: rgba(124, 92, 255, 0.18);
+  border-radius: 18px;
+}
+
+.dashboard-violet .overview-heading h2 {
+  font-size: var(--dash-section-title);
+}
+
+.dashboard-violet .overview-heading > a,
+.dashboard-violet .recent-projects a {
+  font-size: clamp(0.8125rem, 0.78rem + 0.08vw, 0.9rem);
+}
+
+.dashboard-violet .overview-grid article {
+  padding: clamp(16px, 2vw, 22px);
+  border-radius: 14px;
+  min-height: 120px;
+}
+
+.dashboard-violet .overview-grid small {
+  font-size: clamp(0.65rem, 0.62rem + 0.06vw, 0.72rem);
+  letter-spacing: 0.06em;
+}
+
+.dashboard-violet .overview-grid span {
+  font-size: clamp(0.8125rem, 0.78rem + 0.08vw, 0.875rem);
+}
+
+.dashboard-violet .recent-projects > div:first-child h3 {
+  font-size: clamp(1rem, 0.92rem + 0.2vw, 1.125rem);
+}
+
+.dashboard-violet .recent-projects > a {
+  padding: 14px;
+  font-size: var(--dash-body);
+}
+
+.dashboard-violet .recent-projects > a small {
+  font-size: 0.8125rem;
+}
+
+/* —— Everyday toolkit (embedded on dashboard) —— */
+.dashboard-violet .everyday-cards {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  border-color: rgba(124, 92, 255, 0.2);
+}
+
+.dashboard-violet .everyday-cards h2 {
+  font-size: clamp(1.65rem, 1.35rem + 1.2vw, 2.35rem);
+}
+
+.dashboard-violet .everyday-cards > p:not(.everyday-eyebrow) {
+  font-size: clamp(0.9375rem, 0.88rem + 0.15vw, 1.05rem);
+  max-width: 52rem;
+}
+
+.dashboard-violet .everyday-card-grid > a {
+  min-height: 168px;
+  padding: clamp(18px, 2vw, 24px);
+  border-radius: 14px;
+}
+
+.dashboard-violet .everyday-card-grid h3 {
+  font-size: clamp(1rem, 0.92rem + 0.25vw, 1.125rem);
+}
+
+.dashboard-violet .everyday-card-grid p {
+  font-size: clamp(0.8125rem, 0.78rem + 0.12vw, 0.9375rem);
+  line-height: 1.55;
+}
+
+.dashboard-violet .everyday-card-grid > a:focus-visible {
+  outline: 2px solid #a78bfa;
+  outline-offset: 3px;
+}
+
+/* —— Skills / stickers / pricing —— */
+.dashboard-violet .dashboard-feature-card {
+  min-height: clamp(220px, 18vw, 260px);
+  padding: clamp(20px, 2.5vw, 28px);
+  border-radius: 15px;
+}
+
+.dashboard-violet .dashboard-feature-card h2 {
+  font-size: clamp(1.15rem, 1rem + 0.45vw, 1.45rem);
+}
+
+.dashboard-violet .dashboard-feature-card > p:not(.dashboard-eyebrow) {
+  font-size: clamp(0.8125rem, 0.78rem + 0.12vw, 0.9375rem);
+  line-height: 1.6;
+  min-height: 3.2em;
+}
+
+.dashboard-violet .dashboard-feature-card > a,
+.dashboard-violet .dashboard-feature-card > button {
+  font-size: clamp(0.8125rem, 0.78rem + 0.08vw, 0.9rem);
+  min-height: 44px;
+}
+
+.dashboard-violet .dashboard-sticker-row span {
+  font-size: clamp(0.65rem, 0.62rem + 0.06vw, 0.72rem);
+}
+
+/* —— Model library —— */
+.dashboard-violet .dashboard-section-title h2 {
+  font-size: clamp(1.5rem, 1.25rem + 1vw, 2.1rem);
+}
+
+.dashboard-violet .dashboard-section-title p {
+  font-size: clamp(0.875rem, 0.82rem + 0.15vw, 1rem);
+  max-width: 28rem;
+}
+
+.dashboard-violet .dashboard-grid small {
+  font-size: clamp(0.68rem, 0.64rem + 0.08vw, 0.75rem);
+}
+
+.dashboard-violet .dashboard-grid h3 {
+  font-size: clamp(1.05rem, 0.95rem + 0.35vw, 1.3rem);
+}
+
+.dashboard-violet .dashboard-grid p {
+  font-size: clamp(0.8125rem, 0.76rem + 0.12vw, 0.9375rem);
+  line-height: 1.55;
+}
+
+.dashboard-violet .model-meta {
+  font-size: clamp(0.68rem, 0.64rem + 0.06vw, 0.75rem);
+}
+
+.dashboard-violet .model-meta i.pending {
+  color: #94a3b8;
+}
+
+.dashboard-violet .model-meta i.pending::before {
+  background: #64748b;
+}
+
+.dashboard-violet .model-meta i.neutral {
+  color: #a5b4fc;
+}
+
+.dashboard-violet .model-meta i.neutral::before {
+  display: none;
+}
+
+.dashboard-violet .model-open {
+  font-size: clamp(0.8125rem, 0.78rem + 0.08vw, 0.875rem);
+  min-height: 44px;
+  align-items: center;
+  border-radius: 10px;
+}
+
+.dashboard-violet .dashboard-model-card:focus-visible {
+  outline: 2px solid #a78bfa;
+  outline-offset: 4px;
+  border-radius: 16px;
+}
+
+/* —— Code sample —— */
+.dashboard-violet .dashboard-code-section h2 {
+  font-size: clamp(1.45rem, 1.2rem + 0.9vw, 2rem);
+}
+
+.dashboard-violet .dashboard-code-section p {
+  font-size: clamp(0.9375rem, 0.88rem + 0.15vw, 1.05rem);
+}
+
+.dashboard-violet .dashboard-code-block {
+  position: relative;
+  min-width: 0;
+}
+
+.dashboard-violet .dashboard-code-copy {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #cbd5e1;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dashboard-violet .dashboard-code-copy:hover {
+  border-color: #818cf8;
+  color: #f8fafc;
+}
+
+.dashboard-violet .dashboard-code-copy:focus-visible {
+  outline: 2px solid #a78bfa;
+  outline-offset: 2px;
+}
+
+.dashboard-violet .dashboard-code-section pre {
+  border-radius: 14px;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0;
+  padding-top: 2.75rem;
+}
+
+.dashboard-violet .dashboard-code-section code {
+  font-size: clamp(0.8125rem, 0.76rem + 0.1vw, 0.9rem);
+}
+
+/* —— Resources / footer —— */
+.dashboard-violet .dashboard-resources h2,
+.dashboard-violet .dashboard-resource-card h3 {
+  font-size: clamp(1.15rem, 1rem + 0.4vw, 1.35rem);
+}
+
+.dashboard-violet .dashboard-resource-card > p:not(.dashboard-eyebrow),
+.dashboard-violet .dashboard-start-guide p:not(.dashboard-eyebrow),
+.dashboard-violet .dashboard-workspace-banner p:not(.dashboard-eyebrow) {
+  font-size: clamp(0.875rem, 0.82rem + 0.12vw, 0.9375rem);
+}
+
+/* —— Nav readability —— */
+.dashboard-violet .dashboard-nav-links a {
+  font-size: clamp(0.8125rem, 0.78rem + 0.12vw, 0.9375rem);
+  padding: 8px 12px;
+  border-radius: 999px;
+}
+
+.dashboard-violet .dashboard-brand {
+  font-size: clamp(1.05rem, 1rem + 0.15vw, 1.2rem);
+}
+
+.dashboard-violet .dashboard-user small {
+  font-size: clamp(0.8125rem, 0.78rem + 0.08vw, 0.9rem);
+}
+
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .dashboard-violet .dashboard-grid,
+  .dashboard-violet .everyday-card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-model-card article,
+  .dashboard-feature-card,
+  .everyday-card-grid > a,
+  .subscribe-plan {
+    transition: none !important;
+  }
+}

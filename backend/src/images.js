@@ -4,6 +4,7 @@ const {
     parseQuality,
     parseAspect,
     parseStyle,
+    parseImageCount,
     redactSecrets,
     capabilitySummary,
     upscaleWithExternalProvider,
@@ -54,6 +55,10 @@ const validateImageInput = (body = {}) => {
     if (body.provider != null && body.provider !== '' && typeof body.provider !== 'string') {
         return { error: 'Image provider must be a string.' };
     }
+    const imageCount = parseImageCount(body.count ?? body.imageCount, { strict: true });
+    if (imageCount == null) {
+        return { error: 'Image count must be 1, 2, 3, or 4.' };
+    }
     return {
         value: {
             prompt,
@@ -62,6 +67,7 @@ const validateImageInput = (body = {}) => {
             style: parseStyle(body.style),
             model: typeof body.model === 'string' ? body.model.trim() : '',
             provider: typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : '',
+            imageCount,
         },
     };
 };
@@ -71,7 +77,11 @@ const runImageGenerationJob = async (jobId, params) => {
     updateImageJob(jobId, { status: 'processing' });
     console.log('[IMAGE] Job started', { jobId });
     try {
-        const result = await generateImageWithFallback({ ...params, jobId });
+        const result = await generateImageWithFallback({
+            ...params,
+            jobId,
+            onProgress: (progress) => updateImageJob(jobId, { progress }),
+        });
         if (result.ok) {
             updateImageJob(jobId, {
                 status: 'completed',
@@ -183,6 +193,7 @@ const generateImage = async (req, res) => {
             aspectRatio: promptPayload.aspectRatio,
             requestedModel: validation.value.model,
             preferredProvider: validation.value.provider || '',
+            imageCount: validation.value.imageCount,
         };
 
         const wantsSync = req.body?.async === false || req.body?.async === 'false';
@@ -191,6 +202,7 @@ const generateImage = async (req, res) => {
             const job = createImageJob({
                 userId: req.user?.id,
                 ...generationParams,
+                imageCount: validation.value.imageCount,
             });
             void runImageGenerationJob(job.id, generationParams);
             return res.status(202).json({
@@ -283,6 +295,11 @@ const getImageGenerationStatus = (_req, res) => {
         sizes: capabilities?.sizes || null,
         maxResolution: capabilities?.maxResolution || null,
         qualityModels: capabilities?.qualityModels || null,
+        maxImageCount: capabilities?.maxImageCount || 4,
+        imageCountOptions: capabilities?.imageCountOptions || [1, 2, 3, 4],
+        batchInSingleRequest: capabilities?.batchInSingleRequest === true,
+        maxBatchCount: capabilities?.maxBatchCount || 1,
+        multiImageBillingNote: capabilities?.multiImageBillingNote || null,
         configuration: {
             ok: config.ok,
             code: config.code || null,

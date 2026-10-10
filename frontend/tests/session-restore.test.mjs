@@ -36,17 +36,29 @@ afterEach(() => {
   delete globalThis.document;
 });
 
-test('restoreSession skips the network when there is no session restore hint', async () => {
+test('restoreSession probes the backend even without a client restore hint (HttpOnly cookie)', async () => {
   installStorage();
+  globalThis.document = { cookie: 'allmodelai_cookie_consent=accepted' };
   let calls = 0;
   globalThis.fetch = async () => {
     calls += 1;
-    return jsonResponse(200, { user: { email: 'x@example.com', name: 'X' } });
+    return jsonResponse(401, { message: 'No active session' });
   };
 
   const user = await restoreSession();
-  assert.equal(calls, 0);
+  assert.equal(calls, 1);
   assert.equal(user, null);
+});
+
+test('restoreSession restores user from server when cookie is valid but local hint is missing', async () => {
+  installStorage();
+  globalThis.document = { cookie: 'allmodelai_cookie_consent=accepted' };
+  globalThis.fetch = async () =>
+    jsonResponse(200, { user: { email: 'cookie-only@example.com', name: 'Cookie' } });
+
+  const user = await restoreSession();
+  assert.equal(user?.email, 'cookie-only@example.com');
+  assert.match(globalThis.localStorage.getItem('allmodelai_user'), /cookie-only@example.com/);
 });
 
 test('restoreSession treats 401 as signed out and clears stale client hint', async () => {

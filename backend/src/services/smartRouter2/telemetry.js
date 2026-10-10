@@ -1,4 +1,6 @@
 const { isPostgresConnection } = require('../../db/postgresHttpReads');
+const { queryPgPool, resolvePostgresAsyncPool } = require('../../db/pgPoolQuery');
+const { recordProviderRequest } = require('../providerRequestTelemetry');
 
 function recordRouterMetric(connection, row) {
     const createdAt = new Date().toISOString();
@@ -16,7 +18,8 @@ function recordRouterMetric(connection, row) {
 
     try {
         if (isPostgresConnection(connection)) {
-            void connection.pool.query(
+            void queryPgPool(
+                resolvePostgresAsyncPool(connection),
                 `INSERT INTO router_metrics
                  (email, task_type, provider, model, latency_ms, success, fallback_used, error_category, created_at)
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
@@ -54,6 +57,14 @@ function recordRouterMetric(connection, row) {
     } catch (error) {
         console.warn('[ROUTER_METRICS]', error.message);
     }
+
+    recordProviderRequest({
+        provider: row.provider,
+        success: row.success !== false,
+        latencyMs: row.latencyMs,
+        errorCategory: row.errorCategory,
+        fallbackUsed: row.fallbackUsed,
+    });
 }
 
 module.exports = {

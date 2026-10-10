@@ -13,9 +13,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
+  width: var(--dash-shell-width, min(96%, 1760px));
+  max-width: 100%;
+  margin-inline: auto;
   min-height: clamp(88px, 10vh, 104px);
-  padding-inline: clamp(20px, 3vw, 56px);
+  padding-inline: clamp(16px, 2vw, 32px);
   gap: clamp(12px, 2vw, 24px);
 }
 
@@ -85,7 +87,7 @@
   border-radius: 8px;
   color: #cbd5e1;
   text-decoration: none;
-  font-size: clamp(0.78rem, 0.74rem + 0.08vw, 0.86rem);
+  font-size: clamp(0.8125rem, 0.78rem + 0.12vw, 0.9375rem);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -258,9 +260,9 @@
   list-style: none;
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
-  padding: 8px 14px;
-  border-radius: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 11px;
   border: 1px solid rgba(124, 92, 255, 0.28);
   background: rgba(16, 16, 22, 0.85);
   color: #ede9fe;
@@ -282,24 +284,53 @@
   display: grid;
   gap: 2px;
   min-width: min(300px, calc(100vw - 40px));
-  max-height: min(70vh, 480px);
-  overflow: auto;
+  max-height: min(
+    72dvh,
+    calc(100dvh - 96px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))
+  );
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 8px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
   border-radius: 12px;
   border: 1px solid rgba(124, 92, 255, 0.28);
   background: rgba(10, 10, 15, 0.98);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
 }
 
+.dashboard-nav-mobile-account {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(124, 92, 255, 0.22);
+}
+
+.dashboard-nav-mobile-account-link {
+  color: #ede9fe !important;
+  background: rgba(124, 92, 255, 0.12);
+}
+
+.dashboard-nav-mobile-divider {
+  margin: 6px 4px 2px;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .dashboard-nav-mobile-panel a {
   display: flex;
   align-items: center;
-  min-height: 40px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  min-height: 44px;
+  padding: 11px 12px;
+  border-radius: 11px;
   color: #c4b5fd;
   text-decoration: none;
-  font-size: 0.85rem;
+  font-size: 0.88rem;
   font-weight: 700;
 }
 

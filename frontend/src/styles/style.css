@@ -8,6 +8,7 @@
 
 @import './responsive.css';
 @import './chat-responsive.css';
+@import './responsive-pages.css';
 
 /* ——— Chat composer: readable text on dark surface (all themes/devices) ——— */
 .chat-page textarea.composer-prompt-input {

@@ -46,6 +46,10 @@ function cloudflareDirectReady() {
     return Boolean(account && key);
 }
 
+function perplexityKey() {
+    return envTrim('PERPLEXITY_API_KEY');
+}
+
 /** Env vars referenced by chat routing (documentation + diagnostics). */
 const CHAT_PROVIDER_ENV = {
     openai: { keys: ['OPENAI_API_KEY', 'OPEN_AI_API_KEY'], optional: ['OPENAI_MODEL'] },
@@ -56,6 +60,7 @@ const CHAT_PROVIDER_ENV = {
     mistral: { keys: ['MISTRAL_API_KEY'], optional: ['MISTRAL_MODEL'] },
     kimi: { keys: ['KIMI_API_KEY'], optional: ['KIMI_MODEL', 'KIMI_PROVIDER', 'KIMI_BASE_URL'] },
     cloudflare: { keys: ['CLOUDFLARE_API_KEY', 'CLAUDEFLARE_API_KEY', 'CLOUDFLARE_ACCOUNT_ID'], optional: ['CLOUDFLARE_MODEL'] },
+    perplexity: { keys: ['PERPLEXITY_API_KEY'], optional: ['PERPLEXITY_MODEL'] },
     tavily: { keys: ['TAVILY_API_KEY'], optional: [] },
 };
 
@@ -78,6 +83,8 @@ function isChatProviderConfigured(providerId) {
             return Boolean(kimiDirectKey()) || Boolean(gateway);
         case 'cloudflare':
             return cloudflareDirectReady() || Boolean(gateway);
+        case 'perplexity':
+            return Boolean(perplexityKey()) || Boolean(gateway);
         case 'tavily':
             return Boolean(envTrim('TAVILY_API_KEY'));
         default:
@@ -115,9 +122,10 @@ function routedModelHasApiKey(routedModel) {
             return Boolean(kimiDirectKey()) || Boolean(gateway);
         case 'cloudflare':
             return cloudflareDirectReady() || Boolean(gateway);
+        case 'perplexity':
+            return Boolean(perplexityKey()) || Boolean(gateway);
         case 'deepseek':
         case 'llama':
-        case 'perplexity':
         case 'qwen':
         case 'cohere':
             return Boolean(gateway);

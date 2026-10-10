@@ -1,4 +1,9 @@
-import { cloneElement, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { cloneElement, isValidElement, useCallback, useEffect, useId, useRef, useState } from 'react';
+
+function assignRef(ref, node) {
+  if (typeof ref === 'function') ref(node);
+  else if (ref && typeof ref === 'object') ref.current = node;
+}
 
 const SHOW_DELAY_MS = 420;
 const HIDE_DELAY_MS = 80;
@@ -57,12 +62,12 @@ export default function Tooltip({ label, children, disabled = false }) {
     };
   }, [visible, positionTooltip]);
 
+  const childRef = isValidElement(children) ? children.props.ref : null;
+
   const child = cloneElement(children, {
     ref: (node) => {
       anchorRef.current = node;
-      const { ref } = children;
-      if (typeof ref === 'function') ref(node);
-      else if (ref) ref.current = node;
+      assignRef(childRef, node);
     },
     'aria-describedby': visible ? tooltipId : undefined,
     onMouseEnter: (event) => {

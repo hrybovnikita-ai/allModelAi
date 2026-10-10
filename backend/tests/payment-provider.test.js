@@ -27,10 +27,10 @@ test('Payment provider selection and checkout plans', async (t) => {
     await t.test('public plan prices are server-defined', () => {
         const pro = getPublicCheckoutPlan('pro');
         const ent = getPublicCheckoutPlan('enterprise');
-        assert.equal(pro.amountCents, 1900);
-        assert.equal(ent.amountCents, 4900);
-        assert.equal(pro.amountDisplay, '19.00');
-        assert.equal(ent.amountDisplay, '49.00');
+        assert.equal(pro.amountCents, 1500);
+        assert.equal(ent.amountCents, 3000);
+        assert.equal(pro.amountDisplay, '15.00');
+        assert.equal(ent.amountDisplay, '30.00');
     });
 
     await t.test('WayForPay is primary when configured without Stripe preference', () => {
@@ -68,6 +68,6 @@ test('Payment provider selection and checkout plans', async (t) => {
     await t.test('GET /api/payments/plans/pro returns quote', async () => {
         const res = await request(app).get('/api/payments/plans/pro');
         assert.equal(res.status, 200);
-        assert.equal(res.body.amountCents, 1900);
+        assert.equal(res.body.amountCents, 1500);
     });
 });

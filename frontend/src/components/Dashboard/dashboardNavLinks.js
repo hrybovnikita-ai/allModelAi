@@ -1,5 +1,13 @@
+/** Account shortcuts (mobile menu + authenticated home nav). */
+export const DASHBOARD_NAV_ACCOUNT_LINKS = [
+  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/settings', label: 'Profile' },
+  { to: '/settings#settings-security', label: 'Settings' },
+];
+
 /** Full list (mobile menu). */
 export const DASHBOARD_NAV_LINKS = [
+  ...DASHBOARD_NAV_ACCOUNT_LINKS,
   { to: '/chat', label: 'Chat' },
   { to: '/storage', label: 'Storage Hub' },
   { to: '/ai-training', label: 'AI Training Course' },

@@ -75,7 +75,8 @@ export const IMAGE_JOB_MAX_WAIT_MS = 120000;
 
 /** Never surface upstream billing or provider branding in the UI. */
 export function userFacingImageGenerationError(responseOk, data = {}) {
-  if (responseOk && data.success !== false && data.imageUrl) return null;
+  const hasImages = Boolean(data.imageUrl || (Array.isArray(data.images) && data.images.length));
+  if (responseOk && data.success !== false && hasImages) return null;
   const configured = formatImageServerError(data);
   if (configured) return configured;
   if (data.code === 'IMAGE_GENERATION_UNAVAILABLE') return IMAGE_UNAVAILABLE_MESSAGE;
@@ -153,11 +154,30 @@ export async function downloadOriginalImage(imageUrl, { mimeType, filename = 'al
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
+export const IMAGE_COUNT_OPTIONS = [1, 2, 3, 4];
+
+export function normalizeImageGenerationResult(data = {}) {
+  const images = Array.isArray(data.images) && data.images.length
+    ? data.images.filter((item) => item?.imageUrl)
+    : data.imageUrl
+      ? [{ imageUrl: data.imageUrl, mimeType: data.mimeType }]
+      : [];
+  const primary = images[0];
+  return {
+    ...data,
+    images,
+    imageUrl: primary?.imageUrl || data.imageUrl,
+    mimeType: primary?.mimeType || data.mimeType,
+    imageCount: images.length,
+  };
+}
+
 export function buildImageRequestBody({
   prompt,
   style = 'auto',
   aspectRatio = '1:1',
   quality = 'standard',
+  count = 1,
   basePrompt = '',
   editInstruction = '',
   provider = '',
@@ -167,6 +187,7 @@ export function buildImageRequestBody({
     style,
     aspectRatio,
     quality,
+    count: Math.min(4, Math.max(1, Number.parseInt(count, 10) || 1)),
   };
   if (provider) body.provider = String(provider).trim().toLowerCase();
   if (basePrompt) body.basePrompt = String(basePrompt).trim();
@@ -201,8 +222,11 @@ async function pollImageGenerationJob(jobId, signal, { onPoll } = {}) {
     const { data } = await fetchImageJobStatus(jobId, signal);
     polls += 1;
     onPoll?.({ polls, status: data.status });
-    if (data.status === 'completed' && data.imageUrl) {
-      return { ok: true, data };
+    if (data.status === 'completed' && (data.imageUrl || (Array.isArray(data.images) && data.images.length))) {
+      return { ok: true, data: normalizeImageGenerationResult(data) };
+    }
+    if (data.progress && data.status === 'processing') {
+      onPoll?.({ polls, status: data.status, progress: data.progress });
     }
     if (data.status === 'failed' || (data.success === false && data.status !== 'processing')) {
       const userError = userFacingImageGenerationError(false, data);
@@ -256,13 +280,14 @@ export async function requestImageGeneration(body, signal, options = {}) {
       || (data.retryable !== false && (response.status >= 500 || response.status === 429));
     throw error;
   }
-  if (!data?.imageUrl) {
+  const normalized = normalizeImageGenerationResult(data);
+  if (!normalized.imageUrl) {
     const error = new Error(IMAGE_UNAVAILABLE_MESSAGE);
     error.code = 'IMAGE_GENERATION_UNAVAILABLE';
     error.retryable = true;
     throw error;
   }
-  return data;
+  return normalized;
 }
 
 export async function requestImageUpscale(imageUrl, signal) {

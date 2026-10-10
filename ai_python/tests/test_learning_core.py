@@ -33,6 +33,7 @@ def test_sklearn_linear_demo():
     assert out["ok"] is True
     assert "coefficient" in out
     assert out["validationMse"] >= 0
+    assert out["validationLoss"] >= 0
 
 
 def test_pytorch_linear_training():
