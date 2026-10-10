@@ -313,16 +313,23 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
     }
 
     if (!redirectResult?.user) {
+      const authDomain = getEffectiveFirebaseConfig().authDomain;
       const failure = describeRedirectRecoveryFailure({
         consumer,
         reason: 'redirect-result-null',
-        authDomain: getEffectiveFirebaseConfig().authDomain,
+        authDomain,
         path: typeof window !== 'undefined' ? window.location.pathname : '',
         hasIntent: true,
         redirectConsumed: hasRedirectResultBeenConsumed(),
       });
       const err = new Error(failure);
       err.code = 'REDIRECT_RESULT_MISSING';
+      err.diagnosticStage = 'firebase-redirect-result-missing';
+      socialAuthDebug('REDIRECT_RECOVERY_FAILED', {
+        code: err.code,
+        stage: err.diagnosticStage,
+        authDomain,
+      });
       throw err;
     }
 

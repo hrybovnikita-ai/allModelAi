@@ -8,7 +8,8 @@ import {
   reconcileStaleRedirectIntent,
   shouldShowGoogleRedirectRecoveryUI,
 } from '../../lib/socialSignIn';
-import { authRecoveryLog } from '../../lib/socialAuthDiagnostics';
+import { ensureRedirectPrerequisitesReady } from '../../lib/authRedirectPreload';
+import { authRecoveryLog, consumeStoredSocialAuthErrorCode } from '../../lib/socialAuthDiagnostics';
 import { socialError } from '../../lib/socialSession';
 import { AUTH_REDIRECT_RECOVERY_TIMEOUT_MS } from '../../lib/authSessionStatus';
 import { consumeStoredSocialAuthError } from './SocialAuthCallback.jsx';
@@ -61,12 +62,20 @@ export default function GoogleRedirectRecoveryGate() {
 
     (async () => {
       try {
+        await ensureRedirectPrerequisitesReady();
         const user = await awaitGoogleRedirectRecovery('GoogleRedirectRecoveryGate');
         if (!active) return;
         clearTimeout(safetyTimer);
         if (!user?.email) {
           const stored = consumeStoredSocialAuthError();
-          setFailureMessage(stored || 'Google sign-in could not be completed. Please try again.');
+          const storedCode = consumeStoredSocialAuthErrorCode();
+          const fallback = storedCode
+            ? socialError({ code: storedCode, message: stored })
+            : stored;
+          setFailureMessage(fallback || 'Google sign-in could not be completed. Please try again.');
+          if (storedCode) {
+            authRecoveryLog('Redirect recovery gate failure', { code: storedCode });
+          }
           setRecovering(false);
           return;
         }

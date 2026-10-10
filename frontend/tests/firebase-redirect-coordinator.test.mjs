@@ -55,7 +55,7 @@ test('redirect coordinator caches inflight and consumed redirect results', async
   assert.match(source, /Promise\.race/);
 });
 
-test('SocialAuthCallback does not start redirect; gate and bootstrap own recovery', async () => {
+test('SocialAuthCallback does not start redirect; gate owns getRedirectResult recovery', async () => {
   const { readFile } = await import('node:fs/promises');
   const callback = await readFile(new URL('../src/components/SocialAuth/SocialAuthCallback.jsx', import.meta.url), 'utf8');
   const gate = await readFile(new URL('../src/components/SocialAuth/GoogleRedirectRecoveryGate.jsx', import.meta.url), 'utf8');

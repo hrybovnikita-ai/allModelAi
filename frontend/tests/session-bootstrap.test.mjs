@@ -5,10 +5,12 @@ import test from 'node:test';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
-test('auth bootstrap waits for Google redirect recovery before restoreSession', () => {
+test('auth bootstrap defers getRedirectResult to gate before restoreSession', () => {
   const src = readFileSync(`${root}src/lib/authBootstrap.js`, 'utf8');
-  assert.ok(src.includes('awaitGoogleRedirectRecovery'));
-  assert.ok(src.indexOf('awaitGoogleRedirectRecovery') < src.indexOf('restoreSession'));
+  assert.match(src, /REDIRECT_RECOVERY_DEFERRED/);
+  assert.match(src, /ensureRedirectPrerequisitesReady/);
+  assert.doesNotMatch(src, /awaitGoogleRedirectRecovery/);
+  assert.ok(src.indexOf('ensureRedirectPrerequisitesReady') < src.indexOf('restoreSession'));
 });
 
 test('SessionProvider uses auth bootstrap instead of immediate restoreSession only', () => {

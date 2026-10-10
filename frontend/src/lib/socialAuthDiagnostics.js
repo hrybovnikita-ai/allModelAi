@@ -63,6 +63,17 @@ const STAGES = new Set([
   'FIREBASE_USER_READY',
   'FIREBASE_ID_TOKEN_FAILED',
   'SESSION_PROVIDER_INIT_TIMEOUT_DEFERRED',
+  'REDIRECT_PREREQUISITES_READY',
+  'REDIRECT_PREREQUISITES_FAILED',
+  'REDIRECT_RECOVERY_DEFERRED',
+  'FIREBASE_AUTH_DOMAIN_READY',
+  'AUTH_DOMAIN_MISMATCH',
+  'FIREBASE_REDIRECT_RESULT_MISSING',
+  'FIREBASE_USER_UNAVAILABLE',
+  'FIREBASE_OAUTH_CONFIG_ERROR',
+  'GET_REDIRECT_RESULT_RETRY',
+  'SESSION_CONFIRM_FAILED',
+  'SESSION_COOKIE_MISSING',
 ]);
 
 /** Unified auth tracing (`localStorage.allmodelai_social_auth_debug=1` or DEV). */
@@ -107,18 +118,38 @@ export function socialAuthDebug(stage, detail = {}) {
 
 export function describeRedirectRecoveryFailure(context = {}) {
   authLog('Redirect recovery failed', context);
+  if (context.reason === 'redirect-result-null') {
+    return 'Google sign-in could not be completed after redirect. Please try again, or use email and password.';
+  }
   return 'Google sign-in could not be completed. Please try again, or sign in with email and password.';
 }
 
 const SOCIAL_ERROR_STORAGE_KEY = 'allmodelai_social_error';
+const SOCIAL_ERROR_CODE_KEY = 'allmodelai_social_error_code';
 
-export function persistSocialAuthError(errorOrMessage) {
+export function persistSocialAuthError(errorOrMessage, code = '') {
   const message = typeof errorOrMessage === 'string'
     ? errorOrMessage
     : (errorOrMessage?.message || 'Google sign-in could not be completed. Please try again.');
   try {
     sessionStorage.setItem(SOCIAL_ERROR_STORAGE_KEY, message);
+    if (code) {
+      sessionStorage.setItem(SOCIAL_ERROR_CODE_KEY, String(code));
+    }
   } catch {
     /* Safari private mode */
   }
+}
+
+export function consumeStoredSocialAuthErrorCode() {
+  try {
+    const code = sessionStorage.getItem(SOCIAL_ERROR_CODE_KEY);
+    if (code) {
+      sessionStorage.removeItem(SOCIAL_ERROR_CODE_KEY);
+      return code;
+    }
+  } catch {
+    /* ignore */
+  }
+  return '';
 }

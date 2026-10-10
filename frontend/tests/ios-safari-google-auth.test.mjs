@@ -6,6 +6,7 @@ import {
   IOS_LATE_REDIRECT_GRACE_MS,
   IOS_REDIRECT_RESULT_TIMEOUT_MS,
 } from '../src/lib/firebaseRedirectCoordinator.js';
+import { resetRedirectPrerequisitesForTests } from '../src/lib/authRedirectPreload.js';
 import { resetAuthBootstrapForTests } from '../src/lib/authBootstrap.js';
 import {
   clearSocialRedirectIntent,
@@ -36,6 +37,7 @@ beforeEach(() => {
   globalThis.localStorage = new MemoryStorage();
   globalThis.window = { location: { pathname: '/login', search: '', hash: '' } };
   resetAuthBootstrapForTests();
+  resetRedirectPrerequisitesForTests();
 });
 
 afterEach(() => {
@@ -46,8 +48,8 @@ afterEach(() => {
 });
 
 test('iOS redirect waits are long enough for WebKit OAuth return', () => {
-  assert.ok(IOS_REDIRECT_RESULT_TIMEOUT_MS >= 10000);
-  assert.ok(IOS_AUTH_STATE_FALLBACK_TIMEOUT_MS >= 5000);
+  assert.ok(IOS_REDIRECT_RESULT_TIMEOUT_MS >= 25000);
+  assert.ok(IOS_AUTH_STATE_FALLBACK_TIMEOUT_MS >= 8000);
   assert.ok(IOS_LATE_REDIRECT_GRACE_MS >= 2000);
 });
 
@@ -59,10 +61,26 @@ test('redirect intent persists challenge state for post-redirect exchange', () =
   assert.equal(parsed.challengeState, 'a'.repeat(64));
 });
 
-test('auth bootstrap defers recovery while redirect is still pending on iOS', async () => {
+test('auth bootstrap defers getRedirectResult to recovery gate on OAuth return', async () => {
   const bootstrap = await readFile(new URL('../src/lib/authBootstrap.js', import.meta.url), 'utf8');
-  assert.match(bootstrap, /Deferring Google redirect recovery to gate/);
-  assert.match(bootstrap, /shouldAttemptGoogleRedirectRecovery/);
+  assert.match(bootstrap, /REDIRECT_RECOVERY_DEFERRED/);
+  assert.match(bootstrap, /GoogleRedirectRecoveryGate/);
+  assert.doesNotMatch(bootstrap, /awaitGoogleRedirectRecovery\('SessionBootstrap'\)/);
+});
+
+test('main starts redirect prerequisite preload before React mounts', async () => {
+  const main = await readFile(new URL('../src/main.jsx', import.meta.url), 'utf8');
+  const preload = await readFile(new URL('../src/lib/authRedirectPreload.js', import.meta.url), 'utf8');
+  assert.match(main, /startRedirectPrerequisitesPreload/);
+  assert.match(preload, /ensureRedirectPrerequisitesReady/);
+  assert.match(preload, /waitForRedirectOAuthSurfaceReady/);
+});
+
+test('redirect coordinator awaits prerequisites and can retry null on Safari', async () => {
+  const coordinator = await readFile(new URL('../src/lib/firebaseRedirectCoordinator.js', import.meta.url), 'utf8');
+  assert.match(coordinator, /ensureRedirectPrerequisitesReady/);
+  assert.match(coordinator, /GET_REDIRECT_RESULT_RETRY/);
+  assert.match(coordinator, /settleGetRedirectResultIos/);
 });
 
 test('social redirect recovery always mints a fresh backend challenge after Safari return', async () => {
@@ -84,6 +102,8 @@ test('recovery gate surfaces failures instead of silent guest state', async () =
   assert.match(gate, /consumeStoredSocialAuthError/);
   assert.match(gate, /Sign-in incomplete/);
   assert.match(gate, /refresh\(\{ force: true \}\)/);
+  assert.match(gate, /ensureRedirectPrerequisitesReady/);
+  assert.match(gate, /consumeStoredSocialAuthErrorCode/);
 });
 
 test('session provider and navbar defer guest UI during redirect recovery', async () => {

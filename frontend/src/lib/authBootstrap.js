@@ -1,6 +1,5 @@
 import { prefersSameOriginApi } from './apiBase.js';
 import {
-  awaitGoogleRedirectRecovery,
   clearSocialRedirectIntent,
   isGoogleRedirectRecoveryPending,
   reconcileStaleRedirectIntent,
@@ -8,6 +7,7 @@ import {
 import {
   shouldAttemptGoogleRedirectRecovery,
 } from './socialRedirectState.js';
+import { ensureRedirectPrerequisitesReady } from './authRedirectPreload.js';
 import { restoreSession } from './session.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
 import { isGoogleRedirectRecoveryInFlight } from './googleRedirectRecovery.js';
@@ -22,31 +22,29 @@ async function runBootstrapAuthenticatedUser() {
     clearSocialRedirectIntent();
   }
 
-  if (isGoogleRedirectRecoveryPending()) {
-    socialAuthDebug('REDIRECT_RECOVERY_START', {
+  if (shouldShowGoogleRedirectRecoveryUI() || isGoogleRedirectRecoveryPending()) {
+    socialAuthDebug('REDIRECT_RECOVERY_DEFERRED', {
       pathname: typeof window !== 'undefined' ? window.location.pathname : '',
+      owner: 'GoogleRedirectRecoveryGate',
     });
-  }
-
-  const recoveredUser = await awaitGoogleRedirectRecovery('SessionBootstrap');
-  if (recoveredUser?.email) {
-    socialAuthDebug('REDIRECT_RESULT_FOUND', { email: recoveredUser.email });
-    socialAuthDebug('SESSION_PROVIDER_AUTHENTICATED', { source: 'redirect-recovery' });
-    return recoveredUser;
-  }
-  if (isGoogleRedirectRecoveryInFlight() || shouldShowGoogleRedirectRecoveryUI()) {
-    authRecoveryLog('Session bootstrap waiting on Google redirect recovery');
-    return null;
+    try {
+      await ensureRedirectPrerequisitesReady();
+    } catch {
+      /* Gate will surface errors */
+    }
+    if (isGoogleRedirectRecoveryInFlight() || shouldShowGoogleRedirectRecoveryUI()) {
+      authRecoveryLog('Session bootstrap waiting on Google redirect recovery gate');
+      return null;
+    }
   }
 
   if (isGoogleRedirectRecoveryPending()) {
     reconcileStaleRedirectIntent();
     if (isGoogleRedirectRecoveryPending() && shouldAttemptGoogleRedirectRecovery()) {
-      authRecoveryLog('Deferring Google redirect recovery to gate (WebKit may still be finishing OAuth)');
       return null;
     }
     if (isGoogleRedirectRecoveryPending()) {
-      authRecoveryLog('Clearing expired Google redirect intent after bootstrap recovery miss');
+      authRecoveryLog('Clearing expired Google redirect intent after bootstrap defer');
       clearSocialRedirectIntent();
     }
   }

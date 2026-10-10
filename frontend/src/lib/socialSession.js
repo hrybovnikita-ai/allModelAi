@@ -88,6 +88,8 @@ export function socialError(error) {
     SOCIAL_AUTH_FAILED: 'We could not complete sign-in. Please try again.',
     REDIRECT_RESULT_MISSING:
       'Google sign-in could not be completed after redirect. Please try again, or use email and password.',
+    AUTH_DOMAIN_MISMATCH:
+      'Google sign-in configuration does not match this site. Refresh the page and try again, or contact support.',
     AUTH_API_NOT_FOUND:
       'Sign-in service was not found on the server. Try again later or contact support.',
     AUTH_API_UNAUTHORIZED:

@@ -1,25 +1,31 @@
 import { getRedirectResult, onAuthStateChanged } from 'firebase/auth';
+import { ensureRedirectPrerequisitesReady } from './authRedirectPreload.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
+import { isGoogleRedirectRecoveryPending } from './socialRedirectState.js';
 import { isMobileWebSafari } from './socialSignInEnv.js';
 
 let cachedRedirectResult = undefined;
 let redirectResultInflight = null;
 let redirectResultConsumed = false;
+let redirectResultAttemptCount = 0;
 
 /** Max wait for getRedirectResult on a normal page load (ms). */
 export const REDIRECT_RESULT_TIMEOUT_MS = 800;
 /** Max wait for onAuthStateChanged fallback after redirect (ms). */
 export const AUTH_STATE_FALLBACK_TIMEOUT_MS = 1000;
-/** WebKit often resolves getRedirectResult after several seconds on iPad/iPhone Safari. */
-export const IOS_REDIRECT_RESULT_TIMEOUT_MS = 12000;
-export const IOS_AUTH_STATE_FALLBACK_TIMEOUT_MS = 8000;
-/** After a timeout race, still accept a late getRedirectResult on iOS (ms). */
-export const IOS_LATE_REDIRECT_GRACE_MS = 4000;
+/** WebKit often resolves getRedirectResult slowly on iPad/iPhone Safari — wait for the full promise. */
+export const IOS_REDIRECT_RESULT_TIMEOUT_MS = 28000;
+export const IOS_AUTH_STATE_FALLBACK_TIMEOUT_MS = 10000;
+/** After getRedirectResult returns empty on iOS, short grace for currentUser (ms). */
+export const IOS_LATE_REDIRECT_GRACE_MS = 2000;
+
+const MAX_REDIRECT_RESULT_ATTEMPTS = 2;
 
 export function resetFirebaseRedirectCoordinatorForTests() {
   cachedRedirectResult = undefined;
   redirectResultInflight = null;
   redirectResultConsumed = false;
+  redirectResultAttemptCount = 0;
 }
 
 export function hasRedirectResultBeenConsumed() {
@@ -36,6 +42,17 @@ function getRedirectResultTimeoutMs() {
 
 function getAuthStateFallbackTimeoutMs() {
   return isIosWebContext() ? IOS_AUTH_STATE_FALLBACK_TIMEOUT_MS : AUTH_STATE_FALLBACK_TIMEOUT_MS;
+}
+
+function shouldAllowRedirectResultRetry() {
+  return redirectResultAttemptCount < MAX_REDIRECT_RESULT_ATTEMPTS
+    && isGoogleRedirectRecoveryPending();
+}
+
+function resetRedirectResultCacheForRetry() {
+  cachedRedirectResult = undefined;
+  redirectResultConsumed = false;
+  redirectResultInflight = null;
 }
 
 function waitForAuthStateUser(auth, timeoutMs = getAuthStateFallbackTimeoutMs()) {
@@ -59,6 +76,7 @@ function waitForAuthStateUser(auth, timeoutMs = getAuthStateFallbackTimeoutMs())
         socialAuthDebug('AUTH_STATE_USER_FOUND', { source });
         authRecoveryLog('Auth state user found', { source });
       } else {
+        socialAuthDebug('FIREBASE_USER_UNAVAILABLE', { source: source || 'auth-state-timeout' });
         authRecoveryLog('Auth state fallback finished without user', { source });
       }
       resolve(user || null);
@@ -73,9 +91,64 @@ function waitForAuthStateUser(auth, timeoutMs = getAuthStateFallbackTimeoutMs())
 }
 
 /**
- * WebKit may settle getRedirectResult late; on iOS keep waiting for the same promise after a soft timeout.
+ * On iOS, do not race getRedirectResult against an early null — wait for Firebase to finish.
  */
-async function settleGetRedirectResult(auth) {
+async function settleGetRedirectResultIos(auth) {
+  const timeoutMs = getRedirectResultTimeoutMs();
+  authRecoveryLog('iOS: awaiting getRedirectResult (full wait)', { timeoutMs });
+
+  let redirectError = null;
+  const redirectPromise = getRedirectResult(auth).catch((error) => {
+    redirectError = error;
+    socialAuthDebug('FIREBASE_OAUTH_CONFIG_ERROR', { code: error?.code, message: error?.message });
+    throw error;
+  });
+
+  const timedResult = await Promise.race([
+    redirectPromise,
+    new Promise((resolve) => setTimeout(() => resolve('__timeout__'), timeoutMs)),
+  ]);
+
+  if (timedResult !== '__timeout__') {
+    authRecoveryLog('iOS getRedirectResult settled', { hasUser: Boolean(timedResult?.user) });
+    if (timedResult?.user) {
+      return timedResult;
+    }
+  } else {
+    socialAuthDebug('GET_REDIRECT_RESULT_TIMEOUT', { timeoutMs, platform: 'ios' });
+    authRecoveryLog('iOS getRedirectResult timed out', { timeoutMs });
+  }
+
+  if (redirectError && timedResult === '__timeout__') {
+    return null;
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, IOS_LATE_REDIRECT_GRACE_MS));
+  if (auth.currentUser) {
+    return { user: auth.currentUser, source: 'currentUser-after-ios-wait' };
+  }
+
+  if (timedResult !== '__timeout__') {
+    return timedResult?.user ? timedResult : null;
+  }
+
+  try {
+    const late = await Promise.race([
+      redirectPromise,
+      new Promise((resolve) => setTimeout(() => resolve(null), IOS_LATE_REDIRECT_GRACE_MS)),
+    ]);
+    if (late?.user) {
+      socialAuthDebug('GET_REDIRECT_RESULT_SUCCESS', { source: 'ios-late-redirect' });
+      return late;
+    }
+  } catch {
+    /* already logged */
+  }
+
+  return null;
+}
+
+async function settleGetRedirectResultDesktop(auth) {
   const timeoutMs = getRedirectResultTimeoutMs();
   authRecoveryLog('Checking getRedirectResult...', { timeoutMs });
 
@@ -102,6 +175,7 @@ async function settleGetRedirectResult(auth) {
       return result;
     })
     .catch((error) => {
+      socialAuthDebug('FIREBASE_OAUTH_CONFIG_ERROR', { code: error?.code, message: error?.message });
       if (timedOut) {
         authRecoveryLog('getRedirectResult rejected after timeout (ignored)', { code: error?.code });
         return null;
@@ -113,22 +187,17 @@ async function settleGetRedirectResult(auth) {
   if (raced?.user) {
     return raced;
   }
-
-  if (isIosWebContext()) {
-    const late = await Promise.race([
-      redirectPromise,
-      new Promise((resolve) => setTimeout(() => resolve(null), IOS_LATE_REDIRECT_GRACE_MS)),
-    ]);
-    if (late?.user) {
-      socialAuthDebug('GET_REDIRECT_RESULT_SUCCESS', { source: 'ios-late-redirect' });
-      return late;
-    }
-    if (auth.currentUser) {
-      return { user: auth.currentUser, source: 'currentUser-after-late-wait' };
-    }
+  if (auth.currentUser) {
+    return { user: auth.currentUser, source: 'currentUser-after-race' };
   }
-
   return null;
+}
+
+async function settleGetRedirectResult(auth) {
+  if (isIosWebContext()) {
+    return settleGetRedirectResultIos(auth);
+  }
+  return settleGetRedirectResultDesktop(auth);
 }
 
 async function resolveRedirectUser(auth, allowAuthStateFallback) {
@@ -136,6 +205,7 @@ async function resolveRedirectUser(auth, allowAuthStateFallback) {
   if (result?.user) {
     return result;
   }
+  socialAuthDebug('FIREBASE_REDIRECT_RESULT_MISSING', { phase: 'getRedirectResult' });
   if (!allowAuthStateFallback) {
     return null;
   }
@@ -147,11 +217,11 @@ async function resolveRedirectUser(auth, allowAuthStateFallback) {
 }
 
 /**
- * Exactly one getRedirectResult() per page load. Subsequent callers reuse the resolved user.
- * Call ensureSocialAuthReady() (persistence) before this on redirect return.
+ * Exactly one getRedirectResult() chain per attempt. Subsequent callers reuse a successful user.
+ * Call ensureRedirectPrerequisitesReady() before this on OAuth return.
  */
 export async function consumeFirebaseRedirectResult(auth, consumer, { allowAuthStateFallback = false } = {}) {
-  socialAuthDebug('GET_REDIRECT_RESULT_BEGIN', { consumer });
+  socialAuthDebug('GET_REDIRECT_RESULT_BEGIN', { consumer, attempt: redirectResultAttemptCount + 1 });
   authRecoveryLog('consumeFirebaseRedirectResult begin', { consumer });
 
   if (cachedRedirectResult !== undefined) {
@@ -160,12 +230,20 @@ export async function consumeFirebaseRedirectResult(auth, consumer, { allowAuthS
       socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: true, source: 'cache' });
       return cachedRedirectResult;
     }
-    socialAuthDebug('GET_REDIRECT_RESULT_NULL', { consumer, source: 'cache' });
-    socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, source: 'cache' });
-    return null;
+    if (shouldAllowRedirectResultRetry()) {
+      socialAuthDebug('GET_REDIRECT_RESULT_RETRY', { consumer, attempt: redirectResultAttemptCount + 1 });
+      resetRedirectResultCacheForRetry();
+    } else {
+      socialAuthDebug('GET_REDIRECT_RESULT_NULL', { consumer, source: 'cache' });
+      socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, source: 'cache' });
+      return null;
+    }
   }
 
+  await ensureRedirectPrerequisitesReady();
+
   if (!redirectResultInflight) {
+    redirectResultAttemptCount += 1;
     redirectResultInflight = (async () => {
       try {
         const result = await resolveRedirectUser(auth, allowAuthStateFallback);
@@ -179,15 +257,20 @@ export async function consumeFirebaseRedirectResult(auth, consumer, { allowAuthS
           socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: true, source: result.source || 'getRedirectResult' });
           return result;
         }
-        cachedRedirectResult = null;
+        if (!shouldAllowRedirectResultRetry()) {
+          cachedRedirectResult = null;
+        }
         socialAuthDebug('GET_REDIRECT_RESULT_NULL', { consumer, source: 'exhausted' });
         socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, source: 'exhausted' });
         return null;
       } catch (error) {
-        cachedRedirectResult = null;
+        if (!shouldAllowRedirectResultRetry()) {
+          cachedRedirectResult = null;
+        }
         redirectResultConsumed = true;
         socialAuthDebug('GET_REDIRECT_RESULT_NULL', { consumer, code: error?.code, message: error?.message });
         socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, code: error?.code });
+        socialAuthDebug('FIREBASE_OAUTH_CONFIG_ERROR', { code: error?.code, message: error?.message });
         authRecoveryLog('getRedirectResult error', { code: error?.code });
         throw error;
       } finally {

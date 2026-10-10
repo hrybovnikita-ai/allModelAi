@@ -44,7 +44,7 @@ export function bootstrapGoogleRedirectRecovery(runPipeline) {
         code: error?.code,
         message: error?.message,
       });
-      persistSocialAuthError(socialError(error));
+      persistSocialAuthError(socialError(error), error?.code || error?.diagnosticStage);
       return null;
     })
     .finally(() => {

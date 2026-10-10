@@ -1,4 +1,4 @@
-import { initializeApp, getApps } from 'firebase/app';
+import { deleteApp, initializeApp, getApps } from 'firebase/app';
 import {
   initializeAuth,
   indexedDBLocalPersistence,
@@ -267,12 +267,34 @@ export function getSocialAuth() {
     );
   }
 
+  const existingApp = getApps().find((item) => item.name === 'allmodelai-social');
+  if (existingApp && existingApp.options.authDomain !== config.authDomain) {
+    socialAuthDebug('AUTH_DOMAIN_MISMATCH', {
+      expected: config.authDomain,
+      actual: existingApp.options.authDomain,
+    });
+    throw new Error('AUTH_DOMAIN_MISMATCH');
+  }
+
   if (!auth) {
-    const app = getApps().find((item) => item.name === 'allmodelai-social')
-      || initializeApp(config, 'allmodelai-social');
+    const app = existingApp || initializeApp(config, 'allmodelai-social');
     auth = initializeSocialAuth(app);
   }
   return auth;
+}
+
+async function reconcileFirebaseAppAuthDomain() {
+  const config = buildFirebaseClientConfig();
+  const existingApp = getApps().find((item) => item.name === 'allmodelai-social');
+  if (!existingApp || existingApp.options.authDomain === config.authDomain) {
+    return;
+  }
+  socialAuthDebug('AUTH_DOMAIN_MISMATCH', {
+    expected: config.authDomain,
+    actual: existingApp.options.authDomain,
+  });
+  auth = null;
+  await deleteApp(existingApp);
 }
 
 let authReadyPromise = null;
@@ -285,10 +307,17 @@ export async function ensureSocialAuthReady() {
 
   authReadyPromise = (async () => {
     await ensureFirebaseSocialConfigLoaded();
+    await reconcileFirebaseAppAuthDomain();
     const instance = getSocialAuth();
-    if (import.meta.env?.DEV || import.meta.env?.VITE_FIREBASE_CUSTOM_AUTH_DOMAIN === 'true') {
-      console.info('[AllModelAI:Firebase] authDomain', getEffectiveFirebaseConfig().authDomain);
+    const authDomain = getEffectiveFirebaseConfig().authDomain;
+    if (
+      import.meta.env?.DEV
+      || import.meta.env?.VITE_FIREBASE_CUSTOM_AUTH_DOMAIN === 'true'
+      || isMobileWebSafari()
+    ) {
+      console.info('[AllModelAI:Firebase] authDomain', authDomain);
     }
+    socialAuthDebug('FIREBASE_AUTH_DOMAIN_READY', { authDomain });
     await applyAuthPersistenceSafely(instance);
     return instance;
   })().catch((error) => {

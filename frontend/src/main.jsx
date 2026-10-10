@@ -19,21 +19,20 @@ import { applyDeviceProfile } from './lib/deviceProfile.js'
 import { installNativeFetchInterceptor } from './lib/nativeFetch.js'
 import { initPwaInstallPrompt } from './lib/pwaInstall.js'
 import { initServiceWorker } from './lib/serviceWorker.js'
-import { ensureFirebaseSocialConfigLoaded } from './lib/loadFirebaseConfig.js'
+import { startRedirectPrerequisitesPreload } from './lib/authRedirectPreload.js'
 import { ensureSocialAuthReady } from './lib/firebase.js'
 import { isGoogleRedirectRecoveryPending, reconcileStaleRedirectIntent } from './lib/socialRedirectState.js'
 
 installNativeFetchInterceptor()
-void ensureFirebaseSocialConfigLoaded()
-  .then(() => ensureSocialAuthReady())
-  .then(() => {
-    if (!isGoogleRedirectRecoveryPending()) {
-      reconcileStaleRedirectIntent();
-    }
-  })
-  .catch(() => {
-    /* SessionProvider owns redirect recovery; avoid duplicate bootstrap here. */
-  })
+void startRedirectPrerequisitesPreload().catch(() => {
+  /* Redirect gate surfaces recovery errors. */
+})
+void ensureSocialAuthReady().catch(() => {})
+void Promise.resolve().then(() => {
+  if (!isGoogleRedirectRecoveryPending()) {
+    reconcileStaleRedirectIntent();
+  }
+})
 
 function readAppearance() {
   try {
