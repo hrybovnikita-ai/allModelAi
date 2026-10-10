@@ -34,8 +34,12 @@ async function runBootstrapAuthenticatedUser() {
   }
   if (isGoogleRedirectRecoveryPending()) {
     reconcileStaleRedirectIntent();
+    if (isGoogleRedirectRecoveryPending() && shouldAttemptGoogleRedirectRecovery()) {
+      authRecoveryLog('Deferring Google redirect recovery to gate (WebKit may still be finishing OAuth)');
+      return null;
+    }
     if (isGoogleRedirectRecoveryPending()) {
-      authRecoveryLog('Clearing stale Google redirect intent after bootstrap recovery miss');
+      authRecoveryLog('Clearing expired Google redirect intent after bootstrap recovery miss');
       clearSocialRedirectIntent();
     }
   }

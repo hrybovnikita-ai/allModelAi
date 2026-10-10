@@ -44,6 +44,12 @@ afterEach(() => {
   delete globalThis.localStorage;
 });
 
+test('redirect intent stores challenge state for Safari return', () => {
+  persistRedirectIntent('Google', { challengeState: 'f'.repeat(64) }, 'awaiting-google-return');
+  const raw = globalThis.sessionStorage.getItem('allmodelai_social_redirect');
+  assert.equal(JSON.parse(raw).challengeState, 'f'.repeat(64));
+});
+
 test('redirect recovery pending requires committed redirect flag', () => {
   persistRedirectIntent('Google', {}, 'awaiting-google-return');
   assert.equal(isGoogleRedirectRecoveryPending(), false);

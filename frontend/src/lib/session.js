@@ -144,8 +144,11 @@ export function hasSessionRestoreHint() {
 
 /** Bounded retries: only for fresh-login cookie propagation or transient network failures. */
 function sessionRestoreRetryDelays() {
+  if (getNativeSessionToken()) {
+    return [0, 150, 400, 800, 1500];
+  }
   if (isFreshLoginGraceActive()) {
-    return [0, 200];
+    return [0, 200, 500, 1000];
   }
   return [0];
 }
@@ -296,10 +299,12 @@ export async function confirmSession(user) {
     throw new Error('Your sign-in could not be verified. Please retry.');
   }
 
+  markFreshLogin();
+
   const matchesUser = (candidate) =>
     candidate?.email?.toLowerCase() === user.email.toLowerCase();
 
-  const retryDelays = isFreshLoginGraceActive() ? [0, 200, 500, 1000] : [0];
+  const retryDelays = isFreshLoginGraceActive() ? [0, 200, 500, 1000, 1500] : [0];
   let lastError = null;
 
   for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {

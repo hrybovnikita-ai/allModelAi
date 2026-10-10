@@ -296,7 +296,6 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
     }
 
     if (!redirectResult?.user) {
-      clearSocialRedirectIntent();
       const failure = describeRedirectRecoveryFailure({
         consumer,
         reason: 'redirect-result-null',
@@ -316,7 +315,10 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
     };
 
     try {
-      const challenge = await prepareBackendChallenge(options);
+      let challenge = pending.challengeState ? { state: pending.challengeState } : null;
+      if (!challenge?.state) {
+        challenge = await prepareBackendChallenge(options);
+      }
       const user = await complete(redirectResult, {
         ...options,
         challenge,

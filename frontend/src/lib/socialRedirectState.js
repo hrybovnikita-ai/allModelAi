@@ -14,6 +14,7 @@ function saveRedirectIntent(name, options = {}, extra = {}) {
     phase,
     expires: Date.now() + 600000,
     redirectStartedAt: phase === 'awaiting-google-return' ? Date.now() : extra.redirectStartedAt,
+    challengeState: typeof options.challengeState === 'string' ? options.challengeState : undefined,
   });
   try {
     sessionStorage.setItem(REDIRECT_STORAGE_KEY, payload);

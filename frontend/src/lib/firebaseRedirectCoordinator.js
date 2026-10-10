@@ -10,8 +10,11 @@ let redirectResultConsumed = false;
 export const REDIRECT_RESULT_TIMEOUT_MS = 800;
 /** Max wait for onAuthStateChanged fallback after redirect (ms). */
 export const AUTH_STATE_FALLBACK_TIMEOUT_MS = 1000;
-const IOS_REDIRECT_RESULT_TIMEOUT_MS = 1000;
-const IOS_AUTH_STATE_FALLBACK_TIMEOUT_MS = 1000;
+/** WebKit often resolves getRedirectResult after several seconds on iPad/iPhone Safari. */
+export const IOS_REDIRECT_RESULT_TIMEOUT_MS = 12000;
+export const IOS_AUTH_STATE_FALLBACK_TIMEOUT_MS = 8000;
+/** After a timeout race, still accept a late getRedirectResult on iOS (ms). */
+export const IOS_LATE_REDIRECT_GRACE_MS = 4000;
 
 export function resetFirebaseRedirectCoordinatorForTests() {
   cachedRedirectResult = undefined;
@@ -83,6 +86,10 @@ async function settleGetRedirectResult(auth) {
       timedOut = true;
       socialAuthDebug('GET_REDIRECT_RESULT_TIMEOUT', { timeoutMs });
       authRecoveryLog('Timeout triggered', { timeoutMs });
+      if (auth.currentUser) {
+        resolve({ user: auth.currentUser, source: 'currentUser-on-timeout' });
+        return;
+      }
       resolve(null);
     }, timeoutMs);
   });
@@ -102,7 +109,26 @@ async function settleGetRedirectResult(auth) {
       throw error;
     });
 
-  return Promise.race([redirectPromise, timeoutPromise]);
+  const raced = await Promise.race([redirectPromise, timeoutPromise]);
+  if (raced?.user) {
+    return raced;
+  }
+
+  if (isIosWebContext()) {
+    const late = await Promise.race([
+      redirectPromise,
+      new Promise((resolve) => setTimeout(() => resolve(null), IOS_LATE_REDIRECT_GRACE_MS)),
+    ]);
+    if (late?.user) {
+      socialAuthDebug('GET_REDIRECT_RESULT_SUCCESS', { source: 'ios-late-redirect' });
+      return late;
+    }
+    if (auth.currentUser) {
+      return { user: auth.currentUser, source: 'currentUser-after-late-wait' };
+    }
+  }
+
+  return null;
 }
 
 /**

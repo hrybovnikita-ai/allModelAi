@@ -12,10 +12,6 @@
       "destination": "https://allmodelai-backend.onrender.com/api/:path*"
     },
     {
-      "source": "/auth/:path*",
-      "destination": "https://allmodelai-backend.onrender.com/auth/:path*"
-    },
-    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

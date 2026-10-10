@@ -1,5 +1,5 @@
 import { authPost, resolveAuthApiUrl } from './authApi.js';
-import { applyAuthResponsePayload, confirmSession } from './session.js';
+import { applyAuthResponsePayload, confirmSession, markFreshLogin } from './session.js';
 import { socialAuthDebug } from './socialAuthDiagnostics.js';
 
 async function post(path, body) {
@@ -56,6 +56,7 @@ export async function exchangeSocialSession(idToken, {
   }
   const data = await post('firebase', body);
   applyAuthResponsePayload(data);
+  markFreshLogin();
   socialAuthDebug('BACKEND_SET_SESSION_COMPLETE', { email: data.user?.email });
   return confirmSession(data.user);
 }
