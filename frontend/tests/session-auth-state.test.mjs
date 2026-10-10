@@ -21,10 +21,12 @@ test('RequireAuth sends unauthenticated users to /login', () => {
   assert.doesNotMatch(src, /to="\/"\s*\n\s*replace[\s\S]*signedOut/);
 });
 
-test('SessionProvider does not hydrate authenticated user from storage alone', () => {
+test('SessionProvider only uses stored profile in degraded connection mode', () => {
   const src = readFileSync(`${root}src/components/Session/SessionProvider.jsx`, 'utf8');
-  assert.doesNotMatch(src, /readStoredSessionUser\(\)/);
-  assert.match(src, /user: null/);
+  assert.match(src, /readStoredSessionUser/);
+  assert.match(src, /sessionVerified: false/);
+  assert.match(src, /CONNECTION_ISSUE/);
+  assert.match(src, /meta\.verified === false/);
 });
 
 test('auth bootstrap clears stale redirect intent after failed recovery', () => {

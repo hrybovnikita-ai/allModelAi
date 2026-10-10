@@ -8,8 +8,8 @@ test('RequireAuth waits for authLoading before anonymous redirect', async () => 
     'utf8',
   );
   assert.match(source, /authLoading/);
-  const authLoadingGuard = source.indexOf('if (authLoading || protectedSessionProbe)');
-  const anonymousGuard = source.indexOf("status === 'anonymous'");
+  const authLoadingGuard = source.indexOf('showAuthSkeleton');
+  const anonymousGuard = source.indexOf('AUTH_STATUS.UNAUTHENTICATED');
   assert.ok(authLoadingGuard > 0 && anonymousGuard > authLoadingGuard);
 });
 

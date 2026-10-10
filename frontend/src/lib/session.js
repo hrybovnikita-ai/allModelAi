@@ -181,11 +181,19 @@ function tryDegradedSessionRestore(error) {
   return cached;
 }
 
+/** When bootstrap fails but a client session hint exists, keep the signed-in UI in degraded mode. */
+export function degradedSessionUserFromFailure(error) {
+  return tryDegradedSessionRestore(error);
+}
+
 const SESSION_FETCH_TIMEOUT_MS = 12000;
 
 function shouldRetrySessionAfterResponse(response, attempt, maxAttempts) {
   if (response.status === 401) {
     return isFreshLoginGraceActive() && attempt === 0 && maxAttempts > 1;
+  }
+  if (response.status === 429) {
+    return attempt < maxAttempts - 1;
   }
   if (response.status >= 500) {
     return attempt < maxAttempts - 1;
@@ -314,7 +322,7 @@ export async function restoreSession({ force = false } = {}) {
           new Error(data?.message || 'Could not verify your session. Please try again.'),
           { status: response.status },
         );
-        if (response.status >= 500 && attempt === retryDelays.length - 1) {
+        if (attempt === retryDelays.length - 1) {
           const degraded = tryDegradedSessionRestore(serverError);
           if (degraded) return degraded;
         }

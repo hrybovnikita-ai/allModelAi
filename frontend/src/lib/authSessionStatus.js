@@ -24,12 +24,15 @@ export const AUTH_INIT_TIMEOUT_MS = 8000;
 /** iPad/iPhone Safari: Firebase redirect + backend exchange can exceed 8s — keep loading UI until recovery finishes. */
 export const AUTH_REDIRECT_RECOVERY_TIMEOUT_MS = 45000;
 
-export function authBootstrapTimeoutMs(status) {
+/** Session restore may retry for ~7s plus per-request timeouts while Render wakes up. */
+export const AUTH_SESSION_RESTORE_TIMEOUT_MS = 22000;
+
+export function authBootstrapTimeoutMs(status, { sessionRestorePending = false } = {}) {
   if (status === AUTH_STATUS.CHECKING_REDIRECT) {
     return AUTH_REDIRECT_RECOVERY_TIMEOUT_MS;
   }
   if (status === AUTH_STATUS.CHECKING_SESSION || status === AUTH_STATUS.INITIALIZING) {
-    return AUTH_INIT_TIMEOUT_MS;
+    return sessionRestorePending ? AUTH_SESSION_RESTORE_TIMEOUT_MS : AUTH_INIT_TIMEOUT_MS;
   }
   return AUTH_INIT_TIMEOUT_MS;
 }

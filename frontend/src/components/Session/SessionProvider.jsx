@@ -8,8 +8,10 @@ import {
 import { classifyNetworkError } from '../../lib/networkErrors.js';
 import { isGoogleRedirectRecoveryInFlight } from '../../lib/googleRedirectRecovery.js';
 import {
+  degradedSessionUserFromFailure,
   hasSessionRestoreHint,
   isFreshLoginGraceActive,
+  readStoredSessionUser,
   restoreSession,
   SESSION_UPDATED_EVENT,
   subscribeSessionCleared,
@@ -36,6 +38,27 @@ function initialStatus() {
 
 function connectionIssueFromError(error) {
   return classifyNetworkError(error, { phase: 'session' });
+}
+
+function connectionIssueState(current, error) {
+  const issue = connectionIssueFromError(error);
+  const user = current.user?.email
+    ? current.user
+    : degradedSessionUserFromFailure(error) || readStoredSessionUser();
+  if (user?.email) {
+    return {
+      status: AUTH_STATUS.CONNECTION_ISSUE,
+      user,
+      sessionVerified: false,
+      connectionIssue: issue,
+    };
+  }
+  return {
+    status: AUTH_STATUS.ERROR,
+    user: null,
+    sessionVerified: false,
+    connectionIssue: issue,
+  };
 }
 
 export function SessionProvider({ children }) {
@@ -132,22 +155,7 @@ export function SessionProvider({ children }) {
       return user;
     } catch (error) {
       socialAuthDebug('SESSION_PROVIDER_ERROR', { message: error?.message });
-      setState((current) => {
-        if (current.user?.email && hasSessionRestoreHint()) {
-          return {
-            status: AUTH_STATUS.CONNECTION_ISSUE,
-            user: current.user,
-            sessionVerified: false,
-            connectionIssue: connectionIssueFromError(error),
-          };
-        }
-        return {
-          status: AUTH_STATUS.ERROR,
-          user: null,
-          sessionVerified: false,
-          connectionIssue: connectionIssueFromError(error),
-        };
-      });
+      setState((current) => connectionIssueState(current, error));
       return null;
     }
   }, [applySessionUser]);
@@ -171,22 +179,7 @@ export function SessionProvider({ children }) {
           return;
         }
         reconcileStaleRedirectIntent();
-        setState((current) => {
-          if (current.user?.email && hasSessionRestoreHint()) {
-            return {
-              status: AUTH_STATUS.CONNECTION_ISSUE,
-              user: current.user,
-              sessionVerified: false,
-              connectionIssue: connectionIssueFromError(error),
-            };
-          }
-          return {
-            status: AUTH_STATUS.ERROR,
-            user: current.user?.email ? current.user : null,
-            sessionVerified: false,
-            connectionIssue: connectionIssueFromError(error),
-          };
-        });
+        setState((current) => connectionIssueState(current, error));
       });
     return () => {
       active = false;
@@ -204,16 +197,20 @@ export function SessionProvider({ children }) {
         }
         socialAuthDebug('SESSION_PROVIDER_INIT_TIMEOUT', {});
         reconcileStaleRedirectIntent();
-        if (current.user?.email && hasSessionRestoreHint()) {
-          return {
-            ...current,
-            status: AUTH_STATUS.CONNECTION_ISSUE,
-            sessionVerified: false,
-            connectionIssue: current.connectionIssue || {
-              code: 'SESSION_CHECK_TIMEOUT',
-              message: 'Session verification is taking longer than expected. You can keep using the app while we retry.',
-            },
-          };
+        const timeoutIssue = current.connectionIssue || {
+          code: 'SESSION_CHECK_TIMEOUT',
+          message: 'Session verification is taking longer than expected. You can keep using the app while we retry.',
+        };
+        if (hasSessionRestoreHint()) {
+          const cached = current.user?.email ? current.user : readStoredSessionUser();
+          if (cached?.email) {
+            return {
+              status: AUTH_STATUS.CONNECTION_ISSUE,
+              user: cached,
+              sessionVerified: false,
+              connectionIssue: timeoutIssue,
+            };
+          }
         }
         return {
           status: AUTH_STATUS.UNAUTHENTICATED,
@@ -222,7 +219,7 @@ export function SessionProvider({ children }) {
           connectionIssue: null,
         };
       });
-    }, authBootstrapTimeoutMs(state.status));
+    }, authBootstrapTimeoutMs(state.status, { sessionRestorePending: hasSessionRestoreHint() }));
     return () => clearTimeout(timer);
   }, [state.status]);
 

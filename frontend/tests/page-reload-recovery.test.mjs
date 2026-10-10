@@ -109,6 +109,7 @@ test('restoreSession degrades on HTTP 500 when client hint exists', async () => 
 test('RequireAuth keeps protected shell for connection-issue state', () => {
   const requireAuth = readFileSync(`${root}src/components/Login/RequireAuth.jsx`, 'utf8');
   assert.match(requireAuth, /CONNECTION_ISSUE/);
+  assert.match(requireAuth, /AUTH_STATUS\.ERROR/);
   assert.match(requireAuth, /<Outlet/);
   assert.doesNotMatch(requireAuth, /protectedSessionProbe/);
 });
@@ -122,4 +123,32 @@ test('SessionProvider exposes connection issue without full-page auth error when
 
 test('auth status includes connection-issue for degraded reload', () => {
   assert.equal(AUTH_STATUS.CONNECTION_ISSUE, 'connection-issue');
+});
+
+test('restoreSession degrades on HTTP 429 when client hint exists', async () => {
+  installStorage();
+  globalThis.localStorage.setItem(
+    'allmodelai_user',
+    JSON.stringify({ email: 'rate@example.com', name: 'Rate' }),
+  );
+  globalThis.document = { cookie: 'allmodelai_cookie_consent=accepted' };
+  globalThis.fetch = async () => jsonResponse(429, { message: 'Too many requests' });
+
+  const user = await restoreSession({ force: true });
+  assert.equal(user?.email, 'rate@example.com');
+  assert.equal(consumeSessionRestoreMeta().verified, false);
+});
+
+test('degradedSessionUserFromFailure returns cached profile when bootstrap throws', async () => {
+  const { degradedSessionUserFromFailure } = await import('../src/lib/session.js');
+  installStorage();
+  globalThis.localStorage.setItem(
+    'allmodelai_user',
+    JSON.stringify({ email: 'bootstrap@example.com', name: 'Bootstrap' }),
+  );
+  globalThis.document = { cookie: 'allmodelai_cookie_consent=accepted' };
+
+  const user = degradedSessionUserFromFailure(new TypeError('Failed to fetch'));
+  assert.equal(user?.email, 'bootstrap@example.com');
+  assert.equal(consumeSessionRestoreMeta().verified, false);
 });

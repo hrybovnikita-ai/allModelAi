@@ -21,7 +21,9 @@ function AuthLoadingSkeleton({ message }) {
 
 function canRenderProtectedShell(status, user) {
   if (!user?.email || isLogoutInProgress()) return false;
-  return status === AUTH_STATUS.AUTHENTICATED || status === AUTH_STATUS.CONNECTION_ISSUE;
+  return status === AUTH_STATUS.AUTHENTICATED
+    || status === AUTH_STATUS.CONNECTION_ISSUE
+    || status === AUTH_STATUS.ERROR;
 }
 
 export default function RequireAuth() {
@@ -59,6 +61,9 @@ export default function RequireAuth() {
 
   if (shellReady) {
     const bannerMessage = connectionIssue?.message
+      || (status === AUTH_STATUS.ERROR
+        ? t('Could not connect. Please try again.')
+        : null)
       || (!sessionVerified
         ? t('Reconnecting to the server. Some features may be unavailable until your session is confirmed.')
         : null);
