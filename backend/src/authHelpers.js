@@ -62,6 +62,31 @@ function validateRegistrationInput({ name, email, password }) {
     return { ok: true, name: trimmedName, email: normalizedEmail, password };
 }
 
+function validatePasswordEnrollmentInput({ newPassword, confirmPassword, currentPassword }, { passwordEnabled = false } = {}) {
+    if (typeof newPassword !== 'string' || !newPassword) {
+        return { ok: false, status: 400, message: 'Please enter a new password.' };
+    }
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+        return {
+            ok: false,
+            status: 400,
+            message: `Password must contain at least ${MIN_PASSWORD_LENGTH} characters.`,
+        };
+    }
+    if (newPassword.length > MAX_PASSWORD_LENGTH) {
+        return { ok: false, status: 400, message: 'Password is too long.' };
+    }
+    if (newPassword !== confirmPassword) {
+        return { ok: false, status: 400, message: 'Passwords do not match.' };
+    }
+    if (passwordEnabled) {
+        if (typeof currentPassword !== 'string' || !currentPassword) {
+            return { ok: false, status: 400, message: 'Enter your current password.' };
+        }
+    }
+    return { ok: true, newPassword, currentPassword: passwordEnabled ? currentPassword : undefined };
+}
+
 function authLog(message, meta = {}) {
     if (process.env.NODE_ENV === 'test') return;
     const safeMeta = Object.fromEntries(
@@ -87,5 +112,6 @@ module.exports = {
     defaultLoginName,
     MIN_PASSWORD_LENGTH,
     validateRegistrationInput,
+    validatePasswordEnrollmentInput,
     parseRememberMe,
 };

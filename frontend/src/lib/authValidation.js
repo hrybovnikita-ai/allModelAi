@@ -44,3 +44,29 @@ export function validateRegistrationForm({ name, email, password, confirmPasswor
     },
   };
 }
+
+export function validatePasswordEnrollmentForm({ newPassword, confirmPassword, currentPassword }, { passwordEnabled = false } = {}) {
+  if (!newPassword) {
+    return { ok: false, message: 'Please enter a new password.' };
+  }
+  if (newPassword.length < MIN_PASSWORD_LENGTH) {
+    return {
+      ok: false,
+      message: `Password must contain at least ${MIN_PASSWORD_LENGTH} characters.`,
+    };
+  }
+  if (newPassword !== confirmPassword) {
+    return { ok: false, message: 'Passwords do not match.' };
+  }
+  if (passwordEnabled && !currentPassword) {
+    return { ok: false, message: 'Enter your current password.' };
+  }
+  return {
+    ok: true,
+    payload: {
+      newPassword,
+      confirmPassword,
+      currentPassword: passwordEnabled ? currentPassword : undefined,
+    },
+  };
+}

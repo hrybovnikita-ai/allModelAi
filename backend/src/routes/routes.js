@@ -109,6 +109,7 @@ const {
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { prepareAppGeneration } = require('../appGeneration');
 const { health, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
+const { getAccountSecurity, setAccountPassword } = require('../accountPassword');
 const { getStorageOverview, listStorageIdea, createStorageIdea, deleteStorageIdea } = require('../controllers/storageIdeasController');
 const { getSubscriptionSummary, cancelTestSubscriptionHandler } = require('../controllers/subscriptionController');
 const {
@@ -185,6 +186,8 @@ router.get('/auth/me', logAuthStage('SESSION_ROUTE_ENTERED'), getSession);
 router.post('/auth/logout', logout);
 router.post('/auth/password-reset/request', requestPasswordReset);
 router.post('/auth/password-reset/confirm', confirmPasswordReset);
+router.get('/auth/account/security', requireAuth, getAccountSecurity);
+router.post('/auth/account/password', requireAuth, setAccountPassword);
 router.get('/status/models', logAuthStage('MODELS_STATUS_ROUTE_ENTERED'), cachePublicResponse('allmodelai:public:model-status:v1'), getModelStatus);
 router.get('/health/providers', cachePublicResponse('allmodelai:public:provider-health:v1'), getProviderHealth);
 router.get('/health', health);

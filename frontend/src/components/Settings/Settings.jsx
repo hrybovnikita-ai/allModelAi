@@ -1,4 +1,5 @@
 import SocialConnections from './SocialConnections';
+import AccountSecurity from './AccountSecurity';
 import { useState } from 'react';
 import { performLogout } from '../../lib/session';
 import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
@@ -62,7 +63,7 @@ export default function Settings() {
       <label>{t('language')}<select value={selectedLanguage.name} onChange={changeLanguage}>{LANGUAGES.map((language) => <option key={language.name} value={language.name}>{language.native}</option>)}</select></label>
       <button className="settings-save" type="submit">{t('save')}</button>
     </div></form>
-    <section className="settings-card settings-security"><div><span>{t('security')}</span><h2>{t('securityHeading')}</h2></div><Link className="settings-security-link" to="/forgot-password">{t('changePassword')}</Link></section>
+    <AccountSecurity />
     <SocialConnections />
     {notice && <p className="settings-notice" role="status">{t(notice)}</p>}<button className="settings-logout" type="button" onClick={logout}>{t('logout')}</button>
   </section>

@@ -471,6 +471,42 @@ const STRINGS = {
     sr: "Држите свој налог под својом контролом.",
     da: "Hold din konto under din egen kontrol.",
   },
+  setPassword: {
+    en: "Set password",
+    ru: "Задать пароль",
+  },
+  setPasswordHint: {
+    en: "Add a password to sign in with email as well as Google. Your chats and subscription stay on this account.",
+    ru: "Добавьте пароль, чтобы входить по email и через Google. Чаты и подписка останутся на этом аккаунте.",
+  },
+  connectedProviders: {
+    en: "Connected sign-in",
+    ru: "Подключённые способы входа",
+  },
+  currentPassword: {
+    en: "Current password",
+    ru: "Текущий пароль",
+  },
+  newPassword: {
+    en: "New password",
+    ru: "Новый пароль",
+  },
+  confirmPassword: {
+    en: "Confirm password",
+    ru: "Подтвердите пароль",
+  },
+  forgotPasswordLink: {
+    en: "Forgot password?",
+    ru: "Забыли пароль?",
+  },
+  loadingSecurity: {
+    en: "Loading security settings…",
+    ru: "Загрузка настроек безопасности…",
+  },
+  passwordSaved: {
+    en: "Password saved. You can sign in with email and password or Google.",
+    ru: "Пароль сохранён. Можно входить по email или через Google.",
+  },
   changePassword: {
     en: "Change password",
     ru: "Изменить пароль",

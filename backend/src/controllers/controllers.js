@@ -371,7 +371,7 @@ const loginUser = async (req, res) => {
             );
         }
         const message = linkedSocial
-            ? 'This account uses Google sign-in. Continue with Google below, or use Forgot password after signing in with Google to add a password.'
+            ? 'No password is set yet for this email. Sign in with Google, then open Settings → Account → Security to set a password, or use Forgot password on the login page.'
             : 'No password is set for this account yet. Use Forgot password to create one, or continue with Google if you registered that way.';
         return res.status(401).json({
             code: 'PASSWORD_SETUP_REQUIRED',

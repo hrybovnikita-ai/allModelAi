@@ -213,7 +213,7 @@ function LoginForm({
       if (requestError.code === 'PASSWORD_SETUP_REQUIRED' && !signingUp) {
         setError(
           requestError.message ||
-            'This account has no password yet. Use social sign-in or reset your password.',
+            'No password is set for this email. Sign in with Google, then set a password under Settings → Security.',
         );
       } else if (requestError.code === 'SOCIAL_ACCOUNT_EXISTS') {
         setError(requestError.message);
