@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../lib/useLanguage';
 import { performLogout } from '../../lib/session';
-import { AUTH_INIT_TIMEOUT_MS, AUTH_STATUS } from '../../lib/authSessionStatus';
+import {
+  authBootstrapTimeoutMs,
+  AUTH_REDIRECT_RECOVERY_TIMEOUT_MS,
+  AUTH_STATUS,
+} from '../../lib/authSessionStatus';
+import { isGoogleRedirectRecoveryInFlight } from '../../lib/googleRedirectRecovery';
+import { shouldShowGoogleRedirectRecoveryUI } from '../../lib/socialRedirectState';
 import { useSession } from '../Session/SessionProvider';
 import InstallPwaButton from '../InstallPwaButton/InstallPwaButton';
 
@@ -24,18 +30,28 @@ export default function NavAuthSection({ onOpenAuth }) {
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
+  const redirectRecoveryActive =
+    status === AUTH_STATUS.CHECKING_REDIRECT
+    || isGoogleRedirectRecoveryInFlight()
+    || shouldShowGoogleRedirectRecoveryUI();
+
   useEffect(() => {
-    if (!authLoading) {
+    if (!authLoading && !redirectRecoveryActive) {
       setLoadingTimedOut(false);
       return undefined;
     }
-    const timer = setTimeout(() => setLoadingTimedOut(true), AUTH_INIT_TIMEOUT_MS);
+    const timeoutMs = redirectRecoveryActive
+      ? AUTH_REDIRECT_RECOVERY_TIMEOUT_MS
+      : authBootstrapTimeoutMs(status);
+    const timer = setTimeout(() => setLoadingTimedOut(true), timeoutMs);
     return () => clearTimeout(timer);
-  }, [authLoading]);
+  }, [authLoading, redirectRecoveryActive, status]);
 
-  const isLoading = authLoading && !loadingTimedOut;
+  const isLoading = (authLoading || redirectRecoveryActive) && !loadingTimedOut;
   const isAuthenticated = status === AUTH_STATUS.AUTHENTICATED && Boolean(user?.email);
-  const showSessionError = status === AUTH_STATUS.ERROR || (authLoading && loadingTimedOut);
+  const showSessionError =
+    status === AUTH_STATUS.ERROR
+    || ((authLoading && !redirectRecoveryActive) && loadingTimedOut);
 
   const signOut = async () => {
     await performLogout();

@@ -65,10 +65,27 @@ test('auth bootstrap defers recovery while redirect is still pending on iOS', as
   assert.match(bootstrap, /shouldAttemptGoogleRedirectRecovery/);
 });
 
-test('social redirect recovery reuses persisted challenge state when present', async () => {
+test('social redirect recovery always mints a fresh backend challenge after Safari return', async () => {
   const signIn = await readFile(new URL('../src/lib/socialSignIn.js', import.meta.url), 'utf8');
-  assert.match(signIn, /pending\.challengeState/);
-  assert.doesNotMatch(signIn, /clearSocialRedirectIntent\(\);\s*const failure = describeRedirectRecoveryFailure/s);
+  assert.match(signIn, /BACKEND_CHALLENGE_AFTER_REDIRECT/);
+  assert.match(signIn, /prepareBackendChallenge\(options\)/);
+  assert.doesNotMatch(signIn, /pending\.challengeState/);
+});
+
+test('google redirect recovery does not cache a skipped null promise', async () => {
+  const recovery = await readFile(new URL('../src/lib/googleRedirectRecovery.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(recovery, /bootstrapPromise = Promise\.resolve\(null\)/);
+  assert.match(recovery, /bootstrapPromise = null/);
+  assert.match(recovery, /isGoogleRedirectRecoveryInFlight/);
+});
+
+test('session provider and navbar defer guest UI during redirect recovery', async () => {
+  const sessionProvider = await readFile(new URL('../src/components/Session/SessionProvider.jsx', import.meta.url), 'utf8');
+  const navbar = await readFile(new URL('../src/components/Navbar/NavAuthSection.jsx', import.meta.url), 'utf8');
+  assert.match(sessionProvider, /SESSION_PROVIDER_INIT_TIMEOUT_DEFERRED/);
+  assert.match(sessionProvider, /authBootstrapTimeoutMs/);
+  assert.match(navbar, /redirectRecoveryActive/);
+  assert.match(navbar, /AUTH_REDIRECT_RECOVERY_TIMEOUT_MS/);
 });
 
 test('social session marks fresh login before confirmSession (Safari cookie propagation)', async () => {

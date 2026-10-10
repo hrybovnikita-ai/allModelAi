@@ -1,6 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { bootstrapAuthenticatedUser } from '../../lib/authBootstrap.js';
-import { AUTH_INIT_TIMEOUT_MS, AUTH_STATUS, isAuthInitializing } from '../../lib/authSessionStatus.js';
+import {
+  authBootstrapTimeoutMs,
+  AUTH_STATUS,
+  isAuthInitializing,
+} from '../../lib/authSessionStatus.js';
+import { isGoogleRedirectRecoveryInFlight } from '../../lib/googleRedirectRecovery.js';
 import {
   hasSessionRestoreHint,
   restoreSession,
@@ -78,6 +83,10 @@ export function SessionProvider({ children }) {
       .catch((error) => {
         if (active) {
           socialAuthDebug('SESSION_PROVIDER_ERROR', { message: error?.message });
+          if (shouldShowGoogleRedirectRecoveryUI() || isGoogleRedirectRecoveryInFlight()) {
+            setState({ status: AUTH_STATUS.CHECKING_REDIRECT, user: null });
+            return;
+          }
           reconcileStaleRedirectIntent();
           setState({ status: AUTH_STATUS.UNAUTHENTICATED, user: null });
         }
@@ -92,11 +101,15 @@ export function SessionProvider({ children }) {
     const timer = setTimeout(() => {
       setState((current) => {
         if (!isAuthInitializing(current.status)) return current;
+        if (shouldShowGoogleRedirectRecoveryUI() || isGoogleRedirectRecoveryInFlight()) {
+          socialAuthDebug('SESSION_PROVIDER_INIT_TIMEOUT_DEFERRED', { phase: 'redirect-recovery' });
+          return current;
+        }
         socialAuthDebug('SESSION_PROVIDER_INIT_TIMEOUT', {});
         reconcileStaleRedirectIntent();
         return { status: AUTH_STATUS.UNAUTHENTICATED, user: null };
       });
-    }, AUTH_INIT_TIMEOUT_MS);
+    }, authBootstrapTimeoutMs(state.status));
     return () => clearTimeout(timer);
   }, [state.status]);
 

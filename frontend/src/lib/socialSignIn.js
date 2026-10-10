@@ -20,7 +20,10 @@ import {
   shouldTryGooglePopupFirst,
 } from './socialSignInEnv.js';
 import { consumeFirebaseRedirectResult, hasRedirectResultBeenConsumed } from './firebaseRedirectCoordinator.js';
-import { bootstrapGoogleRedirectRecovery, waitForGoogleRedirectRecovery } from './googleRedirectRecovery.js';
+import {
+  bootstrapGoogleRedirectRecovery,
+  getRedirectRecoveryPromise,
+} from './googleRedirectRecovery.js';
 import {
   clearSocialRedirectIntent,
   hasFirebaseRedirectReturnHints,
@@ -84,10 +87,24 @@ async function completeFromFirebaseUser(firebaseUser, options) {
     );
   }
 
-  socialAuthDebug('FIREBASE_ID_TOKEN_READY', { provider: GOOGLE_PROVIDER });
+  socialAuthDebug('FIREBASE_USER_READY', {
+    provider: GOOGLE_PROVIDER,
+    email: firebaseUser.email,
+    emailVerified: firebaseUser.emailVerified,
+  });
   socialAuthDebug('BACKEND_SESSION_EXCHANGE_START', { intent: options?.link ? 'link' : 'login' });
   try {
-    const idToken = await firebaseUser.getIdToken(true);
+    let idToken;
+    try {
+      idToken = await firebaseUser.getIdToken(true);
+    } catch (tokenError) {
+      socialAuthDebug('FIREBASE_ID_TOKEN_FAILED', {
+        code: tokenError?.code,
+        message: tokenError?.message,
+      });
+      throw tokenError;
+    }
+    socialAuthDebug('FIREBASE_ID_TOKEN_READY', { provider: GOOGLE_PROVIDER });
     stashFirebaseIdToken(idToken);
     authLog('Firebase ID token ready for session exchange');
     const user = await exchangeSocialSession(idToken, options);
@@ -315,10 +332,9 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
     };
 
     try {
-      let challenge = pending.challengeState ? { state: pending.challengeState } : null;
-      if (!challenge?.state) {
-        challenge = await prepareBackendChallenge(options);
-      }
+      // Safari drops the HttpOnly OAuth state cookie during the Google redirect — always mint a fresh challenge here.
+      socialAuthDebug('BACKEND_CHALLENGE_AFTER_REDIRECT', { reusedPreRedirectState: false });
+      const challenge = await prepareBackendChallenge(options);
       const user = await complete(redirectResult, {
         ...options,
         challenge,
@@ -341,9 +357,9 @@ export function runGoogleRedirectRecovery(consumer = 'RedirectRecovery') {
 }
 
 export async function awaitGoogleRedirectRecovery(consumer = 'RedirectRecovery') {
-  const existing = await waitForGoogleRedirectRecovery();
-  if (existing) {
-    return existing;
+  const inFlight = getRedirectRecoveryPromise();
+  if (inFlight) {
+    return inFlight;
   }
   if (!isGoogleRedirectRecoveryPending() || !shouldAttemptGoogleRedirectRecovery()) {
     return null;

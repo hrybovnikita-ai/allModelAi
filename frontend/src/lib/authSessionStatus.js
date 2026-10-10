@@ -17,5 +17,15 @@ export function isAuthInitializing(status) {
 /** After this, navbar may show guest actions if bootstrap is still in flight. */
 export const AUTH_INIT_TIMEOUT_MS = 8000;
 
+/** iPad/iPhone Safari: Firebase redirect + backend exchange can exceed 8s — keep loading UI until recovery finishes. */
+export const AUTH_REDIRECT_RECOVERY_TIMEOUT_MS = 45000;
+
+export function authBootstrapTimeoutMs(status) {
+  if (status === AUTH_STATUS.CHECKING_REDIRECT) {
+    return AUTH_REDIRECT_RECOVERY_TIMEOUT_MS;
+  }
+  return AUTH_INIT_TIMEOUT_MS;
+}
+
 /** Reserve space in the header while session is verifying (matches auth controls). */
 export const NAV_AUTH_SKELETON_MIN_WIDTH_PX = 280;

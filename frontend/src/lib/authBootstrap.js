@@ -10,6 +10,8 @@ import {
 } from './socialRedirectState.js';
 import { restoreSession } from './session.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
+import { isGoogleRedirectRecoveryInFlight } from './googleRedirectRecovery.js';
+import { shouldShowGoogleRedirectRecoveryUI } from './socialRedirectState.js';
 
 let bootstrapPromise = null;
 
@@ -32,6 +34,11 @@ async function runBootstrapAuthenticatedUser() {
     socialAuthDebug('SESSION_PROVIDER_AUTHENTICATED', { source: 'redirect-recovery' });
     return recoveredUser;
   }
+  if (isGoogleRedirectRecoveryInFlight() || shouldShowGoogleRedirectRecoveryUI()) {
+    authRecoveryLog('Session bootstrap waiting on Google redirect recovery');
+    return null;
+  }
+
   if (isGoogleRedirectRecoveryPending()) {
     reconcileStaleRedirectIntent();
     if (isGoogleRedirectRecoveryPending() && shouldAttemptGoogleRedirectRecovery()) {
