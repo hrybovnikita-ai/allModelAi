@@ -142,6 +142,15 @@ export function hasActiveRedirectPendingFlag() {
 }
 
 const REDIRECT_RECOVERY_WINDOW_MS = 180000;
+let redirectIntentReconcileBlocked = false;
+
+export function setRedirectIntentReconcileBlocked(blocked) {
+  redirectIntentReconcileBlocked = Boolean(blocked);
+}
+
+export function isRedirectIntentReconcileBlocked() {
+  return redirectIntentReconcileBlocked;
+}
 
 /** True when we should call getRedirectResult / finish OAuth (not for stale abandoned redirects). */
 export function shouldAttemptGoogleRedirectRecovery() {
@@ -161,6 +170,9 @@ export function shouldShowGoogleRedirectRecoveryUI() {
 }
 
 export function reconcileStaleRedirectIntent() {
+  if (redirectIntentReconcileBlocked) {
+    return;
+  }
   const intent = peekRedirectIntent();
   if (!intent) {
     if (isRedirectFlowCommitted()) {

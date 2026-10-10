@@ -73,7 +73,7 @@ function waitForAuthStateUser(auth, timeoutMs = getAuthStateFallbackTimeoutMs())
 }
 
 /**
- * WebKit may never settle getRedirectResult after OAuth; race with a short timeout.
+ * WebKit may settle getRedirectResult late; on iOS keep waiting for the same promise after a soft timeout.
  */
 async function settleGetRedirectResult(auth) {
   const timeoutMs = getRedirectResultTimeoutMs();
@@ -131,8 +131,23 @@ async function settleGetRedirectResult(auth) {
   return null;
 }
 
+async function resolveRedirectUser(auth, allowAuthStateFallback) {
+  let result = await settleGetRedirectResult(auth);
+  if (result?.user) {
+    return result;
+  }
+  if (!allowAuthStateFallback) {
+    return null;
+  }
+  const user = await waitForAuthStateUser(auth);
+  if (!user) {
+    return null;
+  }
+  return { user, source: 'authStateFallback' };
+}
+
 /**
- * Exactly one getRedirectResult() per page load. Subsequent callers reuse cache or auth-state fallback.
+ * Exactly one getRedirectResult() per page load. Subsequent callers reuse the resolved user.
  * Call ensureSocialAuthReady() (persistence) before this on redirect return.
  */
 export async function consumeFirebaseRedirectResult(auth, consumer, { allowAuthStateFallback = false } = {}) {
@@ -145,29 +160,28 @@ export async function consumeFirebaseRedirectResult(auth, consumer, { allowAuthS
       socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: true, source: 'cache' });
       return cachedRedirectResult;
     }
-    if (!allowAuthStateFallback) {
-      socialAuthDebug('GET_REDIRECT_RESULT_NULL', { consumer, source: 'cache' });
-      socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, source: 'cache' });
-      return null;
-    }
-    const user = await waitForAuthStateUser(auth);
-    return user ? { user } : null;
+    socialAuthDebug('GET_REDIRECT_RESULT_NULL', { consumer, source: 'cache' });
+    socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, source: 'cache' });
+    return null;
   }
 
   if (!redirectResultInflight) {
     redirectResultInflight = (async () => {
       try {
-        const result = await settleGetRedirectResult(auth);
+        const result = await resolveRedirectUser(auth, allowAuthStateFallback);
         redirectResultConsumed = true;
         if (result?.user) {
           cachedRedirectResult = result;
-          socialAuthDebug('GET_REDIRECT_RESULT_SUCCESS', { consumer, source: 'getRedirectResult' });
-          socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: true, source: 'getRedirectResult' });
+          socialAuthDebug('GET_REDIRECT_RESULT_SUCCESS', {
+            consumer,
+            source: result.source || 'getRedirectResult',
+          });
+          socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: true, source: result.source || 'getRedirectResult' });
           return result;
         }
         cachedRedirectResult = null;
-        socialAuthDebug('GET_REDIRECT_RESULT_NULL', { consumer, source: 'getRedirectResult' });
-        socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, source: 'getRedirectResult' });
+        socialAuthDebug('GET_REDIRECT_RESULT_NULL', { consumer, source: 'exhausted' });
+        socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, source: 'exhausted' });
         return null;
       } catch (error) {
         cachedRedirectResult = null;
@@ -182,19 +196,5 @@ export async function consumeFirebaseRedirectResult(auth, consumer, { allowAuthS
     })();
   }
 
-  const result = await redirectResultInflight;
-  if (result?.user) {
-    return result;
-  }
-
-  if (!allowAuthStateFallback) {
-    return null;
-  }
-
-  const user = await waitForAuthStateUser(auth);
-  if (!user) {
-    return null;
-  }
-  socialAuthDebug('FIREBASE_USER_RESTORED', { consumer, source: 'authStateFallback' });
-  return { user };
+  return redirectResultInflight;
 }

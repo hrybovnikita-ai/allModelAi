@@ -10,7 +10,7 @@ import {
 } from 'firebase/auth';
 import { ensureFirebaseSocialConfigLoaded } from './loadFirebaseConfig.js';
 import { getBrowserApiOrigin, getPublicAppOrigin, isHostedWebApp } from './apiBase.js';
-import { isMobileWebSafari } from './socialSignInEnv.js';
+import { isIosTouchDevice, isMobileWebSafari } from './socialSignInEnv.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
 import {
   DEFAULT_FIREBASE_AUTH_DOMAIN,
@@ -77,13 +77,25 @@ function hostedSiteAuthDomain() {
  * Default: VITE_FIREBASE_AUTH_DOMAIN=allmodelai.firebaseapp.com (recommended for popup/redirect sign-in).
  * Custom site domain only when VITE_FIREBASE_CUSTOM_AUTH_DOMAIN=true and /__/auth is proxied on that host.
  */
+/** iOS WebKit loses cross-site Firebase redirect state; use first-party /__/auth on the live site. */
+export function shouldPreferHostedFirebaseAuthDomain() {
+  if (typeof window === 'undefined' || !isHostedWebApp()) return false;
+  const hosted = hostedSiteAuthDomain();
+  if (!hosted || /localhost|127\.0\.0\.1/i.test(hosted)) return false;
+  return isMobileWebSafari() || isIosTouchDevice();
+}
+
 export function resolveAuthDomainForRuntime(configuredAuthDomain) {
   const viteEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
+  const hosted = hostedSiteAuthDomain();
+  if (shouldPreferHostedFirebaseAuthDomain() && hosted) {
+    return hosted;
+  }
   const customAuth = isCustomAuthDomainEnabled();
   return resolveAuthDomainCore(configuredAuthDomain, {
     envAuthDomain: readFirebaseAuthDomainFromEnv(viteEnv),
     customAuthDomainEnabled: customAuth,
-    hostedHostname: hostedSiteAuthDomain(),
+    hostedHostname: hosted,
     preferHostedAuthDomainWhenProxied: customAuth,
   });
 }

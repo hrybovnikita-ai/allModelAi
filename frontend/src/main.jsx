@@ -21,13 +21,15 @@ import { initPwaInstallPrompt } from './lib/pwaInstall.js'
 import { initServiceWorker } from './lib/serviceWorker.js'
 import { ensureFirebaseSocialConfigLoaded } from './lib/loadFirebaseConfig.js'
 import { ensureSocialAuthReady } from './lib/firebase.js'
-import { reconcileStaleRedirectIntent } from './lib/socialRedirectState.js'
+import { isGoogleRedirectRecoveryPending, reconcileStaleRedirectIntent } from './lib/socialRedirectState.js'
 
 installNativeFetchInterceptor()
 void ensureFirebaseSocialConfigLoaded()
   .then(() => ensureSocialAuthReady())
   .then(() => {
-    reconcileStaleRedirectIntent()
+    if (!isGoogleRedirectRecoveryPending()) {
+      reconcileStaleRedirectIntent();
+    }
   })
   .catch(() => {
     /* SessionProvider owns redirect recovery; avoid duplicate bootstrap here. */

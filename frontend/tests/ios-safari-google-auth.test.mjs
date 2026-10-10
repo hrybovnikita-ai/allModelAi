@@ -79,6 +79,13 @@ test('google redirect recovery does not cache a skipped null promise', async () 
   assert.match(recovery, /isGoogleRedirectRecoveryInFlight/);
 });
 
+test('recovery gate surfaces failures instead of silent guest state', async () => {
+  const gate = await readFile(new URL('../src/components/SocialAuth/GoogleRedirectRecoveryGate.jsx', import.meta.url), 'utf8');
+  assert.match(gate, /consumeStoredSocialAuthError/);
+  assert.match(gate, /Sign-in incomplete/);
+  assert.match(gate, /refresh\(\{ force: true \}\)/);
+});
+
 test('session provider and navbar defer guest UI during redirect recovery', async () => {
   const sessionProvider = await readFile(new URL('../src/components/Session/SessionProvider.jsx', import.meta.url), 'utf8');
   const navbar = await readFile(new URL('../src/components/Navbar/NavAuthSection.jsx', import.meta.url), 'utf8');
@@ -94,6 +101,27 @@ test('social session marks fresh login before confirmSession (Safari cookie prop
   assert.match(socialSession, /markFreshLogin\(\)/);
   assert.match(session, /getNativeSessionToken\(\)/);
   assert.match(session, /markFreshLogin\(\)/);
+});
+
+test('redirect reconcile is blocked while recovery pipeline runs', async () => {
+  const {
+    setRedirectIntentReconcileBlocked,
+    isRedirectIntentReconcileBlocked,
+    reconcileStaleRedirectIntent,
+    persistRedirectIntent,
+    markRedirectFlowCommitted,
+  } = await import('../src/lib/socialRedirectState.js');
+  persistRedirectIntent('Google', {}, 'awaiting-google-return');
+  markRedirectFlowCommitted();
+  setRedirectIntentReconcileBlocked(true);
+  assert.equal(isRedirectIntentReconcileBlocked(), true);
+  reconcileStaleRedirectIntent();
+  assert.notEqual(
+    globalThis.sessionStorage.getItem('allmodelai_social_redirect'),
+    null,
+    'must not clear while blocked',
+  );
+  setRedirectIntentReconcileBlocked(false);
 });
 
 test('vercel config keeps /auth/callback on the SPA (no backend rewrite)', async () => {

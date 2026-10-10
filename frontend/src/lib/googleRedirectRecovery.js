@@ -1,6 +1,10 @@
 import { persistSocialAuthError, socialAuthDebug } from './socialAuthDiagnostics.js';
 import { socialError } from './socialSession.js';
-import { isGoogleRedirectRecoveryPending, shouldAttemptGoogleRedirectRecovery } from './socialRedirectState.js';
+import {
+  isGoogleRedirectRecoveryPending,
+  setRedirectIntentReconcileBlocked,
+  shouldAttemptGoogleRedirectRecovery,
+} from './socialRedirectState.js';
 
 let bootstrapPromise = null;
 let recoveryInFlight = false;
@@ -23,6 +27,7 @@ export function bootstrapGoogleRedirectRecovery(runPipeline) {
   }
 
   recoveryInFlight = true;
+  setRedirectIntentReconcileBlocked(true);
   socialAuthDebug('REDIRECT_RECOVERY_PIPELINE_START', { consumer: 'AppBootstrap' });
 
   bootstrapPromise = runPipeline('AppBootstrap')
@@ -44,6 +49,7 @@ export function bootstrapGoogleRedirectRecovery(runPipeline) {
     })
     .finally(() => {
       recoveryInFlight = false;
+      setRedirectIntentReconcileBlocked(false);
       bootstrapPromise = null;
     });
 

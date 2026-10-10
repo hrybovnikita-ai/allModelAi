@@ -20,5 +20,6 @@ test('NavAuthSection shows loading before Sign in when authLoading', async () =>
   );
   assert.match(source, /authLoading/);
   assert.match(source, /AUTH_STATUS\.AUTHENTICATED/);
-  assert.match(source, /AUTH_INIT_TIMEOUT_MS/);
+  assert.match(source, /CHECKING_REDIRECT/);
+  assert.match(source, /AUTH_REDIRECT_RECOVERY_TIMEOUT_MS/);
 });

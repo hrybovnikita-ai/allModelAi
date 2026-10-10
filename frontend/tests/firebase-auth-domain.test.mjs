@@ -52,6 +52,37 @@ test('empty configured domain falls back to default firebaseapp.com', () => {
   assert.equal(resolveAuthDomainForRuntime(''), 'allmodelai.firebaseapp.com');
 });
 
+test('iOS Safari prefers first-party authDomain when site proxies /__/auth', async () => {
+  const { shouldPreferHostedFirebaseAuthDomain, resolveAuthDomainForRuntime } = await import('../src/lib/firebase.js');
+  const previousWindow = global.window;
+  const previousNavigator = global.navigator;
+
+  global.window = {
+    location: {
+      hostname: 'all-model-ai.com',
+      origin: 'https://all-model-ai.com',
+      protocol: 'https:',
+    },
+  };
+  Object.defineProperty(global, 'navigator', {
+    configurable: true,
+    value: {
+      userAgent:
+        'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      maxTouchPoints: 5,
+      platform: 'iPad',
+    },
+  });
+
+  try {
+    assert.equal(shouldPreferHostedFirebaseAuthDomain(), true);
+    assert.equal(resolveAuthDomainForRuntime('allmodelai.firebaseapp.com'), 'all-model-ai.com');
+  } finally {
+    global.window = previousWindow;
+    Object.defineProperty(global, 'navigator', { configurable: true, value: previousNavigator });
+  }
+});
+
 test('vercel.json proxies Firebase auth handler under /__/auth', () => {
   const vercel = readFileSync(`${root}vercel.json`, 'utf8');
   assert.match(vercel, /\/__\/auth/);

@@ -9,7 +9,7 @@ import {
 } from 'firebase/auth';
 import { ensureSocialAuthReady, getEffectiveFirebaseConfig, getFirebaseOAuthOrigin, getSocialAuth } from './firebase.js';
 import { isCapacitorNative, prefersSameOriginApi } from './apiBase.js';
-import { restoreSession } from './session.js';
+import { isFreshLoginGraceActive, rememberSession, restoreSession } from './session.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
 import { SOCIAL_PROVIDER_LABELS } from './socialProviders.js';
 import { authLog, describeRedirectRecoveryFailure, socialAuthDebug } from './socialAuthDiagnostics.js';
@@ -376,15 +376,24 @@ export async function navigateAfterSocialLogin(user, { navigate, replaceDashboar
   if (!user?.email) return;
   clearSocialRedirectIntent();
 
-  const verified = await restoreSession({ force: true });
-  if (verified?.email?.toLowerCase() !== user.email.toLowerCase()) {
+  const sameEmail = (left, right) =>
+    left?.email?.toLowerCase() === right?.email?.toLowerCase();
+
+  let sessionUser = await restoreSession({ force: true });
+  if (!sameEmail(sessionUser, user)) {
+    if (isFreshLoginGraceActive()) {
+      socialAuthDebug('SESSION_RESTORE_LAG_AFTER_EXCHANGE', { phase: 'retry-restore' });
+      sessionUser = await restoreSession({ force: true });
+    }
+  }
+  if (!sameEmail(sessionUser, user)) {
     socialAuthDebug('DASHBOARD_REDIRECT_BLOCKED', { reason: 'session-not-confirmed' });
     throw Object.assign(new Error('Your session could not be confirmed. Please try signing in again.'), {
       code: 'SESSION_NOT_CONFIRMED',
     });
   }
 
-  const sessionUser = verified;
+  rememberSession(sessionUser);
   const useSpaNav = prefersSameOriginApi() && typeof navigate === 'function';
   if (useSpaNav) {
     socialAuthDebug('DASHBOARD_REDIRECT', { mode: 'spa', pathname: '/dashboard' });
