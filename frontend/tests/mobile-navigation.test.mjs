@@ -26,11 +26,16 @@ test('dashboard workspace nav closes mobile menu after navigation', async () => 
   assert.match(source, /DASHBOARD_NAV_ACCOUNT_LINKS/);
 });
 
-test('homepage navbar shows account links when session is authenticated', async () => {
-  const source = await readFile(new URL('../src/components/Navbar/Navbar.jsx', import.meta.url), 'utf8');
-  assert.match(source, /DASHBOARD_NAV_ACCOUNT_LINKS/);
-  assert.match(source, /isAuthenticated/);
-  assert.match(source, /nav-links-account/);
+test('homepage navbar keeps account links in mobile drawer and user menu on desktop', async () => {
+  const navbar = await readFile(new URL('../src/components/Navbar/Navbar.jsx', import.meta.url), 'utf8');
+  const navAuth = await readFile(
+    new URL('../src/components/Navbar/NavAuthSection.jsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(navbar, /DASHBOARD_NAV_ACCOUNT_LINKS/);
+  assert.match(navbar, /nav-links-account--mobile/);
+  assert.match(navAuth, /nav-user-menu/);
+  assert.match(navAuth, /DASHBOARD_NAV_ACCOUNT_LINKS/);
 });
 
 test('settings page exposes profile and security anchors', async () => {

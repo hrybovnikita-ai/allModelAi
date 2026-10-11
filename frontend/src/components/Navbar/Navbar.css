@@ -23,6 +23,8 @@
 }
 
 .nav-brand {
+  grid-column: 1;
+  justify-self: start;
   color: white;
   text-decoration: none;
   font-size: clamp(1.05rem, 1.6vw, 1.6rem);
@@ -36,6 +38,13 @@
   justify-content: center;
   gap: clamp(16px, 2vw, 34px);
   flex-wrap: nowrap;
+  grid-column: 2;
+  justify-self: center;
+}
+
+/* Account shortcuts belong in the mobile drawer and user menu — not in the centered desktop nav. */
+.nav-links-account--mobile {
+  display: none;
 }
 
 .nav-links a {
@@ -76,6 +85,8 @@
 }
 
 .nav-auth {
+  grid-column: 3;
+  justify-self: end;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -240,6 +251,81 @@
   color: white;
 }
 
+.nav-user-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.nav-user-menu summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: var(--radius-xs, 8px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.nav-user-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.nav-user-menu-chevron {
+  display: block;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid rgba(255, 255, 255, 0.88);
+}
+
+.nav-user-menu[open] summary,
+.nav-user-menu summary:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.nav-user-menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 120;
+  display: grid;
+  gap: 2px;
+  min-width: 168px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(124, 92, 255, 0.28);
+  background: rgba(10, 10, 15, 0.98);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+}
+
+.nav-user-menu-panel a {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #c4b5fd;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.nav-user-menu-panel a:hover,
+.nav-user-menu-panel a:focus-visible {
+  color: #fff;
+  background: rgba(124, 92, 255, 0.14);
+}
+
 .nav-signout {
   min-height: 40px;
   padding: 8px 10px;
@@ -382,13 +468,17 @@
     display: flex;
   }
 
-  .nav-links-account {
+  .nav-links-account--mobile {
     display: flex;
     flex-direction: column;
     gap: 4px;
     margin-bottom: 8px;
     padding-bottom: 8px;
     border-bottom: 1px solid rgba(124, 92, 255, 0.2);
+  }
+
+  .nav-user-menu {
+    display: none;
   }
 
   .nav-links-account-item {

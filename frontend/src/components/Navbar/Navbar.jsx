@@ -13,7 +13,10 @@ export default function Navbar() {
   const { status, user } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const [authMode, setAuthMode] = useState(null);
-  const isAuthenticated = status === AUTH_STATUS.AUTHENTICATED && Boolean(user?.email);
+  const isAuthenticated = (
+    status === AUTH_STATUS.AUTHENTICATED
+    || status === AUTH_STATUS.CONNECTION_ISSUE
+  ) && Boolean(user?.email);
 
   useEffect(() => {
     if (!authMode) return;
@@ -47,7 +50,11 @@ export default function Navbar() {
         <a href="#home" className="nav-brand" onClick={closeMenu}>AllModelAI</a>
         <div className={`nav-links ${menuOpen ? 'is-open' : ''}`}>
           {isAuthenticated ? (
-            <div className="nav-links-account" role="group" aria-label={t('account')}>
+            <div
+              className="nav-links-account nav-links-account--mobile"
+              role="group"
+              aria-label={t('account')}
+            >
               {DASHBOARD_NAV_ACCOUNT_LINKS.map((item) => (
                 <Link
                   key={item.to}
@@ -55,7 +62,7 @@ export default function Navbar() {
                   className="nav-links-account-item"
                   onClick={closeMenu}
                 >
-                  {item.label}
+                  {t(item.label)}
                 </Link>
               ))}
             </div>

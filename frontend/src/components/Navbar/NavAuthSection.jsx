@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../lib/useLanguage';
 import { performLogout } from '../../lib/session';
+import { DASHBOARD_NAV_ACCOUNT_LINKS } from '../Dashboard/dashboardNavLinks';
 import {
   authBootstrapTimeoutMs,
   AUTH_REDIRECT_RECOVERY_TIMEOUT_MS,
@@ -23,12 +24,23 @@ function NavAuthSkeleton({ label }) {
   );
 }
 
+const NAV_USER_MENU_LINKS = DASHBOARD_NAV_ACCOUNT_LINKS.filter(
+  (item) => item.label !== 'Dashboard',
+);
+
 export default function NavAuthSection({ onOpenAuth }) {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const { status, user, authLoading, refresh } = useSession();
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const userMenuRef = useRef(null);
+
+  const closeUserMenu = () => {
+    if (userMenuRef.current) {
+      userMenuRef.current.open = false;
+    }
+  };
 
   const redirectRecoveryActive =
     status === AUTH_STATUS.CHECKING_REDIRECT
@@ -95,6 +107,23 @@ export default function NavAuthSection({ onOpenAuth }) {
             </span>
             <small className="nav-user-name">{user.name || user.email}</small>
           </Link>
+          <details className="nav-user-menu" ref={userMenuRef}>
+            <summary aria-label={t('Account menu')}>
+              <span className="nav-user-menu-chevron" aria-hidden="true" />
+            </summary>
+            <div className="nav-user-menu-panel" role="menu">
+              {NAV_USER_MENU_LINKS.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  role="menuitem"
+                  onClick={closeUserMenu}
+                >
+                  {t(item.label)}
+                </Link>
+              ))}
+            </div>
+          </details>
           <Link to="/dashboard" className="nav-user-dashboard">{t('Dashboard')}</Link>
           <button type="button" className="nav-signout" onClick={() => { void signOut(); }}>
             {t('Sign out')}
