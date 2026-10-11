@@ -138,12 +138,26 @@ async function persistChatTurnAsync(connection, {
     if (temporary) return;
     const normalizedEmail = String(userEmail).trim().toLowerCase();
     const now = new Date().toISOString();
+    const { mergePersistedMessages } = require('../services/chatMessageMerge');
+    const { normalizeMessages } = require('../services/chatMessageNormalize');
+    let messagesToSave = savedMessages;
     if (bumpUsage) {
         await bumpUsageCountAsync(connection, normalizedEmail);
     }
     if (conversationId) {
+        const existingRow = await getConversationRowAsync(connection, conversationId, normalizedEmail);
+        if (existingRow?.messages) {
+            try {
+                const existingMessages = JSON.parse(existingRow.messages || '[]');
+                messagesToSave = normalizeMessages(
+                    mergePersistedMessages(existingMessages, savedMessages),
+                );
+            } catch {
+                messagesToSave = normalizeMessages(savedMessages);
+            }
+        }
         const updated = await updateConversationRowAsync(connection, conversationId, normalizedEmail, {
-            messages: savedMessages,
+            messages: messagesToSave,
             updatedAt: now,
         });
         if (updated > 0) return;
@@ -154,7 +168,7 @@ async function persistChatTurnAsync(connection, {
         email: normalizedEmail,
         model,
         title: title || 'New chat',
-        messages: savedMessages,
+        messages: messagesToSave,
         createdAt: now,
         updatedAt: now,
     });

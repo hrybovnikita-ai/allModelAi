@@ -45,16 +45,7 @@ function CommandPaletteAuthenticated() {
   }, []);
 
   if (!open) {
-    return (
-      <button
-        type="button"
-        className="command-fab"
-        onClick={() => setOpen(true)}
-        title="Command palette"
-      >
-        ⌘ K
-      </button>
-    );
+    return null;
   }
 
   return (

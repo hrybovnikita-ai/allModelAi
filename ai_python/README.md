@@ -69,6 +69,28 @@ Legacy routes under `/ai/*` and `/labs/*` remain for the course and PyTorch chat
 
 Node backend: `AI_PYTHON_SERVICE_URL` (see `backend/.env.example`).
 
+## Python AI Engine (Phase 1–2)
+
+Five-system roadmap lives under `engine/`:
+
+| System | Status in repo |
+|--------|----------------|
+| Neural Network Engine | **Active** — `engine/neural/*`, `/engine/algorithms`, `/engine/train` |
+| Prompt Intelligence | Planned — Node Smart Router today |
+| Semantic Memory | Partial — Node RAG + KB |
+| Answer Quality Analyzer | Partial — `/improvement/analyze`, Node eval tables |
+| Training Studio | Partial — Model Lab + PythonAILab |
+
+```bash
+# Phase 1 audit JSON
+curl http://127.0.0.1:5055/engine/audit
+
+# List trainable algorithms
+curl http://127.0.0.1:5055/engine/algorithms
+```
+
+Set `AI_PYTHON_INTERNAL_TOKEN` in production so `/engine/*` and `/internal/ai/*` are not open on the worker network.
+
 ## Tests
 
 ```bash

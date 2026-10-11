@@ -232,8 +232,10 @@ def create_app(trainer: "TrainingManager") -> Optional[Any]:
     register_training_lab_routes(app)
 
     from api.improvement_routes import register_improvement_routes
+    from api.engine_routes import register_engine_routes
 
     register_improvement_routes(app)
+    register_engine_routes(app)
 
     from api.provider_routes import register_provider_routes
 

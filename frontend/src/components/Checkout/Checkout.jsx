@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import apiClient from '../../lib/apiClient';
 import './Checkout.css';
@@ -10,7 +10,7 @@ import { fetchCheckoutInfo, fetchCheckoutPlan, TEST_MODE_BANNER } from '../../li
 import { runTestWayforpayCheckout, submitWayforpayCheckout } from '../../lib/wayforpay';
 import { useSession } from '../Session/SessionProvider';
 import { isAuthInitializing } from '../../lib/authSessionStatus';
-import StripeEmbeddedCheckout from './StripeEmbeddedCheckout';
+import ProductionStripeCheckoutForm from './ProductionStripeCheckoutForm';
 import MockCheckoutForm from './MockCheckoutForm';
 import CheckoutSummaryCard from './CheckoutSummaryCard';
 import PaymentFormCard from './PaymentFormCard';
@@ -61,12 +61,13 @@ export default function Checkout() {
   const [stripeReady, setStripeReady] = useState(false);
   const [ownerTestCheckout, setOwnerTestCheckout] = useState(false);
   const [canUseWayforpayTestCheckout, setCanUseWayforpayTestCheckout] = useState(false);
-  const [stripePanelOpen, setStripePanelOpen] = useState(false);
-
+  const stripeAutoLoadRef = useRef(false);
   const paymentProvider = checkoutInfo?.primaryProvider || null;
+  const paymentsAvailable = Boolean(checkoutInfo?.checkoutAvailable);
+  const useStripeProduction = Boolean(paymentsAvailable && paymentProvider === 'stripe');
   const showTestBanner = Boolean(checkoutInfo?.showTestModeBanner)
     || (ownerTestCheckout && checkoutInfo?.wayforpayTestMode);
-  const paymentsAvailable = Boolean(checkoutInfo?.checkoutAvailable);
+  const testBannerText = checkoutInfo?.testModeBannerText || TEST_MODE_BANNER;
   const providerLabel = checkoutInfo?.providerDisplayName || 'Payment provider';
 
   const summary = isDeveloper ? DEVELOPER_FALLBACK : planQuote;
@@ -177,7 +178,6 @@ export default function Checkout() {
       setStripePublishableKey(publishableKey);
       setStripeClientSecret(response.data.clientSecret);
       setStripeReady(true);
-      setStripePanelOpen(true);
     } catch (requestError) {
       const message = formatStripeConfigError(
         requestError.response?.data,
@@ -188,6 +188,26 @@ export default function Checkout() {
       setCheckoutBusy(false);
     }
   }, [planSlug, checkoutInfo?.paymentMode]);
+
+  useEffect(() => {
+    stripeAutoLoadRef.current = false;
+  }, [planSlug]);
+
+  useEffect(() => {
+    if (!useStripeProduction || isDeveloper) return undefined;
+    if (isAuthInitializing(sessionStatus) || sessionStatus !== 'authenticated') return undefined;
+    if (stripeReady || checkoutBusy || stripeAutoLoadRef.current) return undefined;
+    stripeAutoLoadRef.current = true;
+    void startStripeCheckout();
+    return undefined;
+  }, [
+    useStripeProduction,
+    isDeveloper,
+    sessionStatus,
+    stripeReady,
+    checkoutBusy,
+    startStripeCheckout,
+  ]);
 
   const wayforpayTestFlow = Boolean(
     checkoutInfo?.wayforpayTestMode
@@ -233,7 +253,7 @@ export default function Checkout() {
   const sessionReady = sessionStatus === 'authenticated';
 
   return (
-    <main className="checkout-page checkout-page--premium checkout-page--mock">
+    <main className={`checkout-page checkout-page--premium${useStripeProduction ? '' : ' checkout-page--mock'}`}>
       <header className="checkout-header">
         <nav className="checkout-nav checkout-nav--premium" aria-label="Checkout">
           <Link className="checkout-brand" to="/">
@@ -249,7 +269,7 @@ export default function Checkout() {
       </header>
 
       {showTestBanner && (
-        <p className="checkout-test-mode-banner checkout-test-mode-banner--prominent" role="status">{TEST_MODE_BANNER}</p>
+        <p className="checkout-test-mode-banner checkout-test-mode-banner--prominent" role="status">{testBannerText}</p>
       )}
 
       <section className="checkout-layout checkout-layout--split">
@@ -292,74 +312,51 @@ export default function Checkout() {
 
           {!isDeveloper && (
             <>
-              <MockCheckoutForm
-                planName={summary?.name || (planSlug === 'enterprise' ? 'Enterprise' : 'Pro')}
-                planSlug={planSlug}
-                priceLabel={priceLabel}
-                interval={summary?.interval || 'month'}
-                disabled={!sessionReady}
-                defaultEmail={sessionUser?.email || ''}
-                testModeLabel={showTestBanner ? TEST_MODE_BANNER : 'Demo checkout — use any test card details'}
-              />
+              {useStripeProduction ? (
+                <ProductionStripeCheckoutForm
+                  publishableKey={stripePublishableKey}
+                  clientSecret={stripeClientSecret}
+                  returnUrl={stripeReturnUrl || checkoutReturnUrl}
+                  defaultEmail={sessionUser?.email || ''}
+                  disabled={!sessionReady}
+                  stripeLoading={checkoutBusy && !stripeReady}
+                  stripeLoadError={!checkoutBusy && !stripeReady && error ? error : ''}
+                  onStripeError={(message) => setError(message || '')}
+                  onRetryStripeLoad={() => {
+                    stripeAutoLoadRef.current = false;
+                    void startStripeCheckout();
+                  }}
+                  payLabel={`Subscribe — $${summary?.amountDisplay || ''} / month`}
+                  processingLabel="Processing payment…"
+                  showStripeTestCardHint={Boolean(checkoutInfo?.showStripeTestCardHint)}
+                  showTestModeBanner={showTestBanner}
+                  secureCheckoutLabel={checkoutInfo?.secureCheckoutLabel || 'Secure payment'}
+                />
+              ) : (
+                <>
+                  <MockCheckoutForm
+                    planName={summary?.name || (planSlug === 'enterprise' ? 'Enterprise' : 'Pro')}
+                    planSlug={planSlug}
+                    priceLabel={priceLabel}
+                    interval={summary?.interval || 'month'}
+                    disabled={!sessionReady}
+                    defaultEmail={sessionUser?.email || ''}
+                    demoPreview={!paymentsAvailable}
+                    testModeLabel={
+                      showTestBanner
+                        ? testBannerText
+                        : 'Demo Preview — layout only, no payment processing'
+                    }
+                  />
 
-              {!sessionReady && !isAuthInitializing(sessionStatus) && (
-                <p className="checkout-signin-hint" role="note">Sign in to complete subscription.</p>
-              )}
-
-              {(paymentsAvailable && (paymentProvider === 'stripe' || paymentProvider === 'wayforpay')) && (
-                <div className="checkout-provider-footer">
-                  <p className="checkout-provider-footer__label">Live payment</p>
-
-                  {paymentProvider === 'stripe' && (
-                    <details
-                      className="checkout-stripe-advanced"
-                      open={stripePanelOpen}
-                      onToggle={(event) => setStripePanelOpen(event.currentTarget.open)}
-                    >
-                      <summary>Stripe secure checkout</summary>
-                      {!stripeReady ? (
-                        <PaymentButton
-                          variant="secondary"
-                          type="button"
-                          loading={checkoutBusy}
-                          loadingLabel="Preparing…"
-                          disabled={!sessionReady}
-                          onClick={() => { void startStripeCheckout(); }}
-                        >
-                          Load Stripe payment form
-                        </PaymentButton>
-                      ) : (
-                        stripeClientSecret && stripePublishableKey && (
-                          <>
-                            <StripeEmbeddedCheckout
-                              publishableKey={stripePublishableKey}
-                              clientSecret={stripeClientSecret}
-                              returnUrl={stripeReturnUrl || checkoutReturnUrl}
-                              payLabel={`Subscribe — $${summary?.amountDisplay || ''} / month`}
-                              processingLabel="Processing payment…"
-                              onError={(message) => setError(message || 'Payment could not be completed.')}
-                            />
-                            {checkoutInfo?.showStripeTestCardHint && (
-                              <div className="checkout-dev-test-card" role="note">
-                                <strong>Stripe test mode</strong>
-                                <span>4242 4242 4242 4242 · any future expiry · any CVC</span>
-                              </div>
-                            )}
-                          </>
-                        )
-                      )}
-                    </details>
-                  )}
-
-                  {paymentProvider === 'wayforpay' && (
-                    <div className="checkout-wayforpay-alt">
+                  {paymentProvider === 'wayforpay' && paymentsAvailable && (
+                    <div className="checkout-wayforpay-alt checkout-wayforpay-alt--primary">
                       {wayforpayTestFlow && (
                         <p className="checkout-owner-test-note" role="status">
                           Simulated WayForPay test payment — no redirect, no real charge. Subscription activates only after server confirms the mock callback.
                         </p>
                       )}
                       <PaymentButton
-                        variant="secondary"
                         type="button"
                         loading={checkoutBusy}
                         loadingLabel="Processing…"
@@ -370,16 +367,28 @@ export default function Checkout() {
                       </PaymentButton>
                     </div>
                   )}
-                </div>
+                </>
+              )}
+
+              {!sessionReady && !isAuthInitializing(sessionStatus) && (
+                <p className="checkout-signin-hint" role="note">Sign in to complete subscription.</p>
               )}
 
               {checkoutInfo?.renewalNotice && (
                 <p className="checkout-renewal-note" role="note">{checkoutInfo.renewalNotice}</p>
               )}
 
-              <small className="checkout-disclaimer checkout-disclaimer--left checkout-disclaimer--premium">
-                The form above is a styled demo for layout and validation. Live billing uses Stripe or WayForPay after you confirm with your provider.
-              </small>
+              {!useStripeProduction && paymentsAvailable && paymentProvider === 'wayforpay' && (
+                <small className="checkout-disclaimer checkout-disclaimer--left checkout-disclaimer--premium">
+                  WayForPay checkout opens on their secure page. Premium access is granted only after the server verifies payment.
+                </small>
+              )}
+
+              {!paymentsAvailable && (
+                <small className="checkout-disclaimer checkout-disclaimer--left checkout-disclaimer--premium">
+                  Demo Preview mode — card fields are visual only and never activate a subscription.
+                </small>
+              )}
             </>
           )}
 

@@ -22,6 +22,7 @@ async function bootstrapPostgresSchema() {
     const {
         ensurePostgresAiImprovementAsync,
         ensurePostgresVideoJobsAsync,
+        ensurePostgresProviderHealthAsync,
     } = require('./src/db/postgresSchemaBootstrap');
     try {
         const result = await ensurePostgresAiImprovementAsync(database);
@@ -35,6 +36,12 @@ async function bootstrapPostgresSchema() {
         console.log('[PG_BOOTSTRAP] video_generation_jobs', video.applied ? 'ready' : video.reason || 'skipped');
     } catch (error) {
         console.error('[PG_BOOTSTRAP] video jobs failed:', error.code || error.name, error.message);
+    }
+    try {
+        const health = await ensurePostgresProviderHealthAsync(database);
+        console.log('[PG_BOOTSTRAP] provider_error_events', health.applied ? 'ready' : health.reason || 'skipped');
+    } catch (error) {
+        console.error('[PG_BOOTSTRAP] provider health failed:', error.code || error.name, error.message);
     }
 }
 

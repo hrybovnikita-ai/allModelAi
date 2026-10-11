@@ -4,6 +4,8 @@ const { queryPgPool, resolvePostgresAsyncPool } = require('./pgPoolQuery');
 
 const AI_IMPROVEMENT_MIGRATION = path.join(__dirname, '..', '..', 'migrations', '003_ai_improvement.sql');
 const VIDEO_JOBS_MIGRATION = path.join(__dirname, '..', '..', 'migrations', '005_video_generation.sql');
+const VIDEO_JOBS_CONVERSATION_MIGRATION = path.join(__dirname, '..', '..', 'migrations', '006_video_job_conversation.sql');
+const PROVIDER_HEALTH_MIGRATION = path.join(__dirname, '..', '..', 'migrations', '009_provider_health.sql');
 
 function isPostgresEngine(connection) {
     return (connection?.engine || 'sqlite') === 'postgres';
@@ -57,10 +59,25 @@ async function ensurePostgresVideoJobsAsync(connection) {
     const pool = resolvePostgresAsyncPool(connection);
     if (!pool) return { applied: false, reason: 'pool_unavailable' };
     await runMigrationFile(pool, VIDEO_JOBS_MIGRATION);
+    if (fs.existsSync(VIDEO_JOBS_CONVERSATION_MIGRATION)) {
+        await runMigrationFile(pool, VIDEO_JOBS_CONVERSATION_MIGRATION);
+    }
+    return { applied: true };
+}
+
+async function ensurePostgresProviderHealthAsync(connection) {
+    if (!isPostgresEngine(connection)) return { applied: false, reason: 'not_postgres' };
+    const pool = resolvePostgresAsyncPool(connection);
+    if (!pool) return { applied: false, reason: 'pool_unavailable' };
+    if (!fs.existsSync(PROVIDER_HEALTH_MIGRATION)) {
+        return { applied: false, reason: 'migration_missing' };
+    }
+    await runMigrationFile(pool, PROVIDER_HEALTH_MIGRATION);
     return { applied: true };
 }
 
 module.exports = {
     ensurePostgresAiImprovementAsync,
     ensurePostgresVideoJobsAsync,
+    ensurePostgresProviderHealthAsync,
 };

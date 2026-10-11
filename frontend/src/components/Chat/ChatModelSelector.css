@@ -1,0 +1,172 @@
+/* Premium pill model selector — chat header (top-right slot) */
+
+.chat-page .custom-model-select {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: min(280px, 100%);
+  max-width: 100%;
+}
+
+.chat-page .model-select-eyebrow {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 0.58rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(196, 181, 253, 0.72);
+  line-height: 1.1;
+}
+
+.chat-page .model-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(150, 110, 255, 0.45) !important;
+  background: #101016 !important;
+  color: #fff !important;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  box-shadow:
+    0 0 12px rgba(128, 82, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  transition:
+    border-color 200ms ease,
+    box-shadow 200ms ease,
+    transform 200ms ease;
+}
+
+.chat-page .model-select-trigger:hover,
+.chat-page .custom-model-select.open .model-select-trigger {
+  border-color: rgba(170, 135, 255, 0.75) !important;
+  box-shadow:
+    0 0 18px rgba(128, 82, 255, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  transform: none;
+}
+
+.chat-page .model-select-trigger:focus-visible {
+  outline: 2px solid rgba(170, 135, 255, 0.85);
+  outline-offset: 2px;
+}
+
+.chat-page .model-select-trigger__icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #25213d;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.chat-page .model-select-trigger__icon img {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.chat-page .model-select-trigger__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff !important;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.chat-page .model-select-trigger__sliders {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: rgba(237, 233, 254, 0.88);
+}
+
+.chat-page .model-select-trigger__sliders svg {
+  display: block;
+  transform: none !important;
+}
+
+.chat-page .model-select-trigger[aria-expanded='true'] .model-select-trigger__sliders svg {
+  transform: none !important;
+}
+
+.chat-page .model-select-trigger > i {
+  display: none !important;
+}
+
+.chat-page .custom-model-select .model-options {
+  border-radius: 14px;
+  border: 1px solid rgba(150, 110, 255, 0.35) !important;
+}
+
+@media (max-width: 850px) {
+  .chat-page .custom-model-select {
+    min-width: 0;
+    width: min(240px, 46vw);
+  }
+
+  .chat-page .model-select-trigger__label {
+    font-size: 0.68rem;
+  }
+}
+
+@media (max-width: 620px) {
+  .chat-page .model-select-eyebrow {
+    font-size: 0.52rem;
+    letter-spacing: 0.12em;
+  }
+
+  .chat-page .custom-model-select {
+    width: min(200px, 44vw);
+  }
+
+  .chat-page .model-select-trigger {
+    min-height: 40px;
+    padding: 5px 10px 5px 7px;
+    gap: 8px;
+  }
+
+  .chat-page .model-select-trigger__icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .chat-page .model-select-trigger__icon img {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+@media (max-width: 380px) {
+  .chat-page .custom-model-select {
+    width: min(168px, 42vw);
+  }
+
+  .chat-page .model-select-trigger__label {
+    max-width: none;
+    font-size: 0.62rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-page .model-select-trigger {
+    transition: none;
+  }
+}

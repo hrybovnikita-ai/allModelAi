@@ -120,11 +120,6 @@
     line-height: 1.45;
   }
 
-  /* ⌘K overlaps send on small screens — hide on chat */
-  body:has(.chat-page) .command-fab {
-    display: none;
-  }
-
   .command-palette {
     width: min(620px, calc(100% - 16px));
     margin-top: max(8px, var(--safe-top));
@@ -147,10 +142,6 @@
     white-space: normal;
   }
 
-  body:has(.chat-page) .command-fab {
-    right: max(16px, var(--safe-right));
-    bottom: max(24px, var(--safe-bottom));
-  }
 }
 
 /* ——— Laptop (MacBook 13–15", Windows notebooks) ——— */

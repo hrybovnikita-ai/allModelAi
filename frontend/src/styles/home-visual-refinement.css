@@ -1,0 +1,301 @@
+/**
+ * Homepage visual refinement — glass depth, typography rhythm, micro-motion.
+ * Uses existing CSS variables and rgba overlays only (no palette changes).
+ */
+
+.home-surface {
+  --home-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --home-glass-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+/* Typography rhythm */
+.home-surface .header-content h1 {
+  text-wrap: balance;
+}
+
+.home-surface .tagline,
+.home-surface .grid-header p,
+.home-surface .model-description,
+.home-surface .everyday-cards > p:not(.everyday-eyebrow),
+.home-surface .users-heading p {
+  text-wrap: pretty;
+}
+
+.home-surface .grid-header h2,
+.home-surface .everyday-cards h2,
+.home-surface .about-card h3,
+.home-surface .pricing-section .section-header h2 {
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+/* Hero prompt — layered glass */
+.home-surface .hero-prompt {
+  background: rgba(18, 22, 32, 0.78);
+  box-shadow: var(--shadow-md), var(--home-glass-highlight);
+}
+
+@supports ((-webkit-backdrop-filter: blur(12px)) or (backdrop-filter: blur(12px))) {
+  .home-surface .hero-prompt {
+    -webkit-backdrop-filter: blur(14px) saturate(1.15);
+    backdrop-filter: blur(14px) saturate(1.15);
+  }
+
+  .home-surface .demo-answer {
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+}
+
+.home-surface .hero-prompt button:focus-visible,
+.home-surface .hero-actions button:focus-visible {
+  outline: 2px solid rgba(129, 140, 248, 0.85);
+  outline-offset: 2px;
+}
+
+/* Smart router visual */
+.home-surface .hero-core {
+  box-shadow: 0 0 80px rgba(99, 87, 232, 0.25), var(--home-glass-highlight);
+}
+
+.home-surface .hero-visual > button:focus-visible {
+  outline: 2px solid rgba(129, 140, 248, 0.85);
+  outline-offset: 2px;
+}
+
+/* Model selection cards */
+.home-surface .model-card {
+  box-shadow: var(--shadow-sm), var(--home-glass-highlight);
+}
+
+.home-surface .model-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: var(--home-glass-edge);
+}
+
+.home-surface .model-card:focus-visible {
+  outline: 2px solid rgba(129, 140, 248, 0.9);
+  outline-offset: 3px;
+}
+
+.home-surface .model-card.active {
+  box-shadow: var(--shadow-glow, 0 20px 40px rgba(99, 102, 241, 0.4)), var(--home-glass-highlight);
+}
+
+.home-surface .model-icon {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+}
+
+/* Model detail panel */
+.home-surface .model-details {
+  box-shadow: var(--shadow-md), var(--home-glass-highlight);
+}
+
+@supports ((-webkit-backdrop-filter: blur(10px)) or (backdrop-filter: blur(10px))) {
+  .home-surface .model-details {
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+}
+
+.home-surface .version-card {
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  box-shadow: var(--shadow-sm), var(--home-glass-highlight);
+}
+
+.home-surface .spec {
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.home-surface .use-btn {
+  min-height: 44px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.home-surface .use-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.home-surface .use-btn:active {
+  transform: translateY(0);
+}
+
+.home-surface .use-btn:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.65);
+  outline-offset: 2px;
+}
+
+/* Creative feature cards (Rainbow) */
+.home-surface .rainbow-card {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28), var(--home-glass-highlight);
+}
+
+/* Everyday toolkit */
+.home-surface .everyday-cards {
+  box-shadow: var(--shadow-md), var(--home-glass-highlight);
+}
+
+.home-surface .everyday-card-grid > a {
+  box-shadow: var(--shadow-sm), var(--home-glass-highlight);
+  min-height: 44px;
+}
+
+.home-surface .everyday-card-grid > a:focus-visible {
+  outline: 2px solid rgba(185, 232, 132, 0.85);
+  outline-offset: 3px;
+}
+
+.home-surface .everyday-card-grid h3 {
+  letter-spacing: -0.02em;
+}
+
+/* About */
+.home-surface .about-section {
+  margin-top: clamp(56px, 8vw, 100px);
+  margin-bottom: clamp(48px, 6vw, 80px);
+}
+
+.home-surface .about-card {
+  box-shadow: var(--shadow-sm), var(--home-glass-highlight);
+  border-radius: var(--radius-md, 16px);
+}
+
+.home-surface .about-card:hover {
+  transform: translateY(-3px);
+}
+
+/* Workflow */
+.home-surface .workflow-section {
+  box-shadow: var(--shadow-md), var(--home-glass-highlight);
+}
+
+@supports ((-webkit-backdrop-filter: blur(8px)) or (backdrop-filter: blur(8px))) {
+  .home-surface .workflow-section {
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+}
+
+/* Community + testimonials */
+.home-surface .user-card,
+.home-surface .comment-card {
+  box-shadow: var(--shadow-sm), var(--home-glass-highlight);
+  border-radius: var(--radius-md, 14px);
+}
+
+.home-surface .user-card:focus-within,
+.home-surface .comment-card:focus-within {
+  border-color: rgba(99, 102, 241, 0.45);
+}
+
+.home-surface .comment-card blockquote {
+  font-style: normal;
+}
+
+/* Product benefits stickers */
+.home-surface .sticker {
+  box-shadow: var(--shadow-sm), var(--home-glass-highlight);
+}
+
+.home-surface .sticker:hover {
+  transform: translateY(-2px) scale(1.02);
+}
+
+/* Pricing */
+.home-surface .pricing-card {
+  box-shadow: var(--shadow-sm), var(--home-glass-highlight);
+}
+
+.home-surface .pricing-card.featured {
+  box-shadow: 0 20px 40px rgba(99, 102, 241, 0.15), var(--home-glass-highlight);
+}
+
+.home-surface .pricing-card .price {
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-surface .pricing-card button:focus-visible,
+.home-surface .pricing-card[role='button']:focus-visible {
+  outline: 2px solid rgba(129, 140, 248, 0.9);
+  outline-offset: 3px;
+}
+
+/* Section spacing in main column */
+.home-surface .home-layout {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-surface .home-layout > .home-model-section,
+.home-surface .home-layout > section {
+  scroll-margin-top: calc(72px + var(--safe-top, 0px));
+}
+
+/* Subtle entrance (marketing sections only) */
+@keyframes home-refine-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .home-surface .home-layout > .home-model-section,
+  .home-surface .home-layout > section {
+    animation: home-refine-in 0.55s var(--ease-out, ease) both;
+  }
+
+  .home-surface .home-layout > section:nth-of-type(2) { animation-delay: 0.04s; }
+  .home-surface .home-layout > section:nth-of-type(3) { animation-delay: 0.08s; }
+  .home-surface .home-layout > section:nth-of-type(4) { animation-delay: 0.1s; }
+  .home-surface .home-layout > section:nth-of-type(5) { animation-delay: 0.12s; }
+  .home-surface .home-layout > section:nth-of-type(6) { animation-delay: 0.14s; }
+  .home-surface .home-layout > section:nth-of-type(7) { animation-delay: 0.16s; }
+  .home-surface .home-layout > section:nth-of-type(8) { animation-delay: 0.18s; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-surface .sticker:hover {
+    transform: none;
+  }
+
+  .home-surface .home-layout > .home-model-section,
+  .home-surface .home-layout > section {
+    animation: none !important;
+  }
+}
+
+/* Responsive type + touch targets */
+@media (max-width: 430px) {
+  .home-surface .header-content h1 {
+    font-size: clamp(2.35rem, 11vw, 2.75rem);
+  }
+
+  .home-surface .details-header h2 {
+    font-size: 1.45rem;
+  }
+}
+
+@media (min-width: 1440px) {
+  .home-surface .container.home-layout {
+    gap: clamp(48px, 4vw, 80px);
+  }
+}
+
+@media (min-width: 2560px) {
+  .home-surface .grid-header h2,
+  .home-surface .everyday-cards h2 {
+    font-size: clamp(2rem, 1.4vw, 2.35rem);
+  }
+}

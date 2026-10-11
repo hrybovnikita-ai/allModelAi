@@ -115,7 +115,12 @@ export function formatChatVisionError(error, context = {}) {
     return serverMessage || 'Image is too large. Try a smaller screenshot.';
   }
   if (code === 'AI_BILLING') {
-    return 'The vision provider has insufficient credits or quota. Try again later or switch models.';
+    if (context.hadImage) {
+      return serverMessage
+        || 'The vision provider has insufficient credits or quota. Try again later or switch models.';
+    }
+    return serverMessage
+      || 'The selected AI service has insufficient balance or quota. Check provider billing or try again later.';
   }
   if (code === 'VISION_UPSTREAM' || code === 'VISION_PROVIDER_ERROR') {
     return error.message || 'The vision model could not analyze this image. Retry or use Smart Router.';

@@ -16,7 +16,14 @@
 }
 
 .home-layout {
+  display: flex;
+  flex-direction: column;
   gap: clamp(40px, 5vw, 72px);
+}
+
+.home-model-section {
+  display: flex;
+  flex-direction: column;
 }
 
 /* Shared section header rhythm */

@@ -1,6 +1,8 @@
 const { isPostgresConnection } = require('../../db/postgresHttpReads');
 const { queryPgPool, resolvePostgresAsyncPool } = require('../../db/pgPoolQuery');
 const { recordProviderRequest } = require('../providerRequestTelemetry');
+const { insertProviderErrorEventAsync } = require('../providerHealthPersistence');
+const { slugToProviderId } = require('../providerErrorClassification');
 
 function recordRouterMetric(connection, row) {
     const createdAt = new Date().toISOString();
@@ -58,13 +60,26 @@ function recordRouterMetric(connection, row) {
         console.warn('[ROUTER_METRICS]', error.message);
     }
 
-    recordProviderRequest({
+    const telemetryResult = recordProviderRequest({
         provider: row.provider,
         success: row.success !== false,
         latencyMs: row.latencyMs,
         errorCategory: row.errorCategory,
+        httpStatus: row.httpStatus,
+        message: row.errorMessage,
+        timedOut: row.timedOut,
         fallbackUsed: row.fallbackUsed,
     });
+
+    if (row.success === false && telemetryResult?.errorClass) {
+        const providerId = slugToProviderId(row.provider) || telemetryResult.providerId;
+        void insertProviderErrorEventAsync(connection, {
+            providerId,
+            errorClass: telemetryResult.errorClass,
+            httpStatus: row.httpStatus,
+            message: row.errorMessage,
+        });
+    }
 }
 
 module.exports = {

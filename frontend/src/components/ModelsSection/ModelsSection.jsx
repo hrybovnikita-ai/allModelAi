@@ -6,7 +6,7 @@ export default function ModelsSection({ models, selectedModel, setSelectedModel 
   const currentModel = models[selectedModel];
 
   return (
-    <div className="home-model-section">
+    <div className="home-model-section" id="home-models">
       <section id="models" className="models-grid">
         <div className="grid-header">
           <h2>Choose Your Model</h2>

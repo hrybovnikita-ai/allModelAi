@@ -121,11 +121,11 @@
   letter-spacing: -0.03em;
 }
 
-.chat-page .prompt-suggestions button:hover {
+.chat-page .prompt-suggestions:not(.welcome-suggestion-cards) button:hover {
   transform: translateY(-2px);
 }
 
-.chat-page .prompt-suggestions button:active {
+.chat-page .prompt-suggestions:not(.welcome-suggestion-cards) button:active {
   transform: translateY(0) scale(0.99);
 }
 
@@ -160,6 +160,46 @@
   background: rgba(124, 92, 255, 0.12);
   border: 1px solid rgba(124, 92, 255, 0.15);
   font-size: 0.85em;
+}
+
+.chat-page .chat-message.streaming-response > div {
+  animation: message-stream-in 0.35s var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)) both;
+}
+
+@keyframes message-stream-in {
+  from {
+    opacity: 0.92;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.chat-page .chat-markdown-table-wrap {
+  margin: 12px 0;
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(124, 92, 255, 0.18);
+}
+
+.chat-page .chat-markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.chat-page .chat-markdown-table th,
+.chat-page .chat-markdown-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(124, 92, 255, 0.12);
+  text-align: left;
+  vertical-align: top;
+}
+
+.chat-page .chat-markdown-table th {
+  color: #c4b5fd;
+  font-weight: 600;
+  background: rgba(124, 92, 255, 0.08);
 }
 
 .chat-page .message-actions .message-action-btn:focus-visible {
@@ -248,7 +288,8 @@
   }
 
   .chat-page .model-orb:hover,
-  .chat-page .prompt-suggestions button:hover {
+  .chat-page .prompt-suggestions:not(.welcome-suggestion-cards) button:hover,
+  .chat-page .welcome-suggestion-card:hover {
     transform: none;
   }
 }

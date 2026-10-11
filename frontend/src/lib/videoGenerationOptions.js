@@ -84,6 +84,8 @@ export function buildVideoRequestBody({
   imageUrl = '',
   wait = false,
   provider = '',
+  conversationId = '',
+  messageId = '',
 }) {
   const body = {
     prompt: String(prompt || '').trim(),
@@ -95,5 +97,7 @@ export function buildVideoRequestBody({
   if (negativePrompt) body.negativePrompt = String(negativePrompt).trim();
   if (imageUrl) body.imageUrl = imageUrl;
   if (provider) body.provider = provider;
+  if (conversationId) body.conversationId = String(conversationId);
+  if (messageId) body.messageId = String(messageId);
   return body;
 }

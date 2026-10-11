@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useLanguage } from '../../lib/useLanguage';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import FloatingGlassNav from '../Navigation/FloatingGlassNav';
+import MobileDockNav from '../Navigation/MobileDockNav';
+import '../Navigation/AuthenticatedShell.css';
 import { isGoogleRedirectRecoveryPending } from '../../lib/socialSignIn';
 import { isLogoutInProgress } from '../../lib/session';
 import { AUTH_STATUS } from '../../lib/authSessionStatus';
@@ -68,6 +71,8 @@ export default function RequireAuth() {
         ? t('Reconnecting to the server. Some features may be unavailable until your session is confirmed.')
         : null);
 
+    const isChatRoute = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
+
     return (
       <RouteErrorBoundary onRetry={() => { void refresh({ force: true }); }}>
         {bannerMessage ? (
@@ -77,14 +82,18 @@ export default function RequireAuth() {
             retrying={retrying}
           />
         ) : null}
-        <Outlet
-          context={{
-            user,
-            sessionVerified,
-            connectionIssue,
-            retrySession: retryConnection,
-          }}
-        />
+        {!isChatRoute ? <FloatingGlassNav /> : null}
+        {!isChatRoute ? <MobileDockNav /> : null}
+        <div className={`authenticated-shell${isChatRoute ? ' authenticated-shell--chat' : ''}`}>
+          <Outlet
+            context={{
+              user,
+              sessionVerified,
+              connectionIssue,
+              retrySession: retryConnection,
+            }}
+          />
+        </div>
       </RouteErrorBoundary>
     );
   }

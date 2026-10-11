@@ -50,7 +50,7 @@ test('billing errors do not expose upstream account identifiers', async () => {
     try {
         const response=await api.post('/api/chat').send({model:'kimi',variant:'k2',temporary:true,messages:[{role:'user',text:'hello'}]});
         assert.equal(response.status,429);
-        assert.match(response.body.message,/insufficient balance or quota/);
+        assert.match(response.body.message,/insufficient balance or quota/i);
         assert.doesNotMatch(response.text,/org-private|ak-private/);
     } finally {global.fetch=originalFetch;}
 });

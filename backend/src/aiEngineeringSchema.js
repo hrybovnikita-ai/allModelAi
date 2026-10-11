@@ -51,6 +51,18 @@ CREATE TABLE IF NOT EXISTS router_metrics (
 CREATE INDEX IF NOT EXISTS router_metrics_created
 ON router_metrics(created_at DESC);
 
+CREATE TABLE IF NOT EXISTS provider_error_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_id TEXT NOT NULL,
+    error_class TEXT NOT NULL,
+    http_status INTEGER,
+    sanitized_hint TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS provider_error_events_provider_created
+ON provider_error_events(provider_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS research_runs (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL,

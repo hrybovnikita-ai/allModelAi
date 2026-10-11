@@ -31,6 +31,19 @@ ON video_generation_jobs(provider_project_id);
 
 function ensureVideoGenerationSchema(database) {
     database.exec(VIDEO_JOBS_DDL);
+    const columns = new Set(
+        database.prepare('PRAGMA table_info(video_generation_jobs)').all().map((row) => row.name),
+    );
+    if (!columns.has('conversation_id')) {
+        database.exec('ALTER TABLE video_generation_jobs ADD COLUMN conversation_id TEXT');
+    }
+    if (!columns.has('message_id')) {
+        database.exec('ALTER TABLE video_generation_jobs ADD COLUMN message_id TEXT');
+    }
+    database.exec(`
+        CREATE INDEX IF NOT EXISTS video_generation_jobs_conversation
+        ON video_generation_jobs(conversation_id, created_at DESC);
+    `);
 }
 
 module.exports = {

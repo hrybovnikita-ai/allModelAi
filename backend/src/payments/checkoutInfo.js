@@ -10,7 +10,7 @@ const {
 } = require('./paymentProvider');
 const { stripeConfigurationReport } = require('./stripeConfig');
 
-const TEST_MODE_BANNER = 'TEST MODE — No real money will be charged';
+const TEST_MODE_BANNER = 'Stripe Test Mode — No real charges';
 
 const buildCheckoutInfo = () => {
     const stripeGuard = assertStripeCheckoutAllowed();

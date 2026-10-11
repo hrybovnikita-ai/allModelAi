@@ -44,9 +44,11 @@ export default function CheckoutSummaryCard({
         ))}
       </ul>
 
-      {!isDeveloper && (
+      {!isDeveloper && summary && (
         <dl className="checkout-meta-list checkout-meta-list--summary">
-          <div><dt>Billing cycle</dt><dd>Monthly</dd></div>
+          <div><dt>Currency</dt><dd>USD</dd></div>
+          <div><dt>Billing period</dt><dd>{summary.interval === 'year' ? 'Yearly' : 'Monthly'}</dd></div>
+          <div><dt>Total due today</dt><dd>{priceLabel}</dd></div>
           <div><dt>Provider</dt><dd>{providerLabel}</dd></div>
         </dl>
       )}

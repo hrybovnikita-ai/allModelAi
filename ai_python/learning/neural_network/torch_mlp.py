@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from engine.neural.training_loop import EarlyStoppingState, maybe_save_checkpoint
 from learning.training.limits import MAX_DATA_POINTS, MAX_EPOCHS, MIN_EPOCHS
 from learning.training.validation import train_val_indices
 
@@ -47,6 +48,8 @@ def train_neural_network(
     batch_size: int = 32,
     seed: int = 42,
     data_points: int = 180,
+    early_stopping_patience: int = 10,
+    run_id: Optional[str] = None,
     on_epoch: Optional[Callable[..., None]] = None,
 ) -> Dict[str, Any]:
     epochs = max(MIN_EPOCHS, min(int(epochs), MAX_EPOCHS))
@@ -66,6 +69,9 @@ def train_neural_network(
     loss_history: List[float] = []
     validation_loss_history: List[float] = []
     accuracy_history: List[float] = []
+    early = EarlyStoppingState(patience=max(2, int(early_stopping_patience)))
+    best_state: Optional[Dict[str, Any]] = None
+    checkpoint_path: Optional[str] = None
 
     for epoch in range(1, epochs + 1):
         perm = train_idx_t[torch.randperm(len(train_idx_t))]
@@ -89,8 +95,27 @@ def train_neural_network(
         loss_history.append(avg_loss)
         validation_loss_history.append(val_loss)
         accuracy_history.append(acc)
+        old_best = early.best_loss
+        should_stop = early.step(epoch, val_loss)
+        if early.best_loss < old_best:
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            checkpoint_path = maybe_save_checkpoint(
+                run_id=run_id,
+                state_dict=model.state_dict(),
+                metadata={
+                    "modelType": "neural-network",
+                    "epoch": epoch,
+                    "validationLoss": val_loss,
+                    "accuracy": acc,
+                },
+            )
         if on_epoch:
             on_epoch(epoch, epochs, avg_loss, accuracy=acc, validation_loss=val_loss)
+        if should_stop:
+            break
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
 
     return {
         "ok": True,
@@ -105,5 +130,8 @@ def train_neural_network(
         "epochs": epochs,
         "learningRate": lr,
         "batchSize": batch_size,
+        "earlyStoppedEpoch": early.stopped_epoch,
+        "bestValidationLoss": early.best_loss if early.best_loss != float("inf") else None,
+        "checkpointPath": checkpoint_path,
         "stateDict": model.state_dict(),
     }

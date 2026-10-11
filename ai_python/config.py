@@ -41,7 +41,8 @@ HIDDEN_DIM = 64
 DEFAULT_EPOCHS = 60
 DEFAULT_LR = 0.005
 DEFAULT_BATCH_SIZE = 16
-DEFAULT_PORT = 5055
+DEFAULT_PORT = int(os.environ.get("AI_PYTHON_PORT", "5055"))
+INTERNAL_SERVICE_TOKEN = (os.environ.get("AI_PYTHON_INTERNAL_TOKEN") or "").strip()
 
 random.seed(SEED)
 torch.manual_seed(SEED)

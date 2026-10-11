@@ -47,6 +47,8 @@ function validateVideoBody(body = {}) {
             model: typeof body.model === 'string' ? body.model.trim() : '',
             provider: typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : '',
             imageUrl: typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '',
+            conversationId: typeof body.conversationId === 'string' ? body.conversationId.trim() : '',
+            messageId: typeof body.messageId === 'string' ? body.messageId.trim() : '',
         },
     };
 }

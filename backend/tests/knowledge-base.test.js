@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const Database = require('better-sqlite3');
 
 const { ensureAiEngineeringSchema } = require('../src/aiEngineeringSchema');
+const { ensureIntelligenceSchema } = require('../src/intelligence/intelligenceSchema');
 const knowledgeBaseService = require('../src/services/rag/knowledgeBaseService');
 
 let db;
@@ -15,6 +16,7 @@ before(() => {
     if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
     db = new Database(dbPath);
     ensureAiEngineeringSchema(db);
+    ensureIntelligenceSchema(db);
 });
 
 after(() => {

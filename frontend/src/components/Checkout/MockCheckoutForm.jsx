@@ -3,15 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { IconLock, IconShield } from './CheckoutIcons';
 import CardBrandBadges from './CardBrandBadges';
 import PaymentButton from './PaymentButton';
+import SubscriptionBillingFields from './SubscriptionBillingFields';
+import { BILLING_FIELD_INITIAL } from './billingFieldUtils';
 import './MockCheckout.css';
 
-const INITIAL = {
-  firstName: '',
-  lastName: '',
-  country: '',
-  city: '',
-  phone: '',
-  email: '',
+const DEMO_CARD_INITIAL = {
   cardNumber: '',
   expiry: '',
   cvc: '',
@@ -35,11 +31,13 @@ export default function MockCheckoutForm({
   interval = 'month',
   disabled = false,
   defaultEmail = '',
-  testModeLabel = 'Demo checkout — no real charge',
+  testModeLabel = 'Demo Preview — layout only, no payment processing',
+  demoPreview = true,
 }) {
   const navigate = useNavigate();
   const formId = useId();
-  const [fields, setFields] = useState(() => ({ ...INITIAL, email: defaultEmail }));
+  const [fields, setFields] = useState(() => ({ ...BILLING_FIELD_INITIAL, email: defaultEmail }));
+  const [cardFields, setCardFields] = useState(DEMO_CARD_INITIAL);
   const [submitting, setSubmitting] = useState(false);
   const [fieldError, setFieldError] = useState('');
   const [successOpen, setSuccessOpen] = useState(false);
@@ -49,30 +47,27 @@ export default function MockCheckoutForm({
     setFields((current) => (current.email ? current : { ...current, email: defaultEmail }));
   }, [defaultEmail]);
 
-  const update = useCallback((key) => (event) => {
-    let { value } = event.target;
-    if (key === 'cardNumber') value = formatCardNumber(value);
-    if (key === 'expiry') value = formatExpiry(value);
-    if (key === 'cvc') value = value.replace(/\D/g, '').slice(0, 4);
+  const onFieldChange = useCallback((key, value) => {
     setFields((current) => ({ ...current, [key]: value }));
     setFieldError('');
   }, []);
 
+  const updateCard = useCallback((key) => (event) => {
+    let { value } = event.target;
+    if (key === 'cardNumber') value = formatCardNumber(value);
+    if (key === 'expiry') value = formatExpiry(value);
+    if (key === 'cvc') value = value.replace(/\D/g, '').slice(0, 4);
+    setCardFields((current) => ({ ...current, [key]: value }));
+    setFieldError('');
+  }, []);
+
   const formComplete = useMemo(() => {
-    const required = [
-      'firstName',
-      'lastName',
-      'country',
-      'city',
-      'phone',
-      'email',
-      'cardNumber',
-      'expiry',
-      'cvc',
-    ];
-    if (!required.every((key) => String(fields[key]).trim())) return false;
-    return fields.email.includes('@');
-  }, [fields]);
+    const billingKeys = ['firstName', 'lastName', 'country', 'city', 'streetAddress', 'postalCode', 'email'];
+    if (!billingKeys.every((key) => String(fields[key]).trim())) return false;
+    if (!fields.email.includes('@')) return false;
+    if (!demoPreview) return true;
+    return ['cardNumber', 'expiry', 'cvc'].every((key) => String(cardFields[key]).trim());
+  }, [fields, cardFields, demoPreview]);
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -93,6 +88,7 @@ export default function MockCheckoutForm({
 
   const closeSuccess = () => {
     setSuccessOpen(false);
+    if (demoPreview) return;
     navigate('/dashboard', { replace: true });
   };
 
@@ -101,135 +97,63 @@ export default function MockCheckoutForm({
   return (
     <>
       <form id={formId} className="mock-checkout-form" onSubmit={handleSubmit} noValidate>
-        <div className="mock-checkout-form-head">
-          <div>
-            <h2>Complete payment</h2>
-            <p className="mock-checkout-demo-note">{testModeLabel}</p>
-          </div>
-          <span className="mock-checkout-secure-badge">
-            <IconLock className="mock-checkout-badge-icon" />
-            Secure
-          </span>
-        </div>
+        <SubscriptionBillingFields
+          fields={fields}
+          onChange={onFieldChange}
+          disabled={disabled || submitting}
+          testModeLabel={testModeLabel}
+          secureLabel="Demo"
+        />
 
-        <fieldset className="mock-checkout-fieldset" disabled={disabled || submitting}>
-          <legend className="mock-checkout-legend">Customer</legend>
-          <div className="mock-checkout-row mock-checkout-row--2">
-            <label className="mock-checkout-field mock-checkout-field--first">
-              <span>Name</span>
-              <input
-                type="text"
-                name="firstName"
-                autoComplete="given-name"
-                placeholder="Alex"
-                value={fields.firstName}
-                onChange={update('firstName')}
-              />
-            </label>
-            <label className="mock-checkout-field mock-checkout-field--first">
-              <span>Surname</span>
-              <input
-                type="text"
-                name="lastName"
-                autoComplete="family-name"
-                placeholder="Rivera"
-                value={fields.lastName}
-                onChange={update('lastName')}
-              />
-            </label>
-          </div>
-          <div className="mock-checkout-row mock-checkout-row--2">
-            <label className="mock-checkout-field">
-              <span>Country</span>
-              <input
-                type="text"
-                name="country"
-                autoComplete="country-name"
-                placeholder="United States"
-                value={fields.country}
-                onChange={update('country')}
-              />
-            </label>
-            <label className="mock-checkout-field">
-              <span>City</span>
-              <input
-                type="text"
-                name="city"
-                autoComplete="address-level2"
-                placeholder="San Francisco"
-                value={fields.city}
-                onChange={update('city')}
-              />
-            </label>
-          </div>
-          <label className="mock-checkout-field">
-            <span>Phone number</span>
-            <input
-              type="tel"
-              name="phone"
-              autoComplete="tel"
-              placeholder="+1 555 000 0000"
-              value={fields.phone}
-              onChange={update('phone')}
-            />
-          </label>
-          <label className="mock-checkout-field">
-            <span>Email address</span>
-            <input
-              type="email"
-              name="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={fields.email}
-              onChange={update('email')}
-            />
-          </label>
-        </fieldset>
-
-        <fieldset className="mock-checkout-fieldset" disabled={disabled || submitting}>
-          <legend className="mock-checkout-legend">Card</legend>
-          <label className="mock-checkout-field mock-checkout-field--card">
-            <span className="mock-checkout-label-row">
-              <span>Card number</span>
+        {demoPreview && (
+          <fieldset className="mock-checkout-fieldset" disabled={disabled || submitting}>
+            <legend className="mock-checkout-legend">Payment details (demo only)</legend>
+            <div className="production-stripe-checkout__brands">
+              <p className="production-stripe-checkout__brands-label">Supported cards (visual)</p>
               <CardBrandBadges />
-            </span>
-            <input
-              type="text"
-              name="cardNumber"
-              inputMode="numeric"
-              autoComplete="cc-number"
-              placeholder="4242 4242 4242 4242"
-              value={fields.cardNumber}
-              onChange={update('cardNumber')}
-            />
-          </label>
-          <div className="mock-checkout-row mock-checkout-row--2">
-            <label className="mock-checkout-field">
-              <span>Expiry date</span>
+            </div>
+            <label className="mock-checkout-field mock-checkout-field--card">
+              <span className="mock-checkout-label-row">
+                <span>Card number</span>
+              </span>
               <input
                 type="text"
-                name="expiry"
+                name="cardNumber"
                 inputMode="numeric"
-                autoComplete="cc-exp"
-                placeholder="MM/YY"
-                value={fields.expiry}
-                onChange={update('expiry')}
+                autoComplete="off"
+                placeholder="4242 4242 4242 4242"
+                value={cardFields.cardNumber}
+                onChange={updateCard('cardNumber')}
               />
             </label>
-            <label className="mock-checkout-field">
-              <span>CVC / CVV</span>
-              <input
-                type="text"
-                name="cvc"
-                inputMode="numeric"
-                autoComplete="cc-csc"
-                placeholder="123"
-                value={fields.cvc}
-                onChange={update('cvc')}
-              />
-            </label>
-          </div>
-        </fieldset>
+            <div className="mock-checkout-row mock-checkout-row--2">
+              <label className="mock-checkout-field">
+                <span>Expiration date</span>
+                <input
+                  type="text"
+                  name="expiry"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="MM/YY"
+                  value={cardFields.expiry}
+                  onChange={updateCard('expiry')}
+                />
+              </label>
+              <label className="mock-checkout-field">
+                <span>Security code (CVC)</span>
+                <input
+                  type="text"
+                  name="cvc"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="123"
+                  value={cardFields.cvc}
+                  onChange={updateCard('cvc')}
+                />
+              </label>
+            </div>
+          </fieldset>
+        )}
 
         {fieldError && (
           <p className="mock-checkout-error" role="alert">{fieldError}</p>
@@ -246,8 +170,8 @@ export default function MockCheckoutForm({
         </PaymentButton>
 
         <ul className="checkout-trust-list mock-checkout-trust">
-          <li><IconShield className="checkout-trust-icon" /> Demo mode — test card data only</li>
-          <li><IconLock className="checkout-trust-icon" /> Live billing uses your configured provider</li>
+          <li><IconShield className="checkout-trust-icon" /> {demoPreview ? 'Demo Preview — no subscription is created' : 'Preview layout only'}</li>
+          <li><IconLock className="checkout-trust-icon" /> Live billing uses Stripe secure fields when configured</li>
         </ul>
       </form>
 
@@ -265,13 +189,15 @@ export default function MockCheckoutForm({
                 <path d="M5 12.5 9.5 17 19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
-            <p className="mock-checkout-success-eyebrow">Payment simulated</p>
-            <h3 id="mock-checkout-success-title">Subscription successful!</h3>
+            <p className="mock-checkout-success-eyebrow">{demoPreview ? 'Demo Preview only' : 'Payment simulated'}</p>
+            <h3 id="mock-checkout-success-title">{demoPreview ? 'Layout preview complete' : 'Subscription successful!'}</h3>
             <p className="mock-checkout-success-body">
-              Welcome to AllModelAI {planName}. Your {planSlug === 'enterprise' ? 'Enterprise' : planName} plan is ready to explore.
+              {demoPreview
+                ? 'No payment was processed and no premium access was granted. Configure Stripe on the server to use live secure checkout.'
+                : `Welcome to AllModelAI ${planName}. Your ${planSlug === 'enterprise' ? 'Enterprise' : planName} plan is ready to explore.`}
             </p>
             <PaymentButton type="button" className="mock-checkout-success-btn" onClick={closeSuccess}>
-              Go to dashboard
+              {demoPreview ? 'Close preview' : 'Go to dashboard'}
             </PaymentButton>
             <button type="button" className="mock-checkout-success-dismiss" onClick={() => setSuccessOpen(false)}>
               Stay on checkout

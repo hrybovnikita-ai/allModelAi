@@ -74,6 +74,8 @@ import LessonPage from "./components/AiTraining/LessonPage";
 import AiLearningLab from "./components/AiLearning/AiLearningLab";
 import ModelLab from "./components/ModelLab/ModelLab";
 import ModelDiagnostics from "./components/Developer/ModelDiagnostics";
+import CodeWorkspacePage from "./components/CodeWorkspace/CodeWorkspacePage";
+import AILearningDashboard from "./components/Developer/AILearningDashboard";
 import StorageHub from "./components/StorageHub/StorageHub";
 
 function HomePage() {
@@ -194,12 +196,14 @@ export default function App() {
       <Route path="/admin" element={<Admin />} />
       <Route path="/chat" element={<Chat />} />
       <Route path="/developer/model-diagnostics" element={<ModelDiagnostics />} />
+      <Route path="/developer/ai-learning" element={<AILearningDashboard />} />
       <Route path="/knowledge" element={<KnowledgeBasePage />} />
       <Route path="/files/:conversationId/:fileId" element={<GeneratedFile />} />
       <Route path="/model-comparison" element={<ModelComparison />} />
       <Route path="/usage-analytics" element={<UsageAnalytics />} />
       <Route path="/storage" element={<StorageHub />} />
       <Route path="/studio" element={<Studio />} />
+      <Route path="/code-workspace" element={<CodeWorkspacePage />} />
       <Route path="/arena" element={<Arena />} />
       <Route path="/control-center" element={<ControlCenter />} />
       <Route path="/innovation-hub" element={<InnovationHub />} />

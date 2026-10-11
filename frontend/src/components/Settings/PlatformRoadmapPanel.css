@@ -1,0 +1,88 @@
+.platform-roadmap-panel h2 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+}
+
+.platform-roadmap-list {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.platform-roadmap-item {
+  padding: 12px 14px;
+  border: 1px solid rgba(124, 92, 255, 0.22);
+  border-radius: 12px;
+  background: linear-gradient(165deg, rgba(22, 19, 34, 0.92), rgba(10, 10, 16, 0.96));
+}
+
+.platform-roadmap-item__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.platform-roadmap-item p {
+  margin: 0;
+  color: rgba(203, 213, 225, 0.82);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.platform-roadmap-phase {
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+}
+
+.platform-roadmap-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.platform-roadmap-badge {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.platform-roadmap-badge--available {
+  background: rgba(20, 184, 166, 0.2);
+  color: #5eead4;
+}
+
+.platform-roadmap-badge--beta {
+  background: rgba(124, 92, 255, 0.22);
+  color: #ddd6fe;
+}
+
+.platform-roadmap-badge--planned,
+.platform-roadmap-badge--disabled {
+  background: rgba(100, 116, 139, 0.25);
+  color: #cbd5e1;
+}
+
+.platform-roadmap-hint {
+  color: #94a3b8;
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 440px) {
+  .platform-roadmap-item {
+    padding: 10px 12px;
+  }
+}

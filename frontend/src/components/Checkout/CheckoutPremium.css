@@ -107,6 +107,71 @@
   mix-blend-mode: screen;
 }
 
+.card-brand-badges__mark--amex {
+  border-color: rgba(56, 189, 248, 0.35);
+  color: #bae6fd;
+}
+
+.card-brand-badges__mark--discover {
+  border-color: rgba(251, 191, 36, 0.35);
+  color: #fde68a;
+}
+
+.card-brand-badges__mark--more {
+  font-size: 0.52rem;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  text-transform: none;
+  font-weight: 700;
+}
+
+.production-stripe-checkout__brands {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.production-stripe-checkout__brands-label {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.production-stripe-checkout__badges {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.production-stripe-checkout__pe-hint {
+  margin: 0 0 14px;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.production-stripe-checkout__element .stripe-embedded-shell {
+  border: none;
+  background: transparent;
+  padding: 0;
+  min-height: auto;
+  max-height: none;
+  box-shadow: none;
+}
+
+.mock-checkout-fieldset--payment {
+  padding-bottom: 22px;
+}
+
+.checkout-stripe-test-label {
+  color: #fde68a !important;
+}
+
 .mock-checkout-label-row {
   display: flex;
   align-items: center;

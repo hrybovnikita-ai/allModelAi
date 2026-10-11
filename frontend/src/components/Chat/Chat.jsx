@@ -8,8 +8,7 @@ import './VideoGenerationPanel.css';
 import { useLanguage } from '../../lib/useLanguage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams, useOutletContext } from 'react-router-dom';
-import { Highlight } from 'prism-react-renderer';
-import { Prism, codeTheme, languageAliases } from '../../lib/codeHighlight';
+import ChatMessageContent from './ChatMessageContent';
 import { dashboardModels } from '../../data/dashboardModels';
 import { apiFetch, checkChatResponse } from '../../lib/api';
 import { formatChatVisionError, prepareChatImageAttachment } from '../../lib/imageAttachment';
@@ -36,6 +35,18 @@ import {
   VIDEO_DEFAULTS,
   videoNetworkErrorMessage,
 } from '../../lib/videoGeneration';
+import {
+  buildAssistantVideoMessage,
+  messageHasPlayableVideo,
+  messageHasVideoReference,
+  normalizeConversationMessages,
+  normalizeVideoMessage,
+} from '../../lib/chatMessageVideo';
+import { finalizeAssistantMessage, stickerFieldsForPersist } from '../../lib/aiStickers/enhanceMessage';
+import { readAiStickersEnabled, AI_STICKERS_ENABLED_KEY } from '../../lib/aiStickers/settings';
+import ChatAiSticker from './ChatAiSticker';
+import ChatWelcomeSuggestions from './ChatWelcomeSuggestions';
+import { useChatContextSuggestions } from './useChatContextSuggestions';
 import { logger, timingElapsed, timingNow } from '../../lib/logger';
 import { submitResponseFeedback } from '../../lib/aiImprovement';
 import { deleteUserAccountAndSignOut } from '../../lib/clientAuthReset';
@@ -47,8 +58,6 @@ import {
   consumeDeepResearchStream,
   fetchResearchClarification,
 } from '../../lib/deepResearchClient.js';
-import { buildCitationSourceMap, isSafeHttpUrl, scrollToSourceCard, splitCitationSegments } from '../../lib/citationLinks.js';
-import { splitRichTextSegments } from '../../lib/chatMessageLinks.js';
 import './Chat.css';
 import './ChatApi.css';
 import './ChatDarkViolet.css';
@@ -56,7 +65,9 @@ import './ChatSidebarCollapse.css';
 import './ChatPremium.css';
 import './ComposerInput.css';
 import './ComposerModern.css';
+import './ComposerToolSurfaces.css';
 import './ChatMobileLayout.css';
+import './ChatModelSelector.css';
 import {
   IconArrowRight,
   IconCamera,
@@ -95,6 +106,24 @@ function ModelSpeedBadge({ speed }) {
   return <em className={`model-speed-badge speed-${speed.toLowerCase()}`}>{speed}</em>;
 }
 
+function IconSlidersHorizontal() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M1 14h6M9 8h6M17 16h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function formatModelSelectorTriggerLabel(selectedModel, selectedVersion) {
+  if (selectedVersion) {
+    const name = `${selectedVersion.name}${selectedVersion.label ? ` ${selectedVersion.label}` : ''}`.trim();
+    if (selectedVersion.speed) return `${name} - ${selectedVersion.speed}`;
+    return name;
+  }
+  return `${selectedModel.name} — ${selectedModel.provider}`;
+}
+
 // const quickPrompts = [
 // 'Write a short story about a time traveler.',
 //  'Summarize the main benefits of daily exercise.',
@@ -102,9 +131,9 @@ function ModelSpeedBadge({ speed }) {
 // ];
 
 const suggestions = [
-  { iconImage: '/create-idea-icon.png', iconImageClass: 'suggestion-icon-inverted', title: 'Create an idea', prompt: 'Give me three original product ideas for students.' },
-  { iconImage: '/explain-code-icon.png', title: 'Explain code', prompt: 'Explain React useEffect with a simple example.' },
-  { iconLabel: 'AI', iconImageClass: 'suggestion-icon-ai', title: 'Compare models', prompt: 'Compare Claude, Gemini, GPT, and Llama.' },
+  { icon: 'idea', title: 'Create an idea', prompt: 'Give me three original product ideas for students.' },
+  { icon: 'code', title: 'Explain code', prompt: 'Explain React useEffect with a simple example.' },
+  { icon: 'ai', title: 'Compare models', prompt: 'Compare Claude, Gemini, GPT, and Llama.' },
 ];
 
 const chatTextColors = [
@@ -113,168 +142,6 @@ const chatTextColors = [
   ['Red orange', '#ff4500'], ['Violet', '#8b5cf6'], ['Gray', '#9ca3af'],
   ['Green yellow', '#adff2f'],
 ];
-
-function CodeBlock({ language, code }) {
-  const [copied, setCopied] = useState(false);
-  const [wrapped, setWrapped] = useState(false);
-  const prismLanguage = languageAliases[language?.toLowerCase()] || language?.toLowerCase() || 'text';
-  const copyCode = async () => {
-    if (!await copyToClipboard(code)) return;
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
-  };
-
-  const downloadCode = () => {
-    const extensions = { javascript: 'js', typescript: 'ts', python: 'py', bash: 'sh', markup: 'html', css: 'css', cpp: 'cpp', csharp: 'cs', java: 'java', json: 'json' };
-    const extension = extensions[prismLanguage] || String(language || 'txt').replace(/[^a-z0-9]/gi, '') || 'txt';
-    const url = URL.createObjectURL(new Blob([code], { type: 'text/plain;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `allmodelai-code.${extension}`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  return <section className={`response-code-block ${wrapped ? 'code-wrapped' : ''}`}>
-    <header><span>{language || 'code'}</span><div><button type="button" className="code-action-btn" onClick={() => setWrapped((value) => !value)} aria-label="Toggle line wrapping">{wrapped ? 'Scroll' : 'Wrap'}</button><button type="button" className="code-action-btn" onClick={downloadCode} aria-label="Download code">Download</button><button type="button" className={`code-action-btn ${copied ? 'is-copied' : ''}`} onClick={copyCode} aria-label="Copy code">{copied ? 'Copied' : 'Copy'}</button></div></header>
-    <Highlight prism={Prism} theme={codeTheme} code={code} language={prismLanguage}>
-      {({ className, style, tokens, getLineProps, getTokenProps }) => (
-        <pre className={className} style={{ ...style, background: 'transparent' }}>
-          <code>{tokens.map((line, lineIndex) => {
-            const lineProps = getLineProps({ line });
-            return <span {...lineProps} className={`${lineProps.className || ''} code-line`} key={lineIndex}>
-              <span className="code-line-content">{line.map((token, tokenIndex) => <span {...getTokenProps({ token })} key={tokenIndex} />)}</span>
-            </span>;
-          })}</code>
-        </pre>
-      )}
-    </Highlight>
-  </section>;
-}
-
-function InlineFormattedText({ children }) {
-  const segments = splitRichTextSegments(String(children));
-  return segments.map((segment, index) => {
-    if (segment.type === 'link') {
-      return (
-        <a
-          key={`lnk-${index}`}
-          href={segment.url}
-          className="chat-inline-link"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {segment.label}
-        </a>
-      );
-    }
-    const tokens = segment.value.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
-    return tokens.map((token, tokenIndex) => {
-      const key = `${index}-${tokenIndex}`;
-      if (token.startsWith('`') && token.endsWith('`')) return <code className="inline-code" key={key}>{token.slice(1, -1)}</code>;
-      if (token.startsWith('**') && token.endsWith('**')) return <strong key={key}>{token.slice(2, -2)}</strong>;
-      return token;
-    });
-  });
-}
-
-function InlineText({ children, citationMap }) {
-  const raw = String(children);
-  if (!citationMap?.size) return <InlineFormattedText>{raw}</InlineFormattedText>;
-
-  return splitCitationSegments(raw).map((segment, index) => {
-    const cite = segment.match(/^\[(\d+)\]$/);
-    if (!cite) return <InlineFormattedText key={`t-${index}`}>{segment}</InlineFormattedText>;
-
-    const id = Number(cite[1]);
-    const source = citationMap.get(id);
-    if (source && isSafeHttpUrl(source.url)) {
-      return (
-        <a
-          key={`c-${index}`}
-          href={source.url}
-          className="inline-citation"
-          title={source.title || source.domain || `Source ${id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(event) => {
-            event.preventDefault();
-            scrollToSourceCard(id);
-            globalThis.open(source.url, '_blank', 'noopener,noreferrer');
-          }}
-        >
-          [{id}]
-        </a>
-      );
-    }
-    return <span key={`c-${index}`} className="inline-citation inline-citation-invalid" title="Citation unavailable">[{id}]</span>;
-  });
-}
-
-function TextBlock({ value, citationMap }) {
-  const lines = value.trim().split(/\r?\n/);
-  const elements = [];
-  let list = [];
-  const flushList = () => {
-    if (!list.length) return;
-    elements.push(<ul key={`list-${elements.length}`}>{list.map((item, index) => <li key={index}><InlineText citationMap={citationMap}>{item}</InlineText></li>)}</ul>);
-    list = [];
-  };
-
-  lines.forEach((line, index) => {
-    const bullet = line.match(/^\s*[-*]\s+(.+)/);
-    if (bullet) { list.push(bullet[1]); return; }
-    flushList();
-    const heading = line.match(/^\s*(#{1,3})\s+(.+)/);
-    if (heading) {
-      const Tag = `h${Math.min(heading[1].length + 2, 5)}`;
-      elements.push(<Tag key={index}><InlineText citationMap={citationMap}>{heading[2]}</InlineText></Tag>);
-    } else if (line.trim()) {
-      elements.push(<p key={index}><InlineText citationMap={citationMap}>{line}</InlineText></p>);
-    }
-  });
-  flushList();
-  return elements;
-}
-
-function MessageContent({ text, streaming, citationSources }) {
-  const citationMap = useMemo(() => buildCitationSourceMap(citationSources), [citationSources]);
-  const parts = [];
-  const codePattern = /```([\w.+#-]*)[\t ]*\r?\n([\s\S]*?)```/g;
-  let lastIndex = 0;
-  let match;
-
-  while ((match = codePattern.exec(text)) !== null) {
-    if (match.index > lastIndex) parts.push({ type: 'text', value: text.slice(lastIndex, match.index) });
-    parts.push({ type: 'code', language: match[1], value: match[2].replace(/\n$/, '') });
-    lastIndex = codePattern.lastIndex;
-  }
-
-  if (lastIndex < text.length) {
-    const remainder = text.slice(lastIndex);
-    // Long model responses can finish at the token limit before emitting the
-    // closing fence. Keep a valid opening fence rendered as code after the
-    // stream ends instead of reverting it to visible ```python plain text.
-    const openFence = remainder.match(/(?:^|\n)[\t ]*```([\w.+#-]*)[\t ]*(?:\r?\n|$)([\s\S]*)$/);
-
-    if (openFence) {
-      const fenceIndex = openFence.index + (openFence[0].startsWith('\n') ? 1 : 0);
-      const beforeFence = remainder.slice(0, fenceIndex);
-      if (beforeFence) parts.push({ type: 'text', value: beforeFence });
-      parts.push({ type: 'code', language: openFence[1], value: openFence[2] });
-    } else {
-      parts.push({ type: 'text', value: remainder });
-    }
-  }
-
-  return <div className="message-content">
-    {parts.map((part, index) => part.type === 'code'
-      ? <CodeBlock language={part.language} code={part.value} key={`code-${index}`} />
-      : part.value.trim() && <TextBlock value={part.value} citationMap={citationMap} key={`text-${index}`} />)}
-    {streaming && <i className="stream-cursor" aria-hidden="true" />}
-  </div>;
-}
-
 
 function safeStorageGet(storageName, key, fallback = null) {
   try {
@@ -418,6 +285,7 @@ export default function Chat() {
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(
     () => safeStorageGet('localStorage', 'allmodelai_use_knowledge') === 'true',
   );
+  const [aiStickersEnabled, setAiStickersEnabled] = useState(() => readAiStickersEnabled());
 
   const [backgroundNotification, setBackgroundNotification] = useState(null);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
@@ -430,6 +298,14 @@ export default function Chat() {
   const [chatMenuId, setChatMenuId] = useState(null);
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState(null);
+  const contextSuggestions = useChatContextSuggestions({
+    prompt,
+    messages,
+    activeConversationId,
+    selectedSkill,
+    isSending,
+    isGuest,
+  });
   const [researchDepth, setResearchDepth] = useState('deep');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -614,11 +490,8 @@ export default function Chat() {
   const [imageUploadBusy, setImageUploadBusy] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [previewModalImage, setPreviewModalImage] = useState(null);
-  const [contextSuggestions, setContextSuggestions] = useState([]);
   const activeConversationIdRef = useRef(null);
   const activeProjectRef = useRef(null);
-  const contextSuggestionsAbortRef = useRef(null);
-  const lastSuggestionsQueryRef = useRef('');
   const selectedModel = dashboardModels.find((model) => model.slug === selectedSlug) || fallbackModel;
   const lastAssistantImageUrl = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -648,6 +521,18 @@ export default function Chat() {
     });
     return () => { alive = false; };
   }, [selectedSkill]);
+
+  useEffect(() => {
+    const syncStickerPref = (event) => {
+      if (event.key === AI_STICKERS_ENABLED_KEY || event.key === null) {
+        setAiStickersEnabled(readAiStickersEnabled());
+      }
+    };
+    window.addEventListener('storage', syncStickerPref);
+    return () => window.removeEventListener('storage', syncStickerPref);
+  }, []);
+
+  const resumedVideoJobIdsRef = useRef(new Set());
 
   const resumeVideoJob = useCallback(async (jobId, { assistantIndex: resumeAssistantIndex } = {}) => {
     if (!jobId || isSending) return;
@@ -679,21 +564,20 @@ export default function Chat() {
           });
         },
       });
-      const answer = {
-        role: 'assistant',
-        text: 'Done! Here is your video.',
-        videoUrl: finalVideo.videoUrl,
-        videoModel: finalVideo.model,
-        videoAspect: finalVideo.aspectRatio,
-        videoResolution: finalVideo.resolution,
-        videoMimeType: finalVideo.mimeType,
-        videoJobId: finalVideo.jobId || jobId,
-        generatingVideo: false,
-      };
+      const answer = buildAssistantVideoMessage(finalVideo, {
+        conversationId: activeConversationIdRef.current,
+      });
       setMessages((current) => {
         const copy = [...current];
         if (copy[index]) copy[index] = answer;
         else copy.push(answer);
+        if (!temporaryChat && activeConversationIdRef.current) {
+          void apiFetch(`/api/chat/history/${activeConversationIdRef.current}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: normalizeConversationMessages(copy) }),
+          }).then(() => refreshHistory()).catch(() => {});
+        }
         return copy;
       });
       setActiveVideoJobs((current) => current.filter((job) => job.jobId !== jobId && job.id !== jobId));
@@ -707,6 +591,23 @@ export default function Chat() {
       videoSubmitLockRef.current = false;
     }
   }, [isSending, messages.length]);
+
+  useEffect(() => {
+    if (isSending || !activeConversationId || !messages.length) return undefined;
+    const pending = messages.find(
+      (message) => message.role === 'assistant'
+        && message.videoJobId
+        && message.generatingVideo
+        && !message.videoUrl,
+    );
+    if (!pending?.videoJobId || resumedVideoJobIdsRef.current.has(pending.videoJobId)) {
+      return undefined;
+    }
+    resumedVideoJobIdsRef.current.add(pending.videoJobId);
+    const index = messages.indexOf(pending);
+    void resumeVideoJob(pending.videoJobId, { assistantIndex: index });
+    return undefined;
+  }, [activeConversationId, isSending, messages, resumeVideoJob]);
 
   useEffect(() => {
     if (selectedSkill !== 'image') return undefined;
@@ -911,6 +812,32 @@ export default function Chat() {
   }, []);
 
   useEffect(() => {
+    const legacyVariantIds = {
+      'claude-haiku-4.5': 'haiku',
+      'claude-sonnet-4.6': 'sonnet',
+      'claude-opus-4.1': 'opus',
+      'claude-opus-4.6': 'opus',
+    };
+    setChosenVersions((previous) => {
+      let changed = false;
+      const next = { ...previous };
+      Object.entries(variantCatalog).forEach(([slug, versions]) => {
+        const storedId = next[slug];
+        if (!storedId || versions.some((item) => item.id === storedId)) return;
+        const mapped = legacyVariantIds[storedId] || versions[0]?.id;
+        if (mapped && versions.some((item) => item.id === mapped)) {
+          next[slug] = mapped;
+          changed = true;
+        }
+      });
+      if (changed) {
+        safeStorageSet('localStorage', 'allmodelai_model_versions', JSON.stringify(next));
+      }
+      return changed ? next : previous;
+    });
+  }, [variantCatalog]);
+
+  useEffect(() => {
     document.documentElement.dataset.themePreference = themePreference;
     document.documentElement.dataset.theme = themePreference === 'auto'
       ? (window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
@@ -981,38 +908,15 @@ export default function Chat() {
 
   const refreshHistory = () => apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
     .then((response) => response.ok ? response.json() : [])
-    .then((history) => setChatHistory(history))
+    .then((history) => {
+      setChatHistory(history);
+      const activeId = activeConversationIdRef.current;
+      const active = history.find((item) => item.id === activeId);
+      if (active?.messages?.length) {
+        setMessages(normalizeConversationMessages(active.messages));
+      }
+    })
     .catch(() => {});
-
-  const loadContextSuggestions = useCallback(async (text) => {
-    const value = String(text || '').trim();
-    if (!value || value.length < 12 || isSending || isGuest) {
-      contextSuggestionsAbortRef.current?.abort();
-      lastSuggestionsQueryRef.current = '';
-      setContextSuggestions([]);
-      return;
-    }
-    if (value === lastSuggestionsQueryRef.current) return;
-    lastSuggestionsQueryRef.current = value;
-    contextSuggestionsAbortRef.current?.abort();
-    const controller = new AbortController();
-    contextSuggestionsAbortRef.current = controller;
-    try {
-      const response = await apiFetch('/api/chat/suggestions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lastMessage: value }),
-        signal: controller.signal,
-      });
-      if (controller.signal.aborted) return;
-      if (!response.ok) return;
-      const data = await response.json();
-      setContextSuggestions(Array.isArray(data.suggestions) ? data.suggestions.slice(0, 3) : []);
-    } catch (error) {
-      if (error?.name === 'AbortError') return;
-      setContextSuggestions([]);
-    }
-  }, [isGuest, isSending]);
 
   const conversationPreview = (conversation) => {
     const firstUserMessage = conversation.messages?.find((message) => message.role === 'user');
@@ -1448,23 +1352,12 @@ export default function Chat() {
         if (conversation?.messages?.length) {
           activeConversationIdRef.current = conversation.id;
           setActiveConversationId(conversation.id);
-          setMessages(conversation.messages);
+          setMessages(normalizeConversationMessages(conversation.messages));
           setSelectedSlug(validModelSlug(conversation.model));
         }
       })
       .catch(() => {});
   }, [user?.email, isGuest, sessionVerified]);
-
-  useEffect(() => {
-    if (selectedSkill === 'video' || selectedSkill === 'image' || selectedSkill === 'file') {
-      contextSuggestionsAbortRef.current?.abort();
-      lastSuggestionsQueryRef.current = '';
-      setContextSuggestions([]);
-      return undefined;
-    }
-    const handler = setTimeout(() => loadContextSuggestions(prompt), 450);
-    return () => clearTimeout(handler);
-  }, [prompt, isSending, loadContextSuggestions, selectedSkill]);
 
   useEffect(() => {
     sidebarWidthRef.current = sidebarWidth;
@@ -1637,21 +1530,26 @@ export default function Chat() {
       }
     }
 
+    const researchFinal = finalizeAssistantMessage(
+      {
+        text: assistantText || '',
+        modelSlug: selectedSlug,
+        webSearching: false,
+        webSearchStatus: null,
+        webSources,
+        webSearchComplete,
+        deepResearch: isDeepResearch,
+        deepResearchLabel: null,
+        researchMeta: researchMeta || undefined,
+        researchDepth: isDeepResearch ? researchDepth : undefined,
+        clarificationAnswers: clarificationAnswers || undefined,
+      },
+      { userText: text, enabled: aiStickersEnabled },
+    );
+
     setMessages((current) => current.map((message, index) => (
       index === assistantIndex
-        ? {
-          ...message,
-          text: assistantText || message.text,
-          webSearching: false,
-          webSearchStatus: null,
-          webSources,
-          webSearchComplete,
-          deepResearch: isDeepResearch,
-          deepResearchLabel: null,
-          researchMeta: researchMeta || message.researchMeta,
-          researchDepth: isDeepResearch ? researchDepth : undefined,
-          clarificationAnswers: clarificationAnswers || message.clarificationAnswers,
-        }
+        ? { ...message, ...researchFinal, text: researchFinal.text || message.text }
         : message
     )));
 
@@ -1681,8 +1579,9 @@ export default function Chat() {
             email: user.email,
             messages: [...nextMessages, {
               role: 'assistant',
-              text: assistantText,
+              text: researchFinal.text,
               modelSlug: selectedSlug,
+              ...stickerFieldsForPersist(researchFinal),
               webSources,
               webSearchComplete,
               deepResearch: isDeepResearch,
@@ -1799,7 +1698,13 @@ export default function Chat() {
       if (isGuest) {
         const guestReply = `Guest preview: I received “${text.slice(0, 240)}”. Sign up or sign in to connect live AI models, save history, upload documents, generate images, and use the Arena.`;
         await new Promise((resolve) => setTimeout(resolve, 350));
-        setMessages((current) => current.map((message, index) => index === assistantIndex ? { ...message, text: guestReply, webSearching: false } : message));
+        const guestFinal = finalizeAssistantMessage(
+          { text: guestReply, modelSlug: selectedSlug, webSearching: false },
+          { userText: text, enabled: aiStickersEnabled },
+        );
+        setMessages((current) => current.map((message, index) => (
+          index === assistantIndex ? { ...message, ...guestFinal, text: guestFinal.text } : message
+        )));
         setSelectedSkill(null);
         return;
       }
@@ -1978,6 +1883,7 @@ export default function Chat() {
             imageUrl: referenceImage,
             wait: options.wait === true,
             provider: options.provider || videoProvider,
+            conversationId: startedConversationId || activeConversationIdRef.current || '',
           }),
           controller.signal,
         );
@@ -2005,16 +1911,9 @@ export default function Chat() {
             },
           });
         }
-        const answer = {
-          role: 'assistant',
-          text: 'Done! Here is your video.',
-          videoUrl: finalVideo.videoUrl,
-          videoModel: finalVideo.model,
-          videoAspect: finalVideo.aspectRatio,
-          videoResolution: finalVideo.resolution,
-          videoMimeType: finalVideo.mimeType,
-          videoJobId: finalVideo.jobId,
-        };
+        const answer = buildAssistantVideoMessage(finalVideo, {
+          conversationId: startedConversationId || activeConversationIdRef.current || '',
+        });
         if (stillOpen()) setMessages([...nextMessages, answer]);
         if (!temporaryChat) {
           try {
@@ -2085,16 +1984,30 @@ export default function Chat() {
         const responseData = await response.json();
         const responseText = responseData.message || '';
         if (generatingFile && !parseGeneratedFile(responseText)) setChatError('The model did not return a complete file. Retry in Create file mode or request a smaller file.');
+        const jsonFinal = finalizeAssistantMessage(
+          { text: responseText, modelSlug: selectedSlug },
+          { userText: text, enabled: aiStickersEnabled },
+        );
         if (responseBelongsToOpenChat()) {
           setMessages((current) => current.map((message, index) => (
-            index === assistantIndex ? { ...message, text: responseText } : message
+            index === assistantIndex
+              ? { ...message, text: jsonFinal.text, aiSticker: jsonFinal.aiSticker }
+              : message
           )));
         }
         if (conversationId) {
           await apiFetch(`/api/chat/history/${conversationId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: user.email, messages: [...nextMessages, { role: 'assistant', text: responseText, modelSlug: selectedSlug }] }),
+            body: JSON.stringify({
+              email: user.email,
+              messages: [...nextMessages, {
+                role: 'assistant',
+                text: jsonFinal.text,
+                modelSlug: selectedSlug,
+                ...stickerFieldsForPersist(jsonFinal),
+              }],
+            }),
           });
           await refreshHistory();
         }
@@ -2242,11 +2155,42 @@ export default function Chat() {
         )));
       }
       if (generatingFile && !parseGeneratedFile(assistantText)) setChatError('The model did not return a complete file. Retry in Create file mode or request a smaller file.');
+      const streamFinal = !generatingFile && !generatingImage && !generatingVideo
+        ? finalizeAssistantMessage(
+          {
+            text: assistantText,
+            modelSlug: selectedSlug,
+            ...(webSourcesForMessage.length ? { webSources: webSourcesForMessage, webSearchComplete: true } : {}),
+          },
+          { userText: text, enabled: aiStickersEnabled },
+        )
+        : null;
+      if (streamFinal && responseBelongsToOpenChat()) {
+        setMessages((current) => current.map((message, index) => (
+          index === assistantIndex
+            ? { ...message, text: streamFinal.text, aiSticker: streamFinal.aiSticker }
+            : message
+        )));
+      }
       if (conversationId) {
         await apiFetch(`/api/chat/history/${conversationId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: user.email, messages: [...nextMessages, { role: 'assistant', text: assistantText, modelSlug: selectedSlug, ...(webSourcesForMessage.length ? { webSources: webSourcesForMessage, webSearchComplete: true } : {}) }] }),
+          body: JSON.stringify({
+            email: user.email,
+            messages: [...nextMessages, streamFinal ? {
+              role: 'assistant',
+              text: streamFinal.text,
+              modelSlug: selectedSlug,
+              ...stickerFieldsForPersist(streamFinal),
+              ...(webSourcesForMessage.length ? { webSources: webSourcesForMessage, webSearchComplete: true } : {}),
+            } : {
+              role: 'assistant',
+              text: assistantText,
+              modelSlug: selectedSlug,
+              ...(webSourcesForMessage.length ? { webSources: webSourcesForMessage, webSearchComplete: true } : {}),
+            }],
+          }),
         });
       }
       await refreshHistory();
@@ -2464,7 +2408,7 @@ export default function Chat() {
     persistActiveProjectId(project || null);
     setActiveConversationId(conversation.id);
     activeConversationIdRef.current = conversation.id;
-    setMessages(conversation.messages || []);
+    setMessages(normalizeConversationMessages(conversation.messages || []));
     setSelectedSlug(validModelSlug(conversation.model));
     setPrompt('');
     setChatError('');
@@ -2831,9 +2775,22 @@ export default function Chat() {
             <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? t("Temporary chat") : activeProject ? activeProject.name : t("Chatting with")}</small><strong>{selectedModel.name}{selectedVersion ? ` · ${selectedVersion.name}` : ''}</strong></span><i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? t("Online") : t("API needed")}</i></div>
             <div className="chat-header-model-slot">
           <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onKeyDown={(event) => { if (event.key === 'Escape') setModelMenuOpen(false); }} onBlur={(event) => { const root = event.currentTarget; window.setTimeout(() => { if (!root.contains(document.activeElement) && !root.matches(':hover')) setModelMenuOpen(false); }, 180); }}>
-            <span>{t("Model")}</span>
-            <button type="button" className="model-select-trigger" onClick={() => setModelMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={modelMenuOpen}>
-              <span>{selectedVersion ? `${selectedVersion.name}${selectedVersion.label ? ` ${selectedVersion.label}` : ''}${selectedVersion.speed ? ` · ${selectedVersion.speed}` : ''}` : `${selectedModel.name} — ${selectedModel.provider}`}</span><i>⌄</i>
+            <div className="model-select-eyebrow" id="chat-model-select-label">{t('Model')}</div>
+            <button
+              type="button"
+              className="model-select-trigger"
+              onClick={() => setModelMenuOpen((open) => !open)}
+              aria-haspopup="listbox"
+              aria-expanded={modelMenuOpen}
+              aria-labelledby="chat-model-select-label"
+            >
+              <span className="model-select-trigger__icon">
+                <img src={selectedModel.image} alt="" />
+              </span>
+              <span className="model-select-trigger__label">{formatModelSelectorTriggerLabel(selectedModel, selectedVersion)}</span>
+              <span className="model-select-trigger__sliders">
+                <IconSlidersHorizontal />
+              </span>
             </button>
             {modelMenuOpen && <div className="model-options model-family-options" role="listbox" aria-label={t("Choose AI model")}>
               {dashboardModels.map((model) => {
@@ -2911,6 +2868,8 @@ export default function Chat() {
                   <>
                     {' · '}
                     <Link to="/developer/model-diagnostics" className="access-subscribe-inline">{t('Model diagnostics')}</Link>
+                    {' · '}
+                    <Link to="/developer/ai-learning" className="access-subscribe-inline">{t('AI Learning')}</Link>
                   </>
                 )}
                 {!creditStatus.canUseDeveloper && !creditStatus.hasSubscription && (
@@ -2979,7 +2938,7 @@ export default function Chat() {
                 </ul>
               </div>
             ) : (
-              <div className="chat-empty"><div className="model-orb">{activeProject && !temporaryChat ? <ProjectIconBadge project={activeProject} className="chat-empty-project-icon" /> : <img src={selectedModel.image} alt={`${selectedModel.name} logo`} />}</div><p className="chat-eyebrow">{activeProject && !temporaryChat ? t('Projects') : `${selectedModel.provider} · ${selectedModel.name}`}</p><h1>{activeProject && !temporaryChat ? activeProject.name : t("What can I help you create?")}</h1><p className="chat-subtitle">{activeProject && !temporaryChat ? t('Chats in this project stay grouped here.') : t("Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.")}</p><div className="prompt-suggestions">{suggestions.map((item) => <button key={item.title} onClick={() => chooseSuggestion(item.prompt)}><span className={['suggestion-icon', item.iconImage && 'suggestion-icon-image', item.iconImageClass].filter(Boolean).join(' ')}>{item.iconImage ? <img src={item.iconImage} alt="" /> : item.iconLabel ? <span className="suggestion-icon-text" aria-hidden="true">{item.iconLabel}</span> : item.icon}</span><strong>{t(item.title)}</strong><small>{t(item.prompt)}</small></button>)}</div></div>
+              <div className="chat-empty"><div className="model-orb">{activeProject && !temporaryChat ? <ProjectIconBadge project={activeProject} className="chat-empty-project-icon" /> : <img src={selectedModel.image} alt={`${selectedModel.name} logo`} />}</div><p className="chat-eyebrow">{activeProject && !temporaryChat ? t('Projects') : `${selectedModel.provider} · ${selectedModel.name}`}</p><h1>{activeProject && !temporaryChat ? activeProject.name : t("What can I help you create?")}</h1><p className="chat-subtitle">{activeProject && !temporaryChat ? t('Chats in this project stay grouped here.') : t("Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.")}</p><ChatWelcomeSuggestions items={suggestions} onSelect={chooseSuggestion} t={t} /></div>
             )
           )}
           {messages.map((message, index) => {
@@ -2989,13 +2948,13 @@ export default function Chat() {
             const filePending = message.generatingFile && isSending && index === messages.length - 1;
             const imagePending = message.generatingImage && isSending && index === messages.length - 1;
             const messageImage = message.role === 'user' ? message.image || message.imageUrl : null;
-            if (!text && !messageImage && !message.videoUrl && !message.imageUrl && !(message.images?.length) && message.role === 'assistant' && isSending && index === messages.length - 1) return null;
+            if (!text && !messageImage && !messageHasVideoReference(message) && !message.imageUrl && !(message.images?.length) && message.role === 'assistant' && isSending && index === messages.length - 1) return null;
             const activelyStreaming = isStreamingResponse && isSending && index === messages.length - 1 && message.role === 'assistant';
             const editing = message.role === 'user' && editingMessageIndex === index;
             const feedback = messageFeedback[index];
             const favoriteEntry = favorites.some((item) => item.text === text);
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : message.deepResearch ? <DeepResearchMessageBlock message={message} onClarifyStart={(answers) => handleDeepResearchClarification(index, answers, false)} onClarifySkip={() => handleDeepResearchClarification(index, null, true)} onStopResearch={stopGenerating} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1)); }} /> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : imagePending ? <div className="image-gen-status" role="status" aria-live="polite"><span className="image-gen-status__spinner" aria-hidden="true" /><b>{message.imageStatusLabel || 'Generating image…'}</b></div> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <MessageContent text={text} streaming={activelyStreaming} citationSources={message.webSources} /> : <p>{text}</p>)}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
-{message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} />}{message.knowledgeSources?.length > 0 && <KnowledgeSourceChips sources={message.knowledgeSources} onSourceClick={() => navigate('/knowledge')} />}{(message.imageUrl || message.images?.length) && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || imageGenerationQuality || 'hd', aspectRatio: message.imageAspect || imageGenerationAspect || '1:1', imageCount: message.requestedImageCount || imageGenerationCount || 1 }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{message.videoUrl && message.role !== 'user' && <GeneratedVideoCard message={message} onDownloadError={setChatError} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceVideo: true, aspectRatio: message.videoAspect || '16:9', resolution: message.videoResolution || '720p' }); }} />}{text && !activelyStreaming && !editing && (
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={`${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : message.deepResearch ? <DeepResearchMessageBlock message={message} onClarifyStart={(answers) => handleDeepResearchClarification(index, answers, false)} onClarifySkip={() => handleDeepResearchClarification(index, null, true)} onStopResearch={stopGenerating} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1)); }} /> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : imagePending ? <div className="image-gen-status" role="status" aria-live="polite"><span className="image-gen-status__spinner" aria-hidden="true" /><b>{message.imageStatusLabel || 'Generating image…'}</b></div> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <><ChatMessageContent text={text} streaming={activelyStreaming} citationSources={message.webSources} conversationId={temporaryChat ? null : activeConversationId} />{aiStickersEnabled && message.aiSticker && !activelyStreaming && <ChatAiSticker sticker={message.aiSticker} />}</> : <p>{text}</p>)}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
+{message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} />}{message.knowledgeSources?.length > 0 && <KnowledgeSourceChips sources={message.knowledgeSources} onSourceClick={() => navigate('/knowledge')} />}{(message.imageUrl || message.images?.length) && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || imageGenerationQuality || 'hd', aspectRatio: message.imageAspect || imageGenerationAspect || '1:1', imageCount: message.requestedImageCount || imageGenerationCount || 1 }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{messageHasPlayableVideo(message) && message.role !== 'user' && <GeneratedVideoCard message={normalizeVideoMessage(message)} onDownloadError={setChatError} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceVideo: true, aspectRatio: message.videoAspect || '16:9', resolution: message.videoResolution || '720p' }); }} />}{text && !activelyStreaming && !editing && (
               <MessageActions
                 role={message.role}
                 text={text}
@@ -3171,13 +3130,72 @@ export default function Chat() {
                   ))}
                 </div>
               )}
-              {voicePanelOpen && <section className="voice-panel" aria-label="Voice mode settings">
-                <div><strong>Voice conversation</strong><button type="button" className={voiceMode ? 'voice-toggle active' : 'voice-toggle'} onClick={changeVoiceMode} aria-pressed={voiceMode}>{voiceMode ? 'On' : 'Off'}</button></div>
-                <p>Send speech automatically and read every AI response aloud.</p>
-                <label>Language<select value={speechLanguage} onChange={(event) => { setSpeechLanguage(event.target.value); safeStorageSet('localStorage', 'allmodelai_voice_language', event.target.value); }}><option value="en-US">English</option><option value="uk-UA">Українська</option><option value="ru-RU">Русский</option><option value="de-DE">Deutsch</option><option value="pl-PL">Polski</option><option value="es-ES">Español</option><option value="fr-FR">Français</option></select></label>
-                <label>Voice<select value={selectedVoice} onChange={(event) => { setSelectedVoice(event.target.value); safeStorageSet('localStorage', 'allmodelai_voice_name', event.target.value); }}><option value="">Automatic</option>{availableVoices.map((voice) => <option value={voice.name} key={`${voice.name}-${voice.lang}`}>{voice.name} ({voice.lang})</option>)}</select></label>
-                {isSpeaking && <button type="button" className="stop-speaking" onClick={stopSpeaking}>Stop speaking</button>}
-              </section>}
+              {voicePanelOpen && (
+                <section className="voice-panel is-open" aria-label="Voice mode settings">
+                  <div className="voice-panel__header">
+                    <strong>Voice conversation</strong>
+                    <div className="voice-panel__actions">
+                      <button
+                        type="button"
+                        className={voiceMode ? 'voice-toggle active' : 'voice-toggle'}
+                        onClick={changeVoiceMode}
+                        aria-pressed={voiceMode}
+                      >
+                        {voiceMode ? 'On' : 'Off'}
+                      </button>
+                      <button
+                        type="button"
+                        className="voice-panel__close"
+                        onClick={() => setVoicePanelOpen(false)}
+                        aria-label="Close voice settings"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                  <p className="voice-panel__desc">Send speech automatically and read every AI response aloud.</p>
+                  <label>
+                    Language
+                    <select
+                      value={speechLanguage}
+                      onChange={(event) => {
+                        setSpeechLanguage(event.target.value);
+                        safeStorageSet('localStorage', 'allmodelai_voice_language', event.target.value);
+                      }}
+                    >
+                      <option value="en-US">English</option>
+                      <option value="uk-UA">Українська</option>
+                      <option value="ru-RU">Русский</option>
+                      <option value="de-DE">Deutsch</option>
+                      <option value="pl-PL">Polski</option>
+                      <option value="es-ES">Español</option>
+                      <option value="fr-FR">Français</option>
+                    </select>
+                  </label>
+                  <label>
+                    Voice
+                    <select
+                      value={selectedVoice}
+                      onChange={(event) => {
+                        setSelectedVoice(event.target.value);
+                        safeStorageSet('localStorage', 'allmodelai_voice_name', event.target.value);
+                      }}
+                    >
+                      <option value="">Automatic</option>
+                      {availableVoices.map((voice) => (
+                        <option value={voice.name} key={`${voice.name}-${voice.lang}`}>
+                          {voice.name} ({voice.lang})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {isSpeaking && (
+                    <button type="button" className="stop-speaking" onClick={stopSpeaking}>
+                      Stop speaking
+                    </button>
+                  )}
+                </section>
+              )}
               {useKnowledgeBase && (
                 <div className="composer-kb-chip" role="status">
                   <span className="composer-kb-chip-icon" aria-hidden="true">
@@ -3194,11 +3212,50 @@ export default function Chat() {
                   </button>
                 </div>
               )}
-              {selectedSkill && <div className="selected-skill">
-                <span className={`selected-skill-icon ${selectedSkill}`} aria-hidden="true">{selectedSkill === 'image' ? '✦' : selectedSkill === 'web' ? '🌐' : selectedSkill === 'deep-research' ? '🔎' : '▶'}</span>
-                <span><strong>{selectedSkill === 'file' ? 'Create file' : selectedSkill === 'image' ? 'Create image' : selectedSkill === 'web' ? 'Search the web' : selectedSkill === 'deep-research' ? 'Deep Research' : 'Make a video'}</strong><small>{selectedSkill === 'file' ? 'Describe a text or code file. Open, copy and download the result.' : selectedSkill === 'image' ? 'Write a description and press send'  : selectedSkill === 'web' ? 'Current information with sources' : selectedSkill === 'deep-research' ? 'Multi-step web research with live progress and cited sources' : 'Describe the video you want to create'}</small></span>
-                <button type="button" className="selected-skill-remove" onClick={() => setSelectedSkill(null)} aria-label="Remove selected skill" title="Remove skill">×</button>
-              </div>}
+              {selectedSkill && (
+                <div className={`selected-skill selected-skill--${selectedSkill}`} role="status">
+                  <span className={`selected-skill-icon ${selectedSkill}`} aria-hidden="true">
+                    {selectedSkill === 'file' && <IconFileCode />}
+                    {selectedSkill === 'image' && <IconImage />}
+                    {selectedSkill === 'web' && <IconGlobe />}
+                    {selectedSkill === 'deep-research' && <IconSearchDeep />}
+                    {selectedSkill === 'video' && <IconVideo />}
+                  </span>
+                  <span className="selected-skill__copy">
+                    <strong>
+                      {selectedSkill === 'file'
+                        ? 'Create file'
+                        : selectedSkill === 'image'
+                          ? 'Create image'
+                          : selectedSkill === 'web'
+                            ? 'Search the web'
+                            : selectedSkill === 'deep-research'
+                              ? 'Deep Research'
+                              : 'Make a video'}
+                    </strong>
+                    <small>
+                      {selectedSkill === 'file'
+                        ? 'Describe a text or code file. Open, copy and download the result.'
+                        : selectedSkill === 'image'
+                          ? 'Write a description and press send'
+                          : selectedSkill === 'web'
+                            ? 'Current information with sources'
+                            : selectedSkill === 'deep-research'
+                              ? 'Multi-step web research with live progress and cited sources'
+                              : 'Describe the video you want to create'}
+                    </small>
+                  </span>
+                  <button
+                    type="button"
+                    className="selected-skill-remove"
+                    onClick={() => setSelectedSkill(null)}
+                    aria-label="Remove selected skill"
+                    title="Remove skill"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
               {selectedSkill === 'image' && (
                 <div className="image-skill-panel" aria-label="Image generation options">
                   <div className="image-count-switch" role="group" aria-label="Number of images">
@@ -3369,7 +3426,6 @@ export default function Chat() {
                       type="button"
                       onClick={() => {
                         setPrompt(item);
-                        setContextSuggestions([]);
                         composerInputRef.current?.focus();
                       }}
                     >

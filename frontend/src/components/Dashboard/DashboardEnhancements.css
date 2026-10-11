@@ -104,7 +104,7 @@
 }
 
 @media (min-width: 901px) and (max-width: 1250px) {
-	.dashboard-page {
+	.dashboard-page:not(.dashboard-violet) {
 		padding-inline: 24px;
 	}
 

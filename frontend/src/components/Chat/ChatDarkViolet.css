@@ -229,8 +229,8 @@
   box-shadow: 0 0 0 3px var(--dv-glow-soft), 0 12px 30px rgba(124, 92, 255, 0.12) !important;
 }
 
-.chat-page .model-select-trigger i {
-  color: var(--dv-accent-2) !important;
+.chat-page .model-select-trigger > i {
+  display: none !important;
 }
 
 .chat-page .model-options {
@@ -307,86 +307,7 @@
   color: var(--dv-muted) !important;
 }
 
-/* Suggestion cards */
-.chat-page .prompt-suggestions {
-  gap: 14px !important;
-  margin-top: 32px !important;
-}
-
-.chat-page .prompt-suggestions button {
-  padding: 20px 18px !important;
-  border-radius: 16px !important;
-  border-color: rgba(124, 92, 255, 0.18) !important;
-  background: rgba(21, 21, 29, 0.82) !important;
-  backdrop-filter: blur(10px);
-  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
-}
-
-.chat-page .prompt-suggestions button:hover {
-  transform: translateY(-3px);
-  border-color: rgba(157, 123, 255, 0.45) !important;
-  background: rgba(28, 24, 44, 0.92) !important;
-  box-shadow: 0 14px 36px rgba(124, 92, 255, 0.16);
-}
-
-.chat-page .prompt-suggestions button > span.suggestion-icon {
-  display: grid;
-  place-items: center;
-  width: 36px !important;
-  height: 36px !important;
-  border-radius: 11px !important;
-  background: linear-gradient(135deg, rgba(124, 92, 255, 0.28), rgba(72, 48, 160, 0.2)) !important;
-  color: #e9d5ff !important;
-  font-size: 0.9rem !important;
-  box-shadow: inset 0 0 0 1px rgba(157, 123, 255, 0.25);
-  overflow: hidden;
-}
-
-.chat-page .prompt-suggestions button > span.suggestion-icon-image {
-  padding: 0 !important;
-  background: #0a0a0a !important;
-  box-shadow: inset 0 0 0 1px rgba(157, 123, 255, 0.35);
-}
-
-.chat-page .prompt-suggestions button > span.suggestion-icon-image img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.chat-page .prompt-suggestions button > span.suggestion-icon-inverted {
-  background: #0a0a0a !important;
-}
-
-.chat-page .prompt-suggestions button > span.suggestion-icon-inverted img {
-  object-fit: contain;
-  padding: 5px;
-  filter: invert(1);
-}
-
-.chat-page .prompt-suggestions button > span.suggestion-icon-ai {
-  background: #0a0a0a !important;
-  box-shadow: inset 0 0 0 1px rgba(157, 123, 255, 0.35);
-}
-
-.chat-page .prompt-suggestions button > span.suggestion-icon-ai .suggestion-icon-text {
-  color: #fff;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-}
-
-.chat-page .prompt-suggestions strong {
-  font-size: 0.86rem !important;
-}
-
-.chat-page .prompt-suggestions small {
-  color: #9ca3af !important;
-  font-size: 0.72rem !important;
-  white-space: normal !important;
-}
+/* Welcome suggestion cards — monochrome styling in ChatWelcomeSuggestions.css */
 
 /* Composer — hero element */
 .chat-page .chat-composer {

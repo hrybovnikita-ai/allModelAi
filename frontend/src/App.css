@@ -64,15 +64,15 @@ body {
 
 .container {
   flex: 1;
-  max-width: var(--ama-container-wide, 1260px);
+  width: var(--app-content-width, var(--ama-container-wide, 1260px));
+  max-width: 100%;
   margin: 0 auto;
-  width: 100%;
   min-width: 0;
   padding:
     clamp(48px, 5vw, 88px)
-    max(var(--page-gutter, 20px), var(--safe-right))
+    max(var(--app-shell-gutter, var(--page-gutter, 20px)), var(--safe-right))
     clamp(48px, 5vw, 88px)
-    max(var(--page-gutter, 20px), var(--safe-left));
+    max(var(--app-shell-gutter, var(--page-gutter, 20px)), var(--safe-left));
 }
 
 .home-layout {
@@ -96,7 +96,9 @@ body {
 }
 
 @media (min-width: 1800px) {
-  .container { max-width: var(--ama-container-ultra, 1680px); }
+  .container {
+    width: var(--app-content-width, var(--ama-container-ultra, 1680px));
+  }
 }
 
 @media (max-width: 767px) {

@@ -1,0 +1,9 @@
+.authenticated-shell {
+  min-height: 0;
+  width: 100%;
+}
+
+.authenticated-shell--chat {
+  /* Chat uses its own full-viewport layout; no dock padding. */
+  padding-bottom: 0 !important;
+}

@@ -1,7 +1,8 @@
 import { nativeClientHeaders, resolveApiUrl } from './apiBase.js';
 import { parseJsonResponse } from './httpJson.js';
 
-export const TEST_MODE_BANNER = 'TEST MODE — No real money will be charged';
+export const TEST_MODE_BANNER = 'Stripe Test Mode — No real charges';
+export const STRIPE_TEST_MODE_BANNER = TEST_MODE_BANNER;
 
 export async function fetchCheckoutInfo() {
   try {

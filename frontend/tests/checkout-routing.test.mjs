@@ -9,6 +9,7 @@ const appSource = fs.readFileSync(path.join(frontendRoot, 'src/App.jsx'), 'utf8'
 const pricingSource = fs.readFileSync(path.join(frontendRoot, 'src/components/Pricing/Pricing.jsx'), 'utf8');
 const stripeCheckoutSource = fs.readFileSync(path.join(frontendRoot, 'src/components/Checkout/StripeEmbeddedCheckout.jsx'), 'utf8');
 const checkoutSource = fs.readFileSync(path.join(frontendRoot, 'src/components/Checkout/Checkout.jsx'), 'utf8');
+const productionStripeSource = fs.readFileSync(path.join(frontendRoot, 'src/components/Checkout/ProductionStripeCheckoutForm.jsx'), 'utf8');
 
 test('checkout routes are public (outside RequireAuth)', () => {
   const requireAuthIdx = appSource.indexOf('<Route element={<RequireAuth />}');
@@ -36,6 +37,11 @@ test('Stripe checkout uses embedded Custom Checkout (Checkout Session)', () => {
   assert.match(stripeCheckoutSource, /@stripe\/react-stripe-js\/checkout/);
   assert.match(stripeCheckoutSource, /PaymentElement/);
   assert.match(stripeCheckoutSource, /CheckoutElementsProvider/);
+  assert.match(stripeCheckoutSource, /billingDetails: 'never'/);
   assert.match(checkoutSource, /\/api\/payments\/checkout/);
+  assert.match(checkoutSource, /ProductionStripeCheckoutForm/);
+  assert.match(productionStripeSource, /CardBrandBadges/);
+  assert.match(productionStripeSource, /Payment details/);
+  assert.doesNotMatch(checkoutSource, /Load Stripe payment form/);
   assert.doesNotMatch(checkoutSource, /\/api\/payments\/create-intent/);
 });

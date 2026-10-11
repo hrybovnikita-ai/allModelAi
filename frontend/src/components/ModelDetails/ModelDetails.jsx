@@ -1,8 +1,14 @@
-import { useState } from 'react';
-import { Link, Navigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
 import { dashboardModels } from '../../data/dashboardModels';
 import { modelGuides } from '../../data/modelGuides';
-import DashboardWorkspaceNav from '../Dashboard/DashboardWorkspaceNav';
+import {
+  isModelAccessible,
+  statusKeyForSlug,
+  subscriptionLabelForModel,
+} from '../../data/modelCapabilitiesMeta';
+import { promptGalleryForSlug } from '../../data/modelPromptGallery';
+import { apiFetch } from '../../lib/api';
 import '../Dashboard/Dashboard.css';
 import '../Dashboard/DashboardNav.css';
 import '../Dashboard/DashboardDarkViolet.css';
@@ -11,6 +17,13 @@ import './ModelDetails.css';
 import './ModelDetailsDarkViolet.css';
 import './ModelCode.css';
 import './ModelGuideUnique.css';
+import './ModelDetailPremium.css';
+import ModelDetailHero from './ModelDetailHero';
+import ModelDetailCapabilities from './ModelDetailCapabilities';
+import ModelDetailDashboard from './ModelDetailDashboard';
+import ModelDetailPromptGallery from './ModelDetailPromptGallery';
+import ModelDetailCodePanel from './ModelDetailCodePanel';
+import ModelDetailGuideSection from './ModelDetailGuideSection';
 
 const versionNames = {
   'claude-opus-4.1': 'Claude Opus',
@@ -18,30 +31,101 @@ const versionNames = {
   'claude-haiku-4.5': 'Claude Haiku',
 };
 
+function resolveOperationalStatus(slug, modelStatus) {
+  if (slug === 'smart' || slug === 'ai_python') return 'Available in AllModelAI';
+  const key = statusKeyForSlug(slug);
+  if (!key || !Object.keys(modelStatus || {}).length) return 'Unknown';
+  const value = modelStatus[key];
+  if (value === true) return 'Available';
+  if (value === false) return 'Unavailable';
+  return 'Unknown';
+}
+
 export default function ModelDetails() {
   const { slug } = useParams();
   const [searchParams] = useSearchParams();
-  const { user } = useOutletContext();
+  const navigate = useNavigate();
+  useOutletContext();
   const model = dashboardModels.find((item) => item.slug === slug);
-  const [copied, setCopied] = useState('');
   const [authError, setAuthError] = useState('');
+  const [creditStatus, setCreditStatus] = useState(null);
+  const [modelStatus, setModelStatus] = useState({});
 
-  if (!model) return <Navigate to="/dashboard" replace />;
+  useEffect(() => {
+    apiFetch('/api/status/models')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data?.models) setModelStatus(data.models);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    apiFetch('/api/credits')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => { if (data) setCreditStatus(data); })
+      .catch(() => {});
+  }, []);
 
   const selectedVersion = versionNames[searchParams.get('version')];
-  const versionLabel = selectedVersion || model.name;
-  const guideContent = modelGuides[model.slug] || modelGuides.smart;
+  const versionLabel = selectedVersion || model?.name || '';
+  const guideContent = model ? (modelGuides[model.slug] || modelGuides.smart) : null;
+  const prompts = model ? promptGalleryForSlug(model.slug) : [];
+  const accessible = model ? isModelAccessible(model.slug, creditStatus) : false;
+  const subscriptionLabel = model ? subscriptionLabelForModel(model, creditStatus) : '';
+  const operationalStatus = model ? resolveOperationalStatus(model.slug, modelStatus) : 'Unknown';
+  const usageNote = creditStatus?.remainingRequests != null
+    ? `${creditStatus.remainingRequests} requests remaining this period`
+    : null;
 
-  const copyCode = async (language, code) => {
-    await navigator.clipboard.writeText(code);
-    setCopied(language);
-    window.setTimeout(() => setCopied(''), 1600);
-  };
+  const compareHref = useMemo(
+    () => `/arena?models=${encodeURIComponent(model?.slug || 'gpt')}`,
+    [model?.slug],
+  );
+
+  const openChat = useCallback(() => {
+    if (!model) return;
+    if (!accessible) {
+      setAuthError('This model is available with a subscription or in Developer mode.');
+      return;
+    }
+    setAuthError('');
+    navigate(`/chat?model=${encodeURIComponent(model.slug)}`);
+  }, [accessible, model, navigate]);
+
+  const tryGuidePrompt = useCallback((prompt) => {
+    if (!model) return;
+    if (!accessible) {
+      setAuthError('This model is available with a subscription or in Developer mode.');
+      return;
+    }
+    setAuthError('');
+    navigate(`/chat?model=${encodeURIComponent(model.slug)}`, {
+      state: { starterPrompt: prompt },
+    });
+  }, [accessible, model, navigate]);
+
+  if (!model) {
+    return (
+      <main className="dashboard-page dashboard-violet model-page">
+        <div className="dashboard-shell model-detail-shell">
+          <section className="model-detail-not-found glass-panel">
+            <p className="dashboard-eyebrow">Model not found</p>
+            <h1>We couldn&apos;t find that model</h1>
+            <p>The link may be outdated. Browse the model library to pick a supported provider.</p>
+            <div className="model-detail-hero__actions">
+              <Link to="/explore" className="model-action-primary model-detail-btn">Browse models</Link>
+              <Link to="/dashboard" className="model-detail-btn model-detail-btn--secondary">Dashboard</Link>
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="dashboard-page dashboard-violet model-page">
-      <DashboardWorkspaceNav user={user} onAuthError={setAuthError} />
-      <div className="dashboard-shell">
+    <main className="dashboard-page dashboard-violet model-page model-page--premium">
+      <div className="dashboard-shell model-detail-shell">
         {authError ? (
           <p role="alert" className="model-auth-error">
             {authError}
@@ -50,137 +134,53 @@ export default function ModelDetails() {
 
         <div className="model-back-row">
           <Link to="/dashboard">← Back to models</Link>
+          <Link to="/explore">Model explorer</Link>
         </div>
 
-        <section className="model-page-hero">
-          <div className="model-page-copy">
-            <p className="dashboard-eyebrow">{model.provider} model</p>
-            <h1>{versionLabel}</h1>
-            <p>{model.description}</p>
-            <div className="model-page-actions">
-              <Link to={`/chat?model=${model.slug}`} className="model-action-primary">
-                Start with {model.name}
-              </Link>
-              <a href="#model-code">View code example</a>
-              <a href="#model-guide">Read guide</a>
-            </div>
-          </div>
-          <div className="model-page-image">
-            <div>
-              <img src={model.image} alt={`${model.name} by ${model.provider}`} />
-            </div>
-            <span>{model.provider}</span>
-            <strong>{model.name}</strong>
-          </div>
-        </section>
+        <ModelDetailHero
+          model={model}
+          versionLabel={versionLabel}
+          subscriptionLabel={subscriptionLabel}
+          accessible={accessible}
+          onStartChat={openChat}
+          compareHref={compareHref}
+        />
 
-        <section className="model-control-bar" aria-label="Model actions">
-          <div>
-            <span className="dashboard-eyebrow">Selected version</span>
-            <strong>{versionLabel}</strong>
-          </div>
-          <div className="model-control-actions">
-            <Link to={`/chat?model=${model.slug}`}>Open chat</Link>
-            <a
-              href={`https://www.google.com/search?q=${encodeURIComponent(`${model.provider} ${model.name} documentation`)}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Provider docs
-            </a>
-            <a href="#model-guide">Explore capabilities</a>
-          </div>
-        </section>
+        <nav className="model-detail-subnav glass-panel" aria-label="On this page">
+          <a href="#model-capabilities">Capabilities</a>
+          <a href="#model-dashboard">Information</a>
+          <a href="#model-prompts">Prompts</a>
+          <a href="#model-code">API</a>
+          <a href="#model-guide">Guide</a>
+        </nav>
 
-        <section className="model-page-info" id="model-strengths">
-          <div>
-            <p className="dashboard-eyebrow">Why choose {model.name}</p>
-            <h2>Built for ambitious work.</h2>
-          </div>
-          <div className="model-strengths">
-            {model.strengths.map((strength, index) => (
-              <article key={strength}>
-                <span>0{index + 1}</span>
-                <h3>{strength}</h3>
-                <p>
-                  Use {model.name} when your project needs {strength.toLowerCase()} with a simple unified API.
-                </p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="model-code model-code-dual" id="model-code">
-          <div className="model-code-intro">
-            <p className="dashboard-eyebrow">Quick start</p>
-            <h2>Use {model.name} in your code.</h2>
-            <p>Choose JavaScript or Python. Both examples send the same request through the unified AllModelAI API.</p>
-          </div>
-          <div className="code-examples">
-            <article>
-              <header>
-                <span>
-                  <b>JS</b> JavaScript
-                </span>
-                <button type="button" onClick={() => copyCode('js', model.codeJs)}>
-                  {copied === 'js' ? 'Copied!' : 'Copy code'}
-                </button>
-              </header>
-              <pre>
-                <code>{model.codeJs}</code>
-              </pre>
-            </article>
-            <article>
-              <header>
-                <span>
-                  <b>PY</b> Python
-                </span>
-                <button type="button" onClick={() => copyCode('py', model.codePy)}>
-                  {copied === 'py' ? 'Copied!' : 'Copy code'}
-                </button>
-              </header>
-              <pre>
-                <code>{model.codePy}</code>
-              </pre>
-            </article>
-          </div>
-        </section>
-
-        <section className="model-guide" id="model-guide">
-          <div className="model-guide-header">
-            <div>
-              <p className="dashboard-eyebrow">Model guide</p>
-              <h2>Build better work with {versionLabel}.</h2>
-            </div>
-            <p>Explore practical patterns for prompts, research, code, writing, and everyday collaboration.</p>
-          </div>
-          <div className="model-guide-layout">
-            <aside className="model-guide-aside">
-              <div className="guide-preview">
-                <img src={model.image} alt="" />
-                <strong>{versionLabel}</strong>
-                <span>{model.provider}</span>
-              </div>
-              <a href="#model-code">API examples</a>
-              <a href="#model-strengths">Capabilities</a>
-              <Link to={`/chat?model=${model.slug}`}>Try in chat</Link>
-            </aside>
-            <article className="model-guide-copy">
-              <h3>How {versionLabel} approaches work</h3>
-              <p>{guideContent.overview}</p>
-              <h3>A productive workflow</h3>
-              <p>{guideContent.workflow}</p>
-              <h3>Where it fits best</h3>
-              <p>{guideContent.bestFor}</p>
-              <div className="guide-prompt-example">
-                <span>TRY THIS PROMPT</span>
-                <p>{guideContent.prompt}</p>
-              </div>
-              <h3>What to verify</h3>
-              <p>{guideContent.caution}</p>
-            </article>
-          </div>
-        </section>
+        <div className="model-detail-stack">
+          <ModelDetailCapabilities slug={model.slug} strengths={model.strengths} />
+          <ModelDetailDashboard
+            model={model}
+            operationalStatus={operationalStatus}
+            subscriptionLabel={subscriptionLabel}
+            usageNote={usageNote}
+          />
+          <ModelDetailPromptGallery
+            slug={model.slug}
+            prompts={prompts}
+            accessible={accessible}
+            onAccessDenied={() => setAuthError('This model is available with a subscription or in Developer mode.')}
+          />
+          <ModelDetailCodePanel
+            modelName={model.name}
+            codeJs={model.codeJs}
+            codePy={model.codePy}
+          />
+          <ModelDetailGuideSection
+            model={model}
+            versionLabel={versionLabel}
+            guideContent={guideContent}
+            onTryGuidePrompt={tryGuidePrompt}
+            accessible={accessible}
+          />
+        </div>
       </div>
     </main>
   );

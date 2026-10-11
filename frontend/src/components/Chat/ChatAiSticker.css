@@ -1,0 +1,59 @@
+.chat-ai-sticker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 10px 12px 8px;
+  max-width: 140px;
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.08));
+  border: 1px solid rgba(167, 139, 250, 0.22);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.chat-ai-sticker__emoji {
+  font-size: clamp(3rem, 12vw, 4.25rem);
+  line-height: 1;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35));
+  user-select: none;
+}
+
+.chat-ai-sticker__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+}
+
+.chat-ai-sticker--animated .chat-ai-sticker__emoji {
+  animation: chat-ai-sticker-pop 1.8s ease-in-out infinite;
+}
+
+@keyframes chat-ai-sticker-pop {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+  }
+  45% {
+    transform: scale(1.08) translateY(-4px);
+  }
+}
+
+@media (max-width: 767px) {
+  .chat-ai-sticker {
+    max-width: 120px;
+    margin-top: 10px;
+  }
+
+  .chat-ai-sticker__emoji {
+    font-size: clamp(2.75rem, 14vw, 3.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-ai-sticker--animated .chat-ai-sticker__emoji {
+    animation: none;
+  }
+}

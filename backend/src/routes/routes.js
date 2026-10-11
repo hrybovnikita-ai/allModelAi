@@ -269,6 +269,18 @@ router.post('/payments/create-intent', requireAuth, createPaymentIntent);
 router.get('/payments/intent/:intentId', requireAuth, verifyPaymentIntent);
 router.post('/payments/mock-subscribe', requireAuth, mockDeveloperSubscribe);
 router.get('/payments/session/:sessionId', requireAuth, verifyCheckoutSession);
+const {
+    getCapabilities,
+    listPlatformJobs,
+    getPlatformJob,
+    createPlatformJob,
+    cancelPlatformJob,
+} = require('../controllers/platformController');
+router.get('/platform/capabilities', requireAuth, getCapabilities);
+router.get('/platform/jobs', requireAuth, listPlatformJobs);
+router.get('/platform/jobs/:id', requireAuth, getPlatformJob);
+router.post('/platform/jobs', requireAuth, createPlatformJob);
+router.post('/platform/jobs/:id/cancel', requireAuth, cancelPlatformJob);
 router.get('/credits', requireAuth, getCredits);
 router.get('/subscription', requireAuth, getSubscriptionSummary);
 router.post('/subscription/cancel-test', requireAuth, cancelTestSubscriptionHandler);
@@ -317,6 +329,34 @@ const {
 } = require('../controllers/modelDiagnosticsController');
 router.get('/developer/model-diagnostics', requireAuth, getModelDiagnosticsCatalog);
 router.post('/developer/model-diagnostics/test', requireAuth, postModelDiagnosticTest);
+const { getDeveloperProviderHealth } = require('../controllers/providerHealthController');
+router.get('/developer/provider-health', requireAuth, getDeveloperProviderHealth);
+const {
+    getIntelligenceAudit,
+    getLearningDashboard,
+    getKnowledgeCollections,
+    postKnowledgeCollection,
+    postKnowledgeRetrievalEval,
+    getRouterLearning,
+    postRouterCandidatePolicy,
+    postPromoteRouterPolicy,
+    getEvaluationSuites,
+    postEvaluationRun,
+    getEvaluationRuns,
+    postHumanReview,
+} = require('../controllers/intelligenceController');
+router.get('/intelligence/audit', requireAuth, getIntelligenceAudit);
+router.get('/intelligence/learning-dashboard', requireAuth, getLearningDashboard);
+router.get('/intelligence/knowledge/collections', requireAuth, getKnowledgeCollections);
+router.post('/intelligence/knowledge/collections', requireAuth, postKnowledgeCollection);
+router.post('/intelligence/knowledge/retrieval-eval', requireAuth, postKnowledgeRetrievalEval);
+router.get('/intelligence/router', requireAuth, getRouterLearning);
+router.post('/intelligence/router/policies/candidate', requireAuth, postRouterCandidatePolicy);
+router.post('/intelligence/router/policies/promote', requireAuth, postPromoteRouterPolicy);
+router.get('/intelligence/evaluation/suites', requireAuth, getEvaluationSuites);
+router.post('/intelligence/evaluation/runs', requireAuth, postEvaluationRun);
+router.get('/intelligence/evaluation/runs', requireAuth, getEvaluationRuns);
+router.post('/intelligence/evaluation/reviews', requireAuth, postHumanReview);
 router.get('/search', requireAuth, globalSearch);
 router.get('/jobs', requireAuth, listJobs);
 router.post('/jobs', requireAuth, createJob);

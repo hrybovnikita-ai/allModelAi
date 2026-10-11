@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { dashboardModels } from "../../data/dashboardModels";
 import { modelBenchmarks } from "../../data/platformStats";
 import "./ModelComparison.css";
@@ -11,8 +12,17 @@ const METRICS = [
 ];
 
 export default function ModelComparison() {
+  const [searchParams] = useSearchParams();
+  const focus = searchParams.get('focus');
   const comparable = dashboardModels.filter((m) => modelBenchmarks[m.slug]);
-  const [slugs, setSlugs] = useState(["claude", "gpt", "gemini"]);
+  const initialSlugs = useMemo(() => {
+    const base = ['claude', 'gpt', 'gemini'];
+    if (focus && comparable.some((m) => m.slug === focus)) {
+      return [focus, ...base.filter((s) => s !== focus)].slice(0, 3);
+    }
+    return base;
+  }, [focus, comparable]);
+  const [slugs, setSlugs] = useState(initialSlugs);
   const [prompt, setPrompt] = useState(
     "Explain quantum computing to a 10-year-old",
   );

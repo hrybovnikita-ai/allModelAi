@@ -14,7 +14,6 @@ import './DashboardResponsive.css';
 import '../SocialAuth/SocialAuth.css';
 import AccountDeleteModal from '../AccountDeleteModal';
 import DashboardResources from './DashboardResources';
-import DashboardWorkspaceNav from './DashboardWorkspaceNav';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import EverydayCards from '../EverydayAI/EverydayCards';
 import ManageSubscriptionModal from './ManageSubscriptionModal';
@@ -153,11 +152,6 @@ export default function Dashboard() {
 
   return (
     <main className="dashboard-page dashboard-violet">
-      <DashboardWorkspaceNav
-        user={user}
-        onAuthError={setDeleteError}
-        onDeleteAccount={() => setDeleteModalOpen(true)}
-      />
       <div className="dashboard-shell">
       {location.state?.subscriptionActivated?.message && (
         <div className="dashboard-email-notice" role="status">{location.state.subscriptionActivated.message}</div>

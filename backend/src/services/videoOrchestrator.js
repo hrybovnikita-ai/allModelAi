@@ -167,11 +167,18 @@ async function runMagicHourJob(connection, job, params, signal) {
     });
 
     const withFile = await persistRemoteVideo(connection, job.id, result.videoUrl, signal);
-    return updateJob(connection, job.id, {
+    const completed = await updateJob(connection, job.id, {
         status: 'completed',
         creditsCharged: result.creditsCharged ?? withFile.creditsCharged,
         model: model || withFile.model,
     });
+    const { syncCompletedVideoJobToConversation } = require('./chatConversationVideoSync');
+    setImmediate(() => {
+        void syncCompletedVideoJobToConversation(connection, job.email, job.id).catch((error) => {
+            console.warn('[VIDEO_JOB] conversation sync failed', job.id, error.message);
+        });
+    });
+    return completed;
 }
 
 async function runGeminiJob(connection, job, params, signal) {
@@ -182,13 +189,20 @@ async function runGeminiJob(connection, job, params, signal) {
         const base64 = result.videoUrl.split(',')[1];
         storedRelativePath = persistVideoBuffer(job.id, Buffer.from(base64, 'base64'));
     }
-    return updateJob(connection, job.id, {
+    const completed = await updateJob(connection, job.id, {
         status: 'completed',
         videoUrl: storedRelativePath ? `/api/video/jobs/${job.id}/stream` : result.videoUrl,
         storedRelativePath,
         mimeType: result.mimeType,
         model: result.model,
     });
+    const { syncCompletedVideoJobToConversation } = require('./chatConversationVideoSync');
+    setImmediate(() => {
+        void syncCompletedVideoJobToConversation(connection, job.email, job.id).catch((error) => {
+            console.warn('[VIDEO_JOB] conversation sync failed', job.id, error.message);
+        });
+    });
+    return completed;
 }
 
 async function startVideoGeneration({ connection, email, params, wait = true, signal, requestBaseUrl }) {
@@ -255,6 +269,8 @@ async function startVideoGeneration({ connection, email, params, wait = true, si
         resolution: params.resolution,
         model: params.model || (provider === 'magichour' ? getMagicHourVideoModel() : null),
         durationSeconds: params.durationSeconds,
+        conversationId: params.conversationId || null,
+        messageId: params.messageId || null,
     });
 
     const workerSignal = wait ? (signal || createDetachedVideoSignal()) : createDetachedVideoSignal();

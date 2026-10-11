@@ -817,8 +817,34 @@ html[data-theme="light"] .chat-message.assistant p{color:#202123}html[data-theme
 .video-skill-panel select { padding: 8px 10px; border-radius: 8px; border: 1px solid #5b4a9a; background: #120a22; color: #f5f3ff; font: inherit; }
 .video-skill-checkbox { display: flex !important; align-items: center; gap: 8px; grid-column: 1 / -1; }
 .video-skill-hint { grid-column: 1 / -1; margin: 0; font-size: 0.68rem; color: #a8a29e; line-height: 1.4; }
-.generated-video-result { display: grid; gap: 10px; margin-top: 12px; justify-items: start; max-width: 100%; }
-.generated-video-result .generated-video { display: block; width: 100%; max-width: min(100%, 720px); max-height: min(70vh, 480px); border-radius: 14px; border: 1px solid #4c3d86; background: #0a0a10; }
+.generated-video-result {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  justify-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.generated-video-result .generated-video {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: min(70vh, 480px);
+  border-radius: 14px;
+  border: 1px solid #4c3d86;
+  background: #0a0a10;
+  object-fit: contain;
+}
+.generated-video-result .generated-image-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
 
 /* Shared code palette and charcoal surface, matching the supplied reference. */
 .chat-page .response-code-block {

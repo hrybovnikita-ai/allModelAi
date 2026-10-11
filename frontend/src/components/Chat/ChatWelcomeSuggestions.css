@@ -1,0 +1,183 @@
+/* Monochrome welcome suggestion cards — isolated from legacy .prompt-suggestions rules */
+
+.chat-page .welcome-suggestion-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  width: min(920px, 100%);
+  margin: 32px auto 0;
+  padding: 0;
+  text-align: left;
+}
+
+.chat-page .welcome-suggestion-card {
+  display: flex !important;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  min-height: 108px;
+  padding: 18px 16px;
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(165deg, #18181d 0%, #101014 55%, #0c0c10 100%) !important;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 10px 28px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition:
+    border-color 0.22s ease,
+    background 0.22s ease,
+    box-shadow 0.22s ease,
+    transform 0.22s ease;
+}
+
+.chat-workspace:has(.chat-empty) .welcome-suggestion-cards .welcome-suggestion-card {
+  background: linear-gradient(165deg, #18181d 0%, #101014 55%, #0c0c10 100%) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+.chat-page .welcome-suggestion-card:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: linear-gradient(165deg, #1e1e24 0%, #121218 55%, #0f0f14 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 14px 34px rgba(0, 0, 0, 0.48);
+  transform: translateY(-2px);
+}
+
+.chat-page .welcome-suggestion-card:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline-offset: 2px;
+}
+
+.chat-page .welcome-suggestion-card:active {
+  transform: translateY(0);
+}
+
+/* Override legacy Chat.css `.prompt-suggestions button > span` purple tiles */
+.chat-page .welcome-suggestion-card > span {
+  grid-row: unset !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-size: inherit !important;
+}
+
+.chat-page .welcome-suggestion-card__icon-wrap {
+  flex: 0 0 auto;
+  width: auto !important;
+  height: auto !important;
+  display: block !important;
+  place-items: unset !important;
+}
+
+.chat-page .welcome-suggestion-card__icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: #f4f4f5;
+  background: radial-gradient(circle at 30% 28%, #222228 0%, #0a0a0d 72%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.chat-page .welcome-suggestion-card__ai-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #fff;
+}
+
+.chat-page .welcome-suggestion-card__body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  overflow: visible !important;
+}
+
+.chat-page .welcome-suggestion-card__title {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  font-size: 0.92rem;
+  font-weight: 650;
+  line-height: 1.25;
+  color: #ffffff !important;
+  background: transparent !important;
+  letter-spacing: -0.01em;
+}
+
+.chat-page .welcome-suggestion-card__desc {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  font-size: 0.74rem;
+  font-weight: 400;
+  line-height: 1.45;
+  color: #a5a5ad !important;
+  background: transparent !important;
+  overflow: visible !important;
+  white-space: normal !important;
+  text-overflow: unset !important;
+}
+
+@media (max-width: 960px) {
+  .chat-page .welcome-suggestion-cards {
+    gap: 10px;
+    width: 100%;
+  }
+
+  .chat-page .welcome-suggestion-card {
+    padding: 16px 14px;
+    min-height: 100px;
+  }
+
+  .chat-page .welcome-suggestion-card__title {
+    font-size: 0.86rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .chat-page .welcome-suggestion-cards {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .chat-page .welcome-suggestion-card {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .chat-page .welcome-suggestion-cards {
+    margin-top: 24px;
+    gap: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-page .welcome-suggestion-card {
+    transition: none;
+  }
+
+  .chat-page .welcome-suggestion-card:hover {
+    transform: none;
+  }
+}

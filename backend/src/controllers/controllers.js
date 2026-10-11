@@ -33,6 +33,7 @@ const deepResearchService = require('../services/deepResearchService');
 const aiPythonBridge = require('../services/aiPythonBridge');
 const { selectSmartRoute } = require('../services/smartRouter2');
 const { recordRouterMetric } = require('../services/smartRouter2/telemetry');
+const { classifyProviderError, slugToProviderId } = require('../services/providerErrorClassification');
 const { routerMetaFromDecision } = require('../services/unifiedAiResponse');
 const knowledgeBaseService = require('../services/rag/knowledgeBaseService');
 const {
@@ -130,29 +131,10 @@ const parseImagePayload = (raw) => {
     return null;
 };
 
-const createMessage = ({ role, text, content, id, timestamp, image, imageUrl, images, imageQuality, imageAspect, imageSize, imageModel, imageMimeType, upscaleSupported }) => {
-    const rawImage = image || imageUrl || (Array.isArray(images) && images[0]) || null;
-    const message = {
-        id: id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        role: role === 'assistant' ? 'assistant' : 'user',
-        content: String(content ?? text ?? ''),
-        image: rawImage,
-        imageUrl: rawImage,
-        timestamp: timestamp || new Date().toISOString(),
-    };
-    if (imageQuality) message.imageQuality = imageQuality;
-    if (imageAspect) message.imageAspect = imageAspect;
-    if (imageSize) message.imageSize = imageSize;
-    if (imageModel) message.imageModel = imageModel;
-    if (imageMimeType) message.imageMimeType = imageMimeType;
-    if (typeof upscaleSupported === 'boolean') message.upscaleSupported = upscaleSupported;
-    return message;
-};
-
-const normalizeMessages = (messages) => (Array.isArray(messages) ? messages : [])
-    .map(createMessage)
-    .filter((message) => message.content.trim() || message.image)
-    .slice(-20);
+const { createMessage, normalizeMessages } = require('../services/chatMessageNormalize');
+const { hydrateConversationMessages } = require('../services/chatVideoHydration');
+const { mergePersistedMessages } = require('../services/chatMessageMerge');
+const { saveConversationMessages } = require('../services/chatConversationVideoSync');
 
 const createConversationTitle = (messages) => {
     const firstUserMessage = normalizeMessages(messages).find((message) => message.role === 'user');
@@ -173,11 +155,28 @@ const createConversationTitle = (messages) => {
     return title.length > 48 ? `${title.slice(0, 48).trimEnd()}...` : title;
 };
 
-const getConversationPayload = (conversation) => ({
-    ...conversation,
-    title: conversation.title || createConversationTitle(conversation.messages),
-    messages: normalizeMessages(conversation.messages),
-});
+async function getConversationPayload(connection, email, conversation) {
+    const normalized = normalizeMessages(conversation.messages);
+    const messages = connection && email
+        ? await hydrateConversationMessages(connection, email, normalized, {
+            conversationId: conversation.id,
+        })
+        : normalized;
+    if (connection && email && conversation.id && JSON.stringify(normalized) !== JSON.stringify(messages)) {
+        setImmediate(() => {
+            void saveConversationMessages(connection, conversation.id, email, messages).catch((error) => {
+                if (process.env.NODE_ENV !== 'test') {
+                    console.warn('[CHAT] video attachment persist failed', error.message);
+                }
+            });
+        });
+    }
+    return {
+        ...conversation,
+        title: conversation.title || createConversationTitle(messages),
+        messages,
+    };
+}
 
 const saveUsers = (connection) => {
     if (isPostgresConnection(connection)) {
@@ -959,7 +958,7 @@ const getChatHistory = async (req, res) => {
                 WHERE lower(trim(email)) = ?
                 ORDER BY updated_at DESC
             `).all(normalizedEmail);
-        const conversations = rows.map((row) => getConversationPayload({
+        const conversations = await Promise.all(rows.map(async (row) => getConversationPayload(connection, normalizedEmail, {
             ...row,
             createdAt: row.createdAt ?? row.createdat,
             updatedAt: row.updatedAt ?? row.updatedat,
@@ -970,7 +969,7 @@ const getChatHistory = async (req, res) => {
                     return [];
                 }
             })(),
-        }));
+        })));
         return res.status(200).json(conversations);
     } catch (error) {
         if (process.env.NODE_ENV !== 'test') {
@@ -1023,10 +1022,18 @@ const renameChat = async (req, res) => {
         if (!existing) return res.status(404).json({ message: 'Conversation not found' });
         const patch = { updatedAt: now };
         if (title) patch.title = title;
-        if (messages) patch.messages = messages;
+        if (messages) {
+            let existingMessages = [];
+            try {
+                existingMessages = JSON.parse(existing.messages || '[]');
+            } catch {
+                existingMessages = [];
+            }
+            patch.messages = normalizeMessages(mergePersistedMessages(existingMessages, messages));
+        }
         await updateConversationRowAsync(connection, req.params.id, email, patch);
         const updated = await getConversationRowAsync(connection, req.params.id, email);
-        return res.status(200).json(getConversationPayload({
+        return res.status(200).json(await getConversationPayload(connection, email, {
             ...updated,
             messages: JSON.parse(updated.messages || '[]'),
         }));
@@ -1036,10 +1043,14 @@ const renameChat = async (req, res) => {
     if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
 
     if (title) conversation.title = title;
-    if (messages) conversation.messages = messages;
+    if (messages) {
+        conversation.messages = normalizeMessages(
+            mergePersistedMessages(conversation.messages || [], messages),
+        );
+    }
     conversation.updatedAt = now;
     connection.write(data);
-    return res.status(200).json(getConversationPayload(conversation));
+    return res.status(200).json(await getConversationPayload(connection, email, conversation));
 };
 
 const deleteChat = async (req, res) => {
@@ -1766,16 +1777,19 @@ async function createChatResponseImpl(req, res) {
                         const conversation = conversationId
                             ? data.conversations.find((item) => item.id === conversationId && item.email === normalizedEmail)
                             : null;
+                        const mergedMessages = conversation
+                            ? normalizeMessages(mergePersistedMessages(conversation.messages || [], savedMessages))
+                            : savedMessages;
                         if (conversation) {
-                            conversation.messages = savedMessages;
+                            conversation.messages = mergedMessages;
                             conversation.updatedAt = now;
                         } else {
                             data.conversations.push({
                                 id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                                 email: normalizedEmail,
                                 model,
-                                title: createConversationTitle(savedMessages),
-                                messages: savedMessages,
+                                title: createConversationTitle(mergedMessages),
+                                messages: mergedMessages,
                                 createdAt: now,
                                 updatedAt: now,
                             });
@@ -2312,8 +2326,9 @@ async function createChatResponseImpl(req, res) {
             const detail = String(data.error?.message || data.errors?.[0]?.message || '');
             const billingError = /insufficient.*(balance|credit|quota)|balance.*insufficient|exceeded.*quota|quota.*exceeded|recharge|billing/i.test(detail);
             const visionUpstream = hasAttachedImage && /vision|image|multimodal|unsupported.*image|does not support/i.test(detail);
+            const providerLabel = displayModelName(routedModel) || routedModel;
             const message = billingError || apiResponse.status === 402
-                ? 'The selected AI service has insufficient balance or quota. Check its billing or configure another connection for this model.'
+                ? `${providerLabel} could not complete this request because the provider account has insufficient balance or quota. Add credits in the provider billing console or configure another connection for this model.`
                 : visionUpstream
                     ? 'The selected model could not analyze this image. Try Smart Router or switch to Gemini or GPT.'
                 : apiResponse.status === 429 ? 'The selected AI service is rate limited. Wait a moment and retry.'
@@ -2328,6 +2343,29 @@ async function createChatResponseImpl(req, res) {
                 : 'AI_UPSTREAM';
             logSmartRouter('provider failed', { provider: routedModel, status: apiResponse.status, billing: billingError, vision: hasAttachedImage });
             console.error('[AI API]', chatCorrelationId, apiResponse.status, billingError ? 'billing_or_quota' : 'upstream_error', hasAttachedImage ? 'vision_request' : '', detail.slice(0, 180));
+            setImmediate(() => {
+                try {
+                    const classified = classifyProviderError({
+                        httpStatus: apiResponse.status,
+                        message: detail,
+                        billingHint: billingError || apiResponse.status === 402,
+                    });
+                    const telemetryProvider = equivalenceViaOpenRouter ? 'openrouter' : slugToProviderId(routedModel);
+                    recordRouterMetric(req.app.locals.db, {
+                        email: userEmail,
+                        taskType: routeDecision.taskType || routeDecision.category,
+                        provider: telemetryProvider,
+                        model: routedModel,
+                        latencyMs: Date.now() - requestStartedAt,
+                        success: false,
+                        errorCategory: classified.errorClass,
+                        httpStatus: apiResponse.status,
+                        errorMessage: detail,
+                    });
+                } catch (telemetryError) {
+                    console.warn('[PROVIDER_HEALTH]', telemetryError.message);
+                }
+            });
             const clientStatus = mapUpstreamStatusForClient(apiResponse.status);
             return res.status(clientStatus).json({
                 message,
@@ -2496,16 +2534,19 @@ async function createChatResponseImpl(req, res) {
                     const conversation = conversationId
                         ? data.conversations.find((item) => item.id === conversationId && item.email === normalizedEmail)
                         : null;
+                    const mergedMessages = conversation
+                        ? normalizeMessages(mergePersistedMessages(conversation.messages || [], savedMessages))
+                        : savedMessages;
                     if (conversation) {
-                        conversation.messages = savedMessages;
+                        conversation.messages = mergedMessages;
                         conversation.updatedAt = now;
                     } else {
                         data.conversations.push({
                             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                             email: normalizedEmail,
                             model,
-                            title: createConversationTitle(savedMessages),
-                            messages: savedMessages,
+                            title: createConversationTitle(mergedMessages),
+                            messages: mergedMessages,
                             createdAt: now,
                             updatedAt: now,
                         });
@@ -2526,6 +2567,27 @@ async function createChatResponseImpl(req, res) {
                 ? 'Image analysis failed due to a provider or network error. Retry with Smart Router or a smaller screenshot.'
                 : 'Could not connect to the AI service. Check your internet connection and backend API key.';
         console.error('[CHAT_PROVIDER]', chatCorrelationId, error.name, error.message);
+        setImmediate(() => {
+            try {
+                const classified = classifyProviderError({
+                    timedOut,
+                    message: error.message,
+                });
+                recordRouterMetric(req.app.locals.db, {
+                    email: userEmail,
+                    taskType: 'chat',
+                    provider: slugToProviderId(model),
+                    model,
+                    latencyMs: Date.now() - requestStartedAt,
+                    success: false,
+                    errorCategory: classified.errorClass,
+                    timedOut,
+                    errorMessage: error.message,
+                });
+            } catch (telemetryError) {
+                console.warn('[PROVIDER_HEALTH]', telemetryError.message);
+            }
+        });
         if (res.headersSent) {
             res.write(`data: ${JSON.stringify({ error: message, code: timedOut ? 'AI_TIMEOUT' : 'AI_UPSTREAM' })}\n\n`);
             res.write('data: [DONE]\n\n');

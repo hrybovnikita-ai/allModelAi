@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   CheckoutElementsProvider,
@@ -38,35 +38,57 @@ function StripeCheckoutInner({
   payLabel,
   processingLabel,
   compact = false,
+  getBillingDetails,
+  confirmRef,
+  hidePayButton = false,
 }) {
   const checkoutState = useCheckoutElements();
   const [payBusy, setPayBusy] = useState(false);
   const [walletsVisible, setWalletsVisible] = useState(false);
+
+  const buildConfirmParams = useCallback(() => {
+    const params = { returnUrl };
+    const billing = getBillingDetails?.();
+    if (billing?.email) params.email = billing.email;
+    if (billing?.billingAddress) params.billingAddress = billing.billingAddress;
+    return params;
+  }, [returnUrl, getBillingDetails]);
 
   const handleExpressConfirm = useCallback(async (event) => {
     if (checkoutState.type !== 'success') return;
     setPayBusy(true);
     try {
       const result = await checkoutState.checkout.confirm({
+        ...buildConfirmParams(),
         expressCheckoutConfirmEvent: event,
-        returnUrl,
       });
       if (result.type === 'error') onError?.(result.error.message);
     } finally {
       setPayBusy(false);
     }
-  }, [checkoutState, returnUrl, onError]);
+  }, [checkoutState, buildConfirmParams, onError]);
 
   const handleCardPay = useCallback(async () => {
-    if (checkoutState.type !== 'success') return;
+    if (checkoutState.type !== 'success') {
+      onError?.('Payment form is still loading.');
+      return;
+    }
     setPayBusy(true);
     try {
-      const result = await checkoutState.checkout.confirm({ returnUrl });
+      const result = await checkoutState.checkout.confirm(buildConfirmParams());
       if (result.type === 'error') onError?.(result.error.message);
     } finally {
       setPayBusy(false);
     }
-  }, [checkoutState, returnUrl, onError]);
+  }, [checkoutState, buildConfirmParams, onError]);
+
+  useEffect(() => {
+    if (!confirmRef) return undefined;
+    confirmRef.current = handleCardPay;
+    return () => {
+      if (confirmRef.current === handleCardPay) confirmRef.current = null;
+    };
+  }, [confirmRef, handleCardPay]);
 
   if (checkoutState.type === 'loading') {
     return (
@@ -108,15 +130,22 @@ function StripeCheckoutInner({
         <p className="stripe-embedded-wallets-hint">Apple Pay · Google Pay · Link</p>
       )}
       <div className="stripe-embedded-divider"><span>Card</span></div>
-      <PaymentElement options={{ layout: 'tabs' }} />
-      <button
-        type="button"
-        className="pay-button stripe-embedded-pay"
-        disabled={payBusy}
-        onClick={handleCardPay}
-      >
-        {payBusy ? processingLabel : payLabel}
-      </button>
+      <PaymentElement
+        options={{
+          layout: 'tabs',
+          fields: { billingDetails: 'never' },
+        }}
+      />
+      {!hidePayButton && (
+        <button
+          type="button"
+          className="pay-button stripe-embedded-pay"
+          disabled={payBusy}
+          onClick={handleCardPay}
+        >
+          {payBusy ? processingLabel : payLabel}
+        </button>
+      )}
       <p className="stripe-embedded-secure" role="note">
         <span aria-hidden="true">🔒</span> Secure checkout powered by Stripe
       </p>
@@ -133,6 +162,9 @@ export default function StripeEmbeddedCheckout({
   processingLabel = 'Processing…',
   compact = false,
   className = '',
+  getBillingDetails,
+  confirmRef,
+  hidePayButton = false,
 }) {
   const stripePromise = useMemo(() => {
     if (!publishableKey) return null;
@@ -164,6 +196,9 @@ export default function StripeEmbeddedCheckout({
           payLabel={payLabel}
           processingLabel={processingLabel}
           compact={compact}
+          getBillingDetails={getBillingDetails}
+          confirmRef={confirmRef}
+          hidePayButton={hidePayButton}
         />
       </CheckoutElementsProvider>
     </div>

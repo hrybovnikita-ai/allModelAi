@@ -1,4 +1,4 @@
-/** Decorative Visa / Mastercard marks for the card section (display only). */
+/** Decorative card network marks (display only; Stripe detects the real brand in Payment Element). */
 export default function CardBrandBadges({ className = '' }) {
   return (
     <div className={`card-brand-badges ${className}`.trim()} aria-hidden="true">
@@ -10,6 +10,9 @@ export default function CardBrandBadges({ className = '' }) {
         </span>
         <span>Mastercard</span>
       </span>
+      <span className="card-brand-badges__mark card-brand-badges__mark--amex">Amex</span>
+      <span className="card-brand-badges__mark card-brand-badges__mark--discover">Discover</span>
+      <span className="card-brand-badges__mark card-brand-badges__mark--more">+ more</span>
     </div>
   );
 }

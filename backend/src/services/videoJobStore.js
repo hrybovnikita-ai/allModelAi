@@ -39,6 +39,8 @@ function rowToJob(row) {
         mimeType: row.mime_type || row.mimeType || 'video/mp4',
         errorCode: row.error_code ?? row.errorCode,
         errorMessage: row.error_message ?? row.errorMessage,
+        conversationId: row.conversation_id ?? row.conversationId ?? null,
+        messageId: row.message_id ?? row.messageId ?? null,
         createdAt: row.created_at ?? row.createdAt,
         updatedAt: row.updated_at ?? row.updatedAt,
     };
@@ -54,8 +56,8 @@ async function createJob(connection, payload) {
                 id, email, provider, provider_project_id, mode, prompt, status,
                 aspect_ratio, resolution, model, duration_seconds,
                 credits_estimated, credits_charged, video_url, stored_relative_path, mime_type,
-                error_code, error_message, created_at, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+                error_code, error_message, conversation_id, message_id, created_at, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
             [
                 id,
                 payload.email,
@@ -75,6 +77,8 @@ async function createJob(connection, payload) {
                 payload.mimeType || 'video/mp4',
                 payload.errorCode || null,
                 payload.errorMessage || null,
+                payload.conversationId || null,
+                payload.messageId || null,
                 createdAt,
                 createdAt,
             ],

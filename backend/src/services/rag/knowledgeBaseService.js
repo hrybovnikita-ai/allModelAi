@@ -102,6 +102,8 @@ async function indexDocument(connection, email, input) {
 
     const id = input.id || `kb-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
+    const checksum = crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+    const collectionId = input.collectionId ? String(input.collectionId).slice(0, 80) : null;
     const chunks = pages?.length
         ? splitPagesIntoChunks(pages)
         : splitTextIntoChunks(content).map((c) => ({ ...c, pageNumber: 1 }));
@@ -111,27 +113,37 @@ async function indexDocument(connection, email, input) {
     const storagePath = path.join(dir, `${id}.json`);
     fs.writeFileSync(storagePath, JSON.stringify({ name, pages, content: content.slice(0, 50000) }), 'utf8');
 
+    let embeddingModel = 'local-hash-v1';
+    let embeddingVersion = 'local-hash-v1';
+
     if (isPostgresConnection(connection)) {
         await pgQuery(
             connection,
             `INSERT INTO knowledge_documents
-             (id, email, name, mime_type, status, page_count, char_count, chunk_count, storage_path, created_at, updated_at)
-             VALUES ($1,$2,$3,$4,'processing',$5,$6,0,$7,$8,$8)
+             (id, email, name, mime_type, status, page_count, char_count, chunk_count, storage_path,
+              collection_id, content_checksum, index_status, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,'processing',$5,$6,0,$7,$8,$9,'indexing',$10,$10)
              ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, mime_type = EXCLUDED.mime_type,
              status = 'processing', page_count = EXCLUDED.page_count, char_count = EXCLUDED.char_count,
-             storage_path = EXCLUDED.storage_path, updated_at = EXCLUDED.updated_at`,
-            [id, normalized, name, mimeType, pages?.length || 1, content.length, storagePath, now],
+             storage_path = EXCLUDED.storage_path, collection_id = EXCLUDED.collection_id,
+             content_checksum = EXCLUDED.content_checksum, index_status = 'indexing', updated_at = EXCLUDED.updated_at`,
+            [id, normalized, name, mimeType, pages?.length || 1, content.length, storagePath, collectionId, checksum, now],
         );
         await pgQuery(connection, 'DELETE FROM knowledge_chunks WHERE document_id = $1 AND email = $2', [id, normalized]);
     } else {
         connection.database.prepare(
             `INSERT INTO knowledge_documents
-             (id, email, name, mime_type, status, page_count, char_count, chunk_count, storage_path, created_at, updated_at)
-             VALUES (?, ?, ?, ?, 'processing', ?, ?, 0, ?, ?, ?)
+             (id, email, name, mime_type, status, page_count, char_count, chunk_count, storage_path,
+              collection_id, content_checksum, index_status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'processing', ?, ?, 0, ?, ?, ?, 'indexing', ?, ?)
              ON CONFLICT(id) DO UPDATE SET name = excluded.name, mime_type = excluded.mime_type,
              status = 'processing', page_count = excluded.page_count, char_count = excluded.char_count,
-             storage_path = excluded.storage_path, updated_at = excluded.updated_at`,
-        ).run(id, normalized, name, mimeType, pages?.length || 1, content.length, storagePath, now, now);
+             storage_path = excluded.storage_path, collection_id = excluded.collection_id,
+             content_checksum = excluded.content_checksum, index_status = 'indexing', updated_at = excluded.updated_at`,
+        ).run(
+            id, normalized, name, mimeType, pages?.length || 1, content.length, storagePath,
+            collectionId, checksum, now, now,
+        );
         connection.database.prepare('DELETE FROM knowledge_chunks WHERE document_id = ? AND email = ?').run(id, normalized);
     }
 
@@ -139,6 +151,8 @@ async function indexDocument(connection, email, input) {
     for (const chunk of chunks) {
         const chunkId = `${id}:${chunk.chunkIndex}`;
         const embedding = await embedText(chunk.text);
+        embeddingModel = embedding.model || embeddingModel;
+        embeddingVersion = embedding.provider || embeddingVersion;
         const embeddingJson = serializeEmbedding(embedding);
         if (isPostgresConnection(connection)) {
             await pgQuery(
@@ -181,16 +195,26 @@ async function indexDocument(connection, email, input) {
     if (isPostgresConnection(connection)) {
         await pgQuery(
             connection,
-            `UPDATE knowledge_documents SET status = 'ready', chunk_count = $1, updated_at = $2 WHERE id = $3 AND email = $4`,
-            [inserted, now, id, normalized],
+            `UPDATE knowledge_documents SET status = 'ready', chunk_count = $1, index_status = 'ready',
+             embedding_model = $2, embedding_version = $3, updated_at = $4 WHERE id = $5 AND email = $6`,
+            [inserted, embeddingModel, embeddingVersion, now, id, normalized],
         );
     } else {
         connection.database.prepare(
-            'UPDATE knowledge_documents SET status = ?, chunk_count = ?, updated_at = ? WHERE id = ? AND email = ?',
-        ).run('ready', inserted, now, id, normalized);
+            `UPDATE knowledge_documents SET status = ?, chunk_count = ?, index_status = 'ready',
+             embedding_model = ?, embedding_version = ?, updated_at = ? WHERE id = ? AND email = ?`,
+        ).run('ready', inserted, embeddingModel, embeddingVersion, now, id, normalized);
     }
 
-    return { id, name, chunkCount: inserted, status: 'ready' };
+    return {
+        id,
+        name,
+        chunkCount: inserted,
+        status: 'ready',
+        contentChecksum: checksum,
+        embeddingModel,
+        embeddingVersion,
+    };
 }
 
 async function retrieveForQuery(connection, email, query, limit = DEFAULT_TOP_K) {

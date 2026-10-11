@@ -4,6 +4,7 @@ const Database = require('better-sqlite3');
 const { ensureStorageIdeasSchema } = require('./storageIdeasSchema');
 const { ensureAiTrainingSchema } = require('./aiTrainingSchema');
 const { ensureAiEngineeringSchema } = require('./aiEngineeringSchema');
+const { ensureIntelligenceSchema } = require('./intelligence/intelligenceSchema');
 const { ensureAiImprovementSchema } = require('./aiImprovementSchema');
 const { ensureVideoGenerationSchema } = require('./videoGenerationSchema');
 const { createConnectionApi } = require('./db/connectionApi');
@@ -265,6 +266,7 @@ const connectDatabase = () => {
     ensureStorageIdeasSchema(database);
     ensureAiTrainingSchema(database);
     ensureAiEngineeringSchema(database);
+    ensureIntelligenceSchema(database);
     ensureAiImprovementSchema(database);
     ensureVideoGenerationSchema(database);
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
+import ProviderHealthPanel from './ProviderHealthPanel';
 import './ModelDiagnostics.css';
 
 function statusLabel(row) {
@@ -92,6 +93,8 @@ export default function ModelDiagnostics() {
         <input type="checkbox" checked={confirmBillable} onChange={(e) => setConfirmBillable(e.target.checked)} />
         I understand each test sends a short prompt to the real provider and may use billable quota.
       </label>
+
+      <ProviderHealthPanel />
 
       {error && <p className="model-diagnostics-error" role="alert">{error}</p>}
       {loading && <p className="model-diagnostics-loading">Loading catalog…</p>}

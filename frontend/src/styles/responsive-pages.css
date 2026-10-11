@@ -205,8 +205,13 @@
 @media (min-width: 2560px) {
   .container,
   .home-layout {
-    max-width: var(--ama-container-ultra, 1840px);
+    width: var(--app-content-width, var(--ama-container-ultra, 1840px));
+    max-width: 100%;
     margin-inline: auto;
+  }
+
+  .dashboard-shell {
+    width: var(--app-content-width);
   }
 }
 

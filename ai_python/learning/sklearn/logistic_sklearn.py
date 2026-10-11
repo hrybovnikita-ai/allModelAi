@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 
 import numpy as np
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, log_loss
+from sklearn.metrics import accuracy_score, f1_score, log_loss, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 
 
@@ -28,7 +28,12 @@ def run_sklearn_logistic(seed: int = 42, n: int = 240) -> Dict[str, Any]:
     val_probs = model.predict_proba(x_val)
     train_loss = float(log_loss(y_train, train_probs, labels=[0, 1]))
     val_loss = float(log_loss(y_val, val_probs, labels=[0, 1]))
-    val_acc = float(accuracy_score(y_val, model.predict(x_val)))
+    y_val_pred = model.predict(x_val)
+    val_acc = float(accuracy_score(y_val, y_val_pred))
+    val_precision = float(precision_score(y_val, y_val_pred, zero_division=0))
+    val_recall = float(recall_score(y_val, y_val_pred, zero_division=0))
+    val_f1 = float(f1_score(y_val, y_val_pred, zero_division=0))
+    val_probs_pos = val_probs[:, 1]
 
     return {
         "ok": True,
@@ -38,6 +43,11 @@ def run_sklearn_logistic(seed: int = 42, n: int = 240) -> Dict[str, Any]:
         "validationLoss": val_loss,
         "finalLoss": val_loss,
         "finalAccuracy": val_acc,
+        "precision": val_precision,
+        "recall": val_recall,
+        "f1": val_f1,
+        "probabilitySupport": True,
+        "sampleProbabilities": [float(p) for p in val_probs_pos[:5]],
         "lossHistory": [train_loss, val_loss],
         "validationLossHistory": [val_loss],
         "accuracyHistory": [val_acc],

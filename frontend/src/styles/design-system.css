@@ -92,6 +92,11 @@
   --chat-muted: var(--text-muted);
   --chat-accent: var(--purple);
 
+  /* Shared app shell — dashboard, floating nav, hubs */
+  --app-shell-gutter: clamp(16px, 2vw, 32px);
+  --app-shell-max: 1600px;
+  --app-content-width: min(100% - 2 * var(--app-shell-gutter), var(--app-shell-max));
+
   /* Homepage layout widths */
   --ama-container: min(100% - 2 * var(--page-gutter, 24px), 1280px);
   --ama-container-wide: min(100% - 2 * var(--page-gutter, 32px), 1520px);
@@ -99,11 +104,26 @@
   --ama-container-ultra: min(100% - 2 * var(--page-gutter, 48px), 1840px);
 }
 
+@media (min-width: 1440px) {
+  :root {
+    --app-shell-gutter: clamp(24px, 2.5vw, 48px);
+    --app-shell-max: 1720px;
+  }
+}
+
 @media (min-width: 1920px) {
   :root {
+    --app-shell-gutter: 48px;
+    --app-shell-max: 1840px;
     --ama-container-wide: min(100% - 96px, 1720px);
     --ama-container-hero: min(100% - 112px, 1880px);
     --ama-container-ultra: min(100% - 128px, 2040px);
+  }
+}
+
+@media (min-width: 2560px) {
+  :root {
+    --app-shell-max: 2040px;
   }
 }
 
