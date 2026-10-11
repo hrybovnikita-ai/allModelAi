@@ -30,7 +30,9 @@ export default function NavMoreMenu({
   const [query, setQuery] = useState('');
   const [panelStyle, setPanelStyle] = useState(null);
 
-  onOpenChangeRef.current = onOpenChange;
+  useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
 
   const groups = useMemo(
     () => NAV_MORE_GROUPS.filter((g) => !(g.requiresDeveloper && !canUseDeveloper)),

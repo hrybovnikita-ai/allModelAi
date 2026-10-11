@@ -275,7 +275,7 @@ export default function Chat() {
   const [messageRatings, setMessageRatings] = useState(() =>
     safeJSON(safeStorageGet('localStorage', 'allmodelai_message_ratings'), {})
   );
-  const [messageLikes, setMessageLikes] = useState(() =>
+  const [, setMessageLikes] = useState(() =>
     safeJSON(safeStorageGet('localStorage', 'allmodelai_message_likes'), {})
   );
 
@@ -520,7 +520,7 @@ export default function Chat() {
       setVideoDurationSeconds(clamped.durationSeconds);
     });
     return () => { alive = false; };
-  }, [selectedSkill]);
+  }, [selectedSkill, videoDurationSeconds, videoResolution]);
 
   useEffect(() => {
     const syncStickerPref = (event) => {
@@ -531,6 +531,18 @@ export default function Chat() {
     window.addEventListener('storage', syncStickerPref);
     return () => window.removeEventListener('storage', syncStickerPref);
   }, []);
+
+  const refreshHistory = useCallback(() => apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
+    .then((response) => response.ok ? response.json() : [])
+    .then((history) => {
+      setChatHistory(history);
+      const activeId = activeConversationIdRef.current;
+      const active = history.find((item) => item.id === activeId);
+      if (active?.messages?.length) {
+        setMessages(normalizeConversationMessages(active.messages));
+      }
+    })
+    .catch(() => {}), [user.email]);
 
   const resumedVideoJobIdsRef = useRef(new Set());
 
@@ -590,7 +602,7 @@ export default function Chat() {
       setIsSending(false);
       videoSubmitLockRef.current = false;
     }
-  }, [isSending, messages.length]);
+  }, [isSending, messages.length, refreshHistory, temporaryChat]);
 
   useEffect(() => {
     if (isSending || !activeConversationId || !messages.length) return undefined;
@@ -906,18 +918,6 @@ export default function Chat() {
     controller.start();
   };
 
-  const refreshHistory = () => apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
-    .then((response) => response.ok ? response.json() : [])
-    .then((history) => {
-      setChatHistory(history);
-      const activeId = activeConversationIdRef.current;
-      const active = history.find((item) => item.id === activeId);
-      if (active?.messages?.length) {
-        setMessages(normalizeConversationMessages(active.messages));
-      }
-    })
-    .catch(() => {});
-
   const conversationPreview = (conversation) => {
     const firstUserMessage = conversation.messages?.find((message) => message.role === 'user');
     return String(firstUserMessage?.content ?? firstUserMessage?.text ?? 'Saved conversation').replace(/\s+/g, ' ').trim().slice(0, 54);
@@ -973,7 +973,7 @@ export default function Chat() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [historyFeedOpen, user?.email]);
+  }, [historyFeedOpen, user?.email, refreshHistory]);
   const handleImageUpload = async (file) => {
     if (!file || imageUploadBusy) return;
     setImageUploadBusy(true);
@@ -1098,6 +1098,9 @@ export default function Chat() {
         return next;
       });
       persistServerFeedback(index, { rating: 'up' });
+      setFeedbackMessageIndex(index);
+      setFeedbackText('');
+      setFeedbackModalOpen(true);
     }
   };
   const setFeedbackReason = (index, reason) => {
@@ -1116,7 +1119,6 @@ export default function Chat() {
       });
     }
   };
-  const openFeedback = (index) => { setFeedbackMessageIndex(index); setFeedbackText(''); setFeedbackModalOpen(true); };
   const submitFeedback = () => {
     if (feedbackMessageIndex === null) return;
     const text = feedbackText.trim();
@@ -1712,45 +1714,41 @@ export default function Chat() {
       if (selectedSkill === 'web' || selectedSkill === 'deep-research') {
         const isDeepResearch = selectedSkill === 'deep-research';
         if (isDeepResearch) {
-          try {
-            const clarify = await fetchResearchClarification(apiFetch, { query: text });
-            if (!clarify.searchAvailable) {
-              setMessages((current) => current.map((message, index) => (
-                index === assistantIndex
-                  ? {
-                    ...message,
-                    webSearching: false,
-                    deepResearch: true,
-                    deepResearchError: 'Web research is temporarily unavailable.',
-                  }
-                  : message
-              )));
-              return;
-            }
-            if (clarify.needsClarification) {
-              deepResearchPendingRef.current = {
-                text,
-                nextMessages,
-                assistantIndex,
-                startedConversationId,
-              };
-              setMessages((current) => current.map((message, index) => (
-                index === assistantIndex
-                  ? {
-                    ...message,
-                    webSearching: false,
-                    deepResearch: true,
-                    deepResearchClarification: {
-                      questions: clarify.questions,
-                      topicTitle: clarify.topicTitle,
-                    },
-                  }
-                  : message
-              )));
-              return;
-            }
-          } catch (clarifyError) {
-            throw clarifyError;
+          const clarify = await fetchResearchClarification(apiFetch, { query: text });
+          if (!clarify.searchAvailable) {
+            setMessages((current) => current.map((message, index) => (
+              index === assistantIndex
+                ? {
+                  ...message,
+                  webSearching: false,
+                  deepResearch: true,
+                  deepResearchError: 'Web research is temporarily unavailable.',
+                }
+                : message
+            )));
+            return;
+          }
+          if (clarify.needsClarification) {
+            deepResearchPendingRef.current = {
+              text,
+              nextMessages,
+              assistantIndex,
+              startedConversationId,
+            };
+            setMessages((current) => current.map((message, index) => (
+              index === assistantIndex
+                ? {
+                  ...message,
+                  webSearching: false,
+                  deepResearch: true,
+                  deepResearchClarification: {
+                    questions: clarify.questions,
+                    topicTitle: clarify.topicTitle,
+                  },
+                }
+                : message
+            )));
+            return;
           }
         }
 
@@ -2330,15 +2328,6 @@ export default function Chat() {
     logger.action('Suggestion prompt clicked', { length: String(text).length });
     setPrompt(text);
     document.querySelector('.chat-composer textarea')?.focus();
-  };
-
-  const toggleWebSearch = () => {
-    if (selectedSkill === 'web') {
-      logger.search('Search disabled');
-      setSelectedSkill(null);
-      return;
-    }
-    chooseSkill('web');
   };
 
   const toggleImageSkill = () => {
@@ -3339,9 +3328,9 @@ export default function Chat() {
                     void resumeVideoJob(jobId || activeVideoJobs[0]?.jobId || readPendingVideoJobId());
                   }}
                   onGenerate={() => {
-                    const prompt = videoDraftPrompt.trim() || input.trim();
-                    if (!prompt || isSending || videoSubmitLockRef.current) return;
-                    void sendMessage(null, prompt, undefined, null, {
+                    const videoPrompt = videoDraftPrompt.trim() || prompt.trim();
+                    if (!videoPrompt || isSending || videoSubmitLockRef.current) return;
+                    void sendMessage(null, videoPrompt, undefined, null, {
                       forceVideo: true,
                       videoMode,
                       wait: false,

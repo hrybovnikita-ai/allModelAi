@@ -25,7 +25,8 @@ import GoogleSignInIcon from './GoogleSignInIcon';
 import './Login.css';
 
 export default function Login(props) {
-  const { ref: _ignoredRef, ...rest } = props;
+  const rest = { ...props };
+  delete rest.ref;
   return <LoginForm {...rest} />;
 }
 

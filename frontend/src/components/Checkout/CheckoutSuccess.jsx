@@ -64,14 +64,14 @@ export default function CheckoutSuccess() {
         if (intentId) {
           const response = await apiClient.get(`/api/payments/intent/${encodeURIComponent(intentId)}`);
           if (cancelled) return;
-          setTestMode(Boolean(response.data.stripeTestMode || testMode));
+          setTestMode((prev) => Boolean(response.data.stripeTestMode || prev));
           setPhase('success');
           return;
         }
         if (sessionId) {
           const response = await apiClient.get(`/api/payments/session/${encodeURIComponent(sessionId)}`);
           if (cancelled) return;
-          setTestMode(Boolean(response.data.purchase?.isTestPayment ?? testMode));
+          setTestMode((prev) => Boolean(response.data.purchase?.isTestPayment ?? prev));
           setPhase('success');
           return;
         }
@@ -79,7 +79,7 @@ export default function CheckoutSuccess() {
           const paid = await pollWayforpayPaymentStatus(apiFetch, orderReference, { attempts: 8, intervalMs: 1500 });
           if (cancelled) return;
           if (!paid?.paid) throw new Error('Payment confirmation is still pending.');
-          setTestMode(Boolean(paid.testMode ?? testMode));
+          setTestMode((prev) => Boolean(paid.testMode ?? prev));
           setPhase('success');
           return;
         }

@@ -24,15 +24,16 @@ export function useChatContextSuggestions({
   const isSendingRef = useRef(isSending);
   const isGuestRef = useRef(isGuest);
 
-  isSendingRef.current = isSending;
-  isGuestRef.current = isGuest;
-
   const suggestionsContextKey = useMemo(
     () => buildSuggestionsContextKey({ prompt, messages, activeConversationId, selectedSkill }),
     [activeConversationId, messages, prompt, selectedSkill],
   );
 
-  contextKeyRef.current = suggestionsContextKey;
+  useEffect(() => {
+    isSendingRef.current = isSending;
+    isGuestRef.current = isGuest;
+    contextKeyRef.current = suggestionsContextKey;
+  }, [isSending, isGuest, suggestionsContextKey]);
 
   const loadContextSuggestions = useCallback(async (contextKey) => {
     const key = String(contextKey || '').trim();

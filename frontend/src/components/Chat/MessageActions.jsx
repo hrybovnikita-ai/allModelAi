@@ -69,7 +69,6 @@ export default function MessageActions({
   feedbackReason = '',
   isFavorite = false,
   modelInfo = null,
-  conversationId = null,
   isSending = false,
   isRegenerating = false,
   speechLanguage = 'en-US',

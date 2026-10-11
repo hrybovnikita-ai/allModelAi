@@ -32,7 +32,9 @@ export default function NavProfileMenu({
   const location = useLocation();
   const navigate = useNavigate();
 
-  onOpenChangeRef.current = onOpenChange;
+  useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
 
   useEffect(() => {
     if (!open) return undefined;

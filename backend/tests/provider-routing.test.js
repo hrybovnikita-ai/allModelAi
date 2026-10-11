@@ -6,6 +6,7 @@ const request = require('supertest');
 process.env.NODE_ENV = 'test';
 process.env.DB_FILE = path.join(os.tmpdir(), `allmodelai-providers-${process.pid}-${Date.now()}.sqlite`);
 process.env.DEVELOPER_EMAILS = 'providers@example.com';
+process.env.ENABLE_PLUS_TEST_MODE = 'true';
 process.env.API_KEY = 'test-gateway';
 const app = require('../app');
 const originalFetch = global.fetch;

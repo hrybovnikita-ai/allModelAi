@@ -334,7 +334,7 @@ function handleCommonDashboardQueries(text, queryValues, ctx) {
     if (/SELECT 1/i.test(text)) {
         return { rows: [{ ok: 1 }], rowCount: 1 };
     }
-    if (/background_jobs|webhooks|audit_events|storage_|notifications|developer_api_keys|teams|arena_votes/i.test(text)) {
+    if (/background_jobs|webhooks|audit_events|storage_|notifications|developer_api_keys|teams|arena_votes|video_generation_jobs/i.test(text)) {
         return { rows: [], rowCount: 0 };
     }
     if (/FROM usage_events/i.test(text) && /SELECT/i.test(text)) {

@@ -1,9 +1,4 @@
-import { cloneElement, isValidElement, useCallback, useEffect, useId, useRef, useState } from 'react';
-
-function assignRef(ref, node) {
-  if (typeof ref === 'function') ref(node);
-  else if (ref && typeof ref === 'object') ref.current = node;
-}
+import { isValidElement, useCallback, useEffect, useId, useRef, useState } from 'react';
 
 const SHOW_DELAY_MS = 420;
 const HIDE_DELAY_MS = 80;
@@ -31,7 +26,7 @@ export default function Tooltip({ label, children, disabled = false }) {
     const estimatedWidth = Math.min(240, Math.max(72, label.length * 7 + 24));
     let left = rect.left + rect.width / 2 - estimatedWidth / 2;
     left = Math.max(margin, Math.min(left, window.innerWidth - estimatedWidth - margin));
-    let top = rect.top - margin;
+    const top = rect.top - margin;
     setCoords({ top, left, width: estimatedWidth, placement: 'top' });
   }, [label]);
 
@@ -62,35 +57,34 @@ export default function Tooltip({ label, children, disabled = false }) {
     };
   }, [visible, positionTooltip]);
 
-  const childRef = isValidElement(children) ? children.props.ref : null;
-
-  const child = cloneElement(children, {
-    ref: (node) => {
-      anchorRef.current = node;
-      assignRef(childRef, node);
-    },
-    'aria-describedby': visible ? tooltipId : undefined,
-    onMouseEnter: (event) => {
-      children.props.onMouseEnter?.(event);
-      show();
-    },
-    onMouseLeave: (event) => {
-      children.props.onMouseLeave?.(event);
-      hide();
-    },
-    onFocus: (event) => {
-      children.props.onFocus?.(event);
-      show();
-    },
-    onBlur: (event) => {
-      children.props.onBlur?.(event);
-      hide();
-    },
-  });
+  const childProps = isValidElement(children) ? children.props : {};
 
   return (
     <>
-      {child}
+      <span
+        ref={anchorRef}
+        className="ama-tooltip-anchor"
+        style={{ display: 'inline-flex', maxWidth: '100%' }}
+        aria-describedby={visible ? tooltipId : undefined}
+        onMouseEnter={(event) => {
+          childProps.onMouseEnter?.(event);
+          show();
+        }}
+        onMouseLeave={(event) => {
+          childProps.onMouseLeave?.(event);
+          hide();
+        }}
+        onFocus={(event) => {
+          childProps.onFocus?.(event);
+          show();
+        }}
+        onBlur={(event) => {
+          childProps.onBlur?.(event);
+          hide();
+        }}
+      >
+        {children}
+      </span>
       {visible && label && (
         <span
           id={tooltipId}

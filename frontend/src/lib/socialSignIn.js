@@ -44,7 +44,6 @@ import {
   beginGoogleSignInFlow,
   endGoogleSignInFlow,
   shouldAttemptGoogleRedirectRecovery,
-  shouldShowGoogleRedirectRecoveryUI,
 } from './socialRedirectState.js';
 import { assertGoogleRedirectStorageAvailable } from './storageAvailability.js';
 

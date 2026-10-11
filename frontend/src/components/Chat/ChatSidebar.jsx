@@ -67,7 +67,6 @@ function CompactToolRow({
   active = false,
   disabled = false,
   onClick,
-  title,
 }) {
   return (
     <button
@@ -85,7 +84,6 @@ function CompactToolRow({
 }
 
 function ConversationRow({
-  conversation,
   active,
   pinned,
   modelName,
@@ -236,7 +234,6 @@ export default function ChatSidebar({
     return (
       <ConversationRow
         key={conversation.id}
-        conversation={conversation}
         active={activeConversationId === conversation.id}
         pinned={pinned}
         modelName={modelLabel(conversation.model)}

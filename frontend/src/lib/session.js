@@ -172,6 +172,7 @@ function isTransientSessionFetchError(error) {
 }
 
 function tryDegradedSessionRestore(error) {
+  if (sessionRevokedLocally) return null;
   if (!hasSessionRestoreHint()) return null;
   const cached = readStoredSessionUser();
   if (!cached?.email) return null;
@@ -256,7 +257,7 @@ export async function fetchSessionFromServer() {
 export async function restoreSession({ force = false } = {}) {
   const storage = getStorage();
   const saved = storage.getItem('allmodelai_user');
-  if (!force && verifiedSession?.saved === saved && verifiedSession.expiresAt > Date.now()) {
+  if (!force && !sessionRevokedLocally && verifiedSession?.saved === saved && verifiedSession.expiresAt > Date.now()) {
     return verifiedSession.user;
   }
   if (pendingSession?.generation === sessionGeneration) {
@@ -267,13 +268,6 @@ export async function restoreSession({ force = false } = {}) {
   const request = { generation };
   request.promise = (async () => {
     try {
-      if (sessionRevokedLocally && !force) {
-        socialAuthDebug('SESSION_RESTORE_SKIPPED', { reason: 'revoked-locally' });
-        verifiedSession = null;
-        setSessionRestoreMeta({ verified: false, issue: null });
-        return null;
-      }
-
       const retryDelays = sessionRestoreRetryDelays();
 
       for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {

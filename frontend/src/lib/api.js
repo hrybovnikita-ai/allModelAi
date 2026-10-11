@@ -40,8 +40,8 @@ export function apiFetch(url, options = {}) {
     ...(options.headers || {}),
   };
 
-  const skipAuthRedirect = Boolean(options.skipAuthRedirect);
-  const { skipAuthRedirect: _drop, ...fetchOptions } = options;
+  const { skipAuthRedirect, ...fetchOptions } = options;
+  void skipAuthRedirect;
 
   return fetch(resolveApiUrl(url), { ...fetchOptions, credentials: 'include', headers })
     .then(async (response) => {

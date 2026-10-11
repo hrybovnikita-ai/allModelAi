@@ -43,7 +43,7 @@ export const IMAGE_NOT_CONFIGURED_MESSAGE =
 const PROVIDER_BILLING_LEAK =
   /pollen|pollinations\.ai|insufficient balance|top up at|available balance|credits remaining|platform\.openai\.com/i;
 
-export function formatImageServerError(data = {}, fallback = IMAGE_UNAVAILABLE_MESSAGE) {
+export function formatImageServerError(data = {}) {
   if (data.code === 'IMAGE_NOT_CONFIGURED' || data.code === 'COMFY_CLOUD_NOT_CONFIGURED') {
     const missing = data.missingEnvVars;
     if (Array.isArray(missing) && missing.length) {

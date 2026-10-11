@@ -192,8 +192,8 @@ export function DeepResearchProgressPanel({
 }
 
 export function DeepResearchDetails({ meta }) {
-  if (!meta) return null;
   const [open, setOpen] = useState(false);
+  if (!meta) return null;
   return (
     <details className="dr-details" open={open} onToggle={(e) => setOpen(e.target.open)}>
       <summary>Research details</summary>

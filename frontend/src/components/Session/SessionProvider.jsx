@@ -133,7 +133,7 @@ export function SessionProvider({ children }) {
 
   const refresh = useCallback(async ({ force = false } = {}) => {
     if (shouldShowGoogleRedirectRecoveryUI()) {
-      setState((current) => ({
+      setState(() => ({
         status: AUTH_STATUS.CHECKING_REDIRECT,
         user: null,
         sessionVerified: false,
