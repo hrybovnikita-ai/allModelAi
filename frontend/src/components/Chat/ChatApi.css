@@ -784,7 +784,7 @@ html[data-theme="light"] .chat-message.assistant p{color:#202123}html[data-theme
 .image-mode-switch button:disabled { opacity: .6; cursor: wait; }
 .generated-image-result { display: grid; gap: 10px; margin-top: 12px; justify-items: start; }
 .generated-image-preview { display: block; padding: 0; border: 0; background: transparent; cursor: zoom-in; max-width: 100%; }
-.generated-image-result .generated-image { display: block; width: auto; max-width: min(100%, 720px); height: auto; object-fit: contain; border-radius: 14px; }
+.generated-image-result .generated-image { display: block; width: 100%; max-width: min(100%, 720px); height: auto; object-fit: contain; border-radius: 14px; }
 .generated-image-meta { display: flex; flex-wrap: wrap; gap: 6px; }
 .generated-image-meta span { padding: 3px 8px; border: 1px solid #4c3d86; border-radius: 999px; background: #140f22; color: #d6ccff; font-size: .68rem; }
 .generated-image-actions { display: flex; flex-wrap: wrap; gap: 8px; }

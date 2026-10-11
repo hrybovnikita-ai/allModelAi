@@ -25,6 +25,8 @@ export default defineConfig(({ mode }) => {
    '/api': {
      target: env.API_PROXY_TARGET || 'http://127.0.0.1:5050',
      changeOrigin: true,
+     timeout: 0,
+     proxyTimeout: 0,
    },
    '/__/auth': {
      target: 'https://allmodelai.firebaseapp.com',

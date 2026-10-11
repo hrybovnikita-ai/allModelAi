@@ -21,16 +21,32 @@ const {
     getMagicHourVideoModel,
     getMagicHourDefaultDurationSeconds,
     isMagicHourConfigured,
+    pollTimeoutMs,
 } = require('./magicHourConfig');
 const {
     createJob,
     updateJob,
     getJobForUser,
     countActiveJobsForUser,
+    findRecentDuplicateJob,
+    listActiveJobsForUser,
     persistVideoBuffer,
 } = require('./videoJobStore');
+const { resolveVideoImageFromBody } = require('./videoImageResolve');
+const { assertMagicHourRequestSupported } = require('./magicHourCapabilities');
+const { assertMagicHourAuthReady, fetchAccountCredits } = require('./magicHourVideoService');
 
 const MAX_ACTIVE_JOBS_PER_USER = 2;
+
+function createDetachedVideoSignal() {
+    const timeoutMs = pollTimeoutMs() + 120000;
+    if (typeof AbortSignal.timeout === 'function') {
+        return AbortSignal.timeout(timeoutMs);
+    }
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), timeoutMs).unref?.();
+    return controller.signal;
+}
 
 function publicJobPayload(job, req) {
     const playbackUrl = job.storedRelativePath
@@ -55,6 +71,8 @@ function publicJobPayload(job, req) {
         createdAt: job.createdAt,
         updatedAt: job.updatedAt,
         success: job.status === 'completed',
+        recovered: Boolean(job.recovered),
+        providerProjectId: job.providerProjectId || null,
     };
 }
 
@@ -173,13 +191,26 @@ async function runGeminiJob(connection, job, params, signal) {
     });
 }
 
-async function startVideoGeneration({ connection, email, params, wait = true, signal }) {
+async function startVideoGeneration({ connection, email, params, wait = true, signal, requestBaseUrl }) {
     const { getCreditStatusCoreAsync } = require('../billing/creditStatusAsync');
     const { assertVideoGenerationAllowed } = require('./videoAccess');
     const creditStatus = await getCreditStatusCoreAsync(connection, email);
     assertVideoGenerationAllowed(creditStatus);
 
-    const provider = resolveVideoProviderPreference(params.provider);
+    let authProbe = null;
+    if (isMagicHourConfigured()) {
+        const { probeMagicHourAuth } = require('./magicHourClient');
+        authProbe = await probeMagicHourAuth({ signal });
+    }
+
+    const provider = resolveVideoProviderPreference(params.provider, {
+        magicHourAuthOk: authProbe?.ok === true ? true : (authProbe?.keyConfigured ? false : null),
+    });
+    if (provider === 'magichour') {
+        await assertMagicHourAuthReady({ signal });
+        const normalized = assertMagicHourRequestSupported(params);
+        params = { ...params, ...normalized };
+    }
     if (provider === 'magichour' && !isMagicHourConfigured()) {
         throw new MagicHourError('Magic Hour is not configured. Set MAGIC_HOUR_API_KEY on the server.', {
             status: 503,
@@ -191,6 +222,18 @@ async function startVideoGeneration({ connection, email, params, wait = true, si
             status: 503,
             code: 'VIDEO_NOT_CONFIGURED',
         });
+    }
+
+    if (params.image?.imageBytes) {
+        params = { ...params, image: params.image };
+    } else if (params.imageUrl || params.image) {
+        const resolvedImage = await resolveVideoImageFromBody(params, { baseUrl: requestBaseUrl, signal });
+        if (resolvedImage) params = { ...params, image: resolvedImage };
+    }
+
+    const duplicate = await findRecentDuplicateJob(connection, email, params);
+    if (duplicate) {
+        return { ...duplicate, recovered: true };
     }
 
     if (await countActiveJobsForUser(connection, email) >= MAX_ACTIVE_JOBS_PER_USER) {
@@ -214,16 +257,23 @@ async function startVideoGeneration({ connection, email, params, wait = true, si
         durationSeconds: params.durationSeconds,
     });
 
+    const workerSignal = wait ? (signal || createDetachedVideoSignal()) : createDetachedVideoSignal();
     const runner = provider === 'magichour'
-        ? () => runMagicHourJob(connection, job, params, signal)
-        : () => runGeminiJob(connection, job, params, signal);
+        ? () => runMagicHourJob(connection, job, params, workerSignal)
+        : () => runGeminiJob(connection, job, params, workerSignal);
+
+    const handleRunnerFailure = async (error) => {
+        await updateJob(connection, job.id, {
+            status: 'failed',
+            errorCode: error.code || 'VIDEO_FAILED',
+            errorMessage: error.message,
+        });
+    };
 
     if (!wait) {
-        void runner().catch((error) => {
-            void updateJob(connection, job.id, {
-                status: 'failed',
-                errorCode: error.code || 'VIDEO_FAILED',
-                errorMessage: error.message,
+        setImmediate(() => {
+            void runner().catch((error) => {
+                void handleRunnerFailure(error);
             });
         });
         return await getJobForUser(connection, job.id, email);
@@ -232,11 +282,7 @@ async function startVideoGeneration({ connection, email, params, wait = true, si
     try {
         return await runner();
     } catch (error) {
-        await updateJob(connection, job.id, {
-            status: 'failed',
-            errorCode: error.code || 'VIDEO_FAILED',
-            errorMessage: error.message,
-        });
+        await handleRunnerFailure(error);
         throw error;
     }
 }
@@ -269,17 +315,27 @@ async function refreshJobFromProvider(connection, job, signal) {
     });
 }
 
+async function listVideoJobsForUser(connection, email) {
+    return listActiveJobsForUser(connection, email, { limit: 20 });
+}
+
 async function getCombinedVideoStatus({ probeAuth = false, signal } = {}) {
     let authProbe = null;
-    if (probeAuth) {
+    let account = null;
+    if (isMagicHourConfigured() && (probeAuth || process.env.VIDEO_PROBE_AUTH !== 'false')) {
         const { probeMagicHourAuth } = require('./magicHourClient');
         authProbe = await probeMagicHourAuth({ signal });
+        if (authProbe.ok) {
+            account = await fetchAccountCredits(signal);
+        }
     }
-    const magicHour = getMagicHourVideoStatus(authProbe);
+    const magicHour = getMagicHourVideoStatus(authProbe, account);
     const gemini = getGeminiVideoStatus();
-    const provider = resolveVideoProviderPreference();
+    const provider = resolveVideoProviderPreference('', {
+        magicHourAuthOk: authProbe?.ok === true ? true : (authProbe?.keyConfigured ? false : null),
+    });
     return {
-        configured: provider === 'magichour' ? magicHour.configured : gemini.configured,
+        configured: provider === 'magichour' ? magicHour.ready === true : gemini.configured,
         activeProvider: provider,
         providers: {
             magichour: magicHour,
@@ -303,6 +359,7 @@ module.exports = {
     publicJobPayload,
     completedChatPayload,
     getCombinedVideoStatus,
+    listVideoJobsForUser,
     MagicHourError,
     GeminiVideoError,
 };

@@ -202,6 +202,77 @@ async function getJobForUser(connection, id, email) {
     return rowToJob(row);
 }
 
+async function listActiveJobsForUser(connection, email, { limit = 10 } = {}) {
+    if (isPostgresConnection(connection)) {
+        const result = await pgQuery(
+            connection,
+            `SELECT * FROM video_generation_jobs
+             WHERE lower(email) = lower($1)
+               AND status IN ('preparing', 'queued', 'generating')
+             ORDER BY created_at DESC
+             LIMIT $2`,
+            [email, limit],
+        );
+        return result.rows.map(rowToJob);
+    }
+    const rows = getDb(connection).prepare(`
+        SELECT * FROM video_generation_jobs
+        WHERE lower(email) = lower(?)
+          AND status IN ('preparing', 'queued', 'generating')
+        ORDER BY datetime(created_at) DESC
+        LIMIT ?
+    `).all(email, limit);
+    return rows.map(rowToJob);
+}
+
+async function findRecentDuplicateJob(connection, email, params, { windowMs = 300000 } = {}) {
+    const prompt = typeof params === 'string' ? params : params?.prompt;
+    const aspectRatio = typeof params === 'object' ? (params.aspectRatio || null) : null;
+    const resolution = typeof params === 'object' ? (params.resolution || null) : null;
+    const durationSeconds = typeof params === 'object' ? (params.durationSeconds ?? null) : null;
+    const since = new Date(Date.now() - windowMs).toISOString();
+    if (isPostgresConnection(connection)) {
+        const result = await pgQuery(
+            connection,
+            `SELECT * FROM video_generation_jobs
+             WHERE lower(email) = lower($1)
+               AND prompt = $2
+               AND status IN ('preparing', 'queued', 'generating')
+               AND created_at >= $3
+               AND ($4::text IS NULL OR aspect_ratio = $4)
+               AND ($5::text IS NULL OR resolution = $5)
+               AND ($6::int IS NULL OR duration_seconds = $6)
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [email, prompt, since, aspectRatio, resolution, durationSeconds],
+        );
+        return rowToJob(result.rows[0]);
+    }
+    const row = getDb(connection).prepare(`
+        SELECT * FROM video_generation_jobs
+        WHERE lower(email) = lower(?)
+          AND prompt = ?
+          AND status IN ('preparing', 'queued', 'generating')
+          AND created_at >= ?
+          AND (? IS NULL OR aspect_ratio = ?)
+          AND (? IS NULL OR resolution = ?)
+          AND (? IS NULL OR duration_seconds = ?)
+        ORDER BY created_at DESC
+        LIMIT 1
+    `).get(
+        email,
+        prompt,
+        since,
+        aspectRatio,
+        aspectRatio,
+        resolution,
+        resolution,
+        durationSeconds,
+        durationSeconds,
+    );
+    return rowToJob(row);
+}
+
 async function countActiveJobsForUser(connection, email) {
     if (isPostgresConnection(connection)) {
         const result = await pgQuery(
@@ -252,6 +323,8 @@ module.exports = {
     updateJob,
     getJobById,
     getJobForUser,
+    listActiveJobsForUser,
+    findRecentDuplicateJob,
     countActiveJobsForUser,
     persistVideoBuffer,
     readStoredVideo,

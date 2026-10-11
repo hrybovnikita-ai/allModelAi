@@ -62,7 +62,7 @@ const getCreditStatusCore = (database, email) => {
         ...subscriptionView,
     });
     const role = readUserRoleSync(database, normalizedEmail);
-    return applyOwnerAccess(base, role);
+    return applyOwnerAccess(base, role, { savedMode });
 };
 
 const getSubscriptionSummary = async (req, res) => {

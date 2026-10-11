@@ -141,9 +141,12 @@ export default function ChatSidebar({
   user,
   isSidebarCollapsed,
   sidebarOpen,
+  sidebarDrawerId = 'chat-sidebar-drawer',
   expandSidebar,
   collapseSidebar,
+  closeSidebar,
   setSidebarOpen,
+  isMobileSidebarViewport,
   newChat,
   openSmartRouter,
   chooseSkill,
@@ -253,8 +256,28 @@ export default function ChatSidebar({
     );
   };
 
+  const closeMobileSidebar = () => {
+    if (typeof isMobileSidebarViewport === 'function' && isMobileSidebarViewport()) {
+      closeSidebar?.();
+    } else {
+      setSidebarOpen(false);
+    }
+  };
+
+  const handleSidebarHeaderClose = () => {
+    if (typeof isMobileSidebarViewport === 'function' && isMobileSidebarViewport()) {
+      closeSidebar?.();
+      return;
+    }
+    collapseSidebar();
+  };
+
   return (
-    <aside className={`chat-sidebar ${sidebarOpen ? 'open' : ''} ${isSidebarCollapsed ? 'is-collapsed' : ''}`}>
+    <aside
+      id={sidebarDrawerId}
+      className={`chat-sidebar ${sidebarOpen ? 'open' : ''} ${isSidebarCollapsed ? 'is-collapsed' : ''}`}
+      aria-hidden={typeof isMobileSidebarViewport === 'function' && isMobileSidebarViewport() ? !sidebarOpen : undefined}
+    >
       <div className="sidebar-shell">
         <div className="sidebar-top sidebar-top-compact">
           {isSidebarCollapsed ? (
@@ -263,18 +286,26 @@ export default function ChatSidebar({
             </SidebarIconButton>
           ) : (
             <>
-              <Link to="/dashboard" className="chat-brand chat-brand-compact">
+              <Link to="/dashboard" className="chat-brand chat-brand-compact" onClick={closeMobileSidebar}>
                 <AllModelAILogoMark />
                 <strong>AllModelAI</strong>
               </Link>
-              <SidebarIconButton className="sidebar-collapse-toggle" label={t('Close sidebar')} onClick={collapseSidebar}>
+              <SidebarIconButton className="sidebar-collapse-toggle" label={t('Close sidebar')} onClick={handleSidebarHeaderClose}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <rect x="3" y="4" width="18" height="16" rx="3" />
                   <path d="M9 4v16" />
                   <path d="M14 10l-3 2 3 2" />
                 </svg>
               </SidebarIconButton>
-              <button className="sidebar-close" type="button" onClick={() => setSidebarOpen(false)} aria-label={t('Close sidebar')}>×</button>
+              <button
+                id={`${sidebarDrawerId}-close`}
+                className="sidebar-close"
+                type="button"
+                onClick={closeMobileSidebar}
+                aria-label={t('Close sidebar')}
+              >
+                ×
+              </button>
             </>
           )}
         </div>
@@ -418,13 +449,13 @@ export default function ChatSidebar({
           <div className="sidebar-footer">
             <SidebarSection id="explore" title={t('Explore')} open={exploreOpen} onToggle={toggleExplore}>
               <nav className="sidebar-explore-links" aria-label={t('Chat navigation')}>
-                <Link to="/dashboard" onClick={() => logger.action('Open: Dashboard', { path: '/dashboard' })}>{t('Dashboard')}</Link>
-                <Link to="/ai-training" onClick={() => logger.action('Open: AI Training', { path: '/ai-training' })}>{t('AI Training')}</Link>
-                <Link to="/ai-platform" onClick={() => logger.action('Open: AI Platform', { path: '/ai-platform' })}>{t('AI Platform')}</Link>
-                <Link to="/app-builder" onClick={() => logger.action('Open: App Builder', { path: '/app-builder' })}>App Builder</Link>
-                <Link to="/studio" onClick={() => logger.action('Open: Workspace Studio', { path: '/studio' })}>{t('Workspace Studio')}</Link>
-                <Link to="/control-center" onClick={() => logger.action('Open: Control Center', { path: '/control-center' })}>{t('Control Center')}</Link>
-                <Link to="/models/gpt" onClick={() => logger.action('Open: Model library', { path: '/models/gpt' })}>{t('Model library')}</Link>
+                <Link to="/dashboard" onClick={() => { logger.action('Open: Dashboard', { path: '/dashboard' }); closeMobileSidebar(); }}>{t('Dashboard')}</Link>
+                <Link to="/ai-training" onClick={() => { logger.action('Open: AI Training', { path: '/ai-training' }); closeMobileSidebar(); }}>{t('AI Training')}</Link>
+                <Link to="/ai-platform" onClick={() => { logger.action('Open: AI Platform', { path: '/ai-platform' }); closeMobileSidebar(); }}>{t('AI Platform')}</Link>
+                <Link to="/app-builder" onClick={() => { logger.action('Open: App Builder', { path: '/app-builder' }); closeMobileSidebar(); }}>App Builder</Link>
+                <Link to="/studio" onClick={() => { logger.action('Open: Workspace Studio', { path: '/studio' }); closeMobileSidebar(); }}>{t('Workspace Studio')}</Link>
+                <Link to="/control-center" onClick={() => { logger.action('Open: Control Center', { path: '/control-center' }); closeMobileSidebar(); }}>{t('Control Center')}</Link>
+                <Link to="/models/gpt" onClick={() => { logger.action('Open: Model library', { path: '/models/gpt' }); closeMobileSidebar(); }}>{t('Model library')}</Link>
               </nav>
             </SidebarSection>
 

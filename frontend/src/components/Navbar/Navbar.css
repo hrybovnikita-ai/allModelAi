@@ -427,18 +427,49 @@
   }
 }
 
-@media (max-width: 900px) {
+.nav-menu-backdrop {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .nav-menu-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: rgba(4, 6, 14, 0.55);
+    cursor: pointer;
+  }
+
   .navbar {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
     padding-inline: max(18px, var(--safe-left)) max(18px, var(--safe-right));
+    z-index: 101;
+  }
+
+  .nav-brand {
+    grid-column: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .nav-auth {
     grid-column: 2;
+    justify-self: end;
+  }
+
+  .nav-links {
+    grid-column: 1 / -1;
   }
 
   .menu-toggle {
-    display: block;
+    display: grid;
+    place-items: center;
   }
 
   .nav-links {
@@ -449,7 +480,7 @@
     display: none;
     flex-direction: column;
     align-items: stretch;
-    gap: 0;
+    gap: 4px;
     padding: 10px;
     padding-bottom: max(14px, calc(10px + var(--safe-bottom, env(safe-area-inset-bottom, 0px))));
     max-height: min(72dvh, calc(100dvh - 88px - var(--safe-top, env(safe-area-inset-top, 0px))));
@@ -471,10 +502,19 @@
   .nav-links-account--mobile {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    margin-bottom: 8px;
-    padding-bottom: 8px;
+    gap: 6px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
     border-bottom: 1px solid rgba(124, 92, 255, 0.2);
+  }
+
+  .nav-links-account-item {
+    display: flex;
+    align-items: center;
+    min-height: var(--touch-target, 44px);
+    padding: 12px 14px;
+    border-radius: 11px;
+    gap: 8px;
   }
 
   .nav-user-menu {
@@ -538,12 +578,26 @@
 }
 
 @media (min-width: 768px) and (max-width: 1023px) {
-  .nav-links {
-    gap: 14px;
+  .nav-user {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 6px;
+    max-width: min(100%, 420px);
   }
 
-  .nav-links a {
-    font-size: 0.88rem;
+  .nav-auth-shell {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+}
+
+@media (min-width: 1024px) {
+  .nav-menu-backdrop {
+    display: none !important;
+  }
+
+  .menu-toggle {
+    display: none;
   }
 }
 

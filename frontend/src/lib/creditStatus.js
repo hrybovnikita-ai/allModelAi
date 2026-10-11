@@ -4,10 +4,15 @@
 export function normalizeCreditStatus(data) {
   if (!data || typeof data !== 'object') return null;
   if (data.isOwner) {
+    const userPreview = data.mode === 'user' || data.ownerPreview === true;
+    const plusActive = userPreview
+      ? false
+      : (data.plusActive === true || data.mode === 'developer' || data.plusActive !== false);
     return {
       ...data,
-      remaining: null,
-      ownerUnlimited: true,
+      remaining: plusActive ? null : data.remaining,
+      ownerUnlimited: plusActive,
+      plusActive,
       subscriptionStatus: data.subscriptionStatus || 'owner',
     };
   }

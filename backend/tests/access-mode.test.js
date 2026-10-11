@@ -5,6 +5,7 @@ const os = require('node:os');
 const request = require('supertest');
 process.env.NODE_ENV = 'test';
 process.env.DB_FILE = path.join(os.tmpdir(), `allmodelai-access-${process.pid}.sqlite`);
+process.env.ENABLE_PLUS_TEST_MODE = 'true';
 process.env.DEVELOPER_EMAILS = 'developer@access.test';
 process.env.API_KEY = 'test-gateway';
 const app = require('../app');

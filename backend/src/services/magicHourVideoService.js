@@ -102,11 +102,43 @@ async function getVideoProject(projectId, signal) {
     return magicHourRequest(`/v1/video-projects/${encodeURIComponent(projectId)}`, { signal });
 }
 
+async function assertMagicHourAuthReady({ signal } = {}) {
+    const { probeMagicHourAuth } = require('./magicHourClient');
+    const { isMagicHourConfigured } = require('./magicHourConfig');
+    if (!isMagicHourConfigured()) {
+        throw new MagicHourError('Magic Hour is not configured. Set MAGIC_HOUR_API_KEY in backend/.env and restart the backend.', {
+            status: 503,
+            code: 'MAGIC_HOUR_NOT_CONFIGURED',
+            retryable: false,
+        });
+    }
+    const probe = await probeMagicHourAuth({ signal });
+    if (probe.ok) return probe;
+    if (probe.keyConfigured) {
+        throw new MagicHourError(
+            'Magic Hour rejected the API key (HTTP 401). Regenerate the key at https://magichour.ai/developer, update MAGIC_HOUR_API_KEY in backend/.env, and restart the backend.',
+            {
+                status: 401,
+                code: 'MAGIC_HOUR_UNAUTHORIZED',
+                retryable: false,
+                providerRejected: true,
+                keyConfigured: true,
+                providerHttpStatus: probe.httpStatus || 401,
+            },
+        );
+    }
+    throw new MagicHourError('Magic Hour is not configured. Set MAGIC_HOUR_API_KEY in backend/.env and restart the backend.', {
+        status: 503,
+        code: 'MAGIC_HOUR_NOT_CONFIGURED',
+        retryable: false,
+    });
+}
+
 async function fetchAccountCredits(signal) {
     try {
         const data = await magicHourRequest('/v1/account', { signal, timeoutMs: 15000 });
         return {
-            creditsRemaining: data?.credits_remaining ?? data?.creditsRemaining ?? null,
+            creditsRemaining: data?.credits ?? data?.credits_remaining ?? data?.creditsRemaining ?? null,
             subscription: data?.subscription ?? null,
         };
     } catch {
@@ -184,17 +216,23 @@ async function downloadVideoToBuffer(url, signal) {
     return Buffer.from(await response.arrayBuffer());
 }
 
-function getMagicHourVideoStatus(authProbe = null) {
+function getMagicHourVideoStatus(authProbe = null, account = null) {
     const { isMagicHourConfigured, getMagicHourKeyDiagnostics } = require('./magicHourConfig');
+    const { listMagicHourModelsPublic } = require('./magicHourCapabilities');
     const diagnostics = getMagicHourKeyDiagnostics();
+    const authOk = authProbe?.ok === true;
     return {
-        configured: isMagicHourConfigured(),
+        configured: isMagicHourConfigured() && (authProbe == null || authOk),
+        ready: authOk,
         ...diagnostics,
         provider: PROVIDER_ID,
         model: getMagicHourVideoModel(),
+        models: listMagicHourModelsPublic(),
         defaultDurationSeconds: getMagicHourDefaultDurationSeconds(),
         supportsTextToVideo: true,
         supportsImageToVideo: true,
+        creditsRemaining: account?.creditsRemaining ?? authProbe?.creditsRemaining ?? null,
+        activeKeySource: authProbe?.activeKeySource ?? null,
         ...(authProbe ? { authProbe } : {}),
     };
 }
@@ -211,4 +249,5 @@ module.exports = {
     fetchAccountCredits,
     downloadVideoToBuffer,
     getMagicHourVideoStatus,
+    assertMagicHourAuthReady,
 };

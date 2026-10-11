@@ -47,3 +47,40 @@ test('device profile exposes visual viewport keyboard handling', async () => {
   assert.match(source, /viewportTier/);
   assert.match(source, /keyboardOpen/);
 });
+
+test('navbar uses tablet breakpoint for mobile drawer and keeps desktop center nav', async () => {
+  const navbarCss = await readFile(
+    new URL('../src/components/Navbar/Navbar.css', import.meta.url),
+    'utf8',
+  );
+  const navbarJsx = await readFile(
+    new URL('../src/components/Navbar/Navbar.jsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(navbarCss, /max-width:\s*1023px/);
+  assert.match(navbarCss, /nav-links-account--mobile/);
+  assert.match(navbarCss, /min-width:\s*1024px/);
+  assert.match(navbarJsx, /nav-links-account nav-links-account--mobile/);
+  assert.match(navbarJsx, /aria-controls=\{navMenuId\}/);
+  assert.match(navbarJsx, /nav-menu-backdrop/);
+});
+
+test('model cards define phone, tablet, and desktop grid tiers', async () => {
+  const models = await readFile(
+    new URL('../src/components/ModelsSection/ModelsSection.css', import.meta.url),
+    'utf8',
+  );
+  assert.match(models, /repeat\(4,/);
+  assert.match(models, /repeat\(3,/);
+  assert.match(models, /repeat\(2,/);
+  assert.match(models, /grid-template-columns:\s*1fr/);
+});
+
+test('header keeps Smart Router visual on tablet and hides on phone', async () => {
+  const header = await readFile(
+    new URL('../src/components/Header/Header.css', import.meta.url),
+    'utf8',
+  );
+  assert.match(header, /768px\) and \(max-width: 1023px\)/);
+  assert.match(header, /max-width: 767px[\s\S]*hero-visual[\s\S]*display:\s*none/);
+});

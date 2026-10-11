@@ -14,6 +14,7 @@ import {
 } from '../../lib/responseLanguagePrefs';
 import { createStorageIdea, fetchStorageIdea } from '../../lib/storageIdeas';
 import UserMemorySettings from './UserMemorySettings';
+import DeveloperModeSettings from './DeveloperModeSettings';
 import './Settings.css';
 
 export default function Settings() {
@@ -112,6 +113,7 @@ export default function Settings() {
       <Link to="#settings-profile">{t('account')}</Link>
       <Link to="#settings-security">{t('security')}</Link>
       <Link to="#ai-memory">AI memory</Link>
+      <Link to="#settings-developer-mode">{t('Developer Mode')}</Link>
     </nav>
     <form id="settings-profile" className="settings-card settings-card-profile" onSubmit={saveProfile}><div className="settings-avatar">{profile.avatar ? <img src={profile.avatar} alt="Profile avatar" /> : (profile.name || user.email).slice(0, 2).toUpperCase()}</div><div className="settings-fields">
       <label>{t('fullName')}<input value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} /></label>
@@ -123,6 +125,7 @@ export default function Settings() {
       <button className="settings-save" type="submit">{t('save')}</button>
     </div></form>
     <AccountSecurity />
+    <DeveloperModeSettings />
     <UserMemorySettings />
     <SocialConnections />
     {notice && <p className="settings-notice" role="status">{t(notice)}</p>}<button className="settings-logout" type="button" onClick={logout}>{t('logout')}</button>

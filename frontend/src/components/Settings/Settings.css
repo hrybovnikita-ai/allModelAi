@@ -35,3 +35,24 @@
 .memory-list-actions { display: flex; gap: 8px; margin-top: 8px; }
 .memory-list-actions button { padding: 6px 10px; border-radius: 8px; border: 1px solid #475569; background: transparent; color: #e2e8f0; cursor: pointer; font: inherit; font-size: .75rem; }
 .settings-danger { margin-top: 12px; padding: 10px 14px; border: 1px solid #7f1d1d; border-radius: 8px; background: #35151b; color: #fca5a5; cursor: pointer; font: inherit; }
+
+.developer-mode-panel { scroll-margin-top: 88px; }
+.developer-mode-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 4px; }
+.developer-mode-heading > span:first-child { color: #a5b4fc; font-size: .7rem; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; }
+.developer-mode-owner-badge { display: inline-flex; align-items: center; min-height: 26px; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(167, 139, 250, 0.45); background: rgba(99, 102, 241, 0.15); color: #e9d5ff; font-size: .68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.developer-mode-segment { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; max-width: 360px; margin-top: 18px; padding: 5px; border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.35); background: rgba(15, 23, 42, 0.85); transition: opacity 0.2s ease; }
+.developer-mode-segment--busy { opacity: 0.72; }
+.developer-mode-segment__btn { min-height: 44px; padding: 10px 14px; border: 0; border-radius: 10px; background: transparent; color: #cbd5e1; font: inherit; font-size: 0.88rem; font-weight: 700; cursor: pointer; transition: background 0.22s ease, color 0.22s ease, box-shadow 0.22s ease, transform 0.15s ease; }
+.developer-mode-segment__btn[aria-pressed='true'] { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; box-shadow: 0 8px 22px rgba(99, 102, 241, 0.35); }
+.developer-mode-segment__btn--plus[aria-pressed='true'] .developer-mode-crown { filter: drop-shadow(0 0 6px rgba(250, 204, 21, 0.55)); }
+.developer-mode-segment__btn:focus-visible { outline: 2px solid #a5b4fc; outline-offset: 2px; }
+.developer-mode-segment__btn:disabled { cursor: wait; }
+.developer-mode-crown { margin-right: 4px; color: #fde68a; font-size: 0.82rem; }
+.developer-mode-status { margin: 12px 0 0; color: #94a3b8; font-size: 0.82rem; line-height: 1.45; }
+@media (max-width: 480px) {
+  .developer-mode-segment { max-width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .developer-mode-segment,
+  .developer-mode-segment__btn { transition: none; }
+}

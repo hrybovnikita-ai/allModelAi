@@ -84,7 +84,7 @@ html[data-theme="light"] .sidebar-text-colors button{border-color:#d4d8e0;backgr
 /* Responsive device system: phones, tablets, laptops and large desktops. */
 @media (max-width:900px){
   .chat-page{grid-template-columns:minmax(0,1fr);width:100%;height:100dvh;min-height:100dvh}
-  .chat-sidebar{position:fixed;inset:0 auto 0 0;z-index:100;width:min(320px,88vw);height:100dvh;box-sizing:border-box;transform:translateX(-105%);transition:transform .24s ease;box-shadow:24px 0 70px #000a}
+  .chat-sidebar{position:fixed;inset:0 auto 0 0;z-index:100;width:min(320px,85vw);height:100dvh;box-sizing:border-box;transform:translateX(-105%);transition:transform .24s ease;box-shadow:24px 0 70px #000a}
   .chat-sidebar.open{transform:translateX(0)}
   .sidebar-close,.sidebar-toggle{display:block}
   .sidebar-backdrop.visible{position:fixed;inset:0;z-index:90;display:block;border:0;background:#0009;backdrop-filter:blur(3px)}
@@ -92,7 +92,7 @@ html[data-theme="light"] .sidebar-text-colors button{border-color:#d4d8e0;backgr
 }
 @media (min-width:901px) and (max-width:1280px){.chat-page{grid-template-columns:240px minmax(0,1fr)}.chat-sidebar{padding-inline:10px}.chat-messages,.chat-composer{width:min(calc(100% - 36px),760px)}}
 @media (max-width:600px){
-  .chat-workspace{grid-template-rows:60px minmax(0,1fr) auto}.chat-header{gap:8px;padding:6px 10px}.sidebar-toggle{flex:0 0 34px;width:34px;height:34px;padding:0}
+  .chat-workspace{grid-template-rows:auto minmax(0,1fr) auto}.chat-header{gap:8px;padding:6px 10px}.sidebar-toggle{flex:0 0 34px;width:34px;height:34px;padding:0}
   .active-model{gap:7px;min-width:0}.active-model img{width:30px;height:30px}.active-model span{min-width:0}.active-model strong{overflow:hidden;max-width:78px;text-overflow:ellipsis;white-space:nowrap}.active-model small,.active-model i{display:none}
   .custom-model-select{min-width:0;width:min(145px,42vw)}.model-select>span{display:none}.model-select-trigger{min-width:0;padding-inline:8px}.model-select-trigger>span{font-size:.59rem}.model-options{position:fixed;top:66px;right:8px;width:min(280px,calc(100vw - 16px));max-height:60dvh}
   .chat-messages,.chat-composer{justify-self:stretch;width:100%;max-width:100%;margin:0;box-sizing:border-box}.chat-messages{padding:18px 10px 14px;overflow-x:hidden}

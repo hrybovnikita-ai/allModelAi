@@ -1,6 +1,6 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '../../lib/useLanguage';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import Login from '../Login/Login';
 import NavAuthSection from './NavAuthSection';
 import { useSession } from '../Session/SessionProvider';
@@ -10,6 +10,8 @@ import './Navbar.css';
 
 export default function Navbar() {
   const { t } = useLanguage();
+  const location = useLocation();
+  const navMenuId = useId();
   const { status, user } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const [authMode, setAuthMode] = useState(null);
@@ -42,13 +44,28 @@ export default function Navbar() {
     };
   }, [menuOpen]);
 
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
   const closeMenu = () => setMenuOpen(false);
 
   return (
     <>
-      <nav className="navbar" aria-label="Main navigation">
+      {menuOpen ? (
+        <button
+          type="button"
+          className="nav-menu-backdrop"
+          aria-label={t('Close menu')}
+          onClick={closeMenu}
+        />
+      ) : null}
+      <nav className={`navbar${menuOpen ? ' navbar--menu-open' : ''}`} aria-label="Main navigation">
         <a href="#home" className="nav-brand" onClick={closeMenu}>AllModelAI</a>
-        <div className={`nav-links ${menuOpen ? 'is-open' : ''}`}>
+        <div
+          id={navMenuId}
+          className={`nav-links ${menuOpen ? 'is-open' : ''}`}
+        >
           {isAuthenticated ? (
             <div
               className="nav-links-account nav-links-account--mobile"
@@ -75,8 +92,15 @@ export default function Navbar() {
         </div>
         <div className="nav-auth">
           <NavAuthSection onOpenAuth={setAuthMode} />
-          <button className="menu-toggle" onClick={() => setMenuOpen((open) => !open)} aria-expanded={menuOpen} aria-label="Toggle navigation menu">
-            <span></span><span></span><span></span>
+          <button
+            type="button"
+            className="menu-toggle"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-expanded={menuOpen}
+            aria-controls={navMenuId}
+            aria-label={menuOpen ? t('Close navigation menu') : t('Open navigation menu')}
+          >
+            <span aria-hidden="true" /><span aria-hidden="true" /><span aria-hidden="true" />
           </button>
         </div>
       </nav>

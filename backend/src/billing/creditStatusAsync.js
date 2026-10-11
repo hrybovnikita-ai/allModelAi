@@ -163,7 +163,7 @@ async function buildCreditStatusPostgres(connection, email) {
         ...subscriptionView,
     });
     const role = await readUserRoleAsync(connection, normalizedEmail);
-    return applyOwnerAccess(base, role);
+    return applyOwnerAccess(base, role, { savedMode });
 }
 
 async function getCreditStatusCoreAsync(connection, email) {

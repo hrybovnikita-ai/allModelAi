@@ -358,25 +358,46 @@
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1023px) {
   .header {
     min-height: auto;
   }
 
   .header-content {
     grid-template-columns: 1fr;
+    gap: clamp(28px, 4vw, 48px);
   }
 
   .hero-copy {
-    max-width: 720px;
+    max-width: min(720px, 100%);
     margin-inline: auto;
   }
 
-  .hero-visual {
+  .headline-break {
     display: none;
   }
+}
 
-  .headline-break {
+@media (min-width: 768px) and (max-width: 1023px) {
+  .hero-visual {
+    height: clamp(300px, 42vw, 400px);
+    max-width: min(520px, 100%);
+    margin-inline: auto;
+  }
+
+  .hero-visual > button {
+    transform: scale(0.92);
+    transform-origin: center;
+  }
+
+  .demo-answer {
+    width: min(88%, 380px);
+    right: 4%;
+  }
+}
+
+@media (max-width: 767px) {
+  .hero-visual {
     display: none;
   }
 }

@@ -24,10 +24,17 @@ import {
 } from '../../lib/imageGeneration';
 import {
   buildVideoRequestBody,
+  clampVideoSettings,
+  fetchActiveVideoJobs,
   fetchVideoGenerationStatus,
   formatVideoJobStatus,
   pollVideoJob,
+  readPendingVideoJobId,
+  rememberPendingVideoJobId,
   requestVideoGeneration,
+  resolveVideoUiOptions,
+  VIDEO_DEFAULTS,
+  videoNetworkErrorMessage,
 } from '../../lib/videoGeneration';
 import { logger, timingElapsed, timingNow } from '../../lib/logger';
 import { submitResponseFeedback } from '../../lib/aiImprovement';
@@ -49,6 +56,7 @@ import './ChatSidebarCollapse.css';
 import './ChatPremium.css';
 import './ComposerInput.css';
 import './ComposerModern.css';
+import './ChatMobileLayout.css';
 import {
   IconArrowRight,
   IconCamera,
@@ -71,6 +79,7 @@ import AccountDeleteModal from '../AccountDeleteModal';
 import { isStandaloneApp } from '../../lib/appMode';
 import { readResponsePrefs } from '../../lib/responseLanguagePrefs.js';
 import { formatPaymentError } from '../../lib/formatPaymentError';
+import { normalizeCreditStatus } from '../../lib/creditStatus';
 import { runTestWayforpayCheckout, submitWayforpayCheckout } from '../../lib/wayforpay';
 import './SubscribeModalPremium.css';
 import { copyToClipboard } from '../../lib/clipboard';
@@ -365,6 +374,22 @@ export default function Chat() {
   const [creditStatus, setCreditStatus] = useState(null);
   const [accessModeSaving, setAccessModeSaving] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarToggleRef = useRef(null);
+  const CHAT_SIDEBAR_DRAWER_ID = 'chat-sidebar-drawer';
+
+  const isMobileSidebarViewport = useCallback(
+    () => globalThis.matchMedia?.('(max-width: 900px)').matches ?? false,
+    [],
+  );
+
+  const closeSidebar = useCallback(() => {
+    setSidebarOpen(false);
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    if (!isMobileSidebarViewport()) return;
+    setSidebarOpen((previous) => !previous);
+  }, [isMobileSidebarViewport]);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     () => safeStorageGet('localStorage', 'allmodelai_sidebar_collapsed') === 'true'
   );
@@ -559,15 +584,17 @@ export default function Chat() {
   const [speechLanguage, setSpeechLanguage] = useState(() => safeStorageGet('localStorage', 'allmodelai_voice_language') || globalThis.navigator?.language || 'en-US');
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoice, setSelectedVoice] = useState(() => safeStorageGet('localStorage', 'allmodelai_voice_name') || '');
-  const [videoAspectRatio, setVideoAspectRatio] = useState('16:9');
-  const [videoResolution, setVideoResolution] = useState('720p');
-  const [videoDurationSeconds, setVideoDurationSeconds] = useState(5);
+  const [videoAspectRatio, setVideoAspectRatio] = useState(VIDEO_DEFAULTS.aspectRatio);
+  const [videoResolution, setVideoResolution] = useState(VIDEO_DEFAULTS.resolution);
+  const [videoDurationSeconds, setVideoDurationSeconds] = useState(VIDEO_DEFAULTS.durationSeconds);
   const [videoUseLastImage, setVideoUseLastImage] = useState(false);
   const [videoMode, setVideoMode] = useState('text-to-video');
   const [videoDraftPrompt, setVideoDraftPrompt] = useState('');
   const [videoReferenceImage, setVideoReferenceImage] = useState('');
   const [videoProvider, setVideoProvider] = useState('');
   const [videoProviderStatus, setVideoProviderStatus] = useState(null);
+  const [activeVideoJobs, setActiveVideoJobs] = useState([]);
+  const videoSubmitLockRef = useRef(false);
   const [imageGenerationCount, setImageGenerationCount] = useState(1);
   const [imageGenerationQuality, setImageGenerationQuality] = useState('hd');
   const [imageGenerationAspect, setImageGenerationAspect] = useState('1:1');
@@ -603,12 +630,83 @@ export default function Chat() {
 
   useEffect(() => {
     if (selectedSkill !== 'video') return undefined;
-    let active = true;
-    void fetchVideoGenerationStatus().then((status) => {
-      if (active) setVideoProviderStatus(status);
+    let alive = true;
+    void Promise.all([
+      fetchVideoGenerationStatus(),
+      fetchActiveVideoJobs(),
+    ]).then(([status, jobs]) => {
+      if (!alive) return;
+      setVideoProviderStatus(status);
+      setActiveVideoJobs(jobs);
+      const ui = resolveVideoUiOptions(status);
+      const clamped = clampVideoSettings({
+        resolution: videoResolution,
+        durationSeconds: videoDurationSeconds,
+      }, ui);
+      setVideoResolution(clamped.resolution);
+      setVideoDurationSeconds(clamped.durationSeconds);
     });
-    return () => { active = false; };
+    return () => { alive = false; };
   }, [selectedSkill]);
+
+  const resumeVideoJob = useCallback(async (jobId, { assistantIndex: resumeAssistantIndex } = {}) => {
+    if (!jobId || isSending) return;
+    setIsSending(true);
+    setChatError('');
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const index = Number.isInteger(resumeAssistantIndex)
+      ? resumeAssistantIndex
+      : messages.length;
+    try {
+      const finalVideo = await pollVideoJob(jobId, {
+        signal: controller.signal,
+        onUpdate: (job) => {
+          setMessages((current) => {
+            if (!current.length) return current;
+            const copy = [...current];
+            const target = copy[index];
+            if (!target) return current;
+            copy[index] = {
+              ...target,
+              role: 'assistant',
+              generatingVideo: true,
+              text: `${formatVideoJobStatus(job.status)}…`,
+              videoJobStatus: job.status,
+              videoJobId: job.jobId || jobId,
+            };
+            return copy;
+          });
+        },
+      });
+      const answer = {
+        role: 'assistant',
+        text: 'Done! Here is your video.',
+        videoUrl: finalVideo.videoUrl,
+        videoModel: finalVideo.model,
+        videoAspect: finalVideo.aspectRatio,
+        videoResolution: finalVideo.resolution,
+        videoMimeType: finalVideo.mimeType,
+        videoJobId: finalVideo.jobId || jobId,
+        generatingVideo: false,
+      };
+      setMessages((current) => {
+        const copy = [...current];
+        if (copy[index]) copy[index] = answer;
+        else copy.push(answer);
+        return copy;
+      });
+      setActiveVideoJobs((current) => current.filter((job) => job.jobId !== jobId && job.id !== jobId));
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        setChatError(error.message || videoNetworkErrorMessage(error));
+      }
+    } finally {
+      if (activeRequest.current === controller) activeRequest.current = null;
+      setIsSending(false);
+      videoSubmitLockRef.current = false;
+    }
+  }, [isSending, messages.length]);
 
   useEffect(() => {
     if (selectedSkill !== 'image') return undefined;
@@ -742,7 +840,6 @@ export default function Chat() {
   };
 
   const modelAllowed = (slug) => slug === 'smart'
-    || creditStatus?.isOwner
     || Boolean(creditStatus?.models?.includes('all') || creditStatus?.models?.includes(slug));
 
   const changeAccessMode = async (mode) => {
@@ -757,7 +854,8 @@ export default function Chat() {
       });
       const access = await response.json();
       if (!response.ok) throw new Error(access.message || 'Could not change the access mode.');
-      setCreditStatus(access);
+      setCreditStatus(normalizeCreditStatus(access) || access);
+      globalThis.dispatchEvent(new CustomEvent('allmodelai:access-mode-updated', { detail: access }));
       if (!access.models.includes('all') && !access.models.includes(selectedSlug) && selectedSlug !== 'smart') {
         setSelectedSlug('gemini');
         safeStorageSet('localStorage', 'allmodelai_selected_model', 'gemini');
@@ -1223,11 +1321,22 @@ export default function Chat() {
       .then((response) => response.ok ? response.json() : null)
       .then((status) => {
         if (!status) return;
-        setCreditStatus(status);
-        setSelectedSlug((current) => status.models.includes('all') || status.models.includes(current) || current === 'smart' ? current : 'gemini');
+        const normalized = normalizeCreditStatus(status) || status;
+        setCreditStatus(normalized);
+        setSelectedSlug((current) => normalized.models.includes('all') || normalized.models.includes(current) || current === 'smart' ? current : 'gemini');
       })
       .catch(() => setCreditStatus(null));
   }, [user?.email, isGuest]);
+
+  useEffect(() => {
+    const onAccessModeUpdated = (event) => {
+      const next = normalizeCreditStatus(event.detail) || event.detail;
+      if (!next) return;
+      setCreditStatus(next);
+    };
+    globalThis.addEventListener('allmodelai:access-mode-updated', onAccessModeUpdated);
+    return () => globalThis.removeEventListener('allmodelai:access-mode-updated', onAccessModeUpdated);
+  }, []);
 
   useEffect(() => {
     const subscribeSuccess = searchParams.get('subscribe');
@@ -1258,6 +1367,52 @@ export default function Chat() {
       document.body.style.overflow = previousOverflow;
     };
   }, [subscribeModalOpen]);
+
+  useEffect(() => {
+    if (!sidebarOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [sidebarOpen]);
+
+  useEffect(() => {
+    const root = document.querySelector('.chat-page');
+    if (!root || !isMobileSidebarViewport()) return undefined;
+
+    const syncHeaderOffset = () => {
+      const header = root.querySelector('.chat-header');
+      const height = header?.getBoundingClientRect().height ?? 0;
+      root.style.setProperty('--chat-mobile-header-offset', `${Math.ceil(height)}px`);
+    };
+
+    syncHeaderOffset();
+    root.classList.toggle('sidebar-drawer-open', sidebarOpen);
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(syncHeaderOffset)
+      : null;
+    const header = root.querySelector('.chat-header');
+    observer?.observe(header ?? root);
+    globalThis.addEventListener('resize', syncHeaderOffset);
+    return () => {
+      root.classList.remove('sidebar-drawer-open');
+      observer?.disconnect();
+      globalThis.removeEventListener('resize', syncHeaderOffset);
+    };
+  }, [sidebarOpen, isMobileSidebarViewport]);
+
+  useEffect(() => {
+    if (!sidebarOpen || !isMobileSidebarViewport()) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeSidebar();
+      sidebarToggleRef.current?.focus();
+    };
+    globalThis.addEventListener('keydown', onKeyDown);
+    return () => globalThis.removeEventListener('keydown', onKeyDown);
+  }, [sidebarOpen, closeSidebar, isMobileSidebarViewport]);
 
   useEffect(() => {
     if (!subscribeModalOpen || isGuest) return undefined;
@@ -1800,6 +1955,11 @@ export default function Chat() {
         return;
       }
       if (generatingVideo) {
+        if (videoSubmitLockRef.current) {
+          setChatError('A video job is already starting. Use “Resume video job” if the connection dropped.');
+          return;
+        }
+        videoSubmitLockRef.current = true;
         logger.action('Generate video', { promptLength: text.length });
         const stillOpen = () => activeConversationIdRef.current === startedConversationId;
         const imageToVideo = options.videoMode === 'image-to-video' || videoMode === 'image-to-video';
@@ -1821,6 +1981,7 @@ export default function Chat() {
           }),
           controller.signal,
         );
+        if (videoData.jobId) rememberPendingVideoJobId(videoData.jobId);
         let finalVideo = videoData;
         if (finalVideo.jobId && finalVideo.status !== 'completed') {
           finalVideo = await pollVideoJob(finalVideo.jobId, {
@@ -1876,6 +2037,7 @@ export default function Chat() {
           }
         }
         logger.success('Assistant response completed', { mode: 'video', durationMs: timingElapsed(requestStartedAt) });
+        videoSubmitLockRef.current = false;
         setSelectedSkill(null);
         return;
       }
@@ -2136,6 +2298,43 @@ export default function Chat() {
               }
               : message
           )));
+        } else if (generatingVideo) {
+          videoSubmitLockRef.current = false;
+          const networkMessage = requestError.code === 'VIDEO_NETWORK_ERROR'
+            ? requestError.message
+            : videoNetworkErrorMessage(requestError);
+          logger.apiError('Video generation failed', { message: networkMessage, code: requestError.code });
+          const pendingId = readPendingVideoJobId();
+          void fetchActiveVideoJobs().then((jobs) => {
+            setActiveVideoJobs(jobs);
+            const recoverId = jobs[0]?.jobId || pendingId;
+            const hint = recoverId
+              ? `${networkMessage} Open Make video and tap “Resume video job” (${recoverId.slice(0, 12)}…).`
+              : networkMessage;
+            setChatError(hint);
+            setMessages((current) => current.map((message, index) => (
+              index === assistantIndex
+                ? {
+                  ...message,
+                  text: hint,
+                  generatingVideo: Boolean(recoverId),
+                  videoJobId: recoverId || undefined,
+                }
+                : message
+            )));
+          });
+          if (!pendingId) {
+            setMessages((current) => current.map((message, index) => (
+              index === assistantIndex
+                ? {
+                  ...message,
+                  text: networkMessage,
+                  generatingVideo: false,
+                }
+                : message
+            )));
+          }
+          setSelectedSkill('video');
         } else {
           setChatError(fallbackMessage);
           if (hadImageAttachment && attachmentSnapshot?.url) {
@@ -2221,6 +2420,7 @@ export default function Chat() {
     if (skill === 'deep-research') logger.search('Deep Research enabled');
     setSelectedSkill(skill);
     setComposerMenuOpen(false);
+    if (isMobileSidebarViewport()) closeSidebar();
     document.querySelector('.chat-composer textarea')?.focus();
   };
 
@@ -2241,6 +2441,7 @@ export default function Chat() {
   const goTo = (path, label) => {
     logger.action(`Open: ${label}`, { path });
     navigate(path);
+    if (isMobileSidebarViewport()) closeSidebar();
   };
 
   const openSmartRouter = () => {
@@ -2483,15 +2684,25 @@ export default function Chat() {
       className={`chat-page ${standaloneApp ? 'chat-page--standalone' : ''} ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${sidebarResizing ? 'sidebar-width-resizing' : ''} ${isSending ? 'chat-busy' : ''}`}
       style={!isSidebarCollapsed ? { '--chat-sidebar-width': `${sidebarWidth}px` } : undefined}
     >
-      <button className={`sidebar-backdrop ${sidebarOpen ? 'visible' : ''}`} aria-label={t("Close sidebar")} onClick={() => setSidebarOpen(false)} />
+      <button
+        type="button"
+        className={`sidebar-backdrop ${sidebarOpen ? 'visible' : ''}`}
+        aria-label={t('Close sidebar')}
+        aria-hidden={sidebarOpen ? 'false' : 'true'}
+        tabIndex={sidebarOpen ? 0 : -1}
+        onClick={closeSidebar}
+      />
       <ChatSidebar
         t={t}
         user={user}
         isSidebarCollapsed={isSidebarCollapsed}
         sidebarOpen={sidebarOpen}
+        sidebarDrawerId={CHAT_SIDEBAR_DRAWER_ID}
         expandSidebar={expandSidebar}
         collapseSidebar={collapseSidebar}
+        closeSidebar={closeSidebar}
         setSidebarOpen={setSidebarOpen}
+        isMobileSidebarViewport={isMobileSidebarViewport}
         newChat={newChat}
         openSmartRouter={openSmartRouter}
         chooseSkill={chooseSkill}
@@ -2605,71 +2816,20 @@ export default function Chat() {
           </div>
         )}
         <header className="chat-header">
-          <button className="sidebar-toggle" onClick={() => setSidebarOpen(true)} aria-label={t("Open sidebar")}>☰</button>
-          <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? t("Temporary chat") : activeProject ? activeProject.name : t("Chatting with")}</small><strong>{selectedModel.name}{selectedVersion ? ` · ${selectedVersion.name}` : ''}</strong></span><i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? t("Online") : t("API needed")}</i></div>
-          {!isGuest && creditStatus && (
-            <div className="access-mode-control">
-              {creditStatus.plusTestMode && (
-                <span className="plus-test-mode-badge" role="status" title={t('Local developer Plus Test Mode')}>
-                  Plus Test Mode
-                </span>
-              )}
-              <div className="access-mode-switch" role="group" aria-label="Access mode">
-                <button
-                  type="button"
-                  aria-pressed={(creditStatus.mode || 'user') === 'user'}
-                  disabled={isSending || accessModeSaving}
-                  onClick={() => creditStatus.canUseDeveloper && changeAccessMode('user')}
-                >
-                  {t('User')}
-                </button>
-                {creditStatus.canUseDeveloper ? (
-                  <button
-                    type="button"
-                    aria-pressed={creditStatus.mode === 'developer'}
-                    disabled={isSending || accessModeSaving}
-                    onClick={() => changeAccessMode('developer')}
-                    title={creditStatus.plusTestMode ? t('Plus Test Mode — all models') : t('All models')}
-                  >
-                    {creditStatus.plusTestEligible && !creditStatus.hasSubscription ? t('Plus Test') : t('Developer')}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="access-mode-plus"
-                    aria-pressed={false}
-                    disabled={isSending}
-                    onClick={openPlusSubscription}
-                    title={t('Upgrade subscription')}
-                  >
-                    Plus
-                  </button>
-                )}
-              </div>
-              <small>
-                {accessModeSaving
-                  ? t('Saving…')
-                  : creditStatus.isOwner
-                    ? t('Owner · Unlimited')
-                    : creditStatus.plusTestMode
-                      ? t('Plus Test Mode · all models')
-                      : creditStatus.mode === 'developer' && creditStatus.hasSubscription
-                        ? t('All models')
-                        : t('5 free models')}
-                {creditStatus.canAccessModelDiagnostics && (
-                  <>
-                    {' · '}
-                    <Link to="/developer/model-diagnostics" className="access-subscribe-inline">{t('Model diagnostics')}</Link>
-                  </>
-                )}
-                {!creditStatus.canUseDeveloper && !creditStatus.hasSubscription && (
-                  <button type="button" className="access-subscribe-inline" onClick={openPlusSubscription}>
-                    {t('Subscription')} ↗
-                  </button>
-                )}
-              </small>
-            </div>
-          )}
+          <div className="chat-header-primary">
+            <button
+              ref={sidebarToggleRef}
+              type="button"
+              className={`sidebar-toggle${sidebarOpen ? ' sidebar-toggle--open' : ''}`}
+              onClick={toggleSidebar}
+              aria-label={sidebarOpen ? t('Close sidebar') : t('Open sidebar')}
+              aria-expanded={sidebarOpen}
+              aria-controls={CHAT_SIDEBAR_DRAWER_ID}
+            >
+              <span className="sidebar-toggle-icon" aria-hidden="true">{sidebarOpen ? '×' : '☰'}</span>
+            </button>
+            <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? t("Temporary chat") : activeProject ? activeProject.name : t("Chatting with")}</small><strong>{selectedModel.name}{selectedVersion ? ` · ${selectedVersion.name}` : ''}</strong></span><i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? t("Online") : t("API needed")}</i></div>
+            <div className="chat-header-model-slot">
           <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onKeyDown={(event) => { if (event.key === 'Escape') setModelMenuOpen(false); }} onBlur={(event) => { const root = event.currentTarget; window.setTimeout(() => { if (!root.contains(document.activeElement) && !root.matches(':hover')) setModelMenuOpen(false); }, 180); }}>
             <span>{t("Model")}</span>
             <button type="button" className="model-select-trigger" onClick={() => setModelMenuOpen((open) => !open)} aria-haspopup="listbox" aria-expanded={modelMenuOpen}>
@@ -2691,7 +2851,77 @@ export default function Chat() {
               })}
             </div>}
           </div>
-          <Link className="dashboard-link" to="/dashboard">{t("Dashboard")}</Link>
+            </div>
+            <Link className="dashboard-link" to="/dashboard">{t("Dashboard")}</Link>
+          </div>
+          {!isGuest && creditStatus && (
+            <div className="chat-header-secondary">
+            <div className="access-mode-control">
+              {creditStatus.plusTestMode && (
+                <span className="plus-test-mode-badge" role="status" title={t('Local developer Plus Test Mode')}>
+                  Plus Test Mode
+                </span>
+              )}
+              <div className="access-mode-switch" role="group" aria-label="Access mode">
+                <button
+                  type="button"
+                  aria-pressed={(creditStatus.mode || 'user') === 'user'}
+                  disabled={isSending || accessModeSaving}
+                  onClick={() => creditStatus.canUseDeveloper && changeAccessMode('user')}
+                >
+                  {t('User')}
+                </button>
+                {creditStatus.canUseDeveloper ? (
+                  <button
+                    type="button"
+                    className={creditStatus.isOwner || creditStatus.plusBranding ? 'access-mode-plus' : ''}
+                    aria-pressed={creditStatus.mode === 'developer'}
+                    disabled={isSending || accessModeSaving}
+                    onClick={() => changeAccessMode('developer')}
+                    title={creditStatus.isOwner ? t('Owner Plus entitlement') : creditStatus.plusTestMode ? t('Plus Test Mode — all models') : t('All models')}
+                  >
+                    {creditStatus.isOwner
+                      ? (<><span aria-hidden="true">✦ </span>{t('Plus')}</>)
+                      : (creditStatus.plusTestEligible && !creditStatus.hasSubscription ? t('Plus Test') : t('Developer'))}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="access-mode-plus"
+                    aria-pressed={false}
+                    disabled={isSending}
+                    onClick={openPlusSubscription}
+                    title={t('Upgrade subscription')}
+                  >
+                    Plus
+                  </button>
+                )}
+              </div>
+              <small>
+                {accessModeSaving
+                  ? t('Saving…')
+                  : creditStatus.isOwner
+                    ? (creditStatus.plusActive ? t('Owner · Plus') : t('Owner · User preview'))
+                    : creditStatus.plusTestMode
+                      ? t('Plus Test Mode · all models')
+                      : creditStatus.mode === 'developer' && creditStatus.hasSubscription
+                        ? t('All models')
+                        : t('5 free models')}
+                {creditStatus.canAccessModelDiagnostics && (
+                  <>
+                    {' · '}
+                    <Link to="/developer/model-diagnostics" className="access-subscribe-inline">{t('Model diagnostics')}</Link>
+                  </>
+                )}
+                {!creditStatus.canUseDeveloper && !creditStatus.hasSubscription && (
+                  <button type="button" className="access-subscribe-inline" onClick={openPlusSubscription}>
+                    {t('Subscription')} ↗
+                  </button>
+                )}
+              </small>
+            </div>
+            </div>
+          )}
         </header>
         {(activeProject && !temporaryChat) || backgroundNotification ? (
           <div className="chat-statuses">
@@ -3045,10 +3275,15 @@ export default function Chat() {
                   onUseLastImageChange={setVideoUseLastImage}
                   lastAssistantImageUrl={lastAssistantImageUrl}
                   providerStatus={videoProviderStatus}
+                  activeJobs={activeVideoJobs}
+                  pendingJobId={readPendingVideoJobId()}
                   busy={isSending}
+                  onResumeJob={(jobId) => {
+                    void resumeVideoJob(jobId || activeVideoJobs[0]?.jobId || readPendingVideoJobId());
+                  }}
                   onGenerate={() => {
                     const prompt = videoDraftPrompt.trim() || input.trim();
-                    if (!prompt || isSending) return;
+                    if (!prompt || isSending || videoSubmitLockRef.current) return;
                     void sendMessage(null, prompt, undefined, null, {
                       forceVideo: true,
                       videoMode,

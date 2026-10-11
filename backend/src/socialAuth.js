@@ -8,6 +8,7 @@ const users = require('./data/data');
 const { normalizeLoginEmail } = require('./authHelpers');
 const { isPostgresConnection } = require('./db/postgresHttpReads');
 const githubSocialEmail = require('./githubSocialEmail');
+const { promoteTrustedOwnerRoleAsync, promoteTrustedOwnerRoleSync } = require('./billing/ownerConfig');
 const {
     exchangeSocialAuthAsync,
     getSessionOwnerUserIdAsync,
@@ -130,8 +131,10 @@ async function exchange(req, res) {
         }
 
         let profile;
+        let firebaseUid = null;
         if (idToken) {
             const claims = await admin.verifySocialToken(idToken);
+            firebaseUid = claims.sub || claims.user_id || null;
             const provider = claims.firebase?.sign_in_provider;
             if (provider === 'github.com' && githubAccessToken) {
                 profile = await githubSocialEmail.profileFromGitHubAccessToken(githubAccessToken, githubSubjectFromClaims(claims));
@@ -199,6 +202,14 @@ async function exchange(req, res) {
                 const user = db.prepare('SELECT id, name, email, avatar_url AS avatar FROM users WHERE id = ?').get(id);
                 return { user, createSession: pending.intent === 'login' };
             }).immediate();
+        }
+
+        if (firebaseUid && result?.user?.id) {
+            if (isPostgresConnection(connection)) {
+                await promoteTrustedOwnerRoleAsync(connection, result.user.id, firebaseUid);
+            } else {
+                promoteTrustedOwnerRoleSync(connection.database, result.user.id, firebaseUid);
+            }
         }
 
         let sessionToken;

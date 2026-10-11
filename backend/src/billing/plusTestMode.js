@@ -42,7 +42,8 @@ function applyPlusTestCreditStatus(base) {
     const hasSubscription = Boolean(base.hasSubscription);
 
     const canUseDeveloper = hasSubscription || plusTestEligible;
-    const savedDeveloper = base.savedMode === 'developer';
+    const savedDeveloper = base.savedMode === 'developer'
+        || (plusTestEligible && base.savedMode !== 'user');
     const mode = canUseDeveloper && savedDeveloper ? 'developer' : 'user';
     const plusTestModeActive = plusTestEligible && mode === 'developer' && !hasSubscription;
     const fullAccess = mode === 'developer' && canUseDeveloper;
@@ -52,6 +53,7 @@ function applyPlusTestCreditStatus(base) {
 
     return {
         ...base,
+        savedMode: base.savedMode,
         isDeveloper: allowlisted,
         canUseDeveloper,
         mode,
@@ -59,7 +61,7 @@ function applyPlusTestCreditStatus(base) {
         plusTestEligible,
         plusTestServerEnabled: plusTestServerEnabled && allowlisted,
         models,
-        unlimited: fullAccess,
+        unlimited: fullAccess || hasSubscription,
         enforced: !fullAccess && base.enforced,
         canAccessModelDiagnostics: plusTestEligible || base.isOwner === true,
     };

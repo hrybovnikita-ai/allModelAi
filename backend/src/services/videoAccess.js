@@ -1,4 +1,5 @@
 const { MagicHourError } = require('./magicHourClient');
+const { ownerPlusActive } = require('../billing/accessControl');
 
 function assertVideoGenerationAllowed(creditStatus) {
     if (!creditStatus) {
@@ -8,7 +9,7 @@ function assertVideoGenerationAllowed(creditStatus) {
             retryable: false,
         });
     }
-    if (creditStatus.isOwner) return;
+    if (ownerPlusActive(creditStatus)) return;
     if (creditStatus.canUseDeveloper && creditStatus.mode === 'developer') return;
     if (creditStatus.hasSubscription && creditStatus.active) return;
     if (creditStatus.plusTestMode) return;

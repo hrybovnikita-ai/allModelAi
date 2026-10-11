@@ -1,29 +1,28 @@
 import { apiFetch } from './api';
 import { resolveApiUrl } from './httpJson.js';
+import { classifyNetworkError } from './networkErrors.js';
+
+export {
+  VIDEO_ASPECTS,
+  VIDEO_RESOLUTIONS,
+  VIDEO_DURATIONS,
+  LTX_VIDEO_DURATION_IDS,
+  VIDEO_DEFAULTS,
+  buildVideoRequestBody,
+  clampVideoSettings,
+  durationOptionsForModel,
+  durationOptionsFromIds,
+  resolutionOptionsForModel,
+  resolveVideoUiOptions,
+} from './videoGenerationOptions.js';
+
+const PENDING_VIDEO_JOB_STORAGE_KEY = 'allmodelai_pending_video_job_id';
 
 export const VIDEO_UNAVAILABLE_MESSAGE =
   'Video generation is temporarily unavailable. Please try again in a moment.';
 
 export const VIDEO_NOT_CONFIGURED_MESSAGE =
   'Video generation is not configured on the server. Add MAGIC_HOUR_API_KEY or GEMINI_API_KEY on the backend.';
-
-export const VIDEO_ASPECTS = [
-  { id: '16:9', label: 'Landscape (16:9)' },
-  { id: '9:16', label: 'Portrait (9:16)' },
-  { id: '1:1', label: 'Square (1:1)' },
-];
-
-export const VIDEO_RESOLUTIONS = [
-  { id: '480p', label: '480p (lower cost)' },
-  { id: '720p', label: '720p' },
-  { id: '1080p', label: '1080p (slower)' },
-];
-
-export const VIDEO_DURATIONS = [
-  { id: 4, label: '4 seconds' },
-  { id: 5, label: '5 seconds' },
-  { id: 8, label: '8 seconds' },
-];
 
 const ACTIVE_JOB_STATUSES = new Set(['preparing', 'queued', 'generating']);
 
@@ -42,6 +41,9 @@ export function userFacingVideoError(responseOk, data = {}) {
   if (data.code === 'MAGIC_HOUR_UNAUTHORIZED') {
     return data.message || 'Magic Hour rejected the API key. Regenerate it in the Developer Hub and update MAGIC_HOUR_API_KEY on the backend.';
   }
+  if (data.code === 'VIDEO_IMAGE_BLOB_UNSUPPORTED' || data.code === 'VIDEO_IMAGE_INVALID') {
+    return data.message || 'Choose a reference image file or use the last generated image from chat.';
+  }
   if (data.code === 'VIDEO_NOT_ALLOWED') {
     return data.message || 'AI video generation requires an active subscription or Developer access.';
   }
@@ -57,11 +59,64 @@ export function userFacingVideoError(responseOk, data = {}) {
   if (data.code === 'VIDEO_GENERATION_UNAVAILABLE' || data.code === 'GEMINI_VIDEO_FAILED' || data.code === 'MAGIC_HOUR_UNAVAILABLE') {
     return VIDEO_UNAVAILABLE_MESSAGE;
   }
+  if (data.code === 'VIDEO_NETWORK_ERROR') {
+    return data.message || 'Network error while starting video generation. Your job may still be processing—check active jobs or refresh.';
+  }
   const raw = String(data.message || '').trim();
   return raw || VIDEO_UNAVAILABLE_MESSAGE;
 }
 
 const VIDEO_GENERATE_PATHS = ['/api/video/generate', '/api/videos'];
+
+export async function fetchActiveVideoJobs() {
+  const response = await apiFetch('/api/video/jobs');
+  if (!response.ok) return [];
+  const data = await response.json().catch(() => ({}));
+  return Array.isArray(data.jobs) ? data.jobs : [];
+}
+
+export function rememberPendingVideoJobId(jobId) {
+  if (!jobId || typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.setItem(PENDING_VIDEO_JOB_STORAGE_KEY, String(jobId));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readPendingVideoJobId() {
+  if (typeof sessionStorage === 'undefined') return '';
+  try {
+    return sessionStorage.getItem(PENDING_VIDEO_JOB_STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function clearPendingVideoJobId() {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.removeItem(PENDING_VIDEO_JOB_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function videoNetworkErrorMessage(error) {
+  const classified = classifyNetworkError(error, { phase: 'video' });
+  if (classified.code === 'BACKEND_UNREACHABLE') {
+    return 'Connection to the video server was lost (ERR_CONNECTION_RESET). The backend may have restarted—use “Resume video job” if one exists, or run `npm run dev:stable` to avoid watch restarts during generation.';
+  }
+  return classified.message;
+}
+
+export function magicHourProviderReady(status) {
+  const mh = status?.providers?.magichour;
+  if (!mh?.apiKeyPresent && !mh?.configured) return false;
+  if (mh?.ready === true || mh?.authProbe?.ok === true) return true;
+  if (mh?.authProbe?.ok === false && mh?.authProbe?.keyConfigured) return false;
+  return Boolean(mh?.configured);
+}
 
 export async function fetchVideoGenerationStatus({ probeAuth = true } = {}) {
   const query = probeAuth ? '?probeAuth=1' : '';
@@ -94,29 +149,6 @@ async function postVideoGenerate(body, signal) {
   return lastResponse;
 }
 
-export function buildVideoRequestBody({
-  prompt,
-  aspectRatio = '16:9',
-  resolution = '720p',
-  durationSeconds = 5,
-  negativePrompt = '',
-  imageUrl = '',
-  wait = false,
-  provider = '',
-}) {
-  const body = {
-    prompt: String(prompt || '').trim(),
-    aspectRatio,
-    resolution,
-    durationSeconds,
-    wait,
-  };
-  if (negativePrompt) body.negativePrompt = String(negativePrompt).trim();
-  if (imageUrl) body.imageUrl = imageUrl;
-  if (provider) body.provider = provider;
-  return body;
-}
-
 export function resolveVideoPlaybackUrl(videoUrl) {
   if (!videoUrl) return '';
   if (videoUrl.startsWith('data:') || videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
@@ -135,7 +167,16 @@ export function formatVideoJobStatus(status) {
 }
 
 export async function requestVideoGeneration(body, signal) {
-  const response = await postVideoGenerate(body, signal);
+  let response;
+  try {
+    response = await postVideoGenerate(body, signal);
+  } catch (error) {
+    const message = videoNetworkErrorMessage(error);
+    throw Object.assign(new Error(message), {
+      code: 'VIDEO_NETWORK_ERROR',
+      cause: error,
+    });
+  }
   const data = await response.clone().json().catch(() => ({}));
   if (response.status === 404) {
     throw Object.assign(
@@ -163,7 +204,10 @@ export async function pollVideoJob(jobId, { signal, onUpdate } = {}) {
       throw new Error(message || 'Could not check video job status.');
     }
     onUpdate?.(data);
-    if (data.status === 'completed' && data.videoUrl) return data;
+    if (data.status === 'completed' && data.videoUrl) {
+      clearPendingVideoJobId();
+      return data;
+    }
     if (data.status === 'failed') {
       throw new Error(data.errorMessage || 'Video generation failed.');
     }

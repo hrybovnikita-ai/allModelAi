@@ -26,7 +26,7 @@ test('owner bypasses application usage limits', () => {
         remaining: 0,
         enforced: true,
         models: ['gemini'],
-    }, 'owner');
+    }, 'owner', { savedMode: 'developer' });
     assert.equal(isOwner(owner), true);
     assert.equal(checkUsageLimit(owner).allowed, true);
     assert.equal(hasModelAccess(owner, 'claude'), true);
@@ -72,7 +72,7 @@ test('resolveOpenRouterModelId keeps explicit gateway ids for free plan', () => 
 
 test('owner keeps paid gateway model ids on OpenRouter', () => {
     const model = resolveOpenRouterModelId({
-        access: { plan: 'free', isOwner: true },
+        access: { plan: 'free', isOwner: true, mode: 'developer', plusActive: true },
         routedModel: 'gemini',
         gatewayModel: 'google/gemini-2.5-flash',
         usesDirectProvider: false,

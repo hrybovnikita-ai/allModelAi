@@ -105,6 +105,15 @@ const closeServer = () => {
 process.on('SIGINT', closeServer);
 process.on('SIGTERM', closeServer);
 
+process.on('unhandledRejection', (reason) => {
+    const message = reason?.message || String(reason);
+    console.error('[RUNTIME] unhandledRejection:', reason?.code || reason?.name || 'Error', message.slice(0, 500));
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('[RUNTIME] uncaughtException:', error.code || error.name, error.message);
+});
+
 startServer().catch((error) => {
     console.error('[RUNTIME] Server failed to start:', error.message);
     process.exit(1);

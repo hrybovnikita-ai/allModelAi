@@ -1,4 +1,8 @@
-const { getMagicHourApiKey } = require('./magicHourConfig');
+const {
+    getMagicHourApiKey,
+    listMagicHourKeyCandidates,
+    setResolvedMagicHourKey,
+} = require('./magicHourConfig');
 
 const API_BASE = 'https://api.magichour.ai';
 
@@ -129,10 +133,37 @@ async function magicHourRequest(path, { method = 'GET', body, signal, timeoutMs 
     return data;
 }
 
+async function probeMagicHourAuthWithKey(apiKey, { signal, timeoutMs = 12000 } = {}) {
+    const response = await fetch(`${API_BASE}/v1/account`, {
+        method: 'GET',
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            Accept: 'application/json',
+        },
+        signal: signal || AbortSignal.timeout(timeoutMs),
+    });
+    const text = await response.text();
+    let data = {};
+    try {
+        data = text ? JSON.parse(text) : {};
+    } catch {
+        data = {};
+    }
+    const creditsRemaining = response.ok
+        ? (data?.credits ?? data?.credits_remaining ?? data?.creditsRemaining ?? null)
+        : null;
+    return {
+        ok: response.ok,
+        httpStatus: response.status,
+        providerCode: data?.code || null,
+        creditsRemaining,
+    };
+}
+
 /** Lightweight auth check — does not create billable video jobs. */
 async function probeMagicHourAuth({ signal, timeoutMs = 12000 } = {}) {
-    const apiKey = getMagicHourApiKey();
-    if (!apiKey) {
+    const candidates = listMagicHourKeyCandidates();
+    if (!candidates.length) {
         return {
             ok: false,
             httpStatus: null,
@@ -140,35 +171,20 @@ async function probeMagicHourAuth({ signal, timeoutMs = 12000 } = {}) {
             keyConfigured: false,
         };
     }
+    let lastResult = null;
     try {
-        const response = await fetch(`${API_BASE}/v1/account`, {
-            method: 'GET',
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                Accept: 'application/json',
-            },
-            signal: signal || AbortSignal.timeout(timeoutMs),
-        });
-        if (response.ok) {
-            return {
-                ok: true,
-                httpStatus: response.status,
-                providerCode: null,
-                keyConfigured: true,
-            };
-        }
-        const text = await response.text();
-        let data = {};
-        try {
-            data = text ? JSON.parse(text) : {};
-        } catch {
-            data = {};
+        for (const { source, key } of candidates) {
+            const result = await probeMagicHourAuthWithKey(key, { signal, timeoutMs });
+            lastResult = { ...result, activeKeySource: source, keyConfigured: true };
+            if (result.ok) {
+                setResolvedMagicHourKey(source, key);
+                return lastResult;
+            }
         }
         return {
-            ok: false,
-            httpStatus: response.status,
-            providerCode: data?.code || null,
+            ...lastResult,
             keyConfigured: true,
+            triedKeySources: candidates.map((item) => item.source),
         };
     } catch (error) {
         return {
@@ -178,6 +194,7 @@ async function probeMagicHourAuth({ signal, timeoutMs = 12000 } = {}) {
             keyConfigured: true,
             transient: true,
             errorName: error?.name || 'Error',
+            triedKeySources: candidates.map((item) => item.source),
         };
     }
 }

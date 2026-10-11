@@ -9,12 +9,12 @@ function normalizeAspect(aspectRatio) {
 }
 
 function normalizeResolution(resolution) {
-    const value = String(resolution || '720p').trim().toLowerCase();
+    const value = String(resolution || '480p').trim().toLowerCase();
     if (['360p', '480p', '720p', '1080p', '4k'].includes(value)) return value;
-    return '720p';
+    return '480p';
 }
 
-function normalizeDuration(durationSeconds, fallback = 5) {
+function normalizeDuration(durationSeconds, fallback = 3) {
     const value = Number(durationSeconds);
     if (!Number.isFinite(value)) return fallback;
     return Math.min(60, Math.max(1, Math.round(value)));
@@ -43,9 +43,10 @@ function validateVideoBody(body = {}) {
             durationSeconds,
             negativePrompt: typeof body.negativePrompt === 'string' ? body.negativePrompt.trim() : '',
             image,
-            wait: body.wait !== false,
+            wait: body.wait === true,
             model: typeof body.model === 'string' ? body.model.trim() : '',
             provider: typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : '',
+            imageUrl: typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '',
         },
     };
 }

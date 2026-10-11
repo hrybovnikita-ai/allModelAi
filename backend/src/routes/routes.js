@@ -243,12 +243,14 @@ const { generateVideo, getVideoGenerationStatus } = require('../videos');
 const {
     postVideoGenerate,
     getVideoJob,
+    getVideoJobs,
     streamVideoJob,
 } = require('../controllers/videoController');
 router.get('/videos/status', requireAuth, getVideoGenerationStatus);
 router.post('/videos', requireAuth, generateVideo);
 router.post('/videos/generate', requireAuth, generateVideo);
 router.post('/video/generate', requireAuth, postVideoGenerate);
+router.get('/video/jobs', requireAuth, getVideoJobs);
 router.get('/video/jobs/:jobId', requireAuth, getVideoJob);
 router.get('/video/jobs/:jobId/stream', requireAuth, streamVideoJob);
 router.post('/purchases', requireAuth, createPurchase);

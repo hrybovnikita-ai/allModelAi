@@ -18,6 +18,12 @@ test('video API routes are registered (not 404)', async () => {
 test('GET /api/videos/status documents generate route when Magic Hour env is set', async () => {
     const previous = process.env.MAGIC_HOUR_API_KEY;
     process.env.MAGIC_HOUR_API_KEY = 'mhk_test_route_check';
+    global.fetch = async (url) => {
+        if (String(url).includes('/v1/account')) {
+            return new Response(JSON.stringify({ credits_remaining: 500 }), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+    };
     const agent = request.agent(app);
     await agent.post('/api/auth/register').send({
         name: 'Route Check',
@@ -27,9 +33,11 @@ test('GET /api/videos/status documents generate route when Magic Hour env is set
     const response = await agent.get('/api/videos/status');
     if (previous === undefined) delete process.env.MAGIC_HOUR_API_KEY;
     else process.env.MAGIC_HOUR_API_KEY = previous;
+    delete global.fetch;
     assert.equal(response.status, 200);
     assert.equal(response.body.routes?.generatePost, 'POST /api/video/generate');
     assert.equal(response.body.providers?.magichour?.apiKeyPresent, true);
+    assert.equal(response.body.providers?.magichour?.ready, true);
     assert.equal(response.body.providers?.magichour?.configured, true);
     assert.equal(response.body.providers?.magichour?.apiKeySource, 'MAGIC_HOUR_API_KEY');
     assert.ok(response.body.providers?.magichour?.keyPrefixHint);

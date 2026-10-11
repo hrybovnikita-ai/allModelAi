@@ -7,14 +7,20 @@ const { mapMagicHourHttpError, MagicHourError } = require('../src/services/magic
 const { getMagicHourApiKey, resolveVideoProviderPreference } = require('../src/services/magicHourConfig');
 const { getJobForUser, createJob } = require('../src/services/videoJobStore');
 
+const { clearResolvedMagicHourKeyCache } = require('../src/services/magicHourConfig');
+
 const savedMagic = process.env.MAGIC_HOUR_API_KEY;
+const savedVideoAlias = process.env.AllModelAi_API_KEY_VIDEO;
 const savedTypo = process.env.MAGIC_CHOUR_API_KEY;
 const savedGemini = process.env.GEMINI_API_KEY;
 const savedProvider = process.env.VIDEO_PROVIDER;
 
 test.afterEach(() => {
+    clearResolvedMagicHourKeyCache();
     if (savedMagic === undefined) delete process.env.MAGIC_HOUR_API_KEY;
     else process.env.MAGIC_HOUR_API_KEY = savedMagic;
+    if (savedVideoAlias === undefined) delete process.env.AllModelAi_API_KEY_VIDEO;
+    else process.env.AllModelAi_API_KEY_VIDEO = savedVideoAlias;
     if (savedTypo === undefined) delete process.env.MAGIC_CHOUR_API_KEY;
     else process.env.MAGIC_CHOUR_API_KEY = savedTypo;
     if (savedGemini === undefined) delete process.env.GEMINI_API_KEY;
@@ -25,9 +31,15 @@ test.afterEach(() => {
 });
 
 test('validateVideoBody accepts text-to-video payload', () => {
-    const result = validateVideoBody({ prompt: 'A dragon over the city', aspectRatio: '16:9', resolution: '720p', durationSeconds: 5 });
+    const result = validateVideoBody({
+        prompt: 'A dragon over the city',
+        aspectRatio: '16:9',
+        resolution: '480p',
+        durationSeconds: 3,
+    });
     assert.equal(result.error, undefined);
-    assert.equal(result.value.durationSeconds, 5);
+    assert.equal(result.value.durationSeconds, 3);
+    assert.equal(result.value.resolution, '480p');
 });
 
 test('validateVideoBody rejects oversized data-url image', () => {
@@ -51,6 +63,31 @@ test('Magic Hour HTTP errors map to user-safe codes', () => {
     assert.match(err401Rejected.message, /rejected/i);
 });
 
+test('auth probe falls back to AllModelAi_API_KEY_VIDEO when primary key is rejected', async () => {
+    process.env.MAGIC_HOUR_API_KEY = 'mhk_test_bad';
+    process.env.AllModelAi_API_KEY_VIDEO = 'mhk_test_good';
+    let calls = 0;
+    global.fetch = async (url, options = {}) => {
+        if (String(url).includes('/v1/account')) {
+            calls += 1;
+            const auth = options.headers?.Authorization || '';
+            if (auth.includes('mhk_test_good')) {
+                return new Response(JSON.stringify({ credits_remaining: 42 }), { status: 200 });
+            }
+            return new Response(JSON.stringify({ code: 'unauthorized' }), { status: 401 });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+    };
+    const { probeMagicHourAuth } = require('../src/services/magicHourClient');
+    const probe = await probeMagicHourAuth();
+    assert.equal(probe.ok, true);
+    assert.equal(probe.activeKeySource, 'AllModelAi_API_KEY_VIDEO');
+    assert.equal(probe.creditsRemaining, 42);
+    assert.equal(calls, 2);
+    const { getMagicHourApiKeySource } = require('../src/services/magicHourConfig');
+    assert.equal(getMagicHourApiKeySource(), 'AllModelAi_API_KEY_VIDEO');
+});
+
 test('provider preference prefers Magic Hour when key is configured', () => {
     process.env.VIDEO_PROVIDER = 'auto';
     process.env.MAGIC_HOUR_API_KEY = 'mhk_test_key';
@@ -61,6 +98,7 @@ test('provider preference prefers Magic Hour when key is configured', () => {
 
 test('MAGIC_CHOUR_API_KEY typo alias loads when canonical name is unset', () => {
     delete process.env.MAGIC_HOUR_API_KEY;
+    delete process.env.AllModelAi_API_KEY_VIDEO;
     process.env.MAGIC_CHOUR_API_KEY = 'mhk_test_typo_alias';
     assert.equal(getMagicHourApiKey(), 'mhk_test_typo_alias');
     delete process.env.MAGIC_CHOUR_API_KEY;
@@ -68,10 +106,14 @@ test('MAGIC_CHOUR_API_KEY typo alias loads when canonical name is unset', () => 
 
 test('POST /api/video/generate returns 401 when Magic Hour rejects the API key (mocked)', async () => {
     process.env.MAGIC_HOUR_API_KEY = 'mhk_test_rejected';
+    delete process.env.AllModelAi_API_KEY_VIDEO;
     process.env.VIDEO_PROVIDER = 'magichour';
     delete process.env.GEMINI_API_KEY;
     global.fetch = async (url) => {
         const href = String(url);
+        if (href.includes('/v1/account')) {
+            return new Response(JSON.stringify({ code: 'unauthorized' }), { status: 401 });
+        }
         if (href.includes('/v1/text-to-video') || href.includes('/v1/files/upload-urls')) {
             return new Response(JSON.stringify({ code: 'unauthorized', message: 'Unauthorized' }), { status: 401 });
         }
@@ -109,6 +151,7 @@ test('POST /api/video/generate returns 401 without session (route registered)', 
 
 test('POST /api/video/generate returns 503 when no provider configured', async () => {
     delete process.env.MAGIC_HOUR_API_KEY;
+    delete process.env.AllModelAi_API_KEY_VIDEO;
     delete process.env.MAGIC_CHOUR_API_KEY;
     delete process.env.GEMINI_API_KEY;
     process.env.ENABLE_PLUS_TEST_MODE = 'true';
@@ -139,6 +182,49 @@ test('job store enforces ownership lookup', async () => {
     assert.equal(await getJobForUser(connection, job.id, 'other@example.com'), null);
 });
 
+test('POST /api/video/generate returns 202 before Magic Hour create when wait=false', async () => {
+    process.env.MAGIC_HOUR_API_KEY = 'mhk_test_key';
+    delete process.env.AllModelAi_API_KEY_VIDEO;
+    process.env.VIDEO_PROVIDER = 'magichour';
+    delete process.env.GEMINI_API_KEY;
+    let createStarted = false;
+    global.fetch = async (url) => {
+        const href = String(url);
+        if (href.includes('/v1/account')) {
+            return new Response(JSON.stringify({ credits: 100 }), { status: 200 });
+        }
+        if (href.includes('/v1/text-to-video')) {
+            createStarted = true;
+            await new Promise((resolve) => setTimeout(resolve, 8000));
+            return new Response(JSON.stringify({ id: 'mh-slow', credits_charged: 1 }), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch: ${href}`);
+    };
+    process.env.ENABLE_PLUS_TEST_MODE = 'true';
+    const agent = request.agent(app);
+    const email = `mh-async-${Date.now()}@example.com`;
+    process.env.DEVELOPER_EMAILS = email;
+    await agent.post('/api/auth/register').send({ name: 'MH Async', email, password: 'Password123!' });
+    await agent.patch('/api/access-mode').send({ mode: 'developer' });
+    const started = Date.now();
+    const response = await agent.post('/api/video/generate').send({
+        prompt: 'Async dragon test clip',
+        aspectRatio: '16:9',
+        resolution: '480p',
+        durationSeconds: 3,
+        wait: false,
+    });
+    const elapsed = Date.now() - started;
+    assert.equal(response.status, 202);
+    assert.ok(response.body.jobId);
+    assert.ok(elapsed < 4000, `expected fast 202, took ${elapsed}ms`);
+    const deadline = Date.now() + 3000;
+    while (!createStarted && Date.now() < deadline) {
+        await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(createStarted, true);
+});
+
 test('mocked Magic Hour create + poll completes job', async () => {
     process.env.MAGIC_HOUR_API_KEY = 'mhk_test_key';
     process.env.VIDEO_PROVIDER = 'magichour';
@@ -147,6 +233,9 @@ test('mocked Magic Hour create + poll completes job', async () => {
     let pollCount = 0;
     global.fetch = async (url, options = {}) => {
         const href = String(url);
+        if (href.includes('/v1/account')) {
+            return new Response(JSON.stringify({ credits_remaining: 1000 }), { status: 200 });
+        }
         if (href.includes('/v1/text-to-video')) {
             return new Response(JSON.stringify({ id: 'mh-project-1', credits_charged: 120 }), { status: 200 });
         }

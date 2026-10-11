@@ -22,7 +22,13 @@
   margin-bottom: clamp(28px, 3vw, 40px);
 }
 
-@media (max-width: 1023px) {
+@media (min-width: 768px) and (max-width: 1023px) {
+  .model-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
   .model-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -86,15 +92,18 @@
 }
 
 .model-card h3 {
-  font-size: 1.3rem;
+  font-size: clamp(1.05rem, 2.5vw, 1.3rem);
   color: var(--text);
   margin-bottom: 6px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .model-card p {
-  font-size: 0.9rem;
+  font-size: clamp(0.82rem, 2vw, 0.9rem);
   color: var(--text-secondary);
+  overflow-wrap: anywhere;
+  line-height: 1.45;
 }
 
 .model-details {
@@ -274,12 +283,7 @@
   transform: scale(0.98);
 }
 
-@media (max-width: 768px) {
-  .model-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-  }
-
+@media (max-width: 767px) {
   .model-details {
     padding: 24px;
   }

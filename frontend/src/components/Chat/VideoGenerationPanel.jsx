@@ -1,7 +1,7 @@
+import { useMemo } from 'react';
 import {
   VIDEO_ASPECTS,
-  VIDEO_DURATIONS,
-  VIDEO_RESOLUTIONS,
+  resolveVideoUiOptions,
 } from '../../lib/videoGeneration';
 
 const PROVIDER_OPTIONS = [
@@ -29,12 +29,25 @@ export default function VideoGenerationPanel({
   onUseLastImageChange,
   lastAssistantImageUrl = '',
   providerStatus = null,
+  activeJobs = [],
+  pendingJobId = '',
   busy = false,
   onGenerate,
+  onResumeJob,
 }) {
-  const magichourReady = providerStatus?.providers?.magichour?.configured;
+  const resumeJobId = activeJobs[0]?.jobId || pendingJobId;
+  const mh = providerStatus?.providers?.magichour;
+  const magichourKeyRejected = mh?.authProbe?.ok === false && mh?.authProbe?.keyConfigured;
+  const magichourReady = Boolean(mh?.ready || (mh?.configured && !magichourKeyRejected));
   const geminiReady = providerStatus?.providers?.gemini?.configured;
-  const showProviderPicker = magichourReady && geminiReady;
+  const showProviderPicker = (magichourReady || magichourKeyRejected) && geminiReady;
+  const blockMagicHourGenerate = magichourKeyRejected
+    && (!provider || provider === 'magichour');
+
+  const { resolutions, durations } = useMemo(
+    () => resolveVideoUiOptions(providerStatus),
+    [providerStatus],
+  );
 
   return (
     <div className="video-gen-panel" aria-label="AI video generation">
@@ -126,7 +139,7 @@ export default function VideoGenerationPanel({
         <label>
           Resolution
           <select value={resolution} onChange={(e) => onResolutionChange?.(e.target.value)} disabled={busy}>
-            {VIDEO_RESOLUTIONS.map((item) => (
+            {resolutions.map((item) => (
               <option key={item.id} value={item.id}>{item.label}</option>
             ))}
           </select>
@@ -138,7 +151,7 @@ export default function VideoGenerationPanel({
             onChange={(e) => onDurationChange?.(Number(e.target.value))}
             disabled={busy}
           >
-            {VIDEO_DURATIONS.map((item) => (
+            {durations.map((item) => (
               <option key={item.id} value={item.id}>{item.label}</option>
             ))}
           </select>
@@ -165,17 +178,39 @@ export default function VideoGenerationPanel({
           {geminiReady ? ' · Gemini Veo' : ''}
           {providerStatus.configured === false
             ? ' · add MAGIC_HOUR_API_KEY or GEMINI_API_KEY on the server'
-            : providerStatus.providers?.magichour?.authProbe?.ok === false
-              && providerStatus.providers?.magichour?.authProbe?.keyConfigured
-              ? ' · Magic Hour key is set but rejected (regenerate in Developer Hub)'
-              : ' · billable API credits apply'}
+            : magichourKeyRejected
+              ? ' · Magic Hour key is set but rejected — put your Developer Hub key in MAGIC_HOUR_API_KEY (or AllModelAi_API_KEY_VIDEO), restart backend'
+              : mh?.activeKeySource && mh.activeKeySource !== 'MAGIC_HOUR_API_KEY'
+                ? ` · using ${mh.activeKeySource} (primary MAGIC_HOUR_API_KEY was rejected)`
+                : ''}
+          {providerStatus.configured !== false && !magichourKeyRejected && mh?.creditsRemaining != null
+            ? ` · Magic Hour API credits: ${mh.creditsRemaining}`
+            : providerStatus.configured !== false && !magichourKeyRejected
+              ? ' · billable API credits apply'
+              : ''}
         </p>
       )}
 
+      {resumeJobId && (
+        <button
+          type="button"
+          className="video-gen-panel__resume"
+          disabled={busy}
+          onClick={() => onResumeJob?.(resumeJobId)}
+        >
+          Resume video job
+        </button>
+      )}
+      {activeJobs.length > 0 && (
+        <p className="video-skill-hint" role="status">
+          {activeJobs.length} video job{activeJobs.length > 1 ? 's' : ''} in progress on the server.
+          {activeJobs[0]?.providerProjectId ? ' Magic Hour is processing.' : ' Waiting to submit to Magic Hour.'}
+        </p>
+      )}
       <button
         type="button"
         className="video-gen-panel__generate"
-        disabled={busy || !String(prompt || '').trim()}
+        disabled={busy || !String(prompt || '').trim() || blockMagicHourGenerate || activeJobs.length > 0}
         onClick={() => onGenerate?.()}
       >
         {busy ? 'Generating…' : 'Generate video'}

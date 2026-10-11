@@ -905,12 +905,18 @@ const getCredits = async (req, res) => {
 
 const setAccessMode = async (req, res) => {
     const mode = req.body.mode;
-    if (!['user', 'developer'].includes(mode)) return res.status(400).json({ message: 'Выберите User или Developer.' });
+    if (!['user', 'developer'].includes(mode)) {
+        return res.status(400).json({ message: 'Choose User or Plus mode.' });
+    }
     const status = await getCreditStatusAsync(req.app.locals.db, req.user.email);
     if (mode === 'developer' && !status.canUseDeveloper) {
         return res.status(403).json({
-            message: 'Plus test mode requires an active subscription or local Plus Test Mode for an allowlisted developer account.',
+            code: 'ACCESS_MODE_FORBIDDEN',
+            message: 'Plus mode requires an active subscription, owner entitlement, or local Plus Test Mode for an allowlisted developer account.',
         });
+    }
+    if (!status.isOwner && !status.canUseDeveloper && mode === 'developer') {
+        return res.status(403).json({ code: 'ACCESS_MODE_FORBIDDEN', message: 'Plus mode is not available for this account.' });
     }
     const connection = req.app.locals.db;
     if (isPostgresConnection(connection)) {
@@ -2476,12 +2482,12 @@ async function createChatResponseImpl(req, res) {
                             model,
                             savedMessages,
                             title: createConversationTitle(savedMessages),
-                            bumpUsage: !temporary && !creditStatus.isOwner,
+                            bumpUsage: !temporary && !require('../billing/accessControl').ownerPlusActive(creditStatus),
                         });
                         return;
                     }
                     chatConnection.database.prepare('INSERT INTO usage_events (email,model,input_tokens,output_tokens,latency_ms,fallback_used,estimated_cost,created_at) VALUES (?,?,?,?,?,?,?,?)').run(userEmail, actualUsageModel, inputTokens, outputTokens, Date.now() - requestStartedAt, fallbackUsed ? 1 : 0, estimatedCost, createdAt);
-                    if (temporary || creditStatus.isOwner) return;
+                    if (temporary || require('../billing/accessControl').ownerPlusActive(creditStatus)) return;
                     const normalizedEmail = String(userEmail).trim().toLowerCase();
                     bumpUsageCount(chatConnection.database, normalizedEmail);
                     const data = chatConnection.read();

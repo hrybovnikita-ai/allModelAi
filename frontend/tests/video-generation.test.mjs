@@ -11,7 +11,11 @@ test('video generation client maps Magic Hour errors and async jobs', () => {
   assert.match(src, /pollVideoJob/);
   assert.match(src, /\/api\/video\/generate/);
   assert.match(src, /\/api\/videos/);
-  assert.match(src, /durationSeconds/);
+  const options = readFileSync(`${root}src/lib/videoGenerationOptions.js`, 'utf8');
+  assert.match(options, /buildVideoRequestBody/);
+  assert.match(options, /durationSeconds/);
+  assert.match(options, /LTX_VIDEO_DURATION_IDS = \[\s*3,/);
+  assert.match(options, /durationSeconds: 3/);
 });
 
 test('Chat wires Make video skill to video generation API', () => {

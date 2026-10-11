@@ -33,6 +33,13 @@ function isOwner(userOrAccess) {
     return isOwnerRole(userOrAccess.role);
 }
 
+/** Owner with complimentary Plus active (not User preview mode). */
+function ownerPlusActive(access) {
+    if (!isOwner(access)) return false;
+    if (access.plusActive === true) return true;
+    return access.mode === 'developer';
+}
+
 function modelsForPlan(planKey) {
     const key = normalizeAppPlan(planKey);
     const plan = subscriptionPlans[key] || subscriptionPlans.free;
@@ -42,14 +49,14 @@ function modelsForPlan(planKey) {
 function hasModelAccess(access, modelSlug) {
     const slug = String(modelSlug || '').trim();
     if (!slug || slug === 'smart' || slug === 'ai_python') return true;
-    if (isOwner(access)) return true;
+    if (ownerPlusActive(access)) return true;
     const allowed = access?.models || modelsForPlan(access?.plan);
     if (allowed.includes('all')) return true;
     return allowed.includes(slug);
 }
 
 function checkUsageLimit(access) {
-    if (isOwner(access) || access?.unlimited) {
+    if (ownerPlusActive(access) || access?.unlimited) {
         return { allowed: true };
     }
     if (access?.enforced && Number(access.used) >= Number(access.limit)) {
@@ -63,39 +70,77 @@ function checkUsageLimit(access) {
     return { allowed: true };
 }
 
-function applyOwnerAccess(baseStatus, role) {
+function applyOwnerAccess(baseStatus, role, { savedMode } = {}) {
     if (!isOwnerRole(role)) {
         return {
             ...baseStatus,
             role: String(role || 'user').toLowerCase(),
             isOwner: false,
+            canManageOwnerMode: false,
         };
     }
-    return {
+
+    const persistedMode = savedMode ?? baseStatus.savedMode;
+    const plusMode = persistedMode !== 'user';
+    const freePlan = subscriptionPlans.free;
+    const used = Number(baseStatus.used ?? 0);
+    const previewLimit = Number.isFinite(Number(baseStatus.limit))
+        ? Number(baseStatus.limit)
+        : freePlan.limit;
+    const previewRemaining = Math.max(previewLimit - used, 0);
+
+    const shared = {
         ...baseStatus,
         role: 'owner',
         isOwner: true,
+        ownerEntitlement: 'plus',
+        canUseDeveloper: true,
+        canManageOwnerMode: true,
+        subscriptionStatus: 'owner',
+        planDisplayName: 'Owner',
+        currentPlan: 'Owner',
+        savedMode: plusMode ? 'developer' : 'user',
+    };
+
+    if (!plusMode) {
+        return {
+            ...shared,
+            mode: 'user',
+            ownerPreview: true,
+            plusActive: false,
+            plusBranding: false,
+            unlimited: false,
+            enforced: baseStatus.enforced,
+            models: freePlan.models,
+            plan: baseStatus.plan || 'free',
+            limit: previewLimit,
+            remaining: previewRemaining,
+            planLabel: 'Owner · User preview',
+        };
+    }
+
+    return {
+        ...shared,
+        mode: 'developer',
+        ownerPreview: false,
+        plusActive: true,
+        plusBranding: true,
         unlimited: true,
         enforced: false,
         models: ['all'],
         limit: null,
         remaining: null,
-        used: baseStatus.used ?? 0,
-        plan: baseStatus.plan || 'free',
-        planDisplayName: 'Owner',
-        planLabel: 'Owner',
-        currentPlan: 'Owner',
-        subscriptionStatus: 'owner',
+        planLabel: 'Owner · Plus',
     };
 }
 
 /**
- * When Smart Router uses OpenRouter, Free users use the free model route unless they are owner.
+ * When Smart Router uses OpenRouter, Free users use the free model route unless they are owner Plus.
  * Explicit model picks (e.g. qwen, gemini) keep their gateway/direct ids.
  */
 function resolveOpenRouterModelId({ access, routedModel, gatewayModel, usesDirectProvider, requestedModel }) {
     if (usesDirectProvider) return gatewayModel;
-    if (isOwner(access)) return gatewayModel;
+    if (ownerPlusActive(access)) return gatewayModel;
     const plan = normalizeAppPlan(access?.plan);
     const requested = String(requestedModel || '').trim().toLowerCase();
     if (plan === 'free' && openRouterKey() && requested === 'smart') {
@@ -105,7 +150,7 @@ function resolveOpenRouterModelId({ access, routedModel, gatewayModel, usesDirec
 }
 
 function shouldPreferFreeOpenRouter(access, { requestedModel } = {}) {
-    if (isOwner(access)) return false;
+    if (ownerPlusActive(access)) return false;
     if (normalizeAppPlan(access?.plan) !== 'free' || !openRouterKey()) return false;
     return String(requestedModel || '').trim().toLowerCase() === 'smart';
 }
@@ -119,7 +164,7 @@ function planTierLabel(planKey) {
 }
 
 async function recordUsage(connection, access, { temporary = false, bumpUsageFn } = {}) {
-    if (temporary || isOwner(access)) return;
+    if (temporary || ownerPlusActive(access)) return;
     if (typeof bumpUsageFn === 'function') {
         await bumpUsageFn(connection, access.email);
     }
@@ -134,6 +179,7 @@ module.exports = {
     isOwnerRole,
     modelsForPlan,
     normalizeAppPlan,
+    ownerPlusActive,
     planTierLabel,
     recordUsage,
     resolveOpenRouterModelId,

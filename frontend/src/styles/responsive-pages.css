@@ -231,3 +231,65 @@
     transition: none !important;
   }
 }
+
+/* Generated media & hub previews — never overflow the viewport */
+.generated-image-card img,
+.generated-video-card video,
+.image-generator-result img,
+.chat-page .generated-image-preview img,
+.chat-page .generated-video-preview video,
+.python-ai-lab-page img,
+.python-ai-lab-page video,
+.arena-page video,
+.arena-page img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.message-content,
+.chat-message.assistant,
+.chat-message.user {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.message-content pre,
+.response-code-block pre {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Auth shells — full viewport height on mobile browsers */
+.auth-page,
+.login-overlay,
+.social-auth-page {
+  min-height: 100dvh;
+}
+
+@media (max-width: 767px) {
+  .login-modal {
+    width: min(470px, calc(100vw - 24px - var(--safe-left) - var(--safe-right)));
+    padding: clamp(22px, 5vw, 32px);
+  }
+
+  .login-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .nav-user-dashboard,
+  .nav-signout {
+    min-height: var(--touch-target, 44px);
+  }
+}
+
+@media (min-width: 1920px) {
+  .chat-messages,
+  .chat-page .chat-composer,
+  .chat-page .chat-composer.welcome-composer,
+  .chat-page .chat-composer.conversation-composer {
+    width: min(calc(100% - 48px), 920px) !important;
+  }
+}
