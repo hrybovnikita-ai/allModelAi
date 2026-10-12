@@ -6,19 +6,17 @@ import NavAuthSection from './NavAuthSection';
 import { useSession } from '../Session/SessionProvider';
 import { AUTH_STATUS } from '../../lib/authSessionStatus';
 import { DASHBOARD_NAV_ACCOUNT_LINKS } from '../Dashboard/dashboardNavLinks';
+import AllModelAILogo from '../AllModelAILogo/AllModelAILogo';
 import './Navbar.css';
 
 export default function Navbar() {
   const { t } = useLanguage();
   const location = useLocation();
   const navMenuId = useId();
-  const { status, user } = useSession();
+  const { status, user, sessionVerified } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const [authMode, setAuthMode] = useState(null);
-  const isAuthenticated = (
-    status === AUTH_STATUS.AUTHENTICATED
-    || status === AUTH_STATUS.CONNECTION_ISSUE
-  ) && Boolean(user?.email);
+  const isAuthenticated = status === AUTH_STATUS.AUTHENTICATED && sessionVerified && Boolean(user?.email);
 
   useEffect(() => {
     if (!authMode) return;
@@ -61,7 +59,9 @@ export default function Navbar() {
         />
       ) : null}
       <nav className={`navbar${menuOpen ? ' navbar--menu-open' : ''}`} aria-label="Main navigation">
-        <a href="#home" className="nav-brand" onClick={closeMenu}>AllModelAI</a>
+        <a href="#home" className="nav-brand" onClick={closeMenu}>
+          <AllModelAILogo size={36} textClassName="nav-brand-wordmark" />
+        </a>
         <div
           id={navMenuId}
           className={`nav-links ${menuOpen ? 'is-open' : ''}`}

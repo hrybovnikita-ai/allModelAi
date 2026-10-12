@@ -32,6 +32,12 @@
   max-width: 42%;
 }
 
+.nav-brand .allmodelai-logo-mark {
+  width: clamp(32px, 4vw, 38px);
+  height: auto;
+  filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.35));
+}
+
 .chat-brand .allmodelai-logo-mark,
 .dashboard-brand .allmodelai-logo-mark,
 .builder-brand .allmodelai-logo-mark,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchPublicJson } from '../../lib/publicCache';
 import './RainbowExperience.css';
@@ -11,19 +11,27 @@ const cards = [
 export default function RainbowExperience() {
   const [paused, setPaused] = useState(false);
   const [status, setStatus] = useState(null);
-  useEffect(() => {
-    let active = true;
-    const refresh = () => {
-      if (document.hidden) return;
-      fetchPublicJson('/api/status/models').then((data) => {
-        if (active) setStatus(data);
-      }).catch(() => { if (active) setStatus(null); });
-    };
-    refresh();
-    const timer = setInterval(refresh, 30000);
-    document.addEventListener('visibilitychange', refresh);
-    return () => { active = false; clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
+  const [statusError, setStatusError] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const refresh = useCallback((force = false) => {
+    if (document.hidden && !force) return;
+    setStatusLoading(true);
+    fetchPublicJson('/api/status/models', { force }).then((data) => {
+      setStatus(data);
+      setStatusError(false);
+    }).catch(() => {
+      setStatusError(true);
+    }).finally(() => {
+      setStatusLoading(false);
+    });
   }, []);
+  useEffect(() => {
+    refresh(false);
+    const timer = setInterval(() => refresh(false), 30000);
+    const onVisible = () => refresh(false);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, [refresh]);
   function spotlight(event) {
     if (paused || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -48,7 +56,24 @@ export default function RainbowExperience() {
           </Link>
         ))}
       </div>
-      <p className="rainbow-availability">{configured === null ? 'Model configuration is temporarily unavailable.' : configured + ' provider groups configured. Availability depends on provider quota and service status.'}</p>
+      <p className="rainbow-availability">
+        {statusLoading && configured === null && !statusError && 'Checking model configuration…'}
+        {!statusLoading && configured === null && statusError && (
+          <>Model configuration is temporarily unavailable.{' '}
+            <button type="button" className="rainbow-retry-link" onClick={() => refresh(true)}>Retry</button>
+          </>
+        )}
+        {configured !== null && (
+          <>
+            {configured} provider groups configured{statusError ? ' (last known)' : ''}. Availability depends on provider quota and service status.
+            {statusError && (
+              <>{' '}
+                <button type="button" className="rainbow-retry-link" onClick={() => refresh(true)}>Refresh</button>
+              </>
+            )}
+          </>
+        )}
+      </p>
     </section>
   );
 }

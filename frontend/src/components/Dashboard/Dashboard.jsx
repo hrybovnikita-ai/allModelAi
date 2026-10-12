@@ -56,9 +56,10 @@ export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user: routeUser, sessionVerified, retrySession } = useOutletContext();
-  const { user: sessionUser, status, connectionIssue } = useSession();
+  const { user: sessionUser, status, connectionIssue, authLoading } = useSession();
   const user = routeUser?.email ? routeUser : sessionUser;
   const backendReady = sessionVerified && status === AUTH_STATUS.AUTHENTICATED;
+  const sessionStillChecking = authLoading || status === AUTH_STATUS.CHECKING_SESSION;
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -72,12 +73,19 @@ export default function Dashboard() {
   const [showPasswordSetupHint, setShowPasswordSetupHint] = useState(false);
 
   const loadSubscription = useCallback(async () => {
-    if (!user?.email || !backendReady) {
-      if (!backendReady && user?.email) {
+    if (!user?.email) {
+      setSubscriptionLoad('idle');
+      return;
+    }
+    if (!backendReady) {
+      if (sessionStillChecking) {
+        setSubscriptionLoad('loading');
+        setSubscriptionError('');
+        return;
+      }
+      if (status === AUTH_STATUS.CONNECTION_ISSUE || status === AUTH_STATUS.ERROR) {
         setSubscriptionLoad('error');
         setSubscriptionError(connectionIssue?.message || 'Could not reach the server. Start the backend on port 5050 or retry.');
-      } else {
-        setSubscriptionLoad('idle');
       }
       return;
     }
@@ -109,7 +117,7 @@ export default function Dashboard() {
       setSubscriptionError(error.message || 'Could not load subscription.');
       setSubscriptionLoad('error');
     }
-  }, [user?.email, backendReady, connectionIssue?.message]);
+  }, [user?.email, backendReady, sessionStillChecking, status, connectionIssue?.message]);
 
   useEffect(() => {
     if (!user?.email || !backendReady) return;

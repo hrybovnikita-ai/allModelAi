@@ -17,6 +17,8 @@
 .rainbow-action { display: flex; justify-content: space-between; align-items: center; margin-top: auto; font-weight: 600; font-size: .9rem; }
 .rainbow-orb { position: absolute; z-index: -1; top: -60px; right: -40px; width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f3ccff88, #9166ff44 45%, transparent 70%); animation: rainbow-float 8s ease-in-out infinite; }
 .rainbow-availability { color: #aaa1bc; font-size: .8rem; line-height: 1.6; margin-top: 1rem; }
+.rainbow-retry-link { background: none; border: none; color: #c4b5fd; cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
+.rainbow-retry-link:hover { color: #e9d5ff; }
 @keyframes rainbow-flow { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 @keyframes rainbow-float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-20px, 25px); } }
 .effects-paused *, .effects-paused *::after { animation-play-state: paused !important; transition: none !important; }

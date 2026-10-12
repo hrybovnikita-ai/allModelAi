@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../lib/useLanguage';
-import { performLogout } from '../../lib/session';
+import { hasSessionRestoreHint, performLogout } from '../../lib/session';
 import { DASHBOARD_NAV_ACCOUNT_LINKS } from '../Dashboard/dashboardNavLinks';
 import {
   authBootstrapTimeoutMs,
@@ -31,7 +31,7 @@ const NAV_USER_MENU_LINKS = DASHBOARD_NAV_ACCOUNT_LINKS.filter(
 export default function NavAuthSection({ onOpenAuth }) {
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const { status, user, authLoading, refresh } = useSession();
+  const { status, user, authLoading, refresh, sessionVerified, connectionIssue } = useSession();
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const userMenuRef = useRef(null);
@@ -60,15 +60,17 @@ export default function NavAuthSection({ onOpenAuth }) {
   }, [authLoading, redirectRecoveryActive, status]);
 
   const isLoading = (authLoading || redirectRecoveryActive) && !loadingTimedOut;
-  const isAuthenticated = (
-    status === AUTH_STATUS.AUTHENTICATED
-    || status === AUTH_STATUS.CONNECTION_ISSUE
-  ) && Boolean(user?.email);
-  const showSessionError =
-    status === AUTH_STATUS.ERROR
-    || status === 'error'
-    || status === 'authentication-error'
-    || ((authLoading && !redirectRecoveryActive) && loadingTimedOut);
+  const sessionHint = hasSessionRestoreHint();
+  const isAuthenticated = status === AUTH_STATUS.AUTHENTICATED && sessionVerified && Boolean(user?.email);
+  const showConnectionRetry =
+    sessionHint
+    && (
+      status === AUTH_STATUS.CONNECTION_ISSUE
+      || status === AUTH_STATUS.ERROR
+      || status === 'error'
+      || status === 'authentication-error'
+      || ((authLoading && !redirectRecoveryActive) && loadingTimedOut)
+    );
 
   const signOut = async () => {
     await performLogout();
@@ -89,12 +91,6 @@ export default function NavAuthSection({ onOpenAuth }) {
       <InstallPwaButton />
       {isLoading ? (
         <NavAuthSkeleton label={t('Loading account')} />
-      ) : showSessionError ? (
-        <div className="nav-auth-error" role="alert">
-          <button type="button" className="nav-auth-retry" disabled={retrying} onClick={() => { void retrySession(); }}>
-            {retrying ? t('Retrying…') : t('Retry')}
-          </button>
-        </div>
       ) : isAuthenticated ? (
         <div className="nav-user">
           <Link to="/dashboard" className="nav-user-identity">
@@ -131,6 +127,20 @@ export default function NavAuthSection({ onOpenAuth }) {
         </div>
       ) : (
         <div className="nav-auth-guest">
+          {showConnectionRetry ? (
+            <p className="nav-auth-reconnect-hint" role="status">
+              {connectionIssue?.message || t('Could not verify your session.')}
+              {' '}
+              <button
+                type="button"
+                className="nav-auth-retry"
+                disabled={retrying}
+                onClick={() => { void retrySession(); }}
+              >
+                {retrying ? t('Retrying…') : t('Retry')}
+              </button>
+            </p>
+          ) : null}
           <button type="button" className="nav-signin" onClick={() => onOpenAuth('signin')}>{t('Sign in')}</button>
           <button type="button" className="nav-signup" onClick={() => onOpenAuth('signup')}>{t('Sign up')}</button>
         </div>
