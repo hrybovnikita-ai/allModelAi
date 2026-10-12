@@ -90,7 +90,7 @@ async function exchangeSocialAuthAsync(connection, {
         } else if (!userId) {
             const existing = await queryPgClient(
                 client,
-                'SELECT id, name FROM users WHERE lower(email) = $1',
+                'SELECT id, name FROM users WHERE lower(trim(email)) = $1',
                 [canonicalEmail],
             );
             if (existing.rows[0]) {

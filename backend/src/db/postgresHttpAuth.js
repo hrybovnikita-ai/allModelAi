@@ -59,7 +59,7 @@ async function findOrCreateQuickSocialUserAsync(connection, { safeName, normaliz
     const pool = resolvePostgresAsyncPool(connection);
     const found = await queryPgPool(
         pool,
-        'SELECT id, name, email, avatar_url AS avatar FROM users WHERE lower(email) = $1',
+        'SELECT id, name, email, avatar_url AS avatar FROM users WHERE lower(trim(email)) = $1',
         [normalizedEmail],
     );
     if (found.rows[0]) {

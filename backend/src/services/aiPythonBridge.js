@@ -28,8 +28,15 @@ const PYTHON_FETCH_TIMEOUT_MS = Math.max(
     parseInt(process.env.AI_PYTHON_FETCH_TIMEOUT_MS || '30000', 10),
 );
 
+const PYTHON_SHUTDOWN_GRACE_MS = Math.max(
+    500,
+    parseInt(process.env.AI_PYTHON_SHUTDOWN_GRACE_MS || '4000', 10),
+);
+
 let serverProcess = null;
 let startingPromise = null;
+/** @type {Set<import('child_process').ChildProcess>} */
+const activeSingleShotProcesses = new Set();
 
 async function fetchPython(pathOrUrl, init = {}, timeoutMs = PYTHON_FETCH_TIMEOUT_MS) {
     const url = String(pathOrUrl).startsWith('http')
@@ -49,25 +56,103 @@ async function fetchPython(pathOrUrl, init = {}, timeoutMs = PYTHON_FETCH_TIMEOU
     }
 }
 
-function shutdownPythonServer() {
+function destroyProcessStreams(proc) {
+    if (!proc) return;
+    try {
+        proc.stdout?.removeAllListeners();
+        proc.stderr?.removeAllListeners();
+        proc.stdin?.removeAllListeners();
+    } catch {
+        /* ignore */
+    }
+    try {
+        proc.stdout?.destroy();
+        proc.stderr?.destroy();
+        proc.stdin?.destroy();
+    } catch {
+        /* ignore */
+    }
+}
+
+function signalPythonTree(proc, signal) {
+    if (!proc?.pid) return;
+    if (process.platform === 'win32') {
+        try {
+            proc.kill(signal);
+        } catch {
+            /* ignore */
+        }
+        try {
+            spawn('taskkill', ['/PID', String(proc.pid), '/T', '/F'], {
+                stdio: 'ignore',
+                detached: true,
+            }).unref();
+        } catch {
+            /* ignore */
+        }
+        return;
+    }
+    try {
+        process.kill(-proc.pid, signal);
+    } catch {
+        try {
+            proc.kill(signal);
+        } catch {
+            /* ignore */
+        }
+    }
+}
+
+function killTrackedSingleShotProcesses() {
+    for (const proc of activeSingleShotProcesses) {
+        signalPythonTree(proc, 'SIGKILL');
+        destroyProcessStreams(proc);
+    }
+    activeSingleShotProcesses.clear();
+}
+
+function waitForProcessExit(proc, timeoutMs) {
+    return new Promise((resolve) => {
+        if (!proc || proc.killed) {
+            resolve();
+            return;
+        }
+        let settled = false;
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            destroyProcessStreams(proc);
+            resolve();
+        };
+        const timer = setTimeout(() => {
+            signalPythonTree(proc, 'SIGKILL');
+            finish();
+        }, timeoutMs);
+        if (typeof timer.unref === 'function') {
+            timer.unref();
+        }
+        proc.once('close', finish);
+        proc.once('error', finish);
+    });
+}
+
+async function shutdownPythonServerAsync() {
     startingPromise = null;
+    killTrackedSingleShotProcesses();
+
     const proc = serverProcess;
     serverProcess = null;
     if (!proc || proc.killed) {
         return;
     }
-    try {
-        proc.kill('SIGTERM');
-    } catch {
-        /* ignore */
-    }
-    try {
-        if (process.platform === 'win32') {
-            spawn('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
-        }
-    } catch {
-        /* ignore */
-    }
+
+    signalPythonTree(proc, 'SIGTERM');
+    await waitForProcessExit(proc, PYTHON_SHUTDOWN_GRACE_MS);
+}
+
+function shutdownPythonServer() {
+    void shutdownPythonServerAsync().catch(() => {});
 }
 
 /**
@@ -115,7 +200,7 @@ async function ensureServerRunning() {
                         'pipe',
                         'pipe',
                     ],
-                    detached: false,
+                    detached: process.platform !== 'win32',
                 }
             );
 
@@ -178,7 +263,7 @@ async function ensureServerRunning() {
             console.warn(
                 '[aiPythonBridge] Python server did not become healthy in time.'
             );
-            shutdownPythonServer();
+            await shutdownPythonServerAsync();
         } catch (err) {
             console.error(
                 '[aiPythonBridge] Failed to spawn Python server:',
@@ -237,8 +322,11 @@ function runSingleShotCmd(action, payload = {}) {
                     'pipe',
                     'pipe',
                 ],
+                detached: process.platform !== 'win32',
             }
         );
+
+        activeSingleShotProcesses.add(proc);
 
         let output = '';
         let errOutput = '';
@@ -267,6 +355,8 @@ function runSingleShotCmd(action, payload = {}) {
         });
 
         proc.on('close', (code) => {
+            activeSingleShotProcesses.delete(proc);
+            destroyProcessStreams(proc);
             if (code !== 0) {
                 return finish(reject, new Error(
                     errOutput || `Python process exited with code ${code}`,
@@ -576,6 +666,7 @@ async function runLabCommand(action, payload = {}) {
 
 module.exports = {
     shutdownPythonServer,
+    shutdownPythonServerAsync,
     fetchPython,
     PYTHON_FETCH_TIMEOUT_MS,
     ensureServerRunning,

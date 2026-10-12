@@ -422,7 +422,10 @@ const confirmPasswordReset = async (req, res) => {
     if (!row || password.length < 8) return res.status(400).json({ message: 'Valid token and password of at least 8 characters required' });
     const passwordHash = await hashPassword(password);
     if (isPostgresConnection(connection)) {
-        await updateUserPasswordAsync(connection, row.email, passwordHash);
+        await updateUserPasswordAsync(connection, passwordHash, {
+            email: row.email,
+            revokeSessions: true,
+        });
         await deleteAccountTokenAsync(connection, hashValue(token));
     } else {
         connection.database.transaction(() => {

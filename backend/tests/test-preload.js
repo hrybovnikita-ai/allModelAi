@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { after } = require('node:test');
 
 process.env.NODE_ENV = 'test';
 
@@ -25,26 +26,38 @@ try {
     /* ignore */
 }
 
-function cleanupTestArtifacts() {
+function cleanupTestArtifactsSync() {
     try {
         fs.rmSync(resolved, { force: true });
     } catch {
         /* ignore */
     }
+}
+
+async function cleanupPythonBridgeAsync() {
     try {
-        const { shutdownPythonServer } = require('../src/services/aiPythonBridge');
-        shutdownPythonServer();
+        const { shutdownPythonServerAsync } = require('../src/services/aiPythonBridge');
+        await shutdownPythonServerAsync();
     } catch {
         /* bridge not loaded in this process */
     }
 }
 
-process.on('exit', cleanupTestArtifacts);
+after(async () => {
+    await cleanupPythonBridgeAsync();
+    cleanupTestArtifactsSync();
+});
+
+process.on('exit', cleanupTestArtifactsSync);
 process.on('SIGINT', () => {
-    cleanupTestArtifacts();
-    process.exit(130);
+    void cleanupPythonBridgeAsync().finally(() => {
+        cleanupTestArtifactsSync();
+        process.exit(130);
+    });
 });
 process.on('SIGTERM', () => {
-    cleanupTestArtifacts();
-    process.exit(143);
+    void cleanupPythonBridgeAsync().finally(() => {
+        cleanupTestArtifactsSync();
+        process.exit(143);
+    });
 });

@@ -187,7 +187,9 @@ export function degradedSessionUserFromFailure(error) {
   return tryDegradedSessionRestore(error);
 }
 
-const SESSION_FETCH_TIMEOUT_MS = 10000;
+const SESSION_FETCH_TIMEOUT_MS = 12000;
+
+let sessionFetchInflight = null;
 
 function shouldRetrySessionAfterResponse(response, attempt, maxAttempts) {
   if (response.status === 401) {
@@ -214,17 +216,26 @@ export function readStoredSessionUser() {
   }
 }
 
-export function rememberSession(user) {
+/**
+ * Persist client session hint. Set serverVerified=false until GET /api/auth/session succeeds.
+ * @param {object} user
+ * @param {{ serverVerified?: boolean }} [options]
+ */
+export function rememberSession(user, { serverVerified = true } = {}) {
   if (!user?.email) throw new Error('Missing session user');
   sessionRevokedLocally = false;
-  setSessionRestoreMeta({ verified: true, issue: null });
+  setSessionRestoreMeta({ verified: serverVerified, issue: null });
   const saved = JSON.stringify(user);
   const storage = getStorage();
   storage.setItem('allmodelai_user', saved);
-  verifiedSession = { user, saved: storage.getItem('allmodelai_user'), expiresAt: Date.now() + cacheDuration };
-  void import('./clientAuthReset.js').then(({ resetUnauthorizedRedirectGuard }) => {
-    resetUnauthorizedRedirectGuard();
-  }).catch(() => {});
+  if (serverVerified) {
+    verifiedSession = { user, saved: storage.getItem('allmodelai_user'), expiresAt: Date.now() + cacheDuration };
+    void import('./clientAuthReset.js').then(({ resetUnauthorizedRedirectGuard }) => {
+      resetUnauthorizedRedirectGuard();
+    }).catch(() => {});
+  } else {
+    verifiedSession = null;
+  }
   dispatchSessionUpdated(user);
   return user;
 }
@@ -234,24 +245,34 @@ export function rememberSession(user) {
  * Prefer {@link restoreSession} for app bootstrap; use this for a raw probe or tests.
  */
 export async function fetchSessionFromServer() {
-  if (typeof document !== 'undefined' && !readCookieConsent()) {
-    const consentWaitMs = hasSessionRestoreHint() ? 350 : 1200;
-    await waitForCookieConsentChoice(consentWaitMs);
+  if (sessionFetchInflight) {
+    return sessionFetchInflight;
   }
-  const response = await fetch(resolveAuthApiUrl('session'), {
-    credentials: 'include',
-    cache: 'no-store',
-    signal: AbortSignal.timeout(SESSION_FETCH_TIMEOUT_MS),
-    headers: {
-      Accept: 'application/json',
-      ...nativeClientHeaders(),
-      ...nativeSessionHeaders(),
-      ...firebaseSessionFallbackHeaders(),
-    },
-  });
-  const { data, parseError } = await readJsonBody(response);
-  if (parseError) throw parseError;
-  return { response, data };
+  sessionFetchInflight = (async () => {
+    if (typeof document !== 'undefined' && !readCookieConsent()) {
+      const consentWaitMs = hasSessionRestoreHint() ? 350 : 1200;
+      await waitForCookieConsentChoice(consentWaitMs);
+    }
+    const response = await fetch(resolveAuthApiUrl('session'), {
+      credentials: 'include',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(SESSION_FETCH_TIMEOUT_MS),
+      headers: {
+        Accept: 'application/json',
+        ...nativeClientHeaders(),
+        ...nativeSessionHeaders(),
+        ...firebaseSessionFallbackHeaders(),
+      },
+    });
+    const { data, parseError } = await readJsonBody(response);
+    if (parseError) throw parseError;
+    return { response, data };
+  })();
+  try {
+    return await sessionFetchInflight;
+  } finally {
+    sessionFetchInflight = null;
+  }
 }
 
 /**
@@ -268,6 +289,7 @@ export async function restoreSession({ force = false, supersede = false } = {}) 
   if (pendingSession?.generation === sessionGeneration) {
     if (supersede) {
       sessionGeneration += 1;
+      sessionFetchInflight = null;
     } else {
       return pendingSession.promise;
     }
@@ -316,6 +338,7 @@ export async function restoreSession({ force = false, supersede = false } = {}) 
           socialAuthDebug('SESSION_CONFIRM_401', { pathname: '/api/auth/session', attempt });
           sessionRevokedLocally = false;
           setSessionRestoreMeta({ verified: false, issue: null });
+          verifiedSession = null;
           if (shouldRetrySessionAfterResponse(response, attempt, retryDelays.length)) continue;
           break;
         }
@@ -335,6 +358,11 @@ export async function restoreSession({ force = false, supersede = false } = {}) 
       setSessionRestoreMeta({ verified: false, issue: null });
       if (!isFreshLoginGraceActive()) {
         storage.removeItem('allmodelai_user');
+      } else {
+        setSessionRestoreMeta({
+          verified: false,
+          issue: { code: 'SESSION_GUEST', message: 'Session cookie not confirmed yet.' },
+        });
       }
       return null;
     } catch (error) {
@@ -365,7 +393,7 @@ export async function establishSessionFromAuthExchange(user) {
   sessionGeneration += 1;
   sessionRevokedLocally = false;
   markFreshLogin();
-  rememberSession(user);
+  rememberSession(user, { serverVerified: false });
   void import('./authBootstrap.js').then(({ invalidateAuthBootstrap }) => {
     invalidateAuthBootstrap();
   }).catch(() => {});
@@ -444,7 +472,7 @@ export async function confirmSession(user) {
 
   if (isFreshLoginGraceActive()) {
     socialAuthDebug('SESSION_CONFIRM_FALLBACK', { source: 'exchange-user', email: user.email });
-    return rememberSession(user);
+    return rememberSession(user, { serverVerified: false });
   }
 
   clearAllSessionData();
@@ -478,6 +506,7 @@ export function clearAllSessionData() {
   sessionRevokedLocally = true;
   verifiedSession = null;
   pendingSession = null;
+  sessionFetchInflight = null;
   const storage = getStorage();
   storage.removeItem('allmodelai_user');
   clearNativeSessionToken();

@@ -115,18 +115,30 @@ const setAccountPassword = async (req, res) => {
     try {
         const nextHash = await hashPassword(validation.newPassword);
         if (isPostgresConnection(connection)) {
-            await updateUserPasswordAsync(connection, req.user.email, nextHash);
+            await updateUserPasswordAsync(connection, nextHash, {
+                userId,
+                email: req.user.email,
+                revokeSessions: passwordEnabled,
+            });
         } else {
             connection.database
                 .prepare('UPDATE users SET password_hash = ? WHERE id = ?')
                 .run(nextHash, userId);
+            if (passwordEnabled) {
+                connection.database
+                    .prepare('DELETE FROM auth_sessions WHERE user_id = ?')
+                    .run(userId);
+            }
         }
         syncUserPasswordCache(userId, nextHash);
         await refreshCachedAuthUser(connection, req.user.email);
         authLog('PASSWORD_ENROLL_SUCCESS', { userId, hadPassword: passwordEnabled });
         return res.json({
-            message: passwordEnabled ? 'Password updated.' : 'Password created. You can sign in with email and password or Google.',
+            message: passwordEnabled
+                ? 'Password updated. Sign in again on other devices if needed.'
+                : 'Password created. You can sign in with email and password or Google.',
             passwordEnabled: true,
+            sessionRevoked: passwordEnabled,
         });
     } catch (error) {
         authLog('PASSWORD_ENROLL_FAILED', { code: error.code || 'unknown' });

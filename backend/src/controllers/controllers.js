@@ -532,7 +532,12 @@ const getSession = async (req, res) => {
     authLog('SESSION_LOOKUP_START');
     const lookupStartedAt = Date.now();
     try {
-        const user = await lookupSessionUser(req.app.locals.db, hashToken(token), Date.now());
+        const user = await lookupSessionUser(
+            req.app.locals.db,
+            hashToken(token),
+            Date.now(),
+            { timeoutMs: Number(process.env.SESSION_LOOKUP_TIMEOUT_MS) || 8000 },
+        );
         authLog('SESSION_LOOKUP_SUCCESS', {
             durationMs: Date.now() - lookupStartedAt,
             found: Boolean(user),
@@ -557,7 +562,13 @@ const getSession = async (req, res) => {
             durationMs: Date.now() - lookupStartedAt,
             code: error.code || 'unknown',
         });
-        return res.status(500).json({ message: 'Could not read your session. Please try again.' });
+        const timedOut = error?.code === 'PG_QUERY_TIMEOUT';
+        return res.status(timedOut ? 503 : 500).json({
+            message: timedOut
+                ? 'Session lookup timed out. Please retry.'
+                : 'Could not read your session. Please try again.',
+            code: timedOut ? 'SESSION_LOOKUP_TIMEOUT' : 'SESSION_LOOKUP_FAILED',
+        });
     }
 };
 
@@ -843,29 +854,24 @@ const {
     resolveOpenRouterModelId,
 } = require('../billing/accessControl');
 
+const { getPublicModelStatus } = require('../services/modelStatusService');
+
 const getModelStatus = (_req, res) => {
+    const startedAt = Date.now();
     authLog('MODELS_STATUS_START');
     try {
-        const availability = providerAvailabilityForRouter();
-        const image = resolveImageProvider();
-        const providers = buildProviderSnapshot();
-        authLog('MODELS_STATUS_RESPONSE_SENT');
-        return res.status(200).json({
-            updatedAt: new Date().toISOString(),
-            variants: modelVariants,
-            imageGeneration: {
-                provider: image.provider,
-                configured: image.provider !== 'none',
-                pollinations: image.provider === 'pollinations',
-            },
-            models: {
-                ...availability,
-                cloudflare: Boolean(((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID) || availability.others),
-            },
-            providers,
+        const { body, cacheHit } = getPublicModelStatus();
+        res.setHeader('X-Cache', cacheHit ? 'HIT' : 'MISS');
+        authLog('MODELS_STATUS_RESPONSE_SENT', {
+            durationMs: Date.now() - startedAt,
+            cacheHit,
         });
+        return res.status(200).json(body);
     } catch (error) {
-        authLog('MODELS_STATUS_FAILED', { code: error.code || 'unknown' });
+        authLog('MODELS_STATUS_FAILED', {
+            durationMs: Date.now() - startedAt,
+            code: error.code || 'unknown',
+        });
         return res.status(500).json({ message: 'Could not load model availability. Please try again.' });
     }
 };

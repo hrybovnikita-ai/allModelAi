@@ -58,22 +58,32 @@ const CACHE_MIDDLEWARE_TIMEOUT_MS = Number(process.env.CACHE_MIDDLEWARE_TIMEOUT_
 // Use only for public responses that are identical for every visitor.
 function cachePublicResponse(key, ttl = 30) {
     return async (req, res, next) => {
-        let forwarded = false;
-        const forward = () => {
-            if (forwarded || res.headersSent) return;
-            forwarded = true;
-            next();
+        let settled = false;
+        let failOpenTimer;
+        const settle = (action) => {
+            if (settled || res.headersSent) return;
+            settled = true;
+            if (failOpenTimer) clearTimeout(failOpenTimer);
+            action();
         };
+        const forward = () => settle(() => next());
+
+        failOpenTimer = setTimeout(forward, CACHE_MIDDLEWARE_TIMEOUT_MS + 25);
+
+        const cache = req.app.locals.cache;
+        if (!cache?.get) {
+            forward();
+            return undefined;
+        }
+
         try {
             await Promise.race([
                 (async () => {
-                    const cache = req.app.locals.cache;
                     const cached = await cache.get(key);
                     if (res.headersSent) return;
                     res.setHeader('X-Cache', cached === null ? 'MISS' : 'HIT');
                     if (cached !== null) {
-                        forwarded = true;
-                        res.json(cached);
+                        settle(() => res.json(cached));
                         return;
                     }
                     const json = res.json.bind(res);
@@ -98,6 +108,7 @@ function cachePublicResponse(key, ttl = 30) {
         } catch {
             forward();
         }
+        return undefined;
     };
 }
 module.exports = { createCache, cachePublicResponse };

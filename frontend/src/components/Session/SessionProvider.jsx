@@ -113,13 +113,21 @@ export function SessionProvider({ children }) {
         socialAuthDebug('SESSION_PROVIDER_PRESERVED', { phase: 'fresh-login-grace' });
         return current;
       }
-      if (
-        (current.status === AUTH_STATUS.AUTHENTICATED || current.status === AUTH_STATUS.CONNECTION_ISSUE)
-        && current.user?.email
-        && hasSessionRestoreHint()
-      ) {
-        socialAuthDebug('SESSION_PROVIDER_PRESERVED', { phase: 'stale-bootstrap-null' });
-        return current;
+      if (current.user?.email && hasSessionRestoreHint() && isFreshLoginGraceActive()) {
+        socialAuthDebug('SESSION_PROVIDER_PRESERVED', { phase: 'fresh-login-null' });
+        return {
+          status: AUTH_STATUS.CHECKING_SESSION,
+          user: current.user,
+          sessionVerified: false,
+          connectionIssue: current.connectionIssue,
+        };
+      }
+      if (current.user?.email && hasSessionRestoreHint() && current.status === AUTH_STATUS.CONNECTION_ISSUE) {
+        socialAuthDebug('SESSION_PROVIDER_PRESERVED', { phase: 'connection-issue-null' });
+        return {
+          ...current,
+          sessionVerified: false,
+        };
       }
       socialAuthDebug('SESSION_PROVIDER_ANONYMOUS', {});
       return {
@@ -133,7 +141,7 @@ export function SessionProvider({ children }) {
 
   const refreshInFlight = useRef(null);
 
-  const refresh = useCallback(async ({ force = false } = {}) => {
+  const refresh = useCallback(async ({ force = false, silent = false } = {}) => {
     if (refreshInFlight.current) {
       return refreshInFlight.current;
     }
@@ -145,7 +153,7 @@ export function SessionProvider({ children }) {
         sessionVerified: false,
         connectionIssue: null,
       }));
-    } else if (force) {
+    } else if (force && !silent) {
       setState((current) => ({
         status: AUTH_STATUS.CHECKING_SESSION,
         user: current.user?.email ? current.user : null,
@@ -259,18 +267,11 @@ export function SessionProvider({ children }) {
   useEffect(() => {
     const onUpdated = (event) => {
       const user = event.detail?.user;
-      if (user?.email) {
-        setState({
-          status: AUTH_STATUS.AUTHENTICATED,
-          user,
-          sessionVerified: true,
-          connectionIssue: null,
-        });
-      }
+      if (user?.email) applySessionUser(user);
     };
     globalThis.addEventListener(SESSION_UPDATED_EVENT, onUpdated);
     return () => globalThis.removeEventListener(SESSION_UPDATED_EVENT, onUpdated);
-  }, []);
+  }, [applySessionUser]);
 
   useEffect(() => {
     const onConsent = (event) => {
@@ -292,7 +293,7 @@ export function SessionProvider({ children }) {
       if (cancelled || attempt >= delays.length) return;
       timer = setTimeout(() => {
         attempt += 1;
-        void refresh({ force: true }).finally(() => {
+        void refresh({ force: true, silent: true }).finally(() => {
           if (!cancelled) schedule();
         });
       }, delays[attempt]);

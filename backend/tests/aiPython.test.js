@@ -2,8 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
 const app = require('../app');
+const { shutdownPythonServerAsync } = require('../src/services/aiPythonBridge');
 
 test('PyTorch AI Learning Engine endpoints', async (t) => {
+    t.after(async () => {
+        await shutdownPythonServerAsync();
+    });
     await t.test('GET /api/ai-python/status returns PyTorch status and model state', async () => {
         const res = await request(app).get('/api/ai-python/status');
         assert.equal(res.status, 200);

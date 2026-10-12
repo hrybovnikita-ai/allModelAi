@@ -6,7 +6,7 @@ const {
     touchDeveloperApiKeyAsync,
 } = require('../db/postgresHttpReads');
 
-async function lookupSessionUser(dbConnection, tokenHash, nowMs) {
+async function lookupSessionUser(dbConnection, tokenHash, nowMs, { timeoutMs } = {}) {
     const engine = dbConnection.engine || 'sqlite';
     const database = dbConnection.database;
     const asyncPool = resolvePostgresAsyncPool(dbConnection);
@@ -17,6 +17,7 @@ async function lookupSessionUser(dbConnection, tokenHash, nowMs) {
              FROM auth_sessions JOIN users ON users.id = auth_sessions.user_id
              WHERE token_hash = $1 AND expires_at > $2`,
             [tokenHash, nowMs],
+            timeoutMs ? { timeoutMs } : undefined,
         );
         return result.rows[0] || null;
     }

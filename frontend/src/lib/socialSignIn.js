@@ -447,15 +447,17 @@ export async function navigateAfterSocialLogin(user, { navigate, replaceDashboar
     left?.email?.toLowerCase() === right?.email?.toLowerCase();
 
   let sessionUser = user;
+  let serverVerified = false;
   try {
     const verified = await restoreSession({ force: true });
     if (sameEmail(verified, user)) {
       sessionUser = verified;
+      serverVerified = true;
     }
   } catch {
-    /* exchange already stored session; proceed with known user */
+    /* exchange stored cookie hint; SessionProvider will confirm on dashboard */
   }
-  rememberSession(sessionUser);
+  rememberSession(sessionUser, { serverVerified });
   const useSpaNav = prefersSameOriginApi() && typeof navigate === 'function';
   if (useSpaNav) {
     socialAuthDebug('DASHBOARD_REDIRECT', { mode: 'spa', pathname: '/dashboard' });

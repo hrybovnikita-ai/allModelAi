@@ -264,19 +264,49 @@ async function findUserByEmailInsensitiveAsync(connection, email) {
     return result.rows[0] || null;
 }
 
-async function updateUserPasswordAsync(connection, email, passwordHash) {
+async function updateUserPasswordAsync(connection, passwordHash, { userId, email, revokeSessions = true } = {}) {
     const pool = resolvePostgresAsyncPool(connection);
-    await queryPgPool(
+    let updated;
+    if (userId != null) {
+        updated = await queryPgPool(
+            pool,
+            'UPDATE users SET password_hash = $1 WHERE id = $2',
+            [passwordHash, userId],
+        );
+    } else if (email) {
+        const normalized = String(email).trim().toLowerCase();
+        updated = await queryPgPool(
+            pool,
+            'UPDATE users SET password_hash = $1 WHERE lower(trim(email)) = $2',
+            [passwordHash, normalized],
+        );
+    } else {
+        const error = new Error('Password update requires userId or email');
+        error.code = 'PASSWORD_UPDATE_TARGET_MISSING';
+        throw error;
+    }
+    if (!updated.rowCount) {
+        const error = new Error('No user record was updated');
+        error.code = 'PASSWORD_UPDATE_NO_ROW';
+        throw error;
+    }
+    if (revokeSessions) {
+        const targetUserId = userId ?? (await findUserIdByNormalizedEmailAsync(pool, email));
+        if (targetUserId != null) {
+            await queryPgPool(pool, 'DELETE FROM auth_sessions WHERE user_id = $1', [targetUserId]);
+        }
+    }
+}
+
+async function findUserIdByNormalizedEmailAsync(pool, email) {
+    const normalized = String(email || '').trim().toLowerCase();
+    if (!normalized) return null;
+    const result = await queryPgPool(
         pool,
-        'UPDATE users SET password_hash = $1 WHERE lower(email) = lower($2)',
-        [passwordHash, email],
+        'SELECT id FROM users WHERE lower(trim(email)) = $1',
+        [normalized],
     );
-    await queryPgPool(
-        pool,
-        `DELETE FROM auth_sessions
-         WHERE user_id IN (SELECT id FROM users WHERE lower(email) = lower($1))`,
-        [email],
-    );
+    return result.rows[0]?.id ?? null;
 }
 
 async function verifyUserEmailAsync(connection, email) {

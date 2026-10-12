@@ -41,6 +41,7 @@ for (const file of testFiles) {
             '--require',
             preload,
             '--test-concurrency=1',
+            '--test-force-exit',
             '--test',
             file,
         ],

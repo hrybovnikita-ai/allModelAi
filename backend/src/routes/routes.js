@@ -193,7 +193,7 @@ router.get('/auth/me', logAuthStage('SESSION_ROUTE_ENTERED'), getSession);
 router.post('/auth/logout', logout);
 router.post('/auth/password-reset/request', authAttemptRateLimit('password-reset-request', { emailScoped: true, limit: 20 }), requestPasswordReset);
 router.post('/auth/password-reset/confirm', authAttemptRateLimit('password-reset-confirm', { limit: 30 }), confirmPasswordReset);
-router.get('/status/models', logAuthStage('MODELS_STATUS_ROUTE_ENTERED'), cachePublicResponse('allmodelai:public:model-status:v1'), getModelStatus);
+router.get('/status/models', logAuthStage('MODELS_STATUS_ROUTE_ENTERED'), getModelStatus);
 router.get('/health/providers', cachePublicResponse('allmodelai:public:provider-health:v1'), getProviderHealth);
 router.get('/health', health);
 router.get('/ready', getReady);

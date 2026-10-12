@@ -2,8 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
 const app = require('../app');
+const { shutdownPythonServerAsync } = require('../src/services/aiPythonBridge');
 
 test('AI Learning Lab gateway (/api/ai/*)', async (t) => {
+    t.after(async () => {
+        await shutdownPythonServerAsync();
+    });
     await t.test('GET /api/ai/lessons returns catalog or 503 when Python offline', async () => {
         const res = await request(app).get('/api/ai/lessons');
         if (res.status === 503 || res.status === 404) {

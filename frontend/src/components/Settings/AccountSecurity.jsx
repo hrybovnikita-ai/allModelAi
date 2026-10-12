@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useLanguage } from '../../lib/useLanguage';
 import { validatePasswordEnrollmentForm } from '../../lib/authValidation.js';
 import { fetchAccountSecurity, setAccountPassword } from '../../lib/accountSecurity.js';
+import { restoreSession } from '../../lib/session.js';
 
 const PROVIDER_LABELS = {
   'google.com': 'Google',
@@ -76,6 +77,9 @@ export default function AccountSecurity() {
       setNewPassword('');
       setConfirmPassword('');
       setSuccess(result?.message || t('passwordSaved'));
+      if (result?.sessionRevoked) {
+        await restoreSession({ force: true });
+      }
     } catch (requestError) {
       setError(requestError.message || 'Could not save your password.');
     } finally {
