@@ -1,4 +1,5 @@
 const modelVariants = require('../data/modelVariants.json');
+const { resolveDeepSeekApiModel, resolveDeepSeekVariantId } = require('../services/deepseekModelIds');
 const { sessionCookieOptions, shouldIssueNativeSessionToken } = require('../sessionCookie');
 const { sessionCookie, hashToken, readSessionToken } = require('../sessionAuth');
 const { createSessionToken } = require('../sessionToken');
@@ -25,7 +26,8 @@ const {
     syncLoginUserName,
     safeSessionErrorCode,
 } = require('../authSessionStore');
-const { extractPasswordHash } = require('../authPasswordHash');
+const { extractPasswordHash, isValidPasswordHashFormat } = require('../authPasswordHash');
+const { listSocialProvidersForUserAsync } = require('../db/postgresHttpSocial');
 const Stripe = require('stripe');
 const users = require('../data/data');
 const webSearchService = require('../services/webSearchService');
@@ -47,6 +49,34 @@ const {
 } = require('../authHelpers');
 
 const sessionDuration = 1000 * 60 * 60 * 24 * 30;
+
+async function linkedAuthProviders(connection, userId) {
+    if (isPostgresConnection(connection)) {
+        return listSocialProvidersForUserAsync(connection, userId);
+    }
+    return connection.database
+        .prepare('SELECT provider FROM social_identities WHERE user_id = ?')
+        .all(userId)
+        .map((row) => row.provider);
+}
+
+async function respondPasswordSetupRequired(req, res, user, { reason = 'PASSWORD_HASH_MISSING' } = {}) {
+    authLog('Login rejected', { reason });
+    const connection = req.app.locals.db;
+    const providers = await linkedAuthProviders(connection, user.id);
+    const linkedSocial = providers.length > 0;
+    const message = linkedSocial
+        ? 'No AllModelAI password is set for this email yet. Sign in with Google, open Settings → Security → Set password, then you can use email and password here.'
+        : 'No password is set for this account yet. Use Forgot password to create one, or continue with Google if you registered that way.';
+    return res.status(401).json({
+        code: 'PASSWORD_SETUP_REQUIRED',
+        message,
+        passwordEnabled: false,
+        enrollmentPath: '/settings#settings-security',
+        passwordResetPath: '/forgot-password',
+        providers,
+    });
+}
 
 function nativeSessionFields(req, token) {
     if (token && shouldIssueNativeSessionToken(req)) return { nativeSessionToken: token };
@@ -358,26 +388,9 @@ const loginUser = async (req, res) => {
 
     authLog(`LOGIN passwordHash exists ${Boolean(user.passwordHash)}`);
 
-    if (!user.passwordHash) {
-        authLog('Login rejected', { reason: 'PASSWORD_HASH_MISSING' });
-        const connection = req.app.locals.db;
-        let linkedSocial = false;
-        if (isPostgresConnection(connection)) {
-            linkedSocial = await userHasSocialIdentityAsync(connection, user.id);
-        } else {
-            linkedSocial = Boolean(
-                connection.database.prepare('SELECT 1 FROM social_identities WHERE user_id = ? LIMIT 1').get(user.id),
-            );
-        }
-        const message = linkedSocial
-            ? 'No AllModelAI password is set for this email yet. Sign in with Google, open Settings → Security → Set password, then you can use email and password here.'
-            : 'No password is set for this account yet. Use Forgot password to create one, or continue with Google if you registered that way.';
-        return res.status(401).json({
-            code: 'PASSWORD_SETUP_REQUIRED',
-            message,
-            passwordEnabled: false,
-            enrollmentPath: '/settings#settings-security',
-        });
+    if (!user.passwordHash || !isValidPasswordHashFormat(user.passwordHash)) {
+        const reason = user.passwordHash ? 'PASSWORD_HASH_INVALID' : 'PASSWORD_HASH_MISSING';
+        return respondPasswordSetupRequired(req, res, user, { reason });
     }
 
     let passwordMatches = false;
@@ -1604,7 +1617,8 @@ async function createChatResponseImpl(req, res) {
     const requestStartedAt = Date.now();
     const chatCorrelationId = String(req.correlationId || req.headers['x-request-id'] || req.headers['x-correlation-id'] || `chat-${Date.now()}`);
     const { messages, model = 'gpt', variant, conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {}, useKnowledge = true, systemInstructions = '', maxTokens, fallbackEnabled = true } = req.body;
-    const selectedVariant = variant == null ? null : modelVariants[model]?.find((item) => item.id === variant);
+    const resolvedVariantId = model === 'deepseek' && variant != null ? resolveDeepSeekVariantId(variant) : variant;
+    const selectedVariant = resolvedVariantId == null ? null : modelVariants[model]?.find((item) => item.id === resolvedVariantId);
     if (variant != null && !selectedVariant) return res.status(400).json({ message: 'Unknown version for the selected model.' });
     const allowFallback = !selectedVariant && fallbackEnabled !== false;
     const userEmail = req.user.email;
@@ -1616,7 +1630,7 @@ async function createChatResponseImpl(req, res) {
         copilot: 'openai/gpt-4o-mini',
         perplexity: 'perplexity/sonar',
         kimi: process.env.KIMI_MODEL || 'moonshotai/kimi-k2.5',
-        deepseek: 'deepseek/deepseek-chat',
+        deepseek: 'deepseek/deepseek-flash',
         llama: 'meta-llama/llama-3.3-70b-instruct',
         mistral: process.env.MISTRAL_MODEL || 'mistral-small-latest',
         qwen: 'qwen/qwen-2.5-72b-instruct',
@@ -1806,8 +1820,7 @@ async function createChatResponseImpl(req, res) {
         }
     }
 
-    // Prefer the shared OpenRouter connection for Claude when it is configured.
-    // This keeps Claude available when a direct Anthropic account has no credits.
+    // Explicit Claude uses Anthropic when CLAUDE_API_KEY is set. OpenRouter is only a labeled fallback.
     const gatewayKey = openRouterKey();
     const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
     const xaiKey = (process.env.XAI_API_KEY || process.env.GROK_API_KEY)?.trim();
@@ -1823,8 +1836,9 @@ async function createChatResponseImpl(req, res) {
     const usePreferredGemini = preferGemini && model === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
     let isOpenAI = Boolean(openAIKey && !usePreferredGemini && (routedModel === 'gpt' || routedModel === 'copilot'));
     let isXAI = routedModel === 'grok' && Boolean(xaiKey) && process.env.GROK_PROVIDER !== 'openrouter';
-    let isClaude = routedModel === 'claude' && !gatewayKey?.trim();
+    let isClaude = routedModel === 'claude' && Boolean(process.env.CLAUDE_API_KEY?.trim());
     let isGemini = (routedModel === 'gemini' || usePreferredGemini) && Boolean(process.env.GEMINI_API_KEY?.trim());
+    let isDeepSeek = routedModel === 'deepseek' && Boolean(process.env.DEEPSEEK_API_KEY?.trim());
     let isKimi = routedModel === 'kimi' && Boolean(directKimiKey || gatewayKey);
     let isMistral = routedModel === 'mistral' && Boolean(directMistralKey);
     let isPerplexity = routedModel === 'perplexity' && Boolean(directPerplexityKey);
@@ -1840,13 +1854,13 @@ async function createChatResponseImpl(req, res) {
             isOpenAI = true;
             routedModel = 'gpt';
         } else if (visionSlug === 'claude' && (process.env.CLAUDE_API_KEY?.trim() || gatewayKey?.trim())) {
-            isClaude = Boolean(process.env.CLAUDE_API_KEY?.trim()) && !gatewayKey?.trim();
+            isClaude = Boolean(process.env.CLAUDE_API_KEY?.trim());
             routedModel = 'claude';
         }
     }
     const cloudflareKey = process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY;
-    let apiKey = isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isPerplexity ? directPerplexityKey : isCloudflare ? cloudflareKey : gatewayKey;
-    const usesDirectProvider = Boolean(isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isPerplexity || isCloudflare);
+    let apiKey = isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isDeepSeek ? process.env.DEEPSEEK_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isPerplexity ? directPerplexityKey : isCloudflare ? cloudflareKey : gatewayKey;
+    const usesDirectProvider = Boolean(isOpenAI || isXAI || isClaude || isGemini || isDeepSeek || (isKimi && directKimiKey) || isMistral || isPerplexity || isCloudflare);
     if (!apiKey) {
         logSmartRouter('provider failed', { provider: routedModel, reason: 'missing_api_key' });
         return res.status(503).json(buildNoAiProvidersPayload());
@@ -2047,10 +2061,13 @@ async function createChatResponseImpl(req, res) {
                 });
             }
         };
-        let apiResponse = await fetchProvider(isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
+        let apiResponse = await fetchProvider(isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isDeepSeek ? 'https://api.deepseek.com/chat/completions' : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             signal: requestSignal(),
             headers: isOpenAI || isXAI ? {
+                Authorization: `Bearer ${apiKey.trim()}`,
+                'Content-Type': 'application/json',
+            } : isDeepSeek ? {
                 Authorization: `Bearer ${apiKey.trim()}`,
                 'Content-Type': 'application/json',
             } : isClaude ? {
@@ -2082,6 +2099,11 @@ async function createChatResponseImpl(req, res) {
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : isXAI ? {
                 model: selectedVariant?.direct || process.env.XAI_MODEL || 'grok-4-latest',
+                stream: true,
+                max_tokens: outputTokenLimit,
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
+            } : isDeepSeek ? {
+                model: resolveDeepSeekApiModel(selectedVariant?.id),
                 stream: true,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { bootstrapAuthenticatedUser } from '../../lib/authBootstrap.js';
 import {
   authBootstrapTimeoutMs,
@@ -131,7 +131,13 @@ export function SessionProvider({ children }) {
     });
   }, []);
 
+  const refreshInFlight = useRef(null);
+
   const refresh = useCallback(async ({ force = false } = {}) => {
+    if (refreshInFlight.current) {
+      return refreshInFlight.current;
+    }
+    const run = (async () => {
     if (shouldShowGoogleRedirectRecoveryUI()) {
       setState(() => ({
         status: AUTH_STATUS.CHECKING_REDIRECT,
@@ -157,6 +163,13 @@ export function SessionProvider({ children }) {
       socialAuthDebug('SESSION_PROVIDER_ERROR', { message: error?.message });
       setState((current) => connectionIssueState(current, error));
       return null;
+    }
+    })();
+    refreshInFlight.current = run;
+    try {
+      return await run;
+    } finally {
+      if (refreshInFlight.current === run) refreshInFlight.current = null;
     }
   }, [applySessionUser]);
 
@@ -271,18 +284,22 @@ export function SessionProvider({ children }) {
 
   useEffect(() => {
     if (state.status !== AUTH_STATUS.CONNECTION_ISSUE) return undefined;
-    const delays = [5000, 15000, 45000];
+    const delays = [8000, 20000, 45000];
     let attempt = 0;
     let timer;
+    let cancelled = false;
     const schedule = () => {
-      if (attempt >= delays.length) return;
+      if (cancelled || attempt >= delays.length) return;
       timer = setTimeout(() => {
         attempt += 1;
-        void refresh({ force: true }).finally(schedule);
+        void refresh({ force: true }).finally(() => {
+          if (!cancelled) schedule();
+        });
       }, delays[attempt]);
     };
     schedule();
     return () => {
+      cancelled = true;
       if (timer) clearTimeout(timer);
     };
   }, [state.status, refresh]);

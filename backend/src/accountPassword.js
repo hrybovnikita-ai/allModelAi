@@ -137,4 +137,5 @@ const setAccountPassword = async (req, res) => {
 module.exports = {
     getAccountSecurity,
     setAccountPassword,
+    refreshCachedAuthUser,
 };

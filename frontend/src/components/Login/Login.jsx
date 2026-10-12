@@ -439,7 +439,11 @@ function LoginForm({
               <Link to="/settings#settings-security" onClick={onClose}>
                 Settings → Security
               </Link>{' '}
-              to set an AllModelAI password for this email.
+              to set an AllModelAI password for this email. You can also use{' '}
+              <Link to="/forgot-password" onClick={onClose}>
+                Forgot password
+              </Link>{' '}
+              to create a password from your email (we never use your Google password).
             </p>
           )}
 

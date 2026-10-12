@@ -7,12 +7,16 @@ import base64
 import json
 import sys
 
-from api.routes import create_app
 from config import DEFAULT_BATCH_SIZE, DEFAULT_EPOCHS, DEFAULT_LR, DEFAULT_PORT
 from training.trainer import TrainingManager
 
 trainer = TrainingManager()
-app = create_app(trainer)
+
+
+def _create_app():
+    from api.routes import create_app
+
+    return create_app(trainer)
 
 
 def _handle_json_command(raw_json: str) -> None:
@@ -147,6 +151,7 @@ def main() -> None:
         return
 
     if args.serve:
+        app = _create_app()
         if app is None:
             print("FastAPI or uvicorn is not installed. Run: py -m pip install fastapi uvicorn")
             sys.exit(1)

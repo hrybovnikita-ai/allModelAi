@@ -3,6 +3,7 @@ import { deleteUserAccountAndSignOut } from '../../lib/clientAuthReset';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import { useSession } from '../Session/SessionProvider';
+import { AUTH_STATUS } from '../../lib/authSessionStatus';
 import { dashboardModels as models } from '../../data/dashboardModels';
 import './Dashboard.css';
 import './DashboardEnhancements.css';
@@ -19,6 +20,7 @@ import EverydayCards from '../EverydayAI/EverydayCards';
 import ManageSubscriptionModal from './ManageSubscriptionModal';
 import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
 import { isCompleteCreditStatus, normalizeCreditStatus } from '../../lib/creditStatus';
+import { fetchAccountSecurity } from '../../lib/accountSecurity.js';
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
 
 const dashboardModelStatusKey = (slug) => (
@@ -53,9 +55,10 @@ const subscriptionStatusLabel = (creditStatus) => {
 export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user: routeUser } = useOutletContext();
-  const { user: sessionUser } = useSession();
+  const { user: routeUser, sessionVerified, retrySession } = useOutletContext();
+  const { user: sessionUser, status, connectionIssue } = useSession();
   const user = routeUser?.email ? routeUser : sessionUser;
+  const backendReady = sessionVerified && status === AUTH_STATUS.AUTHENTICATED;
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -66,10 +69,16 @@ export default function Dashboard() {
   const [recentProjects, setRecentProjects] = useState([]);
   const [manageSubOpen, setManageSubOpen] = useState(false);
   const [modelStatus, setModelStatus] = useState({});
+  const [showPasswordSetupHint, setShowPasswordSetupHint] = useState(false);
 
   const loadSubscription = useCallback(async () => {
-    if (!user?.email) {
-      setSubscriptionLoad('idle');
+    if (!user?.email || !backendReady) {
+      if (!backendReady && user?.email) {
+        setSubscriptionLoad('error');
+        setSubscriptionError(connectionIssue?.message || 'Could not reach the server. Start the backend on port 5050 or retry.');
+      } else {
+        setSubscriptionLoad('idle');
+      }
       return;
     }
     setSubscriptionLoad('loading');
@@ -100,21 +109,43 @@ export default function Dashboard() {
       setSubscriptionError(error.message || 'Could not load subscription.');
       setSubscriptionLoad('error');
     }
-  }, [user?.email]);
+  }, [user?.email, backendReady, connectionIssue?.message]);
 
   useEffect(() => {
-    if (!user?.email) return;
+    if (!user?.email || !backendReady) return;
     void loadSubscription();
-  }, [user?.email, location.state?.subscriptionActivated, loadSubscription]);
-  useEffect(() => { if (!user?.email) return; Promise.all([apiFetch(`/api/analytics?email=${encodeURIComponent(user.email)}`).then(r => r.ok ? r.json() : null), apiFetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`).then(r => r.ok ? r.json() : [])]).then(([stats, projects]) => { setAnalytics(stats); setRecentProjects(projects.slice(0, 3)); }).catch(() => {}); }, [user?.email]);
+  }, [user?.email, backendReady, location.state?.subscriptionActivated, loadSubscription]);
+  useEffect(() => {
+    if (!user?.email || !backendReady) return;
+    Promise.all([
+      apiFetch(`/api/analytics?email=${encodeURIComponent(user.email)}`).then((r) => (r.ok ? r.json() : null)),
+      apiFetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`).then((r) => (r.ok ? r.json() : [])),
+    ]).then(([stats, projects]) => {
+      setAnalytics(stats);
+      setRecentProjects(projects.slice(0, 3));
+    }).catch(() => {});
+  }, [user?.email, backendReady]);
 
   useEffect(() => {
+    if (!backendReady) return;
     apiFetch('/api/status/models')
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => { if (data?.models) setModelStatus(data.models); })
       .catch(() => {});
-  }, []);
+  }, [backendReady]);
 
+  useEffect(() => {
+    if (!user?.email || !backendReady) {
+      setShowPasswordSetupHint(false);
+      return;
+    }
+    void fetchAccountSecurity()
+      .then((data) => {
+        const socialOnly = !data?.passwordEnabled && Array.isArray(data?.providers) && data.providers.length > 0;
+        setShowPasswordSetupHint(socialOnly);
+      })
+      .catch(() => setShowPasswordSetupHint(false));
+  }, [user?.email, backendReady]);
 
   if (!user?.email) {
     return (
@@ -158,6 +189,13 @@ export default function Dashboard() {
       )}
       {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user?.email}</div>}
       {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}
+      {showPasswordSetupHint && (
+        <div className="dashboard-email-notice" role="status">
+          You signed in with Google. Add an AllModelAI password in{' '}
+          <Link to="/settings#settings-security">Settings → Security</Link>
+          {' '}to sign in with email and password too (optional).
+        </div>
+      )}
       {deleteError && !deleteModalOpen && <p role="alert">{deleteError}</p>}
       <section className="dashboard-hero">
         <div>
@@ -184,7 +222,18 @@ export default function Dashboard() {
           {subscriptionError && (
             <p className="dashboard-subscription-error" role="alert">
               {subscriptionError}{' '}
-              <button type="button" className="dashboard-sub-retry" onClick={loadSubscription}>Retry</button>
+              <button
+                type="button"
+                className="dashboard-sub-retry"
+                onClick={() => {
+                  void (async () => {
+                    if (typeof retrySession === 'function') await retrySession();
+                    await loadSubscription();
+                  })();
+                }}
+              >
+                Retry
+              </button>
             </p>
           )}
           {creditStatus && (

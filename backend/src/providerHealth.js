@@ -46,7 +46,7 @@ function providerCatalog() {
         deepseek: {
             keys: ['DEEPSEEK_API_KEY'],
             modelEnv: 'DEEPSEEK_MODEL',
-            defaultModel: 'deepseek-chat',
+            defaultModel: 'deepseek-flash',
         },
         perplexity: {
             keys: ['PERPLEXITY_API_KEY'],

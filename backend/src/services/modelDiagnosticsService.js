@@ -144,9 +144,24 @@ function pickRoute(slug, variant) {
             if (gateway) return { mode: 'openrouter', model: v.gateway, providerModel: v.gateway };
             return { mode: 'blocked', reason: 'Missing Gemini or OpenRouter API configuration' };
         case 'claude':
-            if (gateway) return { mode: 'openrouter', model: v.gateway, providerModel: v.gateway };
             if (claudeKey()) return { mode: 'claude', model: v.direct, providerModel: v.direct };
+            if (gateway) return { mode: 'openrouter', model: v.gateway, providerModel: v.gateway };
             return { mode: 'blocked', reason: 'Missing Claude or OpenRouter API configuration' };
+        case 'deepseek': {
+            const { resolveDeepSeekApiModel } = require('./deepseekModelIds');
+            if (envTrim('DEEPSEEK_API_KEY')) {
+                const modelId = resolveDeepSeekApiModel(v.id);
+                return {
+                    mode: 'openai_compat',
+                    url: 'https://api.deepseek.com/chat/completions',
+                    model: modelId,
+                    providerModel: modelId,
+                    key: envTrim('DEEPSEEK_API_KEY'),
+                };
+            }
+            if (gateway) return { mode: 'openrouter', model: v.gateway, providerModel: v.gateway };
+            return { mode: 'blocked', reason: 'Missing DeepSeek or OpenRouter API configuration' };
+        }
         case 'mistral':
             if (mistralKey()) {
                 return {
@@ -296,10 +311,17 @@ function buildCatalogRow(slug, variant, email) {
     const caps = capabilitiesForSlug(slug);
     const cacheKey = resultKey(email, slug, variant.id);
     const last = lastResults.get(cacheKey);
-    let availabilityStatus = 'not_tested';
-    if (route.mode === 'blocked') availabilityStatus = 'blocked';
-    else if (last?.ok) availabilityStatus = 'ok';
-    else if (last && !last.ok) availabilityStatus = 'error';
+    let availabilityStatus = 'NOT_TESTED';
+    if (route.mode === 'blocked') availabilityStatus = 'UNCONFIGURED';
+    else if (last?.ok) availabilityStatus = 'WORKING';
+    else if (last && !last.ok) {
+        const code = Number(last.status) || 0;
+        if (code === 404) availabilityStatus = 'INVALID_MODEL';
+        else if (code === 401 || code === 403) availabilityStatus = 'ACCESS_DENIED';
+        else if (code === 429) availabilityStatus = last.message?.toLowerCase().includes('quota') ? 'QUOTA_EXCEEDED' : 'RATE_LIMITED';
+        else if (code >= 500 || code === 408) availabilityStatus = 'TEMPORARILY_UNAVAILABLE';
+        else availabilityStatus = 'FAILED';
+    }
 
     return {
         slug,

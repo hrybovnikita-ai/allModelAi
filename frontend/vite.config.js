@@ -21,12 +21,24 @@ const API_PATH_PATTERN = ({ url, request }) => {
 export default defineConfig(({ mode }) => {
  const env = loadEnv(mode, process.cwd(), '')
  const pwaDisabled = env.VITE_DISABLE_PWA === 'true'
+ const apiProxyTarget = env.API_PROXY_TARGET || 'http://127.0.0.1:5050'
  const proxy = {
    '/api': {
-     target: env.API_PROXY_TARGET || 'http://127.0.0.1:5050',
+     target: apiProxyTarget,
      changeOrigin: true,
-     timeout: 0,
-     proxyTimeout: 0,
+     timeout: 30_000,
+     proxyTimeout: 30_000,
+     configure: (proxyServer) => {
+       proxyServer.on('error', (err, _req, res) => {
+         if (res?.writeHead && !res.headersSent) {
+           res.writeHead(502, { 'Content-Type': 'application/json' })
+           res.end(JSON.stringify({
+             message: `Local API unreachable at ${apiProxyTarget}. Start the backend (cd allModelAi/backend && npm run dev).`,
+             code: 'API_PROXY_UPSTREAM_DOWN',
+           }))
+         }
+       })
+     },
    },
    '/__/auth': {
      target: 'https://allmodelai.firebaseapp.com',

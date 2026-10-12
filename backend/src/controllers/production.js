@@ -421,8 +421,6 @@ const confirmPasswordReset = async (req, res) => {
         : connection.database.prepare("SELECT * FROM account_tokens WHERE token_hash=? AND purpose='password_reset' AND expires_at>?").get(hashValue(token), Date.now());
     if (!row || password.length < 8) return res.status(400).json({ message: 'Valid token and password of at least 8 characters required' });
     const passwordHash = await hashPassword(password);
-    const memoryUser = users.find((user) => user.email.toLowerCase() === row.email.toLowerCase());
-    if (memoryUser) memoryUser.passwordHash = passwordHash;
     if (isPostgresConnection(connection)) {
         await updateUserPasswordAsync(connection, row.email, passwordHash);
         await deleteAccountTokenAsync(connection, hashValue(token));
@@ -432,6 +430,13 @@ const confirmPasswordReset = async (req, res) => {
             connection.database.prepare('DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE lower(email)=lower(?))').run(row.email);
             connection.database.prepare('DELETE FROM account_tokens WHERE token_hash=?').run(hashValue(token));
         })();
+    }
+    try {
+        const { refreshCachedAuthUser } = require('../accountPassword');
+        await refreshCachedAuthUser(connection, row.email);
+    } catch {
+        const memoryUser = users.find((user) => user.email.toLowerCase() === row.email.toLowerCase());
+        if (memoryUser) memoryUser.passwordHash = passwordHash;
     }
     return res.json({ message: 'Password changed. Sign in again.' });
 };

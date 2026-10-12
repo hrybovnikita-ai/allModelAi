@@ -109,6 +109,7 @@ const {
     getPaymentHistory,
 } = require('../controllers/wayforpayController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { authAttemptRateLimit } = require('../authRateLimit');
 const { prepareAppGeneration } = require('../appGeneration');
 const { health, healthDetailed, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
 const { getReady, getOpsDashboard, getOpsProviders } = require('../controllers/opsCenter');
@@ -178,10 +179,10 @@ router.post('/training/:runId/predict', requireAuth, postTrainingPredict);
 router.post('/training/openai/chat', requireAuth, postTrainingOpenAiChat);
 router.get('/system/health', getSystemHealth);
 
-router.post('/auth/register', registerUser);
-router.post('/auth/login', logAuthStage('AUTH_ROUTE_ENTERED'), loginUser);
+router.post('/auth/register', authAttemptRateLimit('register'), registerUser);
+router.post('/auth/login', authAttemptRateLimit('login', { emailScoped: true }), logAuthStage('AUTH_ROUTE_ENTERED'), loginUser);
 router.get('/auth/account/security', requireAuth, getAccountSecurity);
-router.post('/auth/account/password', requireAuth, setAccountPassword);
+router.post('/auth/account/password', requireAuth, authAttemptRateLimit('password-enroll'), setAccountPassword);
 router.post('/auth/quick-social', quickSocialLogin);
 router.get('/auth/:provider/accounts', getSocialAccounts);
 router.post('/auth/social', socialLogin);
@@ -190,8 +191,8 @@ router.get('/auth/google/callback', googleCallback);
 router.get('/auth/session', logAuthStage('SESSION_ROUTE_ENTERED'), getSession);
 router.get('/auth/me', logAuthStage('SESSION_ROUTE_ENTERED'), getSession);
 router.post('/auth/logout', logout);
-router.post('/auth/password-reset/request', requestPasswordReset);
-router.post('/auth/password-reset/confirm', confirmPasswordReset);
+router.post('/auth/password-reset/request', authAttemptRateLimit('password-reset-request', { emailScoped: true, limit: 20 }), requestPasswordReset);
+router.post('/auth/password-reset/confirm', authAttemptRateLimit('password-reset-confirm', { limit: 30 }), confirmPasswordReset);
 router.get('/status/models', logAuthStage('MODELS_STATUS_ROUTE_ENTERED'), cachePublicResponse('allmodelai:public:model-status:v1'), getModelStatus);
 router.get('/health/providers', cachePublicResponse('allmodelai:public:provider-health:v1'), getProviderHealth);
 router.get('/health', health);

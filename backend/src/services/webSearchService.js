@@ -467,7 +467,7 @@ const providerModels = {
     gpt: 'openai/gpt-4o-mini',
     claude: 'anthropic/claude-haiku-4.5',
     gemini: 'google/gemini-2.5-flash',
-    deepseek: 'deepseek/deepseek-chat',
+    deepseek: 'deepseek/deepseek-flash',
     perplexity: 'perplexity/sonar',
 };
 

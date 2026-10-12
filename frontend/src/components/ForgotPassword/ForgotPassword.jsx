@@ -205,6 +205,10 @@ export default function ForgotPassword() {
             <p style={{ color: '#a7b4ce' }}>
               Enter the email associated with your AllModelAI account.
             </p>
+            <p style={{ color: '#8ea6d9', fontSize: '14px', marginTop: '12px' }}>
+              Signed up with Google only? You can still create an AllModelAI password here.
+              We send a secure link to your email — we never ask for your Google password.
+            </p>
 
             <form onSubmit={requestReset}>
               <label

@@ -8,7 +8,7 @@ export const MODEL_TECH_SPECS = {
   claude: { modelId: 'claude-haiku-4.5', contextWindow: '200K', toolUse: false },
   gemini: { modelId: 'gemini-2.5-flash', contextWindow: '1M', toolUse: false },
   perplexity: { modelId: 'sonar', contextWindow: null, toolUse: false },
-  deepseek: { modelId: 'deepseek-chat', contextWindow: '128K', toolUse: false },
+  deepseek: { modelId: 'deepseek-flash', contextWindow: '1M', toolUse: false },
   llama: { modelId: 'llama-3.3-70b-instruct', contextWindow: '128K', toolUse: false },
   mistral: { modelId: 'mistral-small-latest', contextWindow: null, toolUse: false },
   kimi: { modelId: 'kimi-k2.5', contextWindow: '256K', toolUse: false },

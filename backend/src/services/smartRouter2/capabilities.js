@@ -66,7 +66,7 @@ const MODEL_CAPABILITIES = {
     },
     deepseek: {
         provider: 'deepseek',
-        model: 'deepseek-chat',
+        model: 'deepseek-flash',
         coding: true,
         reasoning: true,
         vision: false,

@@ -274,11 +274,13 @@ const getSystemHealth = async (req, res) => {
     };
     const { buildReadinessPayload } = require('./opsCenter.js');
     const readiness = await buildReadinessPayload(req.app.locals.db);
-    baseHealthDetailed(req, mockRes);
+    await baseHealthDetailed(req, mockRes);
     const core = { ...mockRes.payload, readiness };
+    const checks = mockRes.payload?.checks || readiness?.checks;
 
     return res.json({
         ...core,
+        ...(checks ? { checks } : {}),
         pytorch: {
             ...pytorch,
             is_training: Boolean(pytorchStatus?.is_training),

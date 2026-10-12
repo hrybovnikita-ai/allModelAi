@@ -153,9 +153,9 @@ function sessionRestoreRetryDelays() {
     return [0, 200, 500, 1000, 2000];
   }
   if (hasSessionRestoreHint()) {
-    return [0, 400, 1000, 2000, 4000];
+    return [0, 400, 1000, 2000];
   }
-  return [0, 500, 1500, 3000];
+  return [0, 500, 1500];
 }
 
 function isTransientSessionFetchError(error) {
@@ -187,7 +187,7 @@ export function degradedSessionUserFromFailure(error) {
   return tryDegradedSessionRestore(error);
 }
 
-const SESSION_FETCH_TIMEOUT_MS = 12000;
+const SESSION_FETCH_TIMEOUT_MS = 10000;
 
 function shouldRetrySessionAfterResponse(response, attempt, maxAttempts) {
   if (response.status === 401) {
@@ -254,15 +254,23 @@ export async function fetchSessionFromServer() {
   return { response, data };
 }
 
-export async function restoreSession({ force = false } = {}) {
+/**
+ * @param {{ force?: boolean, supersede?: boolean }} [options]
+ * force — skip client cache and hit GET /api/auth/session.
+ * supersede — cancel an in-flight restore (login confirmation); default coalesces concurrent callers.
+ */
+export async function restoreSession({ force = false, supersede = false } = {}) {
   const storage = getStorage();
   const saved = storage.getItem('allmodelai_user');
   if (!force && !sessionRevokedLocally && verifiedSession?.saved === saved && verifiedSession.expiresAt > Date.now()) {
     return verifiedSession.user;
   }
   if (pendingSession?.generation === sessionGeneration) {
-    if (!force) return pendingSession.promise;
-    sessionGeneration += 1;
+    if (supersede) {
+      sessionGeneration += 1;
+    } else {
+      return pendingSession.promise;
+    }
   }
   const generation = sessionGeneration;
   const request = { generation };
@@ -405,7 +413,7 @@ export async function confirmSession(user) {
       await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
     }
     try {
-      const verified = await restoreSession({ force: true });
+      const verified = await restoreSession({ force: true, supersede: true });
       if (matchesUser(verified)) {
         markFreshLogin();
         socialAuthDebug('SESSION_CONFIRM_OK', { email: verified.email, attempt });
@@ -423,7 +431,7 @@ export async function confirmSession(user) {
 
   if (getNativeSessionToken() || firebaseSessionFallbackHeaders().Authorization) {
     try {
-      const verified = await restoreSession({ force: true });
+      const verified = await restoreSession({ force: true, supersede: true });
       if (matchesUser(verified)) {
         markFreshLogin();
         socialAuthDebug('SESSION_CONFIRMED', { source: 'native-session-header' });

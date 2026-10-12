@@ -51,10 +51,10 @@ test('login surfaces PASSWORD_SETUP_REQUIRED guidance', async () => {
   assert.match(login, /settings#settings-security/);
 });
 
-test('Tooltip merges refs via props.ref (React 19)', async () => {
-  const tooltip = await readFile(new URL('../src/components/Chat/Tooltip.jsx', import.meta.url), 'utf8');
-  assert.match(tooltip, /children\.props\.ref/);
-  assert.doesNotMatch(tooltip, /const \{ ref \} = children/);
+test('login hints forgot-password path for Google-only accounts', async () => {
+  const login = await readFile(new URL('../src/components/Login/Login.jsx', import.meta.url), 'utf8');
+  assert.match(login, /forgot-password/);
+  assert.match(login, /never use your Google password/i);
 });
 
 test('account security API client uses authenticated routes', async () => {

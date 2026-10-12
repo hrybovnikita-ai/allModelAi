@@ -15,6 +15,13 @@ export async function fetchAccountSecurity() {
 }
 
 export async function setAccountPassword(payload) {
-  const { data } = await authPost('account/password', payload);
-  return data;
+  try {
+    const { data } = await authPost('account/password', payload);
+    return data;
+  } catch (error) {
+    throw Object.assign(new Error(error.message || 'Could not save your password.'), {
+      status: error.status,
+      code: error.code,
+    });
+  }
 }

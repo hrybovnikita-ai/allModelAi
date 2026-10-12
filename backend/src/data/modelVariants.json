@@ -1,7 +1,6 @@
 {
   "gemini": [
     {"id":"3.1-pro","name":"Gemini 3.1","label":"Pro","speed":"High","description":"Complex tasks, code and reasoning","gateway":"google/gemini-3.1-pro-preview","direct":"gemini-3.1-pro-preview"},
-    {"id":"3.5-pro","name":"Gemini 3.5","label":"Pro","speed":"High","description":"Advanced reasoning (Google API: gemini-3.1-pro-preview)","gateway":"google/gemini-3.1-pro-preview","direct":"gemini-3.1-pro-preview"},
     {"id":"3.5-flash","name":"Gemini 3.5","label":"Flash","speed":"Fast","description":"Everyday tasks and fast answers","gateway":"google/gemini-3.5-flash","direct":"gemini-3.5-flash"},
     {"id":"3.6-flash","name":"Gemini 3.6","label":"Flash","speed":"Fast","description":"Code, images and documents","gateway":"google/gemini-3.6-flash","direct":"gemini-3.6-flash"}
   ],
@@ -38,8 +37,8 @@
     {"id":"k2.5","name":"Kimi K2.5","speed":"High","gateway":"moonshotai/kimi-k2.5","direct":"kimi-k2.5"}
   ],
   "deepseek": [
-    {"id":"chat","name":"DeepSeek V3","speed":"Fast","gateway":"deepseek/deepseek-chat"},
-    {"id":"reasoning","name":"DeepSeek R1","speed":"High","gateway":"deepseek/deepseek-r1"}
+    {"id":"flash","name":"DeepSeek Flash","speed":"Fast","description":"V4.1 Flash — default fast model","gateway":"deepseek/deepseek-flash","direct":"deepseek-flash"},
+    {"id":"pro","name":"DeepSeek V4 Pro","speed":"High","description":"Higher-quality reasoning and coding","gateway":"deepseek/deepseek-v4-pro","direct":"deepseek-v4-pro"}
   ],
   "mistral": [
     {"id":"small","name":"Mistral Small 3.2","speed":"Fast","gateway":"mistralai/mistral-small-3.2-24b-instruct","direct":"mistral-small-latest"},

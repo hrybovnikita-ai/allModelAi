@@ -16,10 +16,18 @@ describe('modelVariants registry', () => {
         }
     });
 
-    test('user-facing Gemini 3.5 Flash and Pro aliases exist', () => {
+    test('Gemini Pro uses 3.1 API id; 3.5/3.6 Flash variants exist', () => {
         const gemini = modelVariants.gemini;
-        assert.ok(gemini.some((v) => v.id === '3.5-flash'));
-        assert.ok(gemini.some((v) => v.id === '3.5-pro'));
+        assert.ok(gemini.some((v) => v.id === '3.1-pro' && v.direct === 'gemini-3.1-pro-preview'));
+        assert.ok(gemini.some((v) => v.id === '3.5-flash' && v.direct === 'gemini-3.5-flash'));
+        assert.ok(gemini.some((v) => v.id === '3.6-flash' && v.direct === 'gemini-3.6-flash'));
+        assert.ok(!gemini.some((v) => v.id === '3.5-pro'), 'misleading Gemini 3.5 Pro alias removed');
+    });
+
+    test('DeepSeek variants map to current API model ids', () => {
+        const deepseek = modelVariants.deepseek;
+        assert.ok(deepseek.some((v) => v.id === 'flash' && v.direct === 'deepseek-flash'));
+        assert.ok(deepseek.some((v) => v.id === 'pro' && v.direct === 'deepseek-v4-pro'));
     });
 
     test('perplexity sonar speed tiers map to distinct gateway ids', () => {

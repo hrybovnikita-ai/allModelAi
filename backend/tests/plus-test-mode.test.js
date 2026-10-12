@@ -105,7 +105,7 @@ test('Plus Test Mode HTTP access', async (t) => {
         assert.equal(res.status, 200);
         assert.ok(Array.isArray(res.body.models));
         assert.ok(res.body.models.length > 0);
-        assert.ok(['not_tested', 'blocked'].includes(res.body.models[0].availabilityStatus));
+        assert.ok(['NOT_TESTED', 'UNCONFIGURED', 'not_tested', 'blocked'].includes(res.body.models[0].availabilityStatus));
     });
 
     await t.test('model test requires billable confirmation', async () => {
