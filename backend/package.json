@@ -7,7 +7,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "dev:stable": "node server.js",
-    "test": "node --require ./tests/test-preload.js --test tests/*.test.js",
+    "test": "node tests/run-all.js",
     "check-password": "node scripts/check-password.js",
     "auth:config-check": "node scripts/auth-config-check.js",
     "auth:check-user": "node scripts/auth-check-user.js",
