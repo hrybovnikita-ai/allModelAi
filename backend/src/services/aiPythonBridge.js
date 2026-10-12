@@ -23,29 +23,59 @@ const PYTHON_PORT =
 const PYTHON_BASE_URL =
     `http://127.0.0.1:${PYTHON_PORT}`;
 
+const PYTHON_FETCH_TIMEOUT_MS = Math.max(
+    2000,
+    parseInt(process.env.AI_PYTHON_FETCH_TIMEOUT_MS || '30000', 10),
+);
+
 let serverProcess = null;
 let startingPromise = null;
+
+async function fetchPython(pathOrUrl, init = {}, timeoutMs = PYTHON_FETCH_TIMEOUT_MS) {
+    const url = String(pathOrUrl).startsWith('http')
+        ? String(pathOrUrl)
+        : `${PYTHON_BASE_URL}${pathOrUrl}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...init, signal: controller.signal });
+    } catch (err) {
+        if (err?.name === 'AbortError') {
+            throw new Error(`Python request timed out after ${timeoutMs}ms: ${url}`);
+        }
+        throw err;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+function shutdownPythonServer() {
+    startingPromise = null;
+    const proc = serverProcess;
+    serverProcess = null;
+    if (!proc || proc.killed) {
+        return;
+    }
+    try {
+        proc.kill('SIGTERM');
+    } catch {
+        /* ignore */
+    }
+    try {
+        if (process.platform === 'win32') {
+            spawn('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+        }
+    } catch {
+        /* ignore */
+    }
+}
 
 /**
  * Checks if the Python FastAPI server is currently reachable.
  */
 async function isServerHealthy() {
     try {
-        const controller = new AbortController();
-
-        const timeout = setTimeout(() => {
-            controller.abort();
-        }, 1200);
-
-        const res = await fetch(
-            `${PYTHON_BASE_URL}/health`,
-            {
-                signal: controller.signal,
-            }
-        );
-
-        clearTimeout(timeout);
-
+        const res = await fetchPython('/health', {}, 1200);
         return res.ok;
     } catch {
         return false;
@@ -148,6 +178,7 @@ async function ensureServerRunning() {
             console.warn(
                 '[aiPythonBridge] Python server did not become healthy in time.'
             );
+            shutdownPythonServer();
         } catch (err) {
             console.error(
                 '[aiPythonBridge] Failed to spawn Python server:',
@@ -168,6 +199,11 @@ async function ensureServerRunning() {
  * with main.py if HTTP server is unavailable.
  */
 function runSingleShotCmd(action, payload = {}) {
+    const singleShotTimeoutMs = Math.max(
+        5000,
+        parseInt(process.env.AI_PYTHON_SINGLE_SHOT_TIMEOUT_MS || '120000', 10),
+    );
+
     return new Promise((resolve, reject) => {
         const cmdData = JSON.stringify({
             action,
@@ -178,6 +214,14 @@ function runSingleShotCmd(action, payload = {}) {
             cmdData,
             'utf-8'
         ).toString('base64');
+
+        let settled = false;
+        const finish = (fn, value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(killTimer);
+            fn(value);
+        };
 
         const proc = spawn(
             PYTHON_BIN,
@@ -207,22 +251,26 @@ function runSingleShotCmd(action, payload = {}) {
             errOutput += chunk.toString();
         });
 
+        const killTimer = setTimeout(() => {
+            try {
+                proc.kill('SIGKILL');
+            } catch {
+                /* ignore */
+            }
+            finish(reject, new Error(
+                `Python single-shot command timed out after ${singleShotTimeoutMs}ms (${action})`,
+            ));
+        }, singleShotTimeoutMs);
+
         proc.on('error', (err) => {
-            reject(
-                new Error(
-                    `Unable to start ${PYTHON_BIN}: ${err.message}`
-                )
-            );
+            finish(reject, new Error(`Unable to start ${PYTHON_BIN}: ${err.message}`));
         });
 
         proc.on('close', (code) => {
             if (code !== 0) {
-                return reject(
-                    new Error(
-                        errOutput ||
-                        `Python process exited with code ${code}`
-                    )
-                );
+                return finish(reject, new Error(
+                    errOutput || `Python process exited with code ${code}`,
+                ));
             }
 
             try {
@@ -230,20 +278,12 @@ function runSingleShotCmd(action, payload = {}) {
                     output.match(/\{[\s\S]*\}/);
 
                 if (match) {
-                    return resolve(
-                        JSON.parse(match[0])
-                    );
+                    return finish(resolve, JSON.parse(match[0]));
                 }
 
-                return resolve({
-                    raw: output.trim(),
-                });
+                return finish(resolve, { raw: output.trim() });
             } catch {
-                return reject(
-                    new Error(
-                        `Failed to parse Python JSON output: ${output}`
-                    )
-                );
+                return finish(reject, new Error(`Failed to parse Python JSON output: ${output}`));
             }
         });
     });
@@ -262,9 +302,7 @@ async function getStatus() {
 
     if (healthy) {
         try {
-            const res = await fetch(
-                `${PYTHON_BASE_URL}/status`
-            );
+            const res = await fetchPython('/status');
 
             if (res.ok) {
                 return await res.json();
@@ -288,7 +326,7 @@ async function getOpenAiStatus() {
 
     if (healthy) {
         try {
-            const res = await fetch(`${PYTHON_BASE_URL}/openai/status`);
+            const res = await fetchPython('/openai/status');
             if (res.ok) {
                 return await res.json();
             }
@@ -310,7 +348,7 @@ async function augmentWithOpenAi({ samplesPerClass = 2 } = {}) {
 
     if (healthy) {
         try {
-            const res = await fetch(`${PYTHON_BASE_URL}/openai/augment`, {
+            const res = await fetchPython('/openai/augment', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ samples_per_class: samplesPerClass }),
@@ -344,25 +382,19 @@ async function startTraining({
 
     if (healthy) {
         try {
-            const res = await fetch(
-                `${PYTHON_BASE_URL}/train`,
-                {
-                    method: 'POST',
-
-                    headers: {
-                        'Content-Type':
-                            'application/json',
-                    },
-
-                    body: JSON.stringify({
-                        epochs,
-                        lr,
-                        batch_size: batchSize,
-                        openai_augment: openaiAugment,
-                        openai_samples_per_class: openaiSamplesPerClass,
-                    }),
-                }
-            );
+            const res = await fetchPython('/train', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    epochs,
+                    lr,
+                    batch_size: batchSize,
+                    openai_augment: openaiAugment,
+                    openai_samples_per_class: openaiSamplesPerClass,
+                }),
+            });
 
             if (res.ok) {
                 return await res.json();
@@ -393,7 +425,7 @@ async function fetchJson(path, options = {}) {
     if (!healthy) {
         throw new Error('PyTorch AI server is unavailable');
     }
-    const res = await fetch(`${PYTHON_BASE_URL}${path}`, options);
+    const res = await fetchPython(path, options);
     if (!res.ok) {
         const text = await res.text();
         throw new Error(text || `PyTorch request failed (${res.status})`);
@@ -403,10 +435,7 @@ async function fetchJson(path, options = {}) {
 
 async function getHealth() {
     try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 1500);
-        const res = await fetch(`${PYTHON_BASE_URL}/health`, { signal: controller.signal });
-        clearTimeout(timeout);
+        const res = await fetchPython('/health', {}, 1500);
         if (res.ok) return res.json();
     } catch {
         /* fall through */
@@ -429,22 +458,16 @@ async function predict(text, slot) {
 
     if (healthy) {
         try {
-            const res = await fetch(
-                `${PYTHON_BASE_URL}/predict`,
-                {
-                    method: 'POST',
-
-                    headers: {
-                        'Content-Type':
-                            'application/json',
-                    },
-
-                    body: JSON.stringify({
-                        text,
-                        slot: slot || null,
-                    }),
-                }
-            );
+            const res = await fetchPython('/predict', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text,
+                    slot: slot || null,
+                }),
+            });
 
             if (res.ok) {
                 return await res.json();
@@ -516,12 +539,7 @@ async function resetModel() {
 
     if (healthy) {
         try {
-            const res = await fetch(
-                `${PYTHON_BASE_URL}/reset`,
-                {
-                    method: 'POST',
-                }
-            );
+            const res = await fetchPython('/reset', { method: 'POST' });
 
             if (res.ok) {
                 return await res.json();
@@ -557,6 +575,9 @@ async function runLabCommand(action, payload = {}) {
 }
 
 module.exports = {
+    shutdownPythonServer,
+    fetchPython,
+    PYTHON_FETCH_TIMEOUT_MS,
     ensureServerRunning,
     isServerHealthy,
     getHealth,

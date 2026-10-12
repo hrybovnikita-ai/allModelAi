@@ -25,10 +25,26 @@ try {
     /* ignore */
 }
 
-process.on('exit', () => {
+function cleanupTestArtifacts() {
     try {
         fs.rmSync(resolved, { force: true });
     } catch {
         /* ignore */
     }
+    try {
+        const { shutdownPythonServer } = require('../src/services/aiPythonBridge');
+        shutdownPythonServer();
+    } catch {
+        /* bridge not loaded in this process */
+    }
+}
+
+process.on('exit', cleanupTestArtifacts);
+process.on('SIGINT', () => {
+    cleanupTestArtifacts();
+    process.exit(130);
+});
+process.on('SIGTERM', () => {
+    cleanupTestArtifacts();
+    process.exit(143);
 });

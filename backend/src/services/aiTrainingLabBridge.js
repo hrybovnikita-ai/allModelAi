@@ -27,12 +27,12 @@ async function postLab(path, payload) {
 
         if (healthy) {
             try {
-                const res = await fetch(`${aiPythonBridge.PYTHON_BASE_URL}${path}`, {
+                const res = await aiPythonBridge.fetchPython(path, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                     signal: controller.signal,
-                });
+                }, LAB_TIMEOUT_MS);
                 clearTimeout(timer);
                 const data = await res.json().catch(() => ({}));
                 if (res.ok) {
@@ -80,7 +80,7 @@ async function postLab(path, payload) {
 async function getLessonsCatalog() {
     await aiPythonBridge.ensureServerRunning();
     if (await aiPythonBridge.isServerHealthy()) {
-        const res = await fetch(`${aiPythonBridge.PYTHON_BASE_URL}/labs/lessons`);
+        const res = await aiPythonBridge.fetchPython('/labs/lessons');
         if (res.ok) {
             return res.json();
         }
@@ -91,7 +91,9 @@ async function getLessonsCatalog() {
 async function getLessonDetail(lessonId) {
     await aiPythonBridge.ensureServerRunning();
     if (await aiPythonBridge.isServerHealthy()) {
-        const res = await fetch(`${aiPythonBridge.PYTHON_BASE_URL}/labs/lessons/${encodeURIComponent(lessonId)}`);
+        const res = await aiPythonBridge.fetchPython(
+            `/labs/lessons/${encodeURIComponent(lessonId)}`,
+        );
         if (res.status === 404) {
             return { ok: false, error: 'Lesson not found' };
         }
