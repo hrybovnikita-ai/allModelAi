@@ -222,6 +222,13 @@ function handleCommonDashboardQueries(text, queryValues, ctx) {
             );
             return row ? { rows: [{ subject: row.subject }], rowCount: 1 } : { rows: [], rowCount: 0 };
         }
+        if (/WHERE user_id = \$1/i.test(text)) {
+            const userId = Number(queryValues[0]);
+            const rows = [...ctx.socialIdentities.values()]
+                .filter((item) => Number(item.user_id) === userId)
+                .map((item) => ({ provider: item.provider }));
+            return { rows, rowCount: rows.length };
+        }
         return { rows: [], rowCount: 0 };
     }
     if (/UPDATE users SET email_verified = 1/i.test(text)) {
@@ -271,11 +278,43 @@ function handleCommonDashboardQueries(text, queryValues, ctx) {
         if (account && !account.avatar_url) account.avatar_url = queryValues[0];
         return { rowCount: 1, rows: [] };
     }
-    if (/FROM social_identities/i.test(text)) {
-        return { rows: [], rowCount: 0 };
+    if (/SELECT password_hash FROM users/i.test(text) && /WHERE id = \$1/i.test(text)) {
+        const id = queryValues[0];
+        const account = id === userRow.id
+            ? userRow
+            : [...extraUsers.values()].find((row) => row.id === id);
+        if (!account) return { rows: [], rowCount: 0 };
+        return { rows: [{ password_hash: account.password_hash ?? null }], rowCount: 1 };
     }
-    if (/SELECT password_hash FROM users/i.test(text)) {
-        return { rows: [{ password_hash: userRow.password_hash }], rowCount: 1 };
+    if (/UPDATE users SET password_hash = \$1 WHERE id = \$2/i.test(text)) {
+        const id = queryValues[1];
+        const account = id === userRow.id
+            ? userRow
+            : [...extraUsers.values()].find((row) => row.id === id);
+        if (!account) return { rowCount: 0, rows: [] };
+        account.password_hash = queryValues[0];
+        return { rowCount: 1, rows: [] };
+    }
+    if (/UPDATE users SET password_hash = \$1 WHERE lower\(trim\(email\)\) = \$2/i.test(text)) {
+        const email = queryValues[1];
+        const account = email === userRow.email
+            ? userRow
+            : extraUsers.get(email) || [...extraUsers.values()].find((row) => row.email === email);
+        if (!account) return { rowCount: 0, rows: [] };
+        account.password_hash = queryValues[0];
+        return { rowCount: 1, rows: [] };
+    }
+    if (/DELETE FROM auth_sessions WHERE user_id = \$1/i.test(text)) {
+        for (const [token, session] of sessions.entries()) {
+            if (session.userId === queryValues[0]) sessions.delete(token);
+        }
+        return { rowCount: 1, rows: [] };
+    }
+    if (/SELECT id FROM users WHERE lower\(trim\(email\)\) = \$1/i.test(text)) {
+        const email = queryValues[0];
+        if (email === userRow.email) return { rows: [{ id: userRow.id }], rowCount: 1 };
+        const extra = extraUsers.get(email);
+        return extra ? { rows: [{ id: extra.id }], rowCount: 1 } : { rows: [], rowCount: 0 };
     }
     if (/INSERT INTO usage_events/i.test(text) && ctx.usageEvents) {
         ctx.usageEvents.push({
@@ -422,6 +461,7 @@ function createPostgresHttpMockPool(initialUser, { trackChat = false, trackSocia
         sessions,
         userRow,
         extraUsers,
+        ...(trackSocial ? { socialIdentities: ctx.socialIdentities, socialChallenges: ctx.socialChallenges } : {}),
         ...(trackChat
             ? {
                 conversations: ctx.conversations,

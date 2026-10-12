@@ -133,6 +133,11 @@ const EXTERNAL_AUTH_PROVIDER_SUFFIXES = [
   'cloudfunctions.net',
 ];
 
+/** Firebase Hosting custom authentication domain (OAuth /__/auth/handler). */
+const EXTERNAL_AUTH_PROVIDER_HOSTS = new Set([
+  'auth.all-model-ai.com',
+]);
+
 /** Firebase / Google OAuth endpoints must never be rewritten or receive AllModelAI fetch headers. */
 export function isExternalAuthProviderUrl(url) {
   if (!url || typeof url !== 'string') return false;
@@ -140,6 +145,7 @@ export function isExternalAuthProviderUrl(url) {
     const base = typeof window !== 'undefined' ? window.location?.origin : undefined;
     const parsed = /^https?:\/\//i.test(url) ? new URL(url) : new URL(url, base || 'https://localhost');
     const host = parsed.hostname.toLowerCase();
+    if (EXTERNAL_AUTH_PROVIDER_HOSTS.has(host)) return true;
     return EXTERNAL_AUTH_PROVIDER_SUFFIXES.some(
       (suffix) => host === suffix || host.endsWith(`.${suffix}`),
     );

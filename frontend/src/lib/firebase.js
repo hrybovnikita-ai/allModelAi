@@ -13,7 +13,11 @@ import { getBrowserApiOrigin, getPublicAppOrigin, isHostedWebApp } from './apiBa
 import { isIosTouchDevice, isMobileWebSafari } from './socialSignInEnv.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
 import {
+  coerceProductionAuthDomain,
   DEFAULT_FIREBASE_AUTH_DOMAIN,
+  isExplicitCustomAuthDomain,
+  isFirebaseAppDomain,
+  isFirebaseAuthProxyHostname,
   isUsableFirebaseConfigValue as isUsableFirebaseConfigValueCore,
   resolveAuthDomainForRuntime as resolveAuthDomainCore,
 } from './firebaseAuthDomain.js';
@@ -56,7 +60,7 @@ function pickField(envValue, runtimeValue) {
   return '';
 }
 
-/** When true, use the live site hostname as authDomain (requires Vercel /__/auth → firebaseapp.com proxy). */
+/** When true, prefer hosted authDomain resolution (legacy Vercel /__/auth proxy on the app hostname). */
 export function isCustomAuthDomainEnabled() {
   return import.meta.env?.VITE_FIREBASE_CUSTOM_AUTH_DOMAIN === 'true';
 }
@@ -73,11 +77,12 @@ function hostedSiteAuthDomain() {
 }
 
 /**
- * authDomain must match where /__/auth/handler is served (custom domain + proxy, or *.firebaseapp.com).
- * Default: VITE_FIREBASE_AUTH_DOMAIN=allmodelai.firebaseapp.com (recommended for popup/redirect sign-in).
- * Custom site domain only when VITE_FIREBASE_CUSTOM_AUTH_DOMAIN=true and /__/auth is proxied on that host.
+ * authDomain must match where /__/auth/handler is served.
+ * Local dev: VITE_FIREBASE_AUTH_DOMAIN=allmodelai.firebaseapp.com + Vite /__/auth proxy.
+ * Production: auth.all-model-ai.com (Firebase Hosting custom auth domain) via VITE_FIREBASE_AUTH_DOMAIN
+ * or auto-detect when the app runs on all-model-ai.com / www.
  */
-/** iOS WebKit loses cross-site Firebase redirect state; use first-party /__/auth on the live site. */
+/** iOS WebKit: avoid default *.firebaseapp.com redirect URI when a custom auth host is available. */
 export function shouldPreferHostedFirebaseAuthDomain() {
   if (typeof window === 'undefined' || !isHostedWebApp()) return false;
   const hosted = hostedSiteAuthDomain();
@@ -87,14 +92,28 @@ export function shouldPreferHostedFirebaseAuthDomain() {
 
 export function resolveAuthDomainForRuntime(configuredAuthDomain) {
   const viteEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
-  const hosted = hostedSiteAuthDomain();
-  if (shouldPreferHostedFirebaseAuthDomain() && hosted) {
-    return hosted;
+  const envAuthDomain = readFirebaseAuthDomainFromEnv(viteEnv);
+
+  if (isExplicitCustomAuthDomain(envAuthDomain)) {
+    return String(envAuthDomain).trim();
   }
+
+  const hosted = hostedSiteAuthDomain();
   const customAuth = isCustomAuthDomainEnabled();
+  const onProductionSite = isFirebaseAuthProxyHostname(hosted);
+
+  if (shouldPreferHostedFirebaseAuthDomain() && hosted) {
+    return resolveAuthDomainCore(configuredAuthDomain, {
+      envAuthDomain,
+      customAuthDomainEnabled: customAuth || onProductionSite,
+      hostedHostname: hosted,
+      preferHostedAuthDomainWhenProxied: customAuth,
+    });
+  }
+
   return resolveAuthDomainCore(configuredAuthDomain, {
-    envAuthDomain: readFirebaseAuthDomainFromEnv(viteEnv),
-    customAuthDomainEnabled: customAuth,
+    envAuthDomain,
+    customAuthDomainEnabled: customAuth || onProductionSite,
     hostedHostname: hosted,
     preferHostedAuthDomainWhenProxied: customAuth,
   });
@@ -110,8 +129,10 @@ export function buildFirebaseClientConfig() {
     appId: pickField(fromEnv.appId, runtime.appId),
   };
   merged.authDomain = resolveAuthDomainForRuntime(merged.authDomain);
+  merged.authDomain = coerceProductionAuthDomain(merged.authDomain, hostedSiteAuthDomain());
   if (!isUsableFirebaseConfigValue(merged.authDomain)) {
     merged.authDomain = DEFAULT_FIREBASE_AUTH_DOMAIN;
+    merged.authDomain = coerceProductionAuthDomain(merged.authDomain, hostedSiteAuthDomain());
   }
   return merged;
 }
@@ -318,6 +339,16 @@ export async function ensureSocialAuthReady() {
       console.info('[AllModelAI:Firebase] authDomain', authDomain);
     }
     socialAuthDebug('FIREBASE_AUTH_DOMAIN_READY', { authDomain });
+    if (
+      import.meta.env?.PROD
+      && isFirebaseAuthProxyHostname(hostedSiteAuthDomain())
+      && isFirebaseAppDomain(authDomain)
+    ) {
+      console.warn(
+        '[AllModelAI:Firebase] Production OAuth is still using a *.firebaseapp.com authDomain. '
+        + 'Redeploy with VITE_FIREBASE_AUTH_DOMAIN=auth.all-model-ai.com and hard-refresh (clear PWA cache if needed).',
+      );
+    }
     await applyAuthPersistenceSafely(instance);
     return instance;
   })().catch((error) => {

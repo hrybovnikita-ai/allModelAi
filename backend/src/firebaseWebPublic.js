@@ -1,3 +1,9 @@
+/**
+ * Public Firebase web config for GET /api/public/firebase-config.
+ * Production (Render): set FIREBASE_WEB_AUTH_DOMAIN=auth.all-model-ai.com to match
+ * VITE_FIREBASE_AUTH_DOMAIN and the Firebase custom auth domain (project allmodelai).
+ * Local dev: keep FIREBASE_WEB_AUTH_DOMAIN=allmodelai.firebaseapp.com.
+ */
 const WEB_ENV = {
     apiKey: ['FIREBASE_WEB_API_KEY', 'VITE_FIREBASE_API_KEY'],
     authDomain: ['FIREBASE_WEB_AUTH_DOMAIN', 'VITE_FIREBASE_AUTH_DOMAIN', 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'],

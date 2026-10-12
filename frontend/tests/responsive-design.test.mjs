@@ -76,11 +76,16 @@ test('model cards define phone, tablet, and desktop grid tiers', async () => {
   assert.match(models, /grid-template-columns:\s*1fr/);
 });
 
-test('header keeps Smart Router visual on tablet and hides on phone', async () => {
+test('header stacks hero and keeps provider orbit on mobile', async () => {
   const header = await readFile(
     new URL('../src/components/Header/Header.css', import.meta.url),
     'utf8',
   );
-  assert.match(header, /768px\) and \(max-width: 1023px\)/);
-  assert.match(header, /max-width: 767px[\s\S]*hero-visual[\s\S]*display:\s*none/);
+  const orbit = await readFile(
+    new URL('../src/components/Header/HeroProviderOrbit.css', import.meta.url),
+    'utf8',
+  );
+  assert.match(header, /header-content--stack/);
+  assert.match(orbit, /max-width: 767px/);
+  assert.doesNotMatch(orbit, /display:\s*none/);
 });

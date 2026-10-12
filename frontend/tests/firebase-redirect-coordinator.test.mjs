@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-test('resolveAuthDomainForRuntime keeps firebaseapp.com on production website host', async () => {
+test('resolveAuthDomainForRuntime uses auth.all-model-ai.com on production website host', async () => {
   const {
     resolveAuthDomainForRuntime,
     applyRuntimeFirebaseConfig,
@@ -9,7 +9,13 @@ test('resolveAuthDomainForRuntime keeps firebaseapp.com on production website ho
   } = await import('../src/lib/firebase.js');
   const previousWindow = global.window;
 
-  global.window = { location: { hostname: 'all-model-ai.com', origin: 'https://all-model-ai.com' } };
+  global.window = {
+    location: {
+      hostname: 'all-model-ai.com',
+      origin: 'https://all-model-ai.com',
+      protocol: 'https:',
+    },
+  };
   applyRuntimeFirebaseConfig({
     apiKey: 'AIzaSyRuntimeKey123456789012345',
     authDomain: 'allmodelai.firebaseapp.com',
@@ -20,22 +26,28 @@ test('resolveAuthDomainForRuntime keeps firebaseapp.com on production website ho
   try {
     assert.equal(
       resolveAuthDomainForRuntime('allmodelai.firebaseapp.com'),
-      'allmodelai.firebaseapp.com',
+      'auth.all-model-ai.com',
     );
-    assert.equal(getEffectiveFirebaseConfig().authDomain, 'allmodelai.firebaseapp.com');
+    assert.equal(getEffectiveFirebaseConfig().authDomain, 'auth.all-model-ai.com');
   } finally {
     global.window = previousWindow;
   }
 });
 
-test('resolveAuthDomainForRuntime does not map website hostname to authDomain', async () => {
+test('resolveAuthDomainForRuntime maps www host to custom auth domain', async () => {
   const { resolveAuthDomainForRuntime } = await import('../src/lib/firebase.js');
   const previousWindow = global.window;
-  global.window = { location: { hostname: 'www.all-model-ai.com' } };
+  global.window = {
+    location: {
+      hostname: 'www.all-model-ai.com',
+      origin: 'https://www.all-model-ai.com',
+      protocol: 'https:',
+    },
+  };
   try {
     assert.equal(
       resolveAuthDomainForRuntime('allmodelai.firebaseapp.com'),
-      'allmodelai.firebaseapp.com',
+      'auth.all-model-ai.com',
     );
   } finally {
     global.window = previousWindow;

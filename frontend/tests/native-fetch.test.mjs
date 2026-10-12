@@ -28,6 +28,7 @@ test('Google and Firebase provider URLs are never treated as AllModelAI backend 
     'https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp',
     'https://securetoken.googleapis.com/v1/token',
     'https://allmodelai.firebaseapp.com/__/auth/handler',
+    'https://auth.all-model-ai.com/__/auth/handler',
     'https://www.googleapis.com/identitytoolkit/v3/relyingparty/getProjectConfig',
   ];
   for (const url of external) {
