@@ -6,7 +6,7 @@ async function postDeepSeekChat(req, res) {
         return res.json({ reply });
     } catch (error) {
         if (error instanceof DeepSeekChatError) {
-            return res.status(error.status).json({ message: error.message });
+            return res.status(error.status).json({ message: error.message, code: error.code });
         }
         return res.status(502).json({ message: 'Unexpected error while calling DeepSeek.' });
     }

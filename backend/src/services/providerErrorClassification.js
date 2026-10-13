@@ -16,6 +16,9 @@ function slugToProviderId(slug) {
         qwen: 'qwen',
         cohere: 'cohere',
         cloudflare: 'cloudflare',
+        'gpt-oss': 'cloudflare',
+        nemotron: 'openrouter',
+        'deepseek-r1': 'openrouter',
         llama: 'openrouter',
     };
     return map[key] || key || 'unknown';

@@ -11,10 +11,10 @@ const MAX_FLUX_STEPS = 8;
 const REQUEST_TIMEOUT_MS = Math.min(Math.max(Number(process.env.CLOUDFLARE_IMAGE_TIMEOUT_MS) || 120000, 15000), 180000);
 
 const strip = (value) => String(value || '').trim().replace(/^["']|["']$/g, '');
-
-function getCloudflareAccountId() {
-    return strip(process.env.CLOUDFLARE_ACCOUNT_ID || process.env.CF_ACCOUNT_ID);
-}
+const {
+    getCloudflareAccountId,
+    isLikelyOpenAiSecretKey,
+} = require('./cloudflareWorkersAiConfig');
 
 function getCloudflareApiToken() {
     return strip(
@@ -25,17 +25,11 @@ function getCloudflareApiToken() {
     );
 }
 
-function isLikelyNonCloudflareSecretKey(token) {
-    const key = strip(token);
-    if (!key) return false;
-    return /^sk-/i.test(key);
-}
-
 function getCloudflareImageConfig() {
     const apiToken = getCloudflareApiToken();
     return {
         accountId: getCloudflareAccountId(),
-        apiToken: apiToken && !isLikelyNonCloudflareSecretKey(apiToken) ? apiToken : '',
+        apiToken: apiToken && !isLikelyOpenAiSecretKey(apiToken) ? apiToken : '',
         model: normalizeCloudflareModelId(strip(process.env.CLOUDFLARE_IMAGE_MODEL || DEFAULT_MODEL)),
     };
 }
@@ -345,7 +339,7 @@ module.exports = {
     getCloudflareApiToken,
     getCloudflareImageConfig,
     isCloudflareImageConfigured,
-    isLikelyNonCloudflareSecretKey,
+    isLikelyNonCloudflareSecretKey: isLikelyOpenAiSecretKey,
     normalizeCloudflareModelId,
     parseCloudflareErrorEnvelope,
 };

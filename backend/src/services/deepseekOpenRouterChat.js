@@ -1,6 +1,15 @@
 const path = require('path');
 const dotenv = require('dotenv');
 const OpenAI = require('openai');
+const {
+    DEEPSEEK_R1_FREE_MODEL,
+    OPENROUTER_CHAT_COMPLETIONS_URL,
+    OPENROUTER_DEEPSEEK_FREE_KEY_ENV,
+    DEEPSEEK_FREE_OPENROUTER_KEY_LEGACY_ENV,
+    resolveOpenRouterFreeRoute,
+    mapOpenRouterFreeHttpError,
+    missingOpenRouterFreeConfigPayload,
+} = require('./openRouterFreeModels');
 
 let dotenvLoaded = false;
 
@@ -13,19 +22,15 @@ function loadOpenRouterEnv() {
 }
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
-const DEEPSEEK_FREE_MODEL = 'deepseek/deepseek-v4-flash:free';
+const DEEPSEEK_FREE_MODEL = DEEPSEEK_R1_FREE_MODEL;
 
 class DeepSeekChatError extends Error {
-    constructor(status, message) {
+    constructor(status, message, code = 'DEEPSEEK_CHAT_FAILED') {
         super(message);
         this.name = 'DeepSeekChatError';
         this.status = status;
+        this.code = code;
     }
-}
-
-function getOpenRouterKeyFromEnv() {
-    loadOpenRouterEnv();
-    return String(process.env.OPENROUTER_API_KEY || '').trim();
 }
 
 function createOpenRouterClient(apiKey) {
@@ -47,12 +52,8 @@ function resetOpenRouterClientFactoryForTests() {
 
 function mapSdkError(error) {
     const status = error?.status || error?.response?.status;
-    if (status === 401) {
-        return new DeepSeekChatError(401, 'OpenRouter authentication failed. Check OPENROUTER_API_KEY in backend/.env.');
-    }
-    if (status === 429) {
-        return new DeepSeekChatError(429, 'OpenRouter rate limit exceeded. Wait and try again.');
-    }
+    const detail = error?.error?.message || error?.message || '';
+    const mapped = mapOpenRouterFreeHttpError(status, detail);
     const code = error?.code || error?.cause?.code;
     if (
         code === 'ECONNREFUSED'
@@ -61,31 +62,29 @@ function mapSdkError(error) {
         || code === 'UND_ERR_CONNECT_TIMEOUT'
         || error?.name === 'APIConnectionError'
     ) {
-        return new DeepSeekChatError(503, 'Network error while contacting OpenRouter. Check your connection and try again.');
+        return new DeepSeekChatError(503, mapped.message, 'OPENROUTER_FREE_NETWORK');
     }
-    const message = error?.error?.message || error?.message || 'DeepSeek request failed.';
-    return new DeepSeekChatError(status && status >= 400 && status < 600 ? status : 502, message);
+    return new DeepSeekChatError(mapped.clientStatus, mapped.message, mapped.code);
 }
 
 async function chatWithDeepSeek(userMessage, options = {}) {
     const message = String(userMessage || '').trim();
     if (!message) {
-        throw new DeepSeekChatError(400, 'message is required.');
+        throw new DeepSeekChatError(400, 'message is required.', 'INVALID_REQUEST');
     }
     if (message.length > 16000) {
-        throw new DeepSeekChatError(400, 'message is too long.');
+        throw new DeepSeekChatError(400, 'message is too long.', 'INVALID_REQUEST');
     }
 
-    const apiKey = getOpenRouterKeyFromEnv();
-    if (!apiKey) {
-        throw new DeepSeekChatError(
-            503,
-            'OPENROUTER_API_KEY is not configured. Add it to backend/.env and restart the server.',
-        );
+    loadOpenRouterEnv();
+    const route = resolveOpenRouterFreeRoute('deepseek-r1');
+    if (!route) {
+        const payload = missingOpenRouterFreeConfigPayload('deepseek-r1');
+        throw new DeepSeekChatError(503, payload.message, payload.code);
     }
 
-    const model = String(options.model || DEEPSEEK_FREE_MODEL).trim();
-    const client = clientFactory(apiKey);
+    const model = String(options.model || route.modelId).trim();
+    const client = clientFactory(route.apiKey);
 
     try {
         const completion = await client.chat.completions.create({
@@ -95,7 +94,7 @@ async function chatWithDeepSeek(userMessage, options = {}) {
         });
         const reply = completion.choices?.[0]?.message?.content;
         if (!reply || !String(reply).trim()) {
-            throw new DeepSeekChatError(502, 'DeepSeek returned an empty response.');
+            throw new DeepSeekChatError(502, 'DeepSeek returned an empty response.', 'OPENROUTER_FREE_EMPTY');
         }
         return String(reply).trim();
     } catch (error) {
@@ -106,11 +105,27 @@ async function chatWithDeepSeek(userMessage, options = {}) {
     }
 }
 
+function getDeepSeekFreeOpenRouterKey() {
+    loadOpenRouterEnv();
+    return resolveOpenRouterFreeRoute('deepseek-r1')?.apiKey || '';
+}
+
+function getDeepSeekFreeOpenRouterKeySourceEnvName() {
+    loadOpenRouterEnv();
+    const { getOpenRouterFreeKeySourceEnvName } = require('./openRouterFreeModels');
+    return getOpenRouterFreeKeySourceEnvName('deepseek-r1');
+}
+
 module.exports = {
     chatWithDeepSeek,
     DeepSeekChatError,
     DEEPSEEK_FREE_MODEL,
+    DEEPSEEK_FREE_OPENROUTER_KEY_ENV: OPENROUTER_DEEPSEEK_FREE_KEY_ENV,
+    DEEPSEEK_FREE_OPENROUTER_KEY_LEGACY_ENV,
     OPENROUTER_BASE_URL,
+    OPENROUTER_CHAT_COMPLETIONS_URL,
+    getDeepSeekFreeOpenRouterKey,
+    getDeepSeekFreeOpenRouterKeySourceEnvName,
     setOpenRouterClientFactoryForTests,
     resetOpenRouterClientFactoryForTests,
 };

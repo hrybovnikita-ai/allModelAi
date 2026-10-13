@@ -55,5 +55,14 @@
   "cloudflare": [
     {"id":"70b","name":"Llama 3.3 70B","speed":"Medium","gateway":"meta-llama/llama-3.3-70b-instruct","direct":"@cf/meta/llama-3.3-70b-instruct-fp8-fast"},
     {"id":"8b","name":"Llama 3.1 8B","speed":"Fast","gateway":"meta-llama/llama-3.1-8b-instruct","direct":"@cf/meta/llama-3.1-8b-instruct"}
+  ],
+  "gpt-oss": [
+    {"id":"20b","name":"GPT-OSS 20B","speed":"Medium","description":"Open-weight GPT-OSS on Cloudflare Workers AI","gateway":"@cf/openai/gpt-oss-20b","direct":"@cf/openai/gpt-oss-20b"}
+  ],
+  "nemotron": [
+    {"id":"ultra","name":"Nemotron 3 Ultra","speed":"Medium","description":"OpenRouter free general assistant","gateway":"nvidia/nemotron-3-ultra-550b-a55b:free","direct":"nvidia/nemotron-3-ultra-550b-a55b:free"}
+  ],
+  "deepseek-r1": [
+    {"id":"r1","name":"DeepSeek R1","speed":"High","description":"OpenRouter free reasoning model","gateway":"deepseek/deepseek-r1-0528:free","direct":"deepseek/deepseek-r1-0528:free"}
   ]
 }

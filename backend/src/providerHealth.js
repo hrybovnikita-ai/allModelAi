@@ -64,7 +64,7 @@ function providerCatalog() {
             defaultModel: 'command-r-plus',
         },
         cloudflare: {
-            keys: ['CLOUDFLARE_API_KEY', 'CLAUDEFLARE_API_KEY'],
+            keys: ['CLOUDFLARE_API_KEY', 'CLAUDEFLARE_API_KEY', 'CLOUDFLARE_API_TOKEN', 'ChatGPT_API_KEY'],
             also: ['CLOUDFLARE_ACCOUNT_ID'],
         },
         tavily: {
@@ -278,14 +278,23 @@ function providerAvailabilityForRouter() {
     };
 }
 
-const SMART_ROUTE_FALLBACK_ORDER = ['gemini', 'gpt', 'deepseek', 'claude', 'mistral', 'llama', 'perplexity', 'grok', 'cloudflare'];
+const { isCloudflareWorkersAiConfigured } = require('./services/cloudflareWorkersAiConfig');
+const { isOpenRouterFreeConfigured } = require('./services/openRouterFreeModels');
+
+const SMART_ROUTE_FALLBACK_ORDER = ['gemini', 'gpt-oss', 'gpt', 'deepseek', 'claude', 'mistral', 'llama', 'perplexity', 'grok', 'cloudflare'];
 
 function isRoutedModelAvailable(modelSlug, availability) {
+    if (modelSlug === 'gpt-oss') {
+        return isCloudflareWorkersAiConfigured();
+    }
+    if (modelSlug === 'nemotron') {
+        return isOpenRouterFreeConfigured('nemotron');
+    }
+    if (modelSlug === 'deepseek-r1') {
+        return isOpenRouterFreeConfigured('deepseek-r1');
+    }
     if (modelSlug === 'cloudflare') {
-        return Boolean(
-            ((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID)
-            || availability.others,
-        );
+        return Boolean(isCloudflareWorkersAiConfigured() || availability.others);
     }
     const key = {
         gpt: 'gpt',

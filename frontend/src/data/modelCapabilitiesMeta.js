@@ -14,6 +14,9 @@ export const MODEL_TECH_SPECS = {
   kimi: { modelId: 'kimi-k2.5', contextWindow: '256K', toolUse: false },
   grok: { modelId: 'grok-latest', contextWindow: null, toolUse: false },
   cloudflare: { modelId: 'llama-3.3-70b-instruct-fp8-fast', contextWindow: null, toolUse: false },
+  'gpt-oss': { modelId: '@cf/openai/gpt-oss-20b', contextWindow: null, toolUse: false },
+  nemotron: { modelId: 'nvidia/nemotron-3-ultra-550b-a55b:free', contextWindow: null, toolUse: false },
+  'deepseek-r1': { modelId: 'deepseek/deepseek-r1-0528:free', contextWindow: null, toolUse: false },
   qwen: { modelId: 'qwen-2.5-72b-instruct', contextWindow: '128K', toolUse: false },
   cohere: { modelId: 'command-a', contextWindow: '128K', toolUse: false },
   smart: { modelId: 'smart-router', contextWindow: null, toolUse: false },
@@ -61,6 +64,18 @@ export const MODEL_CAPABILITY_FLAGS = {
   cloudflare: {
     coding: true, reasoning: false, vision: false, longContext: false, fast: true,
     research: false, streaming: true, writing: false, summarization: true, translation: false,
+  },
+  'gpt-oss': {
+    coding: true, reasoning: true, vision: false, longContext: false, fast: true,
+    research: false, streaming: true, writing: true, summarization: true, translation: true,
+  },
+  nemotron: {
+    coding: true, reasoning: true, vision: false, longContext: true, fast: false,
+    research: false, streaming: true, writing: true, summarization: true, translation: true,
+  },
+  'deepseek-r1': {
+    coding: true, reasoning: true, vision: false, longContext: true, fast: false,
+    research: false, streaming: true, writing: false, summarization: true, translation: true,
   },
   qwen: {
     coding: true, reasoning: true, vision: false, longContext: true, fast: false,
@@ -111,7 +126,7 @@ export function modalitiesForSlug(slug) {
 
 export function statusKeyForSlug(slug) {
   if (slug === 'smart') return null;
-  if (['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'grok', 'perplexity'].includes(slug)) return slug;
+  if (['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'perplexity'].includes(slug)) return slug;
   return 'others';
 }
 

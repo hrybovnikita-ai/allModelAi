@@ -40,10 +40,11 @@ function kimiDirectKey() {
     return envTrim('KIMI_API_KEY');
 }
 
+const { isCloudflareWorkersAiConfigured } = require('./services/cloudflareWorkersAiConfig');
+const { isOpenRouterFreeConfigured } = require('./services/openRouterFreeModels');
+
 function cloudflareDirectReady() {
-    const account = envTrim('CLOUDFLARE_ACCOUNT_ID');
-    const key = envTrim('CLOUDFLARE_API_KEY') || envTrim('CLAUDEFLARE_API_KEY');
-    return Boolean(account && key);
+    return isCloudflareWorkersAiConfigured();
 }
 
 function perplexityKey() {
@@ -59,8 +60,17 @@ const CHAT_PROVIDER_ENV = {
     grok: { keys: ['XAI_API_KEY', 'GROK_API_KEY'], optional: ['GROK_MODEL', 'GROK_PROVIDER', 'XAI_MODEL'] },
     mistral: { keys: ['MISTRAL_API_KEY'], optional: ['MISTRAL_MODEL'] },
     kimi: { keys: ['KIMI_API_KEY'], optional: ['KIMI_MODEL', 'KIMI_PROVIDER', 'KIMI_BASE_URL'] },
-    cloudflare: { keys: ['CLOUDFLARE_API_KEY', 'CLAUDEFLARE_API_KEY', 'CLOUDFLARE_ACCOUNT_ID'], optional: ['CLOUDFLARE_MODEL'] },
+    cloudflare: {
+        keys: ['CLOUDFLARE_API_KEY', 'CLAUDEFLARE_API_KEY', 'CLOUDFLARE_API_TOKEN', 'ChatGPT_API_KEY', 'CLOUDFLARE_ACCOUNT_ID'],
+        optional: ['CLOUDFLARE_MODEL', 'CLOUDFLARE_GPT_OSS_MODEL'],
+    },
+    'gpt-oss': {
+        keys: ['ChatGPT_API_KEY', 'CLOUDFLARE_ACCOUNT_ID'],
+        optional: ['CLOUDFLARE_GPT_OSS_MODEL', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_API_KEY'],
+    },
     perplexity: { keys: ['PERPLEXITY_API_KEY'], optional: ['PERPLEXITY_MODEL'] },
+    nemotron: { keys: ['OPENROUTER_CHAT_FREE_API_KEY'], optional: [] },
+    'deepseek-r1': { keys: ['OPENROUTER_DEEPSEEK_FREE_API_KEY'], optional: ['AllModelAI-DeepSeek-Free-v2'] },
     tavily: { keys: ['TAVILY_API_KEY'], optional: [] },
 };
 
@@ -83,6 +93,12 @@ function isChatProviderConfigured(providerId) {
             return Boolean(kimiDirectKey()) || Boolean(gateway);
         case 'cloudflare':
             return cloudflareDirectReady() || Boolean(gateway);
+        case 'gpt-oss':
+            return cloudflareDirectReady();
+        case 'nemotron':
+            return isOpenRouterFreeConfigured('nemotron');
+        case 'deepseek-r1':
+            return isOpenRouterFreeConfigured('deepseek-r1');
         case 'perplexity':
             return Boolean(perplexityKey()) || Boolean(gateway);
         case 'tavily':
@@ -122,6 +138,12 @@ function routedModelHasApiKey(routedModel) {
             return Boolean(kimiDirectKey()) || Boolean(gateway);
         case 'cloudflare':
             return cloudflareDirectReady() || Boolean(gateway);
+        case 'gpt-oss':
+            return cloudflareDirectReady();
+        case 'nemotron':
+            return isOpenRouterFreeConfigured('nemotron');
+        case 'deepseek-r1':
+            return isOpenRouterFreeConfigured('deepseek-r1');
         case 'perplexity':
             return Boolean(perplexityKey()) || Boolean(gateway);
         case 'deepseek':

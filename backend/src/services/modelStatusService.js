@@ -2,6 +2,8 @@ const modelVariants = require('../data/modelVariants.json');
 const { authLog } = require('../authHelpers');
 const { providerAvailabilityForRouter, buildProviderSnapshot } = require('../providerHealth');
 const { resolveImageProvider } = require('../pollinations');
+const { isCloudflareWorkersAiConfigured } = require('./cloudflareWorkersAiConfig');
+const { isOpenRouterFreeConfigured } = require('./openRouterFreeModels');
 
 const TTL_MS = Number(process.env.MODEL_STATUS_CACHE_TTL_MS || 30_000);
 
@@ -22,10 +24,10 @@ function buildModelStatusPayload() {
         },
         models: {
             ...availability,
-            cloudflare: Boolean(
-                ((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID)
-                || availability.others,
-            ),
+            cloudflare: Boolean(isCloudflareWorkersAiConfigured() || availability.others),
+            'gpt-oss': isCloudflareWorkersAiConfigured(),
+            nemotron: isOpenRouterFreeConfigured('nemotron'),
+            'deepseek-r1': isOpenRouterFreeConfigured('deepseek-r1'),
         },
         providers,
     };

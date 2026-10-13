@@ -39,7 +39,8 @@ const geminiKey = () => envTrim('GEMINI_API_KEY');
 const claudeKey = () => envTrim('CLAUDE_API_KEY');
 const mistralKey = () => envTrim('MISTRAL_API_KEY');
 const kimiKey = () => (envTrim('KIMI_PROVIDER') === 'openrouter' ? '' : envTrim('KIMI_API_KEY'));
-const cloudflareReady = () => Boolean(envTrim('CLOUDFLARE_ACCOUNT_ID') && (envTrim('CLOUDFLARE_API_KEY') || envTrim('CLAUDEFLARE_API_KEY')));
+const { isCloudflareWorkersAiConfigured } = require('./cloudflareWorkersAiConfig');
+const cloudflareReady = () => isCloudflareWorkersAiConfigured();
 
 function sanitizeError(body, status) {
     const msg = String(body?.error?.message || body?.message || body?.errors?.[0]?.message || '').slice(0, 240);

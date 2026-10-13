@@ -5,7 +5,7 @@
 
 const { SMART_ROUTE_FALLBACK_ORDER } = require('../../providerHealth');
 
-/** @typedef {'gpt'|'claude'|'gemini'|'perplexity'|'deepseek'|'llama'|'mistral'|'kimi'|'grok'|'cloudflare'|'qwen'|'cohere'} ModelSlug */
+/** @typedef {'gpt'|'claude'|'gemini'|'perplexity'|'deepseek'|'deepseek-r1'|'llama'|'mistral'|'kimi'|'grok'|'cloudflare'|'gpt-oss'|'nemotron'|'qwen'|'cohere'} ModelSlug */
 
 const MODEL_CAPABILITIES = {
     gpt: {
@@ -148,6 +148,48 @@ const MODEL_CAPABILITIES = {
         summarization: true,
         translation: false,
     },
+    'gpt-oss': {
+        provider: 'cloudflare',
+        model: 'gpt-oss-20b',
+        coding: true,
+        reasoning: true,
+        vision: false,
+        longContext: false,
+        fast: true,
+        research: false,
+        streaming: true,
+        writing: true,
+        summarization: true,
+        translation: true,
+    },
+    nemotron: {
+        provider: 'openrouter',
+        model: 'nemotron-3-ultra-550b-a55b:free',
+        coding: true,
+        reasoning: true,
+        vision: false,
+        longContext: true,
+        fast: false,
+        research: false,
+        streaming: true,
+        writing: true,
+        summarization: true,
+        translation: true,
+    },
+    'deepseek-r1': {
+        provider: 'openrouter',
+        model: 'deepseek-r1-0528:free',
+        coding: true,
+        reasoning: true,
+        vision: false,
+        longContext: true,
+        fast: false,
+        research: false,
+        streaming: true,
+        writing: false,
+        summarization: true,
+        translation: true,
+    },
     qwen: {
         provider: 'qwen',
         model: 'qwen-2.5-72b-instruct',
@@ -210,6 +252,9 @@ function displayModelName(slug) {
         kimi: 'Kimi K2.5',
         grok: 'Grok',
         cloudflare: 'Cloudflare Llama',
+        'gpt-oss': 'GPT-OSS (Cloudflare)',
+        nemotron: 'Nemotron 3 Ultra (Free)',
+        'deepseek-r1': 'DeepSeek R1 (Free)',
         qwen: 'Qwen 2.5',
         cohere: 'Cohere Command',
     };

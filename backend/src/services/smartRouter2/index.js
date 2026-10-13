@@ -9,9 +9,11 @@ const {
 const { findRoutedModelWithApiKey } = require('../../chatProviderRuntime');
 const { findVisionRoutedModel, visionSlugAllowed } = require('../visionSupport');
 
+const { isCloudflareWorkersAiConfigured } = require('../cloudflareWorkersAiConfig');
+
 const MODE_OVERRIDES = {
     economy: {
-        slug: process.env.CLOUDFLARE_ACCOUNT_ID ? 'cloudflare' : 'gemini',
+        slug: isCloudflareWorkersAiConfigured() ? 'gpt-oss' : (process.env.CLOUDFLARE_ACCOUNT_ID ? 'cloudflare' : 'gemini'),
         reason: 'Economy mode prioritizes lower cost and fast inference.',
     },
     speed: { slug: 'gemini', reason: 'Speed mode prioritizes low-latency responses.' },

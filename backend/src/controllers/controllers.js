@@ -1642,6 +1642,9 @@ async function createChatResponseImpl(req, res) {
         qwen: 'qwen/qwen-2.5-72b-instruct',
         cohere: 'cohere/command-a',
         cloudflare: process.env.CLOUDFLARE_MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+        'gpt-oss': '@cf/openai/gpt-oss-20b',
+        nemotron: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+        'deepseek-r1': 'deepseek/deepseek-r1-0528:free',
     };
     if (selectedVariant) providerModels[model] = selectedVariant.gateway;
     const configuredGrokModel = process.env.GROK_MODEL?.trim();
@@ -1837,6 +1840,22 @@ async function createChatResponseImpl(req, res) {
         resolvePerplexityDirectModel,
         PERPLEXITY_CHAT_URL,
     } = require('../services/perplexityChat');
+    const {
+        isCloudflareWorkersAiConfigured,
+        getCloudflareWorkersAiToken,
+        getCloudflareAccountId,
+        buildCloudflareChatCompletionsUrl,
+        resolveGptOssModelId,
+        mapCloudflareChatHttpError,
+    } = require('../services/cloudflareWorkersAiConfig');
+    const {
+        isOpenRouterFreeSlug,
+        resolveOpenRouterFreeRoute,
+        resolveOpenRouterFreeModelId,
+        mapOpenRouterFreeHttpError,
+        missingOpenRouterFreeConfigPayload,
+        OPENROUTER_CHAT_COMPLETIONS_URL,
+    } = require('../services/openRouterFreeModels');
     const directPerplexityKey = getPerplexityApiKey();
     const preferGemini = process.env.PREFER_GEMINI === 'true' && Boolean(process.env.GEMINI_API_KEY?.trim());
     const usePreferredGemini = preferGemini && model === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
@@ -1848,9 +1867,27 @@ async function createChatResponseImpl(req, res) {
     let isKimi = routedModel === 'kimi' && Boolean(directKimiKey || gatewayKey);
     let isMistral = routedModel === 'mistral' && Boolean(directMistralKey);
     let isPerplexity = routedModel === 'perplexity' && Boolean(directPerplexityKey);
-    const hasCloudflareDirect = Boolean((process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY) && process.env.CLOUDFLARE_ACCOUNT_ID);
+    const hasCloudflareDirect = isCloudflareWorkersAiConfigured();
+    let isGptOssCf = routedModel === 'gpt-oss' && hasCloudflareDirect;
     let isCloudflare = routedModel === 'cloudflare' && hasCloudflareDirect;
-    if (hasAttachedImage && isCloudflare) {
+    if (model === 'gpt-oss' && !hasCloudflareDirect) {
+        return res.status(503).json({
+            message: 'GPT-OSS (Cloudflare) is not configured on the server. Set CLOUDFLARE_ACCOUNT_ID and ChatGPT_API_KEY (Cloudflare API token).',
+            code: 'CLOUDFLARE_GPT_OSS_NOT_CONFIGURED',
+            configuredProviders: listConfiguredChatProviderIds(),
+        });
+    }
+    const openRouterFreeRoute = resolveOpenRouterFreeRoute(routedModel);
+    let isOpenRouterFree = Boolean(openRouterFreeRoute);
+    if (isOpenRouterFreeSlug(routedModel) && !openRouterFreeRoute) {
+        const payload = missingOpenRouterFreeConfigPayload(routedModel);
+        return res.status(503).json({
+            ...payload,
+            configuredProviders: listConfiguredChatProviderIds(),
+        });
+    }
+    if (hasAttachedImage && (isCloudflare || isGptOssCf)) {
+        isGptOssCf = false;
         isCloudflare = false;
         const visionSlug = findVisionRoutedModel('gemini', modelAllowed);
         if (visionSlug === 'gemini' && process.env.GEMINI_API_KEY?.trim()) {
@@ -1864,9 +1901,10 @@ async function createChatResponseImpl(req, res) {
             routedModel = 'claude';
         }
     }
-    const cloudflareKey = process.env.CLOUDFLARE_API_KEY || process.env.CLAUDEFLARE_API_KEY;
-    let apiKey = isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isDeepSeek ? process.env.DEEPSEEK_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isPerplexity ? directPerplexityKey : isCloudflare ? cloudflareKey : gatewayKey;
-    const usesDirectProvider = Boolean(isOpenAI || isXAI || isClaude || isGemini || isDeepSeek || (isKimi && directKimiKey) || isMistral || isPerplexity || isCloudflare);
+    const cloudflareKey = getCloudflareWorkersAiToken();
+    let apiKey = isOpenRouterFree ? openRouterFreeRoute.apiKey : isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isDeepSeek ? process.env.DEEPSEEK_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isPerplexity ? directPerplexityKey : (isGptOssCf || isCloudflare) ? cloudflareKey : gatewayKey;
+    const usesDirectProvider = Boolean(isOpenAI || isXAI || isClaude || isGemini || isDeepSeek || (isKimi && directKimiKey) || isMistral || isPerplexity || isCloudflare || isGptOssCf);
+    const noCrossProviderFallback = routedModel === 'gpt-oss' || isOpenRouterFreeSlug(routedModel);
     if (!apiKey) {
         logSmartRouter('provider failed', { provider: routedModel, reason: 'missing_api_key' });
         return res.status(503).json(buildNoAiProvidersPayload());
@@ -2048,7 +2086,8 @@ async function createChatResponseImpl(req, res) {
             generationConfig: { maxOutputTokens: outputTokenLimit },
         });
         const geminiUrl = getGeminiUrl(apiKey);
-        const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(process.env.CLOUDFLARE_ACCOUNT_ID || '')}/ai/run/${selectedVariant?.direct || providerModels.cloudflare}`;
+        const cloudflareUrl = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(getCloudflareAccountId())}/ai/run/${selectedVariant?.direct || providerModels.cloudflare}`;
+        const gptOssCompletionsUrl = buildCloudflareChatCompletionsUrl();
         const directKimiUrl = (process.env.KIMI_BASE_URL || 'https://api.moonshot.cn/v1').trim().replace(/\/+$/, '') + '/chat/completions';
         const directMistralUrl = 'https://api.mistral.ai/v1/chat/completions';
         const providerTimeoutMs = Math.min(Math.max(Number(process.env.AI_REQUEST_TIMEOUT_MS) || 45000, 5000), 120000);
@@ -2067,10 +2106,10 @@ async function createChatResponseImpl(req, res) {
                 });
             }
         };
-        let apiResponse = await fetchProvider(isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isDeepSeek ? 'https://api.deepseek.com/chat/completions' : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
+        let apiResponse = await fetchProvider(isOpenRouterFree ? OPENROUTER_CHAT_COMPLETIONS_URL : isGptOssCf ? gptOssCompletionsUrl : isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isDeepSeek ? 'https://api.deepseek.com/chat/completions' : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             signal: requestSignal(),
-            headers: isOpenAI || isXAI ? {
+            headers: isOpenRouterFree || isGptOssCf || isOpenAI || isXAI ? {
                 Authorization: `Bearer ${apiKey.trim()}`,
                 'Content-Type': 'application/json',
             } : isDeepSeek ? {
@@ -2098,7 +2137,20 @@ async function createChatResponseImpl(req, res) {
                 Authorization: `Bearer ${apiKey.trim()}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(isOpenAI ? {
+            body: JSON.stringify(isOpenRouterFree ? {
+                model: resolveOpenRouterFreeModelId(
+                    routedModel,
+                    selectedVariant?.gateway || selectedVariant?.direct || providerModels[routedModel],
+                ),
+                stream: true,
+                max_tokens: outputTokenLimit,
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
+            } : isGptOssCf ? {
+                model: resolveGptOssModelId(selectedVariant?.direct),
+                stream: true,
+                max_tokens: outputTokenLimit,
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
+            } : isOpenAI ? {
                 model: selectedVariant?.direct || (hasAttachedImage ? resolveOpenAiVisionModel() : (process.env.OPENAI_MODEL || 'gpt-4o-mini')),
                 stream: true,
                 max_tokens: outputTokenLimit,
@@ -2133,6 +2185,8 @@ async function createChatResponseImpl(req, res) {
                 model: resolvePerplexityDirectModel(selectedVariant),
                 stream: true,
                 max_tokens: outputTokenLimit,
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
+            } : isCloudflare ? {
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : {
                 model: resolveOpenRouterModelId({
@@ -2174,7 +2228,7 @@ async function createChatResponseImpl(req, res) {
             }),
         });
 
-        if (!apiResponse.ok && gatewayKey?.trim()) {
+        if (!apiResponse.ok && gatewayKey?.trim() && !noCrossProviderFallback) {
             upstreamError = await apiResponse.json().catch(() => ({}));
             const detail = upstreamErrorMessage(upstreamError);
             const billingOrQuota = isBillingOrQuotaFailure(apiResponse.status, detail);
@@ -2196,6 +2250,8 @@ async function createChatResponseImpl(req, res) {
                         isMistral = false;
                         isPerplexity = false;
                         isCloudflare = false;
+                        isGptOssCf = false;
+                        isOpenRouterFree = false;
                         logSmartRouter('equivalence fallback', { from: 'openai-direct', to: 'openrouter', routedModel, gatewayModel });
                     } else {
                         upstreamError = await apiResponse.json().catch(() => ({}));
@@ -2249,6 +2305,8 @@ async function createChatResponseImpl(req, res) {
                 isMistral = false;
                 isPerplexity = false;
                 isCloudflare = false;
+                isGptOssCf = false;
+                isOpenRouterFree = false;
                 apiResponse = await fetchProvider('https://api.anthropic.com/v1/messages', {
                     method: 'POST',
                     signal: requestSignal(),
@@ -2274,7 +2332,7 @@ async function createChatResponseImpl(req, res) {
         }
 
         // Prefer independently configured Gemini connection for failed non-Gemini provider
-        if (!apiResponse.ok && allowFallback && !isGemini && process.env.GEMINI_API_KEY?.trim()) {
+        if (!apiResponse.ok && allowFallback && !noCrossProviderFallback && !isGemini && process.env.GEMINI_API_KEY?.trim()) {
             upstreamError = await apiResponse.json().catch(() => ({}));
             apiKey = process.env.GEMINI_API_KEY.trim();
             isOpenAI = false;
@@ -2284,6 +2342,8 @@ async function createChatResponseImpl(req, res) {
             isMistral = false;
             isPerplexity = false;
             isCloudflare = false;
+            isGptOssCf = false;
+            isOpenRouterFree = false;
             isGemini = true;
             apiResponse = await fetchProvider(getGeminiUrl(apiKey), {
                 method: 'POST',
@@ -2299,7 +2359,7 @@ async function createChatResponseImpl(req, res) {
             if (!apiResponse.ok) upstreamError = null;
         }
         // Gateway fallback through OpenRouter
-        if (!apiResponse.ok && allowFallback && gatewayKey?.trim()) {
+        if (!apiResponse.ok && allowFallback && !noCrossProviderFallback && gatewayKey?.trim()) {
             upstreamError = await apiResponse.json().catch(() => ({}));
             const configuredFallbacks = String(process.env.OPENROUTER_FALLBACK_MODELS || '')
                 .split(',')
@@ -2343,6 +2403,8 @@ async function createChatResponseImpl(req, res) {
                     isMistral = false;
                     isPerplexity = false;
                     isCloudflare = false;
+                    isGptOssCf = false;
+                    isOpenRouterFree = false;
                     upstreamError = null;
                     break;
                 }
@@ -2355,7 +2417,13 @@ async function createChatResponseImpl(req, res) {
             const billingError = /insufficient.*(balance|credit|quota)|balance.*insufficient|exceeded.*quota|quota.*exceeded|recharge|billing/i.test(detail);
             const visionUpstream = hasAttachedImage && /vision|image|multimodal|unsupported.*image|does not support/i.test(detail);
             const providerLabel = displayModelName(routedModel) || routedModel;
-            const message = billingError || apiResponse.status === 402
+            const cloudflareMapped = routedModel === 'gpt-oss'
+                ? mapCloudflareChatHttpError(apiResponse.status, detail)
+                : null;
+            const openRouterFreeMapped = isOpenRouterFreeSlug(routedModel)
+                ? mapOpenRouterFreeHttpError(apiResponse.status, detail)
+                : null;
+            const message = openRouterFreeMapped?.message || cloudflareMapped?.message || (billingError || apiResponse.status === 402
                 ? `${providerLabel} could not complete this request because the provider account has insufficient balance or quota. Add credits in the provider billing console or configure another connection for this model.`
                 : visionUpstream
                     ? 'The selected model could not analyze this image. Try Smart Router or switch to Gemini or GPT.'
@@ -2364,11 +2432,11 @@ async function createChatResponseImpl(req, res) {
                 : apiResponse.status === 504 ? 'The AI provider took too long to respond. Try again or choose another configured model.'
                 : hasAttachedImage
                     ? 'Image analysis failed. Retry or use Smart Router with Gemini or GPT configured.'
-                : 'The selected AI service could not answer. Retry or check the model configuration.';
-            const errorCode = billingError ? 'AI_BILLING'
+                : 'The selected AI service could not answer. Retry or check the model configuration.');
+            const errorCode = openRouterFreeMapped?.code || cloudflareMapped?.code || (billingError ? 'AI_BILLING'
                 : visionUpstream ? 'VISION_UPSTREAM'
                 : hasAttachedImage && apiResponse.status >= 500 ? 'VISION_PROVIDER_ERROR'
-                : 'AI_UPSTREAM';
+                : 'AI_UPSTREAM');
             logSmartRouter('provider failed', { provider: routedModel, status: apiResponse.status, billing: billingError, vision: hasAttachedImage });
             console.error('[AI API]', chatCorrelationId, apiResponse.status, billingError ? 'billing_or_quota' : 'upstream_error', hasAttachedImage ? 'vision_request' : '', detail.slice(0, 180));
             setImmediate(() => {
@@ -2394,7 +2462,7 @@ async function createChatResponseImpl(req, res) {
                     console.warn('[PROVIDER_HEALTH]', telemetryError.message);
                 }
             });
-            const clientStatus = mapUpstreamStatusForClient(apiResponse.status);
+            const clientStatus = openRouterFreeMapped?.clientStatus || cloudflareMapped?.clientStatus || mapUpstreamStatusForClient(apiResponse.status);
             return res.status(clientStatus).json({
                 message,
                 code: errorCode,
@@ -2424,8 +2492,8 @@ async function createChatResponseImpl(req, res) {
         res.setHeader('X-Accel-Buffering', 'no');
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
-        const freeTierModels = new Set(['gemini', 'cloudflare']);
-        res.write(`data: ${JSON.stringify({ unlimited: creditStatus.unlimited, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:selectedVariant ? ((isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isPerplexity || isCloudflare) ? (isPerplexity ? resolvePerplexityDirectModel(selectedVariant) : selectedVariant.direct) : selectedVariant.gateway) : fallbackUsed ? providerModels[fallbackModel] : providerModels[routedModel], actualProviderModel: fallbackUsed ? fallbackModel : routedModel, routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, routeTaskType:routeDecision.taskType || routeDecision.category, routeDisplayName:routeDecision.displayName, routeFallbacks:routeDecision.fallbacks || routeDecision.fallbackSlugs, router:routerMetaFromDecision(routeDecision, fallbackUsed), responseLanguage: languageContext.policy?.language, responseLanguageSource: languageContext.policy?.source, responseLanguageConfidence: languageContext.policy?.confidence, languageCorrelationId, knowledgeSources:knowledge.map(({id,name,excerpt,score,pageNumber,sectionLabel})=>({id,name,excerpt,score,pageNumber,sectionLabel})), costTier:freeTierModels.has(fallbackUsed ? fallbackModel : routedModel)?'free-allowance':'paid' })}\n\n`);
+        const freeTierModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1']);
+        res.write(`data: ${JSON.stringify({ unlimited: creditStatus.unlimited, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:selectedVariant ? ((isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isPerplexity || isCloudflare || isGptOssCf) ? (isPerplexity ? resolvePerplexityDirectModel(selectedVariant) : (isGptOssCf ? resolveGptOssModelId(selectedVariant.direct) : selectedVariant.direct)) : selectedVariant.gateway) : fallbackUsed ? providerModels[fallbackModel] : (isOpenRouterFree ? resolveOpenRouterFreeModelId(routedModel, providerModels[routedModel]) : routedModel === 'gpt-oss' ? resolveGptOssModelId() : providerModels[routedModel]), actualProviderModel: fallbackUsed ? fallbackModel : routedModel, routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, routeTaskType:routeDecision.taskType || routeDecision.category, routeDisplayName: isOpenRouterFree ? openRouterFreeRoute.displayName : routedModel === 'gpt-oss' ? 'GPT-OSS (Cloudflare)' : routeDecision.displayName, routeFallbacks:routeDecision.fallbacks || routeDecision.fallbackSlugs, router:routerMetaFromDecision(routeDecision, fallbackUsed), responseLanguage: languageContext.policy?.language, responseLanguageSource: languageContext.policy?.source, responseLanguageConfidence: languageContext.policy?.confidence, languageCorrelationId, knowledgeSources:knowledge.map(({id,name,excerpt,score,pageNumber,sectionLabel})=>({id,name,excerpt,score,pageNumber,sectionLabel})), costTier:freeTierModels.has(fallbackUsed ? fallbackModel : routedModel)?'free-allowance':'paid' })}\n\n`);
         if (fallbackUsed) res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: fallbackModel })}\n\n`);
         if (shouldAugmentWithWeb) {
             if (webSourcesForResponse.length) {
@@ -2838,7 +2906,7 @@ const getUsageAnalytics = async (req, res) => {
         ? await listAnalyticsConversationRows(connection, email)
         : connection.database.prepare('SELECT model, messages, created_at AS createdAt FROM conversations WHERE email = ?').all(email);
     const byModel = {}; let messages = 0; let characters = 0; let freeConversations = 0;
-    const freeModels = new Set(['gemini', 'cloudflare']);
+    const freeModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1']);
     conversations.forEach((conversation) => { const list = JSON.parse(conversation.messages || '[]'); const model=conversation.model||'gpt'; byModel[model] = (byModel[model] || 0) + 1; if(freeModels.has(model))freeConversations+=1; messages += list.length; characters += list.reduce((sum, item) => sum + String(item.content || item.text || '').length, 0); });
     const estimatedTokens = Math.ceil(characters / 4);
     const paidRatio=conversations.length?(conversations.length-freeConversations)/conversations.length:0;
@@ -3377,7 +3445,7 @@ const getArenaLeaderboard = async (req, res) => {
             ? await listArenaVotesAsync(connection)
             : connection.database.prepare('SELECT model_a, model_b, winner FROM arena_votes').all();
 
-        const candidateModels = ['gpt', 'claude', 'gemini', 'cloudflare', 'deepseek', 'llama', 'grok', 'copilot', 'perplexity', 'kimi', 'mistral', 'qwen', 'cohere'];
+        const candidateModels = ['gpt', 'claude', 'gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'deepseek', 'llama', 'grok', 'copilot', 'perplexity', 'kimi', 'mistral', 'qwen', 'cohere'];
         const stats = {};
         candidateModels.forEach(model => {
             stats[model] = {
