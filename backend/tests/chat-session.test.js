@@ -26,8 +26,10 @@ test('an expired session can sign in again and retry the saved conversation', as
   const payload = { model: 'gemini', conversationId: saved.body.id, messages };
   assert.equal((await client.post('/api/chat').send(payload)).status, 401);
   assert.equal((await client.post('/api/auth/login').send(account)).status, 200);
+  const previousGemini = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = 'test-gemini-session';
   const originalFetch = global.fetch;
-  global.fetch = async () => new Response('data: {"choices":[{"delta":{"content":"Recovered answer"}}]}\n\ndata: [DONE]\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
+  global.fetch = async () => new Response(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Recovered answer' }] } }] })}\n\ndata: [DONE]\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
   try {
     const answer = await client.post('/api/chat').send(payload);
     assert.equal(answer.status, 200);
@@ -35,6 +37,8 @@ test('an expired session can sign in again and retry the saved conversation', as
     assert.equal((await client.get('/api/auth/session')).status, 200);
   } finally {
     global.fetch = originalFetch;
+    if (previousGemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousGemini;
   }
 });
 

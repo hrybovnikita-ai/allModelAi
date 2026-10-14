@@ -259,6 +259,12 @@ export default function Dashboard() {
                   <span>Subscription status</span>
                   <strong>{creditStatus.isOwner ? 'Owner' : subscriptionStatusLabel(creditStatus)}</strong>
                 </div>
+                {creditStatus.aiCredits?.enabled ? (
+                  <div>
+                    <span>AI credits</span>
+                    <strong>{Number(creditStatus.aiCredits.balance ?? 0).toLocaleString()}</strong>
+                  </div>
+                ) : null}
                 {!creditStatus.isOwner && creditStatus.expiresAtLabel && (
                   <div>
                     <span>Renews/Expires</span>
@@ -272,6 +278,7 @@ export default function Dashboard() {
               <div className="dashboard-subscription-actions">
                 <button type="button" className="dashboard-sub-manage" onClick={() => setManageSubOpen(true)}>Manage subscription</button>
                 <Link to="/checkout?plan=pro">Upgrade plan</Link>
+                {creditStatus.aiCredits?.enabled ? <Link to="/credits">Buy AI credits</Link> : null}
               </div>
             </>
           )}

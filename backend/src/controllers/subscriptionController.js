@@ -13,9 +13,13 @@ const { getCreditStatusCoreAsync } = require('../billing/creditStatusAsync');
 const { applyOwnerAccess } = require('../billing/accessControl');
 const { applyPlusTestCreditStatus, isAllowlistedDeveloper } = require('../billing/plusTestMode');
 const { readUserRoleSync } = require('../billing/userRole');
+const { aiCreditsEnabled } = require('../billing/aiCreditUsage');
+const { readBalanceSync } = require('../billing/aiCreditLedger');
 const { canUsePaymentSandboxAsync } = require('../payments/paymentSandbox');
 const { canUseWayforpayTestCheckoutAsync } = require('../payments/wayforpayTestAccess');
 const { authLog } = require('../authHelpers');
+const { readSubscriptionDetailUnified } = require('../payments/readSubscriptionDetailUnified');
+const { analyzeBillingPortalAccess, isInternalMockBilling } = require('../payments/billingPortalAccess');
 
 function readUsageCount(database, normalizedEmail) {
     const row = database.database.prepare('SELECT used FROM usage WHERE email = ?').get(normalizedEmail);
@@ -62,7 +66,18 @@ const getCreditStatusCore = (database, email) => {
         ...subscriptionView,
     });
     const role = readUserRoleSync(database, normalizedEmail);
-    return applyOwnerAccess(base, role, { savedMode });
+    const withOwner = applyOwnerAccess(base, role, { savedMode });
+    if (!aiCreditsEnabled()) {
+        return { ...withOwner, aiCredits: { enabled: false, balance: null } };
+    }
+    return {
+        ...withOwner,
+        aiCredits: {
+            enabled: true,
+            balance: readBalanceSync(database, normalizedEmail),
+            currencyLabel: 'credits',
+        },
+    };
 };
 
 const getSubscriptionSummary = async (req, res) => {
@@ -70,6 +85,11 @@ const getSubscriptionSummary = async (req, res) => {
     const startedAt = Date.now();
     try {
         const status = await getCreditStatusCoreAsync(req.app.locals.db, req.user.email);
+        const detail = await readSubscriptionDetailUnified(req.app.locals.db, req.user.email);
+        const billingPortal = analyzeBillingPortalAccess(detail, {
+            hasSubscription: status.hasSubscription,
+            active: status.active,
+        });
         const checkoutFlags = buildCheckoutInfo();
         const canUseOwnerTestCheckout = await canUsePaymentSandboxAsync(req.app.locals.db, req.user);
         const canUseWayforpayTestCheckout = await canUseWayforpayTestCheckoutAsync(req.app.locals.db, req.user);
@@ -81,10 +101,17 @@ const getSubscriptionSummary = async (req, res) => {
             planKey: status.planKey || status.planSlug,
             canUseOwnerTestCheckout,
             canUseWayforpayTestCheckout,
+            canManageStripeBilling: billingPortal.canManageStripeBilling,
+            billingManagementCode: billingPortal.billingManagementCode,
+            billingManagementMessage: billingPortal.billingManagementMessage,
+            stripeCustomerLinked: Boolean(billingPortal.stripeCustomerLinked),
             manageTestSubscription: canUseOwnerTestCheckout
                 && wayforpayTestModeEnabled()
                 && status.hasSubscription
                 && status.paymentProvider === 'wayforpay',
+            manageInternalDevSubscription: status.hasSubscription
+                && status.active
+                && isInternalMockBilling(detail),
         });
     } catch (error) {
         authLog('SUBSCRIPTION_ROUTE_FAILED', {

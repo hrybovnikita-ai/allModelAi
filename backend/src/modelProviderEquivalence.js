@@ -15,8 +15,29 @@ function upstreamErrorMessage(data) {
     return String(data?.error?.message || data?.errors?.[0]?.message || data?.message || '').trim();
 }
 
+/** OpenRouter credit/billing failures (not Google Gemini quota). */
+function isOpenRouterInsufficientCredits(status, detail) {
+    const text = String(detail || '').toLowerCase();
+    if (Number(status) === 402) return true;
+    return /insufficient credits|requires more credits|can not afford|cannot afford|openrouter/i.test(text)
+        && /credit|balance|afford|payment|purchase/i.test(text);
+}
+
+function mapOpenRouterBillingError(status, detail = '') {
+    const mapped = isOpenRouterInsufficientCredits(status, detail);
+    if (!mapped) return null;
+    return {
+        clientStatus: 402,
+        code: 'OPENROUTER_INSUFFICIENT_CREDITS',
+        message: 'OpenRouter reports insufficient credits for this model. Add OpenRouter credits or configure GEMINI_API_KEY to use Google Gemini directly.',
+        provider: 'openrouter',
+    };
+}
+
 module.exports = {
     isBillingOrQuotaFailure,
+    isOpenRouterInsufficientCredits,
     isTransientCapacityFailure,
+    mapOpenRouterBillingError,
     upstreamErrorMessage,
 };

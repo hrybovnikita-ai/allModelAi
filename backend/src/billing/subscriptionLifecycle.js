@@ -138,11 +138,17 @@ const cancelTestSubscription = (database, email) => {
     ensureSubscriptionBillingSchema(database.database);
     const normalizedEmail = String(email).trim().toLowerCase();
     const detail = database.database.prepare(`
-        SELECT plan, status, payment_provider AS paymentProvider, stripe_subscription_id AS stripeSubscriptionId
+        SELECT plan, status, payment_provider AS paymentProvider,
+               stripe_subscription_id AS stripeSubscriptionId, stripe_customer_id AS stripeCustomerId
         FROM subscription_details WHERE email = ?
     `).get(normalizedEmail);
     if (!detail || detail.status !== 'active' || detail.plan === 'free') {
         return { ok: false, status: 404, message: 'No active paid subscription to cancel.' };
+    }
+    const { isInternalMockBilling } = require('../payments/billingPortalAccess');
+    if (isInternalMockBilling(detail)) {
+        revertToFreePlan(database, normalizedEmail, { status: 'canceled', paymentStatus: 'canceled' });
+        return { ok: true, plan: 'free' };
     }
     const isWayforpayTest = detail.paymentProvider === 'wayforpay'
         && String(detail.stripeSubscriptionId || '').startsWith('wayforpay_');

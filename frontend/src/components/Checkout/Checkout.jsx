@@ -15,6 +15,12 @@ import MockCheckoutForm from './MockCheckoutForm';
 import CheckoutSummaryCard from './CheckoutSummaryCard';
 import PaymentFormCard from './PaymentFormCard';
 import PaymentButton from './PaymentButton';
+import CheckoutAiCreditPackages from './CheckoutAiCreditPackages';
+import {
+  openStripeBillingPortal,
+  openStripeBillingPortalFromApiError,
+  subscriptionMatchesCheckoutPlan,
+} from '../../lib/stripeBillingPortal';
 
 const DEVELOPER_FALLBACK = {
   slug: 'developer',
@@ -61,6 +67,7 @@ export default function Checkout() {
   const [stripeReady, setStripeReady] = useState(false);
   const [ownerTestCheckout, setOwnerTestCheckout] = useState(false);
   const [canUseWayforpayTestCheckout, setCanUseWayforpayTestCheckout] = useState(false);
+  const [activePlanConflict, setActivePlanConflict] = useState(null);
   const stripeAutoLoadRef = useRef(false);
   const paymentProvider = checkoutInfo?.primaryProvider || null;
   const paymentsAvailable = Boolean(checkoutInfo?.checkoutAvailable);
@@ -179,11 +186,20 @@ export default function Checkout() {
       setStripeClientSecret(response.data.clientSecret);
       setStripeReady(true);
     } catch (requestError) {
-      const message = formatStripeConfigError(
-        requestError.response?.data,
-        requestError.response?.data?.message || requestError.message || 'Could not start secure checkout.',
+      const payload = requestError.response?.data;
+      const portalAttempt = await openStripeBillingPortalFromApiError(requestError);
+      if (portalAttempt.redirected) return;
+      const message = portalAttempt.message || formatStripeConfigError(
+        payload,
+        payload?.userMessage || payload?.message || requestError.message || 'Could not start secure checkout.',
       );
       setError(message);
+      if (requestError.response?.status === 409 && payload?.useBillingPortal) {
+        setActivePlanConflict({
+          canManageStripeBilling: Boolean(payload.canManageStripeBilling),
+          billingManagementMessage: payload.billingManagementMessage || message,
+        });
+      }
     } finally {
       setCheckoutBusy(false);
     }
@@ -197,9 +213,33 @@ export default function Checkout() {
     if (!useStripeProduction || isDeveloper) return undefined;
     if (isAuthInitializing(sessionStatus) || sessionStatus !== 'authenticated') return undefined;
     if (stripeReady || checkoutBusy || stripeAutoLoadRef.current) return undefined;
-    stripeAutoLoadRef.current = true;
-    void startStripeCheckout();
-    return undefined;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: sub } = await apiClient.get('/api/subscription');
+        if (cancelled) return;
+        if (subscriptionMatchesCheckoutPlan(sub, planSlug)) {
+          stripeAutoLoadRef.current = true;
+          setActivePlanConflict({
+            canManageStripeBilling: Boolean(sub.canManageStripeBilling),
+            billingManagementMessage: sub.billingManagementMessage
+              || 'You already have an active subscription on this plan.',
+          });
+          setError('');
+          return;
+        }
+        stripeAutoLoadRef.current = true;
+        await startStripeCheckout();
+      } catch {
+        if (!cancelled) {
+          stripeAutoLoadRef.current = true;
+          await startStripeCheckout();
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, [
     useStripeProduction,
     isDeveloper,
@@ -207,6 +247,7 @@ export default function Checkout() {
     stripeReady,
     checkoutBusy,
     startStripeCheckout,
+    planSlug,
   ]);
 
   const wayforpayTestFlow = Boolean(
@@ -298,6 +339,33 @@ export default function Checkout() {
             <p className="checkout-error checkout-error--left" role="alert">{error}</p>
           )}
 
+          {activePlanConflict && (
+            <div className="checkout-state checkout-state--cancel" role="status">
+              <p>{activePlanConflict.billingManagementMessage}</p>
+              {activePlanConflict.canManageStripeBilling ? (
+                <PaymentButton
+                  type="button"
+                  loading={checkoutBusy}
+                  loadingLabel="Opening…"
+                  onClick={() => {
+                    setCheckoutBusy(true);
+                    openStripeBillingPortal()
+                      .catch((portalError) => {
+                        setError(portalError.message || 'Could not open billing portal.');
+                      })
+                      .finally(() => setCheckoutBusy(false));
+                  }}
+                >
+                  Manage subscription in Stripe
+                </PaymentButton>
+              ) : (
+                <p className="checkout-state-sub">
+                  Open Dashboard → Manage subscription for details, or contact support if you expected Stripe billing.
+                </p>
+              )}
+            </div>
+          )}
+
           {isDeveloper && (
             <>
               <h2>Free developer plan</h2>
@@ -312,7 +380,7 @@ export default function Checkout() {
 
           {!isDeveloper && (
             <>
-              {useStripeProduction ? (
+              {useStripeProduction && !activePlanConflict ? (
                 <ProductionStripeCheckoutForm
                   publishableKey={stripePublishableKey}
                   clientSecret={stripeClientSecret}
@@ -399,6 +467,12 @@ export default function Checkout() {
           )}
         </PaymentFormCard>
       </section>
+
+      <CheckoutAiCreditPackages
+        sessionReady={sessionReady}
+        showTestBanner={showTestBanner}
+        testBannerText={testBannerText}
+      />
     </main>
   );
 }

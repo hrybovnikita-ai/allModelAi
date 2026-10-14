@@ -283,6 +283,18 @@ router.get('/platform/jobs/:id', requireAuth, getPlatformJob);
 router.post('/platform/jobs', requireAuth, createPlatformJob);
 router.post('/platform/jobs/:id/cancel', requireAuth, cancelPlatformJob);
 router.get('/credits', requireAuth, getCredits);
+const {
+    getAiCreditPackages,
+    getAiCreditWallet,
+    getAiCreditLedger,
+    createAiCreditCheckout,
+    verifyAiCreditCheckoutSession,
+} = require('../controllers/aiCreditController');
+router.get('/credits/packages', getAiCreditPackages);
+router.get('/credits/wallet', requireAuth, getAiCreditWallet);
+router.get('/credits/ledger', requireAuth, getAiCreditLedger);
+router.post('/payments/credit-checkout', requireAuth, createAiCreditCheckout);
+router.get('/payments/credit-session/:sessionId', requireAuth, verifyAiCreditCheckoutSession);
 router.get('/subscription', requireAuth, getSubscriptionSummary);
 router.post('/subscription/cancel-test', requireAuth, cancelTestSubscriptionHandler);
 router.patch('/access-mode', requireAuth, setAccessMode);

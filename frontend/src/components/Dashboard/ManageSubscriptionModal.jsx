@@ -90,10 +90,18 @@ export default function ManageSubscriptionModal({ onClose, onUpdated }) {
             </ul>
           </div>
         )}
+        {summary?.billingManagementMessage && !summary?.canManageStripeBilling && summary?.hasSubscription && (
+          <p className="dashboard-sub-test-note" role="status">{summary.billingManagementMessage}</p>
+        )}
         {error && <p className="dashboard-modal-error" role="alert">{error}</p>}
-        {summary?.paymentProvider === 'stripe' && summary?.hasSubscription && (
+        {summary?.canManageStripeBilling && (
           <button type="button" className="dashboard-modal-primary" disabled={busy} onClick={openStripePortal}>
             {busy ? 'Opening…' : 'Manage billing in Stripe'}
+          </button>
+        )}
+        {summary?.manageInternalDevSubscription && (
+          <button type="button" className="dashboard-modal-danger" disabled={busy} onClick={endTestSubscription}>
+            {busy ? 'Ending…' : 'End developer test subscription (return to Free)'}
           </button>
         )}
         {summary?.manageTestSubscription && (

@@ -88,7 +88,8 @@ describe('vision chat routing', () => {
                 messages: [{ role: 'user', text: 'Describe', image: tinyPng }],
             });
             assert.equal(response.status, 502);
-            assert.equal(response.body.code, 'VISION_PROVIDER_ERROR');
+            assert.equal(response.body.code, 'GEMINI_SERVER_ERROR');
+            assert.match(response.body.message, /Gemini/i);
             assert.ok(response.body.correlationId);
         } finally {
             global.fetch = originalFetch;

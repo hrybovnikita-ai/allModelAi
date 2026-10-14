@@ -192,6 +192,26 @@ CREATE TABLE IF NOT EXISTS users (
             created_at DESC
         );
 
+        CREATE TABLE IF NOT EXISTS ai_credit_balances (
+            email TEXT PRIMARY KEY,
+            balance INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS ai_credit_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            entry_type TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            balance_after INTEGER NOT NULL,
+            reference_id TEXT NOT NULL UNIQUE,
+            metadata TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS ai_credit_ledger_email_created
+        ON ai_credit_ledger(email, created_at DESC);
+
         CREATE TABLE IF NOT EXISTS audit_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT NOT NULL,

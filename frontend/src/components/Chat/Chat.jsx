@@ -43,6 +43,7 @@ import {
   normalizeVideoMessage,
 } from '../../lib/chatMessageVideo';
 import { finalizeAssistantMessage, stickerFieldsForPersist } from '../../lib/aiStickers/enhanceMessage';
+import AiCreditsPurchaseDialog from '../Credits/AiCreditsPurchaseDialog';
 import { readAiStickersEnabled, AI_STICKERS_ENABLED_KEY } from '../../lib/aiStickers/settings';
 import ChatAiSticker from './ChatAiSticker';
 import ChatWelcomeSuggestions from './ChatWelcomeSuggestions';
@@ -325,6 +326,7 @@ export default function Chat() {
   const [arenaTask, setArenaTask] = useState('');
   const [variantCatalog, setVariantCatalog] = useState({});
   const [subscribeModalOpen, setSubscribeModalOpen] = useState(false);
+  const [aiCreditsPurchaseOpen, setAiCreditsPurchaseOpen] = useState(false);
   const [subscribePlan, setSubscribePlan] = useState(null);
   const [subscribeForm, setSubscribeForm] = useState({ cardNumber: '', holder: '', email: '', city: '', birthDate: '', expiry: '', cvc: '' });
   const [subscribeBusy, setSubscribeBusy] = useState(false);
@@ -2043,7 +2045,16 @@ export default function Chat() {
           if (!dataLine || dataLine.slice(6) === '[DONE]') continue;
           const event = JSON.parse(dataLine.slice(6));
           if (event.creditsRemaining !== undefined) {
-            setCreditStatus((current) => ({ ...current, ...event, remaining: event.creditsRemaining }));
+            setCreditStatus((current) => ({
+              ...current,
+              ...event,
+              remaining: event.creditsRemaining,
+              aiCredits: {
+                ...(current?.aiCredits || {}),
+                enabled: true,
+                balance: event.creditsRemaining,
+              },
+            }));
           }
           if (event.unlimited) setCreditStatus((current) => ({ ...current, ...event, unlimited: true }));
           if (event.routedModel) {
@@ -2224,6 +2235,10 @@ export default function Chat() {
               : message
           )));
           setSelectedSkill(null);
+        } else if (requestError.code === 'AI_CREDITS_EXHAUSTED') {
+          setAiCreditsPurchaseOpen(true);
+          setChatError('');
+          setMessages((current) => current.filter((_, index) => index !== assistantIndex));
         } else if (generatingImage) {
           logger.apiError('Image generation failed', { message: requestError.message });
           const imageErrorText = requestError.retryable === false
@@ -3548,6 +3563,7 @@ export default function Chat() {
         <button className="modal-cancel" onClick={() => setSubscribeModalOpen(false)}>{t('Cancel')}</button>
       </section></div>}
       {feedbackModalOpen && <div className="feature-modal-backdrop" onClick={() => setFeedbackModalOpen(false)}><section className="feature-modal" onClick={(event) => event.stopPropagation()}><span className="feature-modal-icon">💬</span><small>FEEDBACK</small><h2>Tell us what this response did well</h2><p>Your feedback helps improve the model.</p><textarea autoFocus value={feedbackText} onChange={(event) => setFeedbackText(event.target.value)} placeholder="Example: very clear explanation, great code example" rows="4" /><div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:12}}><button className="modal-cancel" onClick={() => setFeedbackModalOpen(false)}>{t("Cancel")}</button><button disabled={!feedbackText.trim()} onClick={submitFeedback}>Send feedback</button></div></section></div>}
+      <AiCreditsPurchaseDialog open={aiCreditsPurchaseOpen} onClose={() => setAiCreditsPurchaseOpen(false)} t={t} />
     </main>
   );
 }

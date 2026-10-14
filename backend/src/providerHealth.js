@@ -125,7 +125,8 @@ async function probeOpenAI() {
 async function probeGemini() {
     const key = process.env.GEMINI_API_KEY?.trim();
     if (!key) return { status: 'missing_configuration' };
-    const model = process.env.GEMINI_MODEL?.trim() || 'gemini-2.0-flash';
+    const { DEFAULT_GEMINI_TEXT_MODEL } = require('./services/geminiModelRouting');
+    const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_TEXT_MODEL;
     try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}?key=${encodeURIComponent(key)}`;
         const response = await fetch(url, { signal: AbortSignal.timeout(8000) });

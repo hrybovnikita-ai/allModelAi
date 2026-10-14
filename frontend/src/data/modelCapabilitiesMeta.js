@@ -6,7 +6,7 @@
 export const MODEL_TECH_SPECS = {
   gpt: { modelId: 'gpt-4o-mini', contextWindow: '128K', toolUse: true },
   claude: { modelId: 'claude-haiku-4.5', contextWindow: '200K', toolUse: false },
-  gemini: { modelId: 'gemini-2.5-flash', contextWindow: '1M', toolUse: false },
+  gemini: { modelId: 'gemini-3.5-flash-lite', contextWindow: '1M', toolUse: false },
   perplexity: { modelId: 'sonar', contextWindow: null, toolUse: false },
   deepseek: { modelId: 'deepseek-flash', contextWindow: '1M', toolUse: false },
   llama: { modelId: 'llama-3.3-70b-instruct', contextWindow: '128K', toolUse: false },

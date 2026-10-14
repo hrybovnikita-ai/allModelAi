@@ -279,3 +279,133 @@
     order: 2;
   }
 }
+
+/* AI credit packs — same checkout theme */
+.checkout-ai-credits {
+  max-width: 1120px;
+  margin: 2.5rem auto 3rem;
+  padding: 0 clamp(1rem, 3vw, 2rem);
+}
+
+.checkout-ai-credits__head h2 {
+  margin: 0.35rem 0 0.5rem;
+  font-size: clamp(1.35rem, 3vw, 1.75rem);
+}
+
+.checkout-ai-credits__lead,
+.checkout-ai-credits__balance {
+  color: #94a3b8;
+  font-size: 0.92rem;
+  margin: 0.35rem 0;
+}
+
+.checkout-ai-credits__balance strong {
+  color: #e2e8f0;
+}
+
+.checkout-ai-credits__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: clamp(0.75rem, 2vw, 1.1rem);
+  margin-top: 1.25rem;
+}
+
+.checkout-ai-credit-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  padding: 1.15rem 1.1rem 1.25rem;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(124, 92, 255, 0.22);
+  box-shadow:
+    0 0 0 1px rgba(167, 139, 250, 0.08) inset,
+    0 12px 32px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.checkout-ai-credit-card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.checkout-ai-credit-card__price {
+  margin: 0;
+  font-size: 1.65rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #7c5cff, #9d7bff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.checkout-ai-credit-card__credits {
+  margin: 0;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.checkout-ai-credit-card__fine {
+  margin: 0 0 0.65rem;
+  flex: 1;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.checkout-ai-credit-card button {
+  width: 100%;
+}
+
+.checkout-ai-credits__notice {
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  background: rgba(124, 92, 255, 0.12);
+  border: 1px solid rgba(124, 92, 255, 0.22);
+  color: #cbd5e1;
+  font-size: 0.88rem;
+}
+
+.checkout-test-mode-banner--inline {
+  margin-top: 0.75rem;
+}
+
+.checkout-ai-credits__history {
+  margin-top: 2rem;
+  padding: 1.1rem 1.25rem;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.4);
+}
+
+.checkout-ai-credits__history h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.checkout-ai-credits__history ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.checkout-ai-credits__history li {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr auto;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: #94a3b8;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  padding-bottom: 0.35rem;
+}
+
+@media (max-width: 640px) {
+  .checkout-ai-credits__history li {
+    grid-template-columns: 1fr;
+  }
+}

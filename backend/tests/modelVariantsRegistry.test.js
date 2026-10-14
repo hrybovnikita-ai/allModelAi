@@ -16,12 +16,12 @@ describe('modelVariants registry', () => {
         }
     });
 
-    test('Gemini Pro uses 3.1 API id; 3.5/3.6 Flash variants exist', () => {
+    test('Gemini variants use Google API ids (Flash-Lite, Flash, Pro)', () => {
         const gemini = modelVariants.gemini;
         assert.ok(gemini.some((v) => v.id === '3.1-pro' && v.direct === 'gemini-3.1-pro-preview'));
-        assert.ok(gemini.some((v) => v.id === '3.5-flash' && v.direct === 'gemini-3.5-flash'));
-        assert.ok(gemini.some((v) => v.id === '3.6-flash' && v.direct === 'gemini-3.6-flash'));
-        assert.ok(!gemini.some((v) => v.id === '3.5-pro'), 'misleading Gemini 3.5 Pro alias removed');
+        assert.ok(gemini.some((v) => v.id === '3.5-flash-lite' && v.direct === 'gemini-3.5-flash-lite'));
+        assert.ok(gemini.some((v) => v.id === '3-flash' && v.direct === 'gemini-3-flash-preview'));
+        assert.ok(!gemini.some((v) => v.direct === 'gemini-3.5-flash'), 'removed unverified gemini-3.5-flash direct id');
     });
 
     test('DeepSeek variants map to current API model ids', () => {

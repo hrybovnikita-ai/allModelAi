@@ -118,16 +118,8 @@ function findVisionRoutedModel(preferred, modelAllowed) {
 }
 
 function resolveGeminiVisionModel(hasImages) {
-    if (!hasImages) {
-        return process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
-    }
-    const visionOverride = String(process.env.GEMINI_VISION_MODEL || '').trim();
-    if (visionOverride) return visionOverride;
-    const configured = String(process.env.GEMINI_MODEL || '').trim();
-    if (configured && !/flash-lite|lite-latest|text-only/i.test(configured)) {
-        return configured;
-    }
-    return 'gemini-2.5-flash';
+    const { resolveGeminiDirectModel } = require('./geminiModelRouting');
+    return resolveGeminiDirectModel({ hasImages });
 }
 
 function resolveOpenAiVisionModel() {

@@ -1114,10 +1114,22 @@ const createCheckoutSession = async (req, res) => {
     if (plan.amount === 0) return res.status(403).json({ message: 'The Developer plan is available only to configured developer accounts.' });
     const access = await getCreditStatusAsync(req.app.locals.db, email);
     if (access.hasSubscription && access.active && normalizePlanKey(access.plan) === planKey) {
+        const { readSubscriptionDetailUnified } = require('../payments/readSubscriptionDetailUnified');
+        const { analyzeBillingPortalAccess } = require('../payments/billingPortalAccess');
+        const detail = await readSubscriptionDetailUnified(req.app.locals.db, email);
+        const billing = analyzeBillingPortalAccess(detail, {
+            hasSubscription: access.hasSubscription,
+            active: access.active,
+        });
         return res.status(409).json({
+            code: 'SUBSCRIPTION_ALREADY_ACTIVE',
             message: 'You already have an active subscription on this plan.',
-            userMessage: 'You are already subscribed to this plan. Open Manage billing to change or cancel.',
+            userMessage: billing.billingManagementMessage
+                || 'You are already subscribed to this plan. Open Manage billing to change or cancel.',
             useBillingPortal: true,
+            canManageStripeBilling: billing.canManageStripeBilling,
+            billingManagementCode: billing.billingManagementCode,
+            billingManagementMessage: billing.billingManagementMessage,
         });
     }
     const { stripeConfigurationReport, publishableKeyFromEnv } = require('../payments/stripeConfig');
@@ -1413,8 +1425,14 @@ const stripeWebhook = async (req, res) => {
         return res.json({ received: true, duplicate: true });
     }
     try {
+        const { fulfillAiCreditCheckoutSession, handleAiCreditStripeEvent } = require('./aiCreditController');
         if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
-            await fulfillStripeSession(connection, event.data.object);
+            const session = event.data.object;
+            if (session.metadata?.purchaseType === 'ai_credit_pack') {
+                await fulfillAiCreditCheckoutSession(connection, session);
+            } else {
+                await fulfillStripeSession(connection, session);
+            }
         } else if (event.type === 'payment_intent.succeeded') {
             await fulfillPaymentIntent(connection, event.data.object);
         } else if (event.type === 'customer.subscription.created' || event.type === 'customer.subscription.updated') {
@@ -1454,6 +1472,12 @@ const stripeWebhook = async (req, res) => {
             } else if (subId) {
                 connection.database.prepare("UPDATE subscription_details SET status = 'past_due', updated_at = ? WHERE stripe_subscription_id = ?").run(updatedAt, String(subId));
             }
+        } else if (
+            event.type === 'charge.refunded'
+            || event.type === 'charge.dispute.created'
+            || event.type === 'checkout.session.async_payment_failed'
+        ) {
+            await handleAiCreditStripeEvent(connection, event);
         }
         await markStripeEventProcessed(connection, event.id, event.type);
     } catch (error) {
@@ -1472,20 +1496,45 @@ const createBillingPortalSession = async (req, res) => {
         });
     }
     const email = String(req.user.email).trim().toLowerCase();
-    const detail = readSubscriptionDetail(req.app.locals.db, email);
-    const customerId = detail?.stripeCustomerId;
-    if (!customerId) {
+    const { readSubscriptionDetailUnified } = require('../payments/readSubscriptionDetailUnified');
+    const { analyzeBillingPortalAccess, isRealStripeCustomerId } = require('../payments/billingPortalAccess');
+    const { createStripeBillingPortalUrl } = require('../payments/stripeBillingPortal');
+    const access = await getCreditStatusAsync(req.app.locals.db, email);
+    const detail = await readSubscriptionDetailUnified(req.app.locals.db, email);
+    const eligibility = analyzeBillingPortalAccess(detail, {
+        hasSubscription: access.hasSubscription,
+        active: access.active,
+    });
+    if (!eligibility.canManageStripeBilling) {
+        const httpStatus = eligibility.billingManagementCode === 'NO_ACTIVE_SUBSCRIPTION' ? 404 : 400;
+        return res.status(httpStatus).json({
+            code: eligibility.billingManagementCode,
+            message: eligibility.billingManagementMessage || 'Billing portal is not available for this subscription.',
+            userMessage: eligibility.billingManagementMessage || 'Billing portal is not available for this subscription.',
+        });
+    }
+    const customerId = String(detail?.stripeCustomerId || '').trim();
+    if (!isRealStripeCustomerId(customerId)) {
         return res.status(400).json({
+            code: 'STRIPE_CUSTOMER_MISSING',
             message: 'No Stripe customer on file.',
             userMessage: 'Complete a subscription checkout first, then you can manage billing here.',
         });
     }
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
-    const session = await stripe.billingPortal.sessions.create({
-        customer: customerId,
-        return_url: `${frontendOrigin(req)}/dashboard?billing=return`,
-    });
-    return res.json({ url: session.url });
+    try {
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY.trim());
+        const url = await createStripeBillingPortalUrl(stripe, {
+            customerId,
+            returnUrl: `${frontendOrigin(req)}/dashboard?billing=return`,
+        });
+        return res.json({ url });
+    } catch (error) {
+        return res.status(502).json({
+            code: 'STRIPE_PORTAL_FAILED',
+            message: error.message || 'Could not open Stripe billing portal.',
+            userMessage: 'Stripe billing portal is temporarily unavailable. Try again in a few minutes.',
+        });
+    }
 };
 
 const createPurchase = (req, res) => createCheckoutSession(req, res);
@@ -1693,6 +1742,19 @@ async function createChatResponseImpl(req, res) {
     if (!usageGate.allowed) {
         return res.status(usageGate.status).json({ message: usageGate.message, code: usageGate.code });
     }
+    const { checkAiCreditsBeforeChat, checkUpstreamBudgetGate, aiCreditsEnabled, creditsForUsage } = require('../billing/aiCreditUsage');
+    const upstreamGate = checkUpstreamBudgetGate();
+    if (!upstreamGate.allowed) {
+        return res.status(upstreamGate.status).json({ message: upstreamGate.message, code: upstreamGate.code });
+    }
+    const aiCreditGate = checkAiCreditsBeforeChat(creditStatus, creditStatus.aiCredits?.balance);
+    if (!aiCreditGate.allowed) {
+        return res.status(aiCreditGate.status).json({
+            message: aiCreditGate.message,
+            code: aiCreditGate.code,
+            aiCreditsBalance: aiCreditGate.aiCreditsBalance,
+        });
+    }
     const modelAllowed = (slug) => hasModelAccess(creditStatus, slug);
     if (model !== 'smart' && !modelAllowed(model)) {
         return res.status(403).json({
@@ -1862,7 +1924,10 @@ async function createChatResponseImpl(req, res) {
     let isOpenAI = Boolean(openAIKey && !usePreferredGemini && (routedModel === 'gpt' || routedModel === 'copilot'));
     let isXAI = routedModel === 'grok' && Boolean(xaiKey) && process.env.GROK_PROVIDER !== 'openrouter';
     let isClaude = routedModel === 'claude' && Boolean(process.env.CLAUDE_API_KEY?.trim());
-    let isGemini = (routedModel === 'gemini' || usePreferredGemini) && Boolean(process.env.GEMINI_API_KEY?.trim());
+    const { shouldUseGoogleGeminiDirect } = require('../services/geminiModelRouting');
+    const { isGeminiConfigured } = require('../services/geminiApiService');
+    let isGemini = (routedModel === 'gemini' || usePreferredGemini) && isGeminiConfigured();
+    const geminiDirectOnly = shouldUseGoogleGeminiDirect(routedModel);
     let isDeepSeek = routedModel === 'deepseek' && Boolean(process.env.DEEPSEEK_API_KEY?.trim());
     let isKimi = routedModel === 'kimi' && Boolean(directKimiKey || gatewayKey);
     let isMistral = routedModel === 'mistral' && Boolean(directMistralKey);
@@ -1904,7 +1969,14 @@ async function createChatResponseImpl(req, res) {
     const cloudflareKey = getCloudflareWorkersAiToken();
     let apiKey = isOpenRouterFree ? openRouterFreeRoute.apiKey : isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isDeepSeek ? process.env.DEEPSEEK_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isPerplexity ? directPerplexityKey : (isGptOssCf || isCloudflare) ? cloudflareKey : gatewayKey;
     const usesDirectProvider = Boolean(isOpenAI || isXAI || isClaude || isGemini || isDeepSeek || (isKimi && directKimiKey) || isMistral || isPerplexity || isCloudflare || isGptOssCf);
-    const noCrossProviderFallback = routedModel === 'gpt-oss' || isOpenRouterFreeSlug(routedModel);
+    const noCrossProviderFallback = routedModel === 'gpt-oss' || isOpenRouterFreeSlug(routedModel) || geminiDirectOnly;
+    if (model === 'gemini' && !isGeminiConfigured()) {
+        return res.status(503).json({
+            message: 'Google Gemini is not configured on the server. Set GEMINI_API_KEY in backend environment variables to use Gemini directly (recommended).',
+            code: 'GEMINI_NOT_CONFIGURED',
+            configuredProviders: listConfiguredChatProviderIds(),
+        });
+    }
     if (!apiKey) {
         logSmartRouter('provider failed', { provider: routedModel, reason: 'missing_api_key' });
         return res.status(503).json(buildNoAiProvidersPayload());
@@ -2077,8 +2149,11 @@ async function createChatResponseImpl(req, res) {
     const standardInput = buildOpenAIMessages(providerInputMessages);
 
     try {
-        const directGeminiModel = (routedModel === 'gemini' && selectedVariant?.direct)
-            || resolveGeminiVisionModel(hasAttachedImage);
+        const { resolveGeminiDirectModel } = require('../services/geminiModelRouting');
+        const directGeminiModel = resolveGeminiDirectModel({
+            selectedVariant: routedModel === 'gemini' ? selectedVariant : null,
+            hasImages: hasAttachedImage,
+        });
         const getGeminiUrl = (key) => `https://generativelanguage.googleapis.com/v1beta/models/${directGeminiModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key.trim())}`;
         const geminiBody = () => JSON.stringify({
             systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -2208,7 +2283,16 @@ async function createChatResponseImpl(req, res) {
         let fallbackUsed = usePreferredGemini;
         let fallbackModel = usePreferredGemini ? 'gemini' : null;
         let upstreamError = null;
+        let geminiDirectFailure = null;
         let equivalenceViaOpenRouter = false;
+        if (!apiResponse.ok && geminiDirectOnly) {
+            const failBody = await apiResponse.json().catch(() => ({}));
+            upstreamError = failBody;
+            geminiDirectFailure = {
+                status: apiResponse.status,
+                detail: upstreamErrorMessage(failBody),
+            };
+        }
 
         const fetchOpenRouterChat = (gatewayModel) => fetchProvider('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
@@ -2236,7 +2320,7 @@ async function createChatResponseImpl(req, res) {
             const gatewayModel = providerModels[routedModel];
 
             const visionDirectFailure = hasAttachedImage && !apiResponse.ok
-                && ((routedModel === 'gemini' && isGemini) || ((routedModel === 'gpt' || routedModel === 'copilot') && isOpenAI));
+                && ((routedModel === 'gemini' && isGemini && !geminiDirectOnly) || ((routedModel === 'gpt' || routedModel === 'copilot') && isOpenAI));
             if (gatewayModel && ((billingOrQuota || capacity) || visionDirectFailure)) {
                 if ((routedModel === 'gpt' || routedModel === 'copilot') && isOpenAI) {
                     apiResponse = await fetchOpenRouterChat(gatewayModel);
@@ -2271,15 +2355,6 @@ async function createChatResponseImpl(req, res) {
                         equivalenceViaOpenRouter = true;
                         isPerplexity = false;
                         logSmartRouter('equivalence fallback', { from: 'perplexity-direct', to: 'openrouter', gatewayModel });
-                    } else {
-                        upstreamError = await apiResponse.json().catch(() => ({}));
-                    }
-                } else if (routedModel === 'gemini' && isGemini) {
-                    apiResponse = await fetchOpenRouterChat(gatewayModel);
-                    if (apiResponse.ok) {
-                        equivalenceViaOpenRouter = true;
-                        isGemini = false;
-                        logSmartRouter('equivalence fallback', { from: 'gemini-direct', to: 'openrouter', gatewayModel });
                     } else {
                         upstreamError = await apiResponse.json().catch(() => ({}));
                     }
@@ -2413,8 +2488,9 @@ async function createChatResponseImpl(req, res) {
         }
         if (!apiResponse.ok) {
             const data = upstreamError || await apiResponse.json().catch(() => ({}));
-            const detail = String(data.error?.message || data.errors?.[0]?.message || '');
-            const billingError = /insufficient.*(balance|credit|quota)|balance.*insufficient|exceeded.*quota|quota.*exceeded|recharge|billing/i.test(detail);
+            const { mapOpenRouterBillingError, upstreamErrorMessage } = require('../modelProviderEquivalence');
+            const detail = geminiDirectFailure?.detail || upstreamErrorMessage(data);
+            const billingError = !geminiDirectOnly && /insufficient.*(balance|credit|quota)|balance.*insufficient|exceeded.*quota|quota.*exceeded|recharge|billing/i.test(detail);
             const visionUpstream = hasAttachedImage && /vision|image|multimodal|unsupported.*image|does not support/i.test(detail);
             const providerLabel = displayModelName(routedModel) || routedModel;
             const cloudflareMapped = routedModel === 'gpt-oss'
@@ -2423,7 +2499,18 @@ async function createChatResponseImpl(req, res) {
             const openRouterFreeMapped = isOpenRouterFreeSlug(routedModel)
                 ? mapOpenRouterFreeHttpError(apiResponse.status, detail)
                 : null;
-            const message = openRouterFreeMapped?.message || cloudflareMapped?.message || (billingError || apiResponse.status === 402
+            const openRouterBillingMapped = !geminiDirectOnly
+                ? mapOpenRouterBillingError(apiResponse.status, detail)
+                : null;
+            const { mapGeminiHttpError } = require('../services/geminiApiService');
+            const geminiFailureStatus = geminiDirectFailure?.status ?? apiResponse.status;
+            const geminiFailureDetail = geminiDirectFailure?.detail || detail;
+            const geminiMapped = geminiDirectOnly
+                ? mapGeminiHttpError(geminiFailureStatus, geminiFailureDetail)
+                : ((routedModel === 'gemini' && isGemini)
+                    ? mapGeminiHttpError(apiResponse.status, detail)
+                    : null);
+            const message = geminiMapped?.message || openRouterBillingMapped?.message || openRouterFreeMapped?.message || cloudflareMapped?.message || (billingError || (!geminiDirectOnly && apiResponse.status === 402)
                 ? `${providerLabel} could not complete this request because the provider account has insufficient balance or quota. Add credits in the provider billing console or configure another connection for this model.`
                 : visionUpstream
                     ? 'The selected model could not analyze this image. Try Smart Router or switch to Gemini or GPT.'
@@ -2433,10 +2520,10 @@ async function createChatResponseImpl(req, res) {
                 : hasAttachedImage
                     ? 'Image analysis failed. Retry or use Smart Router with Gemini or GPT configured.'
                 : 'The selected AI service could not answer. Retry or check the model configuration.');
-            const errorCode = openRouterFreeMapped?.code || cloudflareMapped?.code || (billingError ? 'AI_BILLING'
+            const errorCode = geminiMapped ? `GEMINI_${geminiMapped.errorClass.toUpperCase()}` : (openRouterBillingMapped?.code || openRouterFreeMapped?.code || cloudflareMapped?.code || (billingError ? 'AI_BILLING'
                 : visionUpstream ? 'VISION_UPSTREAM'
                 : hasAttachedImage && apiResponse.status >= 500 ? 'VISION_PROVIDER_ERROR'
-                : 'AI_UPSTREAM');
+                : 'AI_UPSTREAM'));
             logSmartRouter('provider failed', { provider: routedModel, status: apiResponse.status, billing: billingError, vision: hasAttachedImage });
             console.error('[AI API]', chatCorrelationId, apiResponse.status, billingError ? 'billing_or_quota' : 'upstream_error', hasAttachedImage ? 'vision_request' : '', detail.slice(0, 180));
             setImmediate(() => {
@@ -2444,7 +2531,7 @@ async function createChatResponseImpl(req, res) {
                     const classified = classifyProviderError({
                         httpStatus: apiResponse.status,
                         message: detail,
-                        billingHint: billingError || apiResponse.status === 402,
+                        billingHint: billingError || (!geminiDirectOnly && apiResponse.status === 402),
                     });
                     const telemetryProvider = equivalenceViaOpenRouter ? 'openrouter' : slugToProviderId(routedModel);
                     recordRouterMetric(req.app.locals.db, {
@@ -2462,7 +2549,7 @@ async function createChatResponseImpl(req, res) {
                     console.warn('[PROVIDER_HEALTH]', telemetryError.message);
                 }
             });
-            const clientStatus = openRouterFreeMapped?.clientStatus || cloudflareMapped?.clientStatus || mapUpstreamStatusForClient(apiResponse.status);
+            const clientStatus = geminiMapped?.clientStatus || openRouterBillingMapped?.clientStatus || openRouterFreeMapped?.clientStatus || cloudflareMapped?.clientStatus || mapUpstreamStatusForClient(apiResponse.status);
             return res.status(clientStatus).json({
                 message,
                 code: errorCode,
@@ -2583,6 +2670,26 @@ async function createChatResponseImpl(req, res) {
         const outputTokens = Math.ceil(assistantText.length / 4);
         const actualUsageModel = fallbackUsed ? fallbackModel : routedModel;
         const estimatedCost = Number((((inputTokens * 0.5) + (outputTokens * 1.5)) / 1000000).toFixed(6));
+        if (aiCreditsEnabled() && !require('../billing/accessControl').ownerPlusActive(creditStatus) && String(assistantText || '').trim()) {
+            try {
+                const { deductCreditsAsync } = require('../billing/aiCreditLedger');
+                const charge = creditsForUsage({
+                    estimatedCostUsd: estimatedCost,
+                    inputTokens,
+                    outputTokens,
+                    model: actualUsageModel,
+                });
+                const deduct = await deductCreditsAsync(req.app.locals.db, {
+                    email: userEmail,
+                    amount: charge,
+                    referenceId: `chat_usage_${chatCorrelationId}`,
+                    metadata: { model: actualUsageModel, inputTokens, outputTokens, estimatedCost },
+                });
+                res.write(`data: ${JSON.stringify({ creditsCharged: charge, creditsRemaining: deduct.balance })}\n\n`);
+            } catch (deductError) {
+                console.warn('[AI_CREDITS] deduction skipped:', deductError.message);
+            }
+        }
         setImmediate(() => {
             void (async () => {
                 try {
@@ -3531,13 +3638,19 @@ const improvePrompt = async (req, res) => {
     try {
         let apiResponse;
         if (isGeminiDirect) {
-            const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+            const { DEFAULT_GEMINI_TEXT_MODEL } = require('../services/geminiModelRouting');
+            const { mapGeminiHttpError } = require('../services/geminiApiService');
+            const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_TEXT_MODEL;
             apiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
             });
-            if (!apiResponse.ok) throw new Error(`Gemini API returned ${apiResponse.status}`);
+            if (!apiResponse.ok) {
+                const errBody = await apiResponse.json().catch(() => ({}));
+                const mapped = mapGeminiHttpError(apiResponse.status, errBody?.error?.message);
+                return res.status(mapped.clientStatus).json({ message: mapped.message, code: `GEMINI_${mapped.errorClass.toUpperCase()}` });
+            }
             const data = await apiResponse.json();
             const improvedText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
             if (!improvedText) throw new Error('No content returned from Gemini');

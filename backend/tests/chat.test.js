@@ -90,23 +90,20 @@ describe('secure chat and knowledge API',()=>{
  test('queues persistent background work and exports private data',async()=>{const job=await api.post('/api/jobs').send({type:'research',payload:{objective:'Aurora launch'}});assert.equal(job.status,202);assert.equal(job.body.status,'queued');const jobs=await api.get('/api/jobs');assert.equal(jobs.body[0].id,job.body.id);const exported=await api.get('/api/privacy/export');assert.equal(exported.status,200);assert.equal(exported.body.user.email,'tester@example.com');assert.ok(Array.isArray(exported.body.workspace))});
  test('publishes a deployment health check',async()=>{const live=await request(app).get('/api/health');assert.equal(live.status,200);assert.equal(live.body.status,'ok');const ready=await request(app).get('/api/ready');assert.equal(ready.status,200);assert.equal(ready.body.database.connected,true)});
 
- test('Smart Router recovers from a provider timeout through the gateway', async () => {
+ test('Smart Router does not fall back to OpenRouter when Gemini direct is configured', async () => {
    const previous = process.env.GEMINI_API_KEY;
    process.env.GEMINI_API_KEY = 'test-gemini';
    const calls = [];
    global.fetch = async (url, options) => {
      calls.push({url:String(url), signal:options.signal});
-     if (calls.length === 1) throw new DOMException('Timed out', 'TimeoutError');
-     return upstream();
+     throw new DOMException('Timed out', 'TimeoutError');
    };
    try {
      const response = await api.post('/api/chat').send({model:'smart', routerMode:'speed', temporary:true, messages:[{role:'user',text:'hello'}]});
-     assert.equal(response.status,200);
-     assert.match(response.text,/Secure answer/);
-     assert.match(response.text,/"fallback":true/);
+     assert.equal(response.status, 502);
+     assert.equal(calls.length, 1);
      assert.match(calls[0].url,/googleapis/);
-     assert.match(calls[1].url,/openrouter/);
-     assert.notEqual(calls[0].signal,calls[1].signal);
+     assert.doesNotMatch(JSON.stringify(calls), /openrouter/);
    } finally {
      global.fetch = async () => upstream();
      if (previous === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY=previous;

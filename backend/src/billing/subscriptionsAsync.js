@@ -154,13 +154,19 @@ async function cancelTestSubscriptionAsync(connection, email) {
         pool,
         `SELECT plan, status,
                 payment_provider AS "paymentProvider",
-                stripe_subscription_id AS "stripeSubscriptionId"
+                stripe_subscription_id AS "stripeSubscriptionId",
+                stripe_customer_id AS "stripeCustomerId"
          FROM subscription_details WHERE email = $1`,
         [normalizedEmail],
     );
     const detail = detailResult.rows[0];
     if (!detail || detail.status !== 'active' || detail.plan === 'free') {
         return { ok: false, status: 404, message: 'No active paid subscription to cancel.' };
+    }
+    const { isInternalMockBilling } = require('../payments/billingPortalAccess');
+    if (isInternalMockBilling(detail)) {
+        await revertToFreePlanAsync(connection, normalizedEmail, { status: 'canceled', paymentStatus: 'canceled' });
+        return { ok: true, plan: 'free' };
     }
     const isWayforpayTest = detail.paymentProvider === 'wayforpay'
         && String(detail.stripeSubscriptionId || '').startsWith('wayforpay_');

@@ -7,6 +7,7 @@ const { ensureAiEngineeringSchema } = require('./aiEngineeringSchema');
 const { ensureIntelligenceSchema } = require('./intelligence/intelligenceSchema');
 const { ensureAiImprovementSchema } = require('./aiImprovementSchema');
 const { ensureVideoGenerationSchema } = require('./videoGenerationSchema');
+const { ensureAiCreditSchema } = require('./billing/aiCreditSchema');
 const { createConnectionApi } = require('./db/connectionApi');
 const { connectPostgresSync } = require('./db/postgresSync');
 const { createAuthPgPool, formatSafePgFailure } = require('./db/pgConfig');
@@ -269,6 +270,7 @@ const connectDatabase = () => {
     ensureIntelligenceSchema(database);
     ensureAiImprovementSchema(database);
     ensureVideoGenerationSchema(database);
+    ensureAiCreditSchema({ database, engine: 'sqlite' });
 
     database.exec(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email

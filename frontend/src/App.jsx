@@ -20,6 +20,7 @@ import Pricing from "./components/Pricing/Pricing";
 import Users from "./components/Users/Users";
 import Footer from "./components/Footer/Footer";
 import Dashboard from "./components/Dashboard/Dashboard";
+import CreditsWallet from "./components/Credits/CreditsWallet";
 import ModelDetails from "./components/ModelDetails/ModelDetails";
 import Chat from "./components/Chat/Chat";
 import Checkout from "./components/Checkout/Checkout";
@@ -190,6 +191,7 @@ export default function App() {
       <Route path="/models/:slug" element={<ModelDetails />} />
       <Route path="/prompts" element={<PromptGallery />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/credits" element={<CreditsWallet />} />
       <Route path="/everyday-ai" element={<EverydayAI />} />
       <Route path="/everyday-ai/:tool" element={<EverydayAI />} />
       <Route path="/settings" element={<Settings />} />

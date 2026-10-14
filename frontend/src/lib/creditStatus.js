@@ -21,10 +21,11 @@ export function normalizeCreditStatus(data) {
     : typeof data.requestsRemaining === 'number'
       ? data.requestsRemaining
       : null;
-  if (remaining === null) return null;
+  if (remaining === null && !data.aiCredits?.enabled) return null;
   return {
     ...data,
     remaining,
+    aiCredits: data.aiCredits,
     subscriptionStatus: data.subscriptionStatus || (data.hasSubscription ? 'active' : 'free'),
   };
 }
