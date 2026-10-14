@@ -1,4 +1,3 @@
-import { Capacitor } from '@capacitor/core';
 import { isCapacitorNative, getCapacitorPlatform, isElectronShell } from './apiBase.js';
 
 export { isElectronShell };

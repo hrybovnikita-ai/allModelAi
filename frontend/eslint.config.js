@@ -33,7 +33,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['playwright.config.js', 'e2e/**/*.js'],
+    files: ['electron/**/*.js', 'playwright.config.js', 'e2e/**/*.js'],
     languageOptions: {
       globals: {
         ...globals.node,
