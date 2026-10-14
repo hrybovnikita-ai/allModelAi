@@ -5,8 +5,19 @@ const OPENROUTER_KEY_ENV_NAMES = [
     'API_KEY',
 ];
 
+function sanitizeEnvSecret(value) {
+    let text = String(value || '').trim();
+    if (
+        (text.startsWith('"') && text.endsWith('"'))
+        || (text.startsWith("'") && text.endsWith("'"))
+    ) {
+        text = text.slice(1, -1).trim();
+    }
+    return text;
+}
+
 function envTrim(name) {
-    return String(process.env[name] || '').trim();
+    return sanitizeEnvSecret(process.env[name]);
 }
 
 /**
@@ -35,6 +46,7 @@ function getOpenRouterKeySourceEnvName() {
 
 module.exports = {
     OPENROUTER_KEY_ENV_NAMES,
+    sanitizeEnvSecret,
     getOpenRouterApiKey,
     getOpenRouterKeySourceEnvName,
     isOpenRouterConfigured,

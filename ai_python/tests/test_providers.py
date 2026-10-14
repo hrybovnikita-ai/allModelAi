@@ -4,7 +4,8 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from providers.openai_compatible import OpenAICompatibleProvider
-from providers.openrouter_provider import OpenRouterProvider, _openrouter_key
+from providers.openrouter_provider import OpenRouterProvider
+from utils.env_keys import get_openrouter_api_key, sanitize_env_secret
 from services.chat_service import extract_system, parse_messages
 from services.model_registry import resolve_model_id
 
@@ -31,7 +32,10 @@ class ProviderHelperTests(unittest.TestCase):
             {"ALLMODELAI_OPENROUTER_API_KEY": "sk-or-test", "OPENROUTER_API_KEY": "other"},
             clear=True,
         ):
-            self.assertEqual(_openrouter_key(), "sk-or-test")
+            self.assertEqual(get_openrouter_api_key(), "sk-or-test")
+
+    def test_sanitize_env_secret_strips_quotes(self):
+        self.assertEqual(sanitize_env_secret('  "sk-or-test"  '), "sk-or-test")
 
     def test_openai_compatible_missing_key(self):
         provider = OpenAICompatibleProvider(

@@ -8,6 +8,7 @@ const {
     getOpenRouterKeySourceEnvName,
     isOpenRouterConfigured,
     OPENROUTER_KEY_ENV_NAMES,
+    sanitizeEnvSecret,
 } = require('../src/openRouterConfig');
 const {
     isChatProviderConfigured,
@@ -32,6 +33,19 @@ function restoreOpenRouterEnv(previous) {
 function clearOpenRouterEnv() {
     for (const name of ENV_NAMES) delete process.env[name];
 }
+
+test('sanitizeEnvSecret strips surrounding quotes and whitespace', () => {
+    assert.equal(sanitizeEnvSecret('  "sk-or-key"  '), 'sk-or-key');
+    assert.equal(sanitizeEnvSecret("'sk-or-key'"), 'sk-or-key');
+    const previous = saveOpenRouterEnv();
+    clearOpenRouterEnv();
+    process.env.OPENROUTER_API_KEY = '  "quoted-or-key"  ';
+    try {
+        assert.equal(getOpenRouterApiKey(), 'quoted-or-key');
+    } finally {
+        restoreOpenRouterEnv(previous);
+    }
+});
 
 test('ALLMODELAI_OPENROUTER_API_KEY alone configures OpenRouter', () => {
     const previous = saveOpenRouterEnv();

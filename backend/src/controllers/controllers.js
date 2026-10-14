@@ -849,6 +849,13 @@ const {
     upstreamErrorMessage,
 } = require('../modelProviderEquivalence');
 const {
+    DEFAULT_OPENROUTER_GPT,
+    getOpenRouterRecoveryModelCandidates,
+    isOpenRouterRecoverableFailure,
+    logOpenRouterHttpError,
+    normalizeOpenRouterGatewayModel,
+} = require('../services/openRouterModelMapping');
+const {
     checkUsageLimit,
     hasModelAccess,
     resolveOpenRouterModelId,
@@ -1720,11 +1727,11 @@ async function createChatResponseImpl(req, res) {
     const allowFallback = !selectedVariant && fallbackEnabled !== false;
     const userEmail = req.user.email;
     const providerModels = {
-        gpt: 'openai/gpt-4o-mini',
+        gpt: DEFAULT_OPENROUTER_GPT(),
         claude: 'anthropic/claude-haiku-4.5',
         gemini: 'google/gemini-2.5-flash',
         grok: '~x-ai/grok-latest',
-        copilot: 'openai/gpt-4o-mini',
+        copilot: DEFAULT_OPENROUTER_GPT(),
         perplexity: 'perplexity/sonar',
         kimi: process.env.KIMI_MODEL || 'moonshotai/kimi-k2.5',
         deepseek: 'deepseek/deepseek-flash',
@@ -1737,7 +1744,12 @@ async function createChatResponseImpl(req, res) {
         nemotron: 'nvidia/nemotron-3-ultra-550b-a55b:free',
         'deepseek-r1': 'deepseek/deepseek-r1-0528:free',
     };
-    if (selectedVariant) providerModels[requestedModel] = selectedVariant.gateway;
+    for (const slug of Object.keys(providerModels)) {
+        providerModels[slug] = normalizeOpenRouterGatewayModel(providerModels[slug], slug);
+    }
+    if (selectedVariant) {
+        providerModels[requestedModel] = normalizeOpenRouterGatewayModel(selectedVariant.gateway, requestedModel);
+    }
     const configuredGrokModel = process.env.GROK_MODEL?.trim();
     const grokModel = selectedVariant?.gateway || (configuredGrokModel && !/grok-3-mini/i.test(configuredGrokModel)
         ? configuredGrokModel
@@ -2297,6 +2309,10 @@ async function createChatResponseImpl(req, res) {
                 });
             }
         };
+        let openRouterAttempted = false;
+        const initialUsesOpenRouter = !isOpenRouterFree && !isGptOssCf && !isOpenAI && !isXAI && !isClaude && !isGemini && !isDeepSeek
+            && !(isKimi && directKimiKey) && !isMistral && !isPerplexity && !isCloudflare;
+        if (initialUsesOpenRouter) openRouterAttempted = true;
         let apiResponse = await fetchProvider(isOpenRouterFree ? OPENROUTER_CHAT_COMPLETIONS_URL : isGptOssCf ? gptOssCompletionsUrl : isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isDeepSeek ? 'https://api.deepseek.com/chat/completions' : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             signal: requestSignal(),
@@ -2410,23 +2426,37 @@ async function createChatResponseImpl(req, res) {
             };
         }
 
-        const fetchOpenRouterChat = (gatewayModel) => fetchProvider('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            signal: requestSignal(),
-            headers: { Authorization: `Bearer ${gatewayKey.trim()}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: resolveOpenRouterModelId({
-                    access: creditStatus,
-                    requestedModel: model,
-                    routedModel,
-                    gatewayModel,
-                    usesDirectProvider: false,
+        const fetchOpenRouterChat = async (gatewayModel, recoveryContext = {}) => {
+            const normalizedGatewayModel = normalizeOpenRouterGatewayModel(gatewayModel, routedModel);
+            const apiResponseOr = await fetchProvider('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                signal: requestSignal(),
+                headers: { Authorization: `Bearer ${gatewayKey.trim()}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: resolveOpenRouterModelId({
+                        access: creditStatus,
+                        requestedModel: model,
+                        routedModel,
+                        gatewayModel: normalizedGatewayModel,
+                        usesDirectProvider: false,
+                    }),
+                    stream: true,
+                    max_tokens: outputTokenLimit,
+                    messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
                 }),
-                stream: true,
-                max_tokens: outputTokenLimit,
-                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
-            }),
-        });
+            });
+            openRouterAttempted = true;
+            if (!apiResponseOr.ok) {
+                const errBody = await apiResponseOr.clone().json().catch(() => ({}));
+                logOpenRouterHttpError(apiResponseOr.status, errBody, {
+                    gatewayModel: normalizedGatewayModel,
+                    routedModel,
+                    correlationId: chatCorrelationId,
+                    ...recoveryContext,
+                });
+            }
+            return apiResponseOr;
+        };
 
         if (!apiResponse.ok && gatewayKey?.trim() && !noCrossProviderFallback) {
             upstreamError = await apiResponse.json().catch(() => ({}));
@@ -2437,7 +2467,9 @@ async function createChatResponseImpl(req, res) {
 
             const visionDirectFailure = hasAttachedImage && !apiResponse.ok
                 && ((routedModel === 'gemini' && isGemini && !geminiDirectOnly) || ((routedModel === 'gpt' || routedModel === 'copilot') && isOpenAI));
-            if (gatewayModel && ((billingOrQuota || capacity) || visionDirectFailure)) {
+            const authOrAccess = apiResponse.status === 401 || apiResponse.status === 403
+                || isOpenRouterRecoverableFailure(apiResponse.status, detail);
+            if (gatewayModel && ((billingOrQuota || capacity) || visionDirectFailure || authOrAccess)) {
                 if ((routedModel === 'gpt' || routedModel === 'copilot') && isOpenAI) {
                     apiResponse = await fetchOpenRouterChat(gatewayModel);
                     if (apiResponse.ok) {
@@ -2565,6 +2597,7 @@ async function createChatResponseImpl(req, res) {
                 .filter((candidate) => providerModels[candidate] && candidate !== routedModel && modelAllowed(candidate))
                 .filter((candidate) => !hasAttachedImage || isVisionCapableSlug(candidate));
             for (const candidate of gatewayFallbacks) {
+                openRouterAttempted = true;
                 apiResponse = await fetchProvider('https://openrouter.ai/api/v1/chat/completions', {
                     method: 'POST',
                     signal: requestSignal(),
@@ -2600,6 +2633,42 @@ async function createChatResponseImpl(req, res) {
                     break;
                 }
                 upstreamError = await apiResponse.json().catch(() => ({}));
+            }
+        }
+        const onOpenRouterPath = equivalenceViaOpenRouter || openRouterAttempted || initialUsesOpenRouter;
+        if (!apiResponse.ok && !noCrossProviderFallback && gatewayKey?.trim() && onOpenRouterPath && !isOpenRouterFreeSlug(routedModel)) {
+            upstreamError = upstreamError || await apiResponse.json().catch(() => ({}));
+            const recoveryDetail = upstreamErrorMessage(upstreamError);
+            if (isOpenRouterRecoverableFailure(apiResponse.status, recoveryDetail)) {
+                const failedGatewayModel = normalizeOpenRouterGatewayModel(providerModels[routedModel], routedModel);
+                const recoveryCandidates = getOpenRouterRecoveryModelCandidates({
+                    primary: providerModels[routedModel],
+                    failedModel: failedGatewayModel,
+                    routedModel,
+                    hasAttachedImage: hasAttachedImage,
+                });
+                for (const recoveryModel of recoveryCandidates) {
+                    apiResponse = await fetchOpenRouterChat(recoveryModel, { recoveryModel, phase: 'openrouter-recovery' });
+                    if (apiResponse.ok) {
+                        equivalenceViaOpenRouter = true;
+                        fallbackUsed = true;
+                        fallbackModel = routedModel;
+                        isOpenAI = false;
+                        isXAI = false;
+                        isClaude = false;
+                        isGemini = false;
+                        isKimi = false;
+                        isMistral = false;
+                        isPerplexity = false;
+                        isCloudflare = false;
+                        isGptOssCf = false;
+                        isOpenRouterFree = false;
+                        upstreamError = null;
+                        logSmartRouter('openrouter recovery', { from: routedModel, recoveryModel });
+                        break;
+                    }
+                    upstreamError = await apiResponse.json().catch(() => ({}));
+                }
             }
         }
         if (!apiResponse.ok) {
@@ -2641,6 +2710,13 @@ async function createChatResponseImpl(req, res) {
                 : hasAttachedImage && apiResponse.status >= 500 ? 'VISION_PROVIDER_ERROR'
                 : 'AI_UPSTREAM'));
             logSmartRouter('provider failed', { provider: routedModel, status: apiResponse.status, billing: billingError, vision: hasAttachedImage });
+            if (onOpenRouterPath || equivalenceViaOpenRouter) {
+                logOpenRouterHttpError(apiResponse.status, data, {
+                    routedModel,
+                    correlationId: chatCorrelationId,
+                    phase: 'final',
+                });
+            }
             console.error('[AI API]', chatCorrelationId, apiResponse.status, billingError ? 'billing_or_quota' : 'upstream_error', hasAttachedImage ? 'vision_request' : '', detail.slice(0, 180));
             setImmediate(() => {
                 try {

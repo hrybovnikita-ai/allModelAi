@@ -1,10 +1,10 @@
 # AllModelAI production image (Render: dockerfilePath ./Dockerfile, repo root as build context).
 FROM node:22-bookworm-slim AS frontend
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json* ./
 COPY frontend/package.json ./frontend/
 COPY backend/package.json ./backend/
-RUN npm ci -w frontend
+RUN npm install -w frontend --no-audit --no-fund
 COPY frontend ./frontend
 WORKDIR /app/frontend
 RUN npm run build
@@ -14,10 +14,11 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json* ./
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
-RUN npm ci --omit=dev -w allmodelai-backend
+# Backend prod deps only (skips frontend devDependencies such as Electron/Capacitor).
+RUN npm install --omit=dev -w allmodelai-backend --no-audit --no-fund
 COPY backend ./backend
 # Fail the image build if git is missing required modules (avoids a running container that crashes on require).
 RUN node -e "require('./backend/src/services/cloudflareImageService'); require('./backend/src/services/responseLanguage'); require('./backend/src/services/imageGenerationService');"
