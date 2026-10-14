@@ -23,6 +23,7 @@ async function bootstrapPostgresSchema() {
         ensurePostgresAiImprovementAsync,
         ensurePostgresVideoJobsAsync,
         ensurePostgresProviderHealthAsync,
+        ensurePostgresAnoninRoutingAsync,
     } = require('./src/db/postgresSchemaBootstrap');
     try {
         const result = await ensurePostgresAiImprovementAsync(database);
@@ -42,6 +43,12 @@ async function bootstrapPostgresSchema() {
         console.log('[PG_BOOTSTRAP] provider_error_events', health.applied ? 'ready' : health.reason || 'skipped');
     } catch (error) {
         console.error('[PG_BOOTSTRAP] provider health failed:', error.code || error.name, error.message);
+    }
+    try {
+        const anonin = await ensurePostgresAnoninRoutingAsync(database);
+        console.log('[PG_BOOTSTRAP] anonin_routing tables', anonin.applied ? 'ready' : anonin.reason || 'skipped');
+    } catch (error) {
+        console.error('[PG_BOOTSTRAP] anonin routing failed:', error.code || error.name, error.message);
     }
 }
 

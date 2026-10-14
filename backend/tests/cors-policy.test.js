@@ -105,6 +105,15 @@ test('OPTIONS preflight returns CORS headers for credentialed API calls', async 
     assert.match(allowHeaders, /authorization/);
 });
 
+test('allows opaque null Origin for Electron-style desktop clients', async () => {
+    const response = await request(app)
+        .get('/api/health')
+        .set('Origin', 'null')
+        .set('X-AllModelAI-Client', 'electron');
+    assert.equal(response.status, 200);
+    assert.equal(response.headers['access-control-allow-origin'], 'null');
+});
+
 test('rejects arbitrary untrusted browser origins', async () => {
     const req = { get: () => 'api.example.com' };
     assert.equal(isAllowedOrigin('https://evil.example', req), false);

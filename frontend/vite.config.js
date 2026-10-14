@@ -20,7 +20,9 @@ const API_PATH_PATTERN = ({ url, request }) => {
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
  const env = loadEnv(mode, process.cwd(), '')
- const pwaDisabled = env.VITE_DISABLE_PWA === 'true'
+ const isCapacitorBuild = mode === 'capacitor'
+ const isElectronBuild = mode === 'electron'
+ const pwaDisabled = env.VITE_DISABLE_PWA === 'true' || isCapacitorBuild || isElectronBuild
  const apiProxyTarget = env.API_PROXY_TARGET || 'http://127.0.0.1:5050'
  const proxy = {
    '/api': {
@@ -47,6 +49,7 @@ export default defineConfig(({ mode }) => {
    },
  }
  return {
+  base: isCapacitorBuild || isElectronBuild ? './' : '/',
   plugins: [
     react(),
     VitePWA({
@@ -117,8 +120,8 @@ export default defineConfig(({ mode }) => {
   ],
   server: {
     host: '0.0.0.0',
-    port: Number(env.VITE_DEV_PORT) || 5173,
-    strictPort: false,
+    port: 5173,
+    strictPort: true,
     cors: true,
     proxy,
   },

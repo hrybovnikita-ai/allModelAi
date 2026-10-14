@@ -94,6 +94,7 @@ function PricingCard({ plan, onSelect }) {
 export default function Pricing() {
   const navigate = useNavigate();
   const [banner, setBanner] = useState({ showTestBanner: false, testBannerText: TEST_MODE_BANNER });
+  const [paddleNote, setPaddleNote] = useState('');
 
   useEffect(() => {
     fetchCheckoutInfo().then((info) => {
@@ -101,6 +102,13 @@ export default function Pricing() {
         showTestBanner: Boolean(info?.showTestModeBanner),
         testBannerText: info?.testModeBannerText || TEST_MODE_BANNER,
       });
+      if (info?.paddleCheckoutEnabled) {
+        setPaddleNote(info?.paddleSandbox
+          ? 'Paddle Sandbox checkout is available on the checkout page (no real charges).'
+          : 'Paddle checkout is available on the checkout page.');
+      } else if (info?.paddleMissingEnvVars?.length) {
+        setPaddleNote('');
+      }
     });
   }, []);
 
@@ -111,6 +119,9 @@ export default function Pricing() {
         <p>Choose the plan that fits your integration needs</p>
         {banner.showTestBanner && (
           <p className="pricing-test-mode-banner" role="status">{banner.testBannerText}</p>
+        )}
+        {paddleNote && (
+          <p className="pricing-test-mode-banner" role="status">{paddleNote}</p>
         )}
       </div>
       <div className="pricing-grid">

@@ -77,6 +77,13 @@ export function isRetryableSocialSignInError(error) {
   return Boolean(code && RETRYABLE_SOCIAL_SIGNIN_CODES.has(code));
 }
 
+/** User closed popup or switched windows — not a failure worth a red error banner. */
+export function isBenignGoogleSignInCancellation(error) {
+  const code = typeof error === 'string' ? error : error?.code;
+  return code === 'auth/popup-closed-by-user'
+    || code === 'auth/cancelled-popup-request';
+}
+
 export function socialError(error) {
   const messages = {
     'auth/popup-closed-by-user': 'Google sign-in was cancelled.',

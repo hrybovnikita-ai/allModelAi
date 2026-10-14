@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../Navbar/Navbar';
 import HeroProviderOrbit from './HeroProviderOrbit';
+import WindowsDownloadButton from '../Download/WindowsDownloadButton';
 import './Header.css';
 
 export default function Header() {
@@ -56,6 +57,7 @@ export default function Header() {
         </div>
 
         <div className="hero-actions hero-reveal hero-reveal--3">
+          <WindowsDownloadButton variant="hero" />
           <button type="button" onClick={() => navigate('/explore')}>Explore models</button>
           <button type="button" onClick={() => navigate('/arena')}>⚔ Compare in Arena</button>
         </div>

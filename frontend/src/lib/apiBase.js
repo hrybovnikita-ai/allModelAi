@@ -26,6 +26,18 @@ export const DEFAULT_PRODUCTION_API_ORIGIN = stripTrailingSlash(
     || 'https://all-model-ai.vercel.app',
 );
 
+/** Packaged Electron (`file://`) or dev shell with VITE_ELECTRON. */
+export function isElectronShell() {
+  if (import.meta.env?.VITE_ELECTRON === 'true') return true;
+  if (typeof window !== 'undefined' && window.allmodelai?.isElectron) return true;
+  if (typeof window !== 'undefined' && window.location?.protocol === 'file:') return true;
+  return false;
+}
+
+const DEFAULT_RENDER_API_ORIGIN = stripTrailingSlash(
+  import.meta.env?.VITE_DEFAULT_RENDER_API_ORIGIN || 'https://allmodelai-backend.onrender.com',
+);
+
 export function getCapacitorPlatform() {
   try {
     const fromGlobal = typeof window !== 'undefined' ? window.Capacitor?.getPlatform?.() : null;
@@ -95,7 +107,7 @@ export function isCapacitorNative() {
 }
 
 export function requiresAbsoluteApiBase() {
-  return isCapacitorNative() || isCapacitorWebViewHost();
+  return isElectronShell() || isCapacitorNative() || isCapacitorWebViewHost();
 }
 
 /**
@@ -104,6 +116,9 @@ export function requiresAbsoluteApiBase() {
  */
 export function isHostedWebApp(location = typeof window !== 'undefined' ? window.location : null) {
   if (!location) return false;
+  if (isElectronShell()) return false;
+  const protocol = String(location.protocol || '').toLowerCase();
+  if (protocol === 'file:') return false;
   if (isCapacitorNative() || isCapacitorWebViewHost(location)) return false;
   const hostname = String(location.hostname || '').toLowerCase();
   if (hostname === 'localhost' || hostname === '127.0.0.1') return false;
@@ -231,6 +246,14 @@ function resolveNativeApiOrigin() {
   return lanUrl || DEFAULT_CAPACITOR_NATIVE_API_ORIGIN;
 }
 
+/** Absolute API origin for Electron desktop builds (no same-origin /api on file://). */
+function resolveElectronApiOrigin() {
+  if (ENV_API_BASE) return ENV_API_BASE;
+  if (ENV_REMOTE_API_FALLBACK) return ENV_REMOTE_API_FALLBACK;
+  if (DEFAULT_PRODUCTION_API_ORIGIN) return DEFAULT_PRODUCTION_API_ORIGIN;
+  return DEFAULT_RENDER_API_ORIGIN;
+}
+
 /**
  * True when API requests go to a different origin than the page (split deploy or native app).
  */
@@ -249,9 +272,13 @@ export function getApiBase() {
     return '';
   }
 
+  if (isElectronShell()) {
+    return resolveElectronApiOrigin();
+  }
+
   if (ENV_API_BASE) return ENV_API_BASE;
 
-  if (isCapacitorWebViewHost() || requiresAbsoluteApiBase()) {
+  if (isCapacitorWebViewHost() || isCapacitorNative()) {
     return resolveNativeApiOrigin();
   }
 
@@ -346,8 +373,15 @@ export function resolveApiUrl(path) {
   }
 
   const sameOrigin = getBrowserApiOrigin();
-  if (sameOrigin) {
-    return `${sameOrigin}${normalized}`;
+  if (sameOrigin && !isElectronShell()) {
+    try {
+      const pageProtocol = new URL(sameOrigin).protocol;
+      if (pageProtocol === 'http:' || pageProtocol === 'https:') {
+        return `${sameOrigin}${normalized}`;
+      }
+    } catch {
+      /* fall through */
+    }
   }
 
   if (ENV_REMOTE_API_FALLBACK && !prefersSameOriginApi()) {
@@ -358,6 +392,9 @@ export function resolveApiUrl(path) {
 }
 
 export function nativeClientHeaders() {
+  if (isElectronShell()) {
+    return { 'X-AllModelAI-Client': 'electron' };
+  }
   if (isCapacitorNative()) {
     return { 'X-AllModelAI-Client': 'capacitor' };
   }

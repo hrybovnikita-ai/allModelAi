@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>AllModelAi</string>
+	<string>AllModelAI</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -71,5 +71,11 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>AllModelAI uses the camera to attach photos in chat and vision features.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>AllModelAI uses the microphone for voice input in chat.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>AllModelAI lets you choose images from your library for chat attachments.</string>
 </dict>
 </plist>

@@ -133,8 +133,13 @@ function isNativeAppOrigin(origin) {
     return splitOrigins(process.env.NATIVE_APP_ORIGINS).some((item) => item.toLowerCase() === normalized);
 }
 
+function isElectronDesktopRequest(req) {
+    return String(req?.get?.('x-allmodelai-client') || '').toLowerCase() === 'electron';
+}
+
 function isAllowedOrigin(origin, req) {
-    if (!origin) return true;
+    if (!origin || origin === 'null') return true;
+    if (isElectronDesktopRequest(req)) return true;
     const normalized = normalizeOrigin(origin);
     if (isNativeAppOrigin(normalized)) return true;
     if (isAllModelAiProductionWebOrigin(normalized)) return true;
@@ -149,8 +154,12 @@ function createCredentialedCorsMiddleware() {
     return (req, res, next) => {
         cors({
             origin: (requestOrigin, callback) => {
-                if (!requestOrigin) {
+                if (!requestOrigin || requestOrigin === 'null') {
                     callback(null, true);
+                    return;
+                }
+                if (isElectronDesktopRequest(req)) {
+                    callback(null, requestOrigin);
                     return;
                 }
                 if (isAllowedOrigin(requestOrigin, req)) {

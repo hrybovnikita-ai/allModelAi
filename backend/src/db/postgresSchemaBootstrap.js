@@ -6,6 +6,7 @@ const AI_IMPROVEMENT_MIGRATION = path.join(__dirname, '..', '..', 'migrations', 
 const VIDEO_JOBS_MIGRATION = path.join(__dirname, '..', '..', 'migrations', '005_video_generation.sql');
 const VIDEO_JOBS_CONVERSATION_MIGRATION = path.join(__dirname, '..', '..', 'migrations', '006_video_job_conversation.sql');
 const PROVIDER_HEALTH_MIGRATION = path.join(__dirname, '..', '..', 'migrations', '009_provider_health.sql');
+const ANONIN_ROUTING_MIGRATION = path.join(__dirname, '..', '..', 'migrations', '011_anonin_routing.sql');
 
 function isPostgresEngine(connection) {
     return (connection?.engine || 'sqlite') === 'postgres';
@@ -76,8 +77,20 @@ async function ensurePostgresProviderHealthAsync(connection) {
     return { applied: true };
 }
 
+async function ensurePostgresAnoninRoutingAsync(connection) {
+    if (!isPostgresEngine(connection)) return { applied: false, reason: 'not_postgres' };
+    const pool = resolvePostgresAsyncPool(connection);
+    if (!pool) return { applied: false, reason: 'pool_unavailable' };
+    if (!fs.existsSync(ANONIN_ROUTING_MIGRATION)) {
+        return { applied: false, reason: 'migration_missing' };
+    }
+    await runMigrationFile(pool, ANONIN_ROUTING_MIGRATION);
+    return { applied: true };
+}
+
 module.exports = {
     ensurePostgresAiImprovementAsync,
     ensurePostgresVideoJobsAsync,
     ensurePostgresProviderHealthAsync,
+    ensurePostgresAnoninRoutingAsync,
 };

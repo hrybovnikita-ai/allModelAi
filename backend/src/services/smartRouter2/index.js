@@ -10,6 +10,7 @@ const { findRoutedModelWithApiKey } = require('../../chatProviderRuntime');
 const { findVisionRoutedModel, visionSlugAllowed } = require('../visionSupport');
 
 const { isCloudflareWorkersAiConfigured } = require('../cloudflareWorkersAiConfig');
+const { healthPenaltyForSlug } = require('../providerHealthHints');
 
 const MODE_OVERRIDES = {
     economy: {
@@ -60,6 +61,7 @@ function pickBestSlug(taskType, preferSpeed, modelAllowed, performanceMap = {}) 
         if (!modelAllowed(slug)) continue;
         let score = scoreSlugForTask(slug, taskType, preferSpeed);
         score += performanceBoost(slug, performanceMap);
+        score += healthPenaltyForSlug(slug);
         if (score > bestScore && findRoutedModelWithApiKey(slug, modelAllowed)) {
             bestScore = score;
             best = slug;

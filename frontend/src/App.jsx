@@ -75,6 +75,7 @@ import LessonPage from "./components/AiTraining/LessonPage";
 import AiLearningLab from "./components/AiLearning/AiLearningLab";
 import ModelLab from "./components/ModelLab/ModelLab";
 import ModelDiagnostics from "./components/Developer/ModelDiagnostics";
+import ProviderHealthDashboard from "./components/ProviderHealth/ProviderHealthDashboard";
 import CodeWorkspacePage from "./components/CodeWorkspace/CodeWorkspacePage";
 import AILearningDashboard from "./components/Developer/AILearningDashboard";
 import StorageHub from "./components/StorageHub/StorageHub";
@@ -173,6 +174,7 @@ export default function App() {
       <Route path="/refunds" element={<InfoPage type="refund" />} />
       <Route path="/cookies" element={<InfoPage type="cookies" />} />
       <Route path="/explore" element={<ModelExplorer />} />
+      <Route path="/provider-health" element={<ProviderHealthDashboard />} />
       <Route path="/python-ai" element={<PythonAILab />} />
       <Route path="/ai-python" element={<PythonAILab />} />
       <Route path="/ai-training" element={<AiTrainingHub />} />

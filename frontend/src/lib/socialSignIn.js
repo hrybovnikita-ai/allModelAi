@@ -9,6 +9,7 @@ import {
 } from 'firebase/auth';
 import { ensureSocialAuthReady, getEffectiveFirebaseConfig, getFirebaseOAuthOrigin, getSocialAuth } from './firebase.js';
 import { isCapacitorNative, prefersSameOriginApi } from './apiBase.js';
+import { isElectronShell } from './nativePlatform.js';
 import { rememberSession, restoreSession } from './session.js';
 import { invalidateAuthBootstrap } from './authBootstrap.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
@@ -45,7 +46,7 @@ import {
   endGoogleSignInFlow,
   shouldAttemptGoogleRedirectRecovery,
 } from './socialRedirectState.js';
-import { assertGoogleRedirectStorageAvailable } from './storageAvailability.js';
+import { assertGoogleRedirectStorageAvailable, canUseGoogleRedirectSignIn } from './storageAvailability.js';
 
 export {
   clearSocialRedirectIntent,
@@ -140,7 +141,7 @@ export function cancelSocialLink() {
 }
 
 function shouldUseRedirectSignInFirst() {
-  return isCapacitorNative() || shouldPreferGoogleRedirectSignIn();
+  return isCapacitorNative() || isElectronShell() || shouldPreferGoogleRedirectSignIn();
 }
 
 export async function startGoogleRedirectSignIn(name, options = {}, reason = 'ios-safari') {
@@ -247,15 +248,24 @@ export async function completeGooglePopupSignIn(auth, popupPromise, name, option
     clearSocialRedirectIntent();
     return user;
   } catch (error) {
-    if (error.code === 'auth/popup-closed-by-user') {
+    if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
       throw error;
     }
-    if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
-      if (shouldUseRedirectSignInFirst() || shouldPreferGoogleRedirectSignIn()) {
+    if (error.code === 'auth/popup-blocked') {
+      if (
+        canUseGoogleRedirectSignIn()
+        && (shouldUseRedirectSignInFirst() || shouldPreferGoogleRedirectSignIn() || !shouldTryGooglePopupFirst())
+      ) {
         markGooglePopupSignInEnded();
         endGoogleSignInFlow();
         redirected = true;
         return beginRedirectSignIn(auth, name, options, error.code);
+      }
+      if (canUseGoogleRedirectSignIn()) {
+        markGooglePopupSignInEnded();
+        endGoogleSignInFlow();
+        redirected = true;
+        return beginRedirectSignIn(auth, name, options, 'auth/popup-blocked-fallback');
       }
       throw error;
     }

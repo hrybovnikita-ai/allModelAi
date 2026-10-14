@@ -3,6 +3,7 @@ import {
   getApiBase,
   isAllModelAiBackendRequestUrl,
   isCapacitorWebViewHost,
+  isElectronShell,
   isExternalAuthProviderUrl,
   nativeClientHeaders,
   prefersSameOriginApi,
@@ -43,6 +44,8 @@ function rewriteBackendRequestUrl(input) {
 }
 
 function shouldPatchFetch() {
+  if (import.meta.env?.VITE_ELECTRON === 'true') return true;
+  if (typeof window !== 'undefined' && isElectronShell()) return true;
   if (import.meta.env?.VITE_CAPACITOR_NATIVE === 'true') return true;
   if (typeof window !== 'undefined' && isCapacitorWebViewHost()) return true;
   if (typeof window !== 'undefined' && prefersSameOriginApi()) return true;

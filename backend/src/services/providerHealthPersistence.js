@@ -64,43 +64,55 @@ async function fetchRecentProviderErrorEventsAsync(connection, { limit = 40 } = 
     }
 }
 
-async function fetchRouterMetricsSummaryAsync(connection, windowMs = 60 * 60 * 1000) {
+async function fetchRouterMetricsSummaryAsync(connection, windowMs = 60 * 60 * 1000, groupField = 'provider') {
     const since = new Date(Date.now() - windowMs).toISOString();
+    const column = groupField === 'model' ? 'model' : 'provider';
     try {
         if (isPostgresConnection(connection)) {
             const pool = resolvePostgresAsyncPool(connection);
             if (!pool) return {};
             const result = await queryPgPool(
                 pool,
-                `SELECT provider,
+                `SELECT ${column} AS group_key,
                         COUNT(*)::int AS total,
                         SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END)::int AS failures,
                         AVG(latency_ms)::int AS avg_latency_ms,
-                        MAX(created_at) AS last_at
+                        MAX(created_at) AS last_at,
+                        MAX(CASE WHEN success = 1 THEN created_at END) AS last_success_at,
+                        MAX(CASE WHEN success = 0 THEN error_category END) AS last_error_category
                  FROM router_metrics
-                 WHERE created_at > $1
-                 GROUP BY provider`,
+                 WHERE created_at > $1 AND ${column} IS NOT NULL
+                 GROUP BY ${column}`,
                 [since],
             );
             const out = {};
             for (const row of result.rows || []) {
-                out[String(row.provider || '').toLowerCase()] = row;
+                out[String(row.group_key || '').toLowerCase()] = {
+                    total: row.total,
+                    failures: row.failures,
+                    avg_latency_ms: row.avg_latency_ms,
+                    last_at: row.last_at,
+                    last_success_at: row.last_success_at,
+                    last_error_category: row.last_error_category,
+                };
             }
             return out;
         }
         const rows = connection.database.prepare(
-            `SELECT provider,
+            `SELECT ${column} AS group_key,
                     COUNT(*) AS total,
                     SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failures,
                     CAST(AVG(latency_ms) AS INTEGER) AS avg_latency_ms,
-                    MAX(created_at) AS last_at
+                    MAX(created_at) AS last_at,
+                    MAX(CASE WHEN success = 1 THEN created_at END) AS last_success_at,
+                    MAX(CASE WHEN success = 0 THEN error_category END) AS last_error_category
              FROM router_metrics
-             WHERE created_at > ?
-             GROUP BY provider`,
+             WHERE created_at > ? AND ${column} IS NOT NULL
+             GROUP BY ${column}`,
         ).all(since);
         const out = {};
         for (const row of rows) {
-            out[String(row.provider || '').toLowerCase()] = row;
+            out[String(row.group_key || '').toLowerCase()] = row;
         }
         return out;
     } catch {
@@ -108,8 +120,82 @@ async function fetchRouterMetricsSummaryAsync(connection, windowMs = 60 * 60 * 1
     }
 }
 
+async function fetchRouterMetricsBucketsAsync(connection, { windowMs = 60 * 60 * 1000, bucketMs = null } = {}) {
+    const bucket = bucketMs || Math.max(60_000, Math.floor(windowMs / 24));
+    const since = new Date(Date.now() - windowMs).toISOString();
+    try {
+        if (isPostgresConnection(connection)) {
+            const pool = resolvePostgresAsyncPool(connection);
+            if (!pool) return [];
+            const result = await queryPgPool(
+                pool,
+                `SELECT date_trunc('minute', created_at) AS bucket_start,
+                        provider,
+                        COUNT(*)::int AS total,
+                        SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END)::int AS failures,
+                        AVG(latency_ms)::int AS avg_latency_ms
+                 FROM router_metrics
+                 WHERE created_at > $1
+                 GROUP BY bucket_start, provider
+                 ORDER BY bucket_start ASC`,
+                [since],
+            );
+            return (result.rows || []).map((row) => ({
+                bucketStart: row.bucket_start,
+                provider: row.provider,
+                total: row.total,
+                failures: row.failures,
+                avg_latency_ms: row.avg_latency_ms,
+            }));
+        }
+        const rows = connection.database.prepare(
+            `SELECT strftime('%Y-%m-%dT%H:%M:00.000Z', created_at) AS bucket_start,
+                    provider,
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failures,
+                    CAST(AVG(latency_ms) AS INTEGER) AS avg_latency_ms
+             FROM router_metrics
+             WHERE created_at > ?
+             GROUP BY bucket_start, provider
+             ORDER BY bucket_start ASC`,
+        ).all(since);
+        return rows.map((row) => ({
+            bucketStart: row.bucket_start,
+            provider: row.provider,
+            total: row.total,
+            failures: row.failures,
+            avg_latency_ms: row.avg_latency_ms,
+        }));
+    } catch {
+        return [];
+    }
+}
+
+async function pruneProviderErrorEventsAsync(connection) {
+    try {
+        if (isPostgresConnection(connection)) {
+            const pool = resolvePostgresAsyncPool(connection);
+            if (!pool) return;
+            await queryPgPool(
+                pool,
+                `DELETE FROM provider_error_events WHERE created_at < NOW() - INTERVAL '1 day' * $1`,
+                [RETENTION_DAYS],
+            );
+            return;
+        }
+        const cutoff = new Date(Date.now() - RETENTION_DAYS * 86400000).toISOString();
+        connection.database.prepare(
+            'DELETE FROM provider_error_events WHERE created_at < ?',
+        ).run(cutoff);
+    } catch {
+        /* ignore */
+    }
+}
+
 module.exports = {
     insertProviderErrorEventAsync,
     fetchRecentProviderErrorEventsAsync,
     fetchRouterMetricsSummaryAsync,
+    fetchRouterMetricsBucketsAsync,
+    pruneProviderErrorEventsAsync,
 };

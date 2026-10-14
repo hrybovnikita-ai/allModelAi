@@ -1,4 +1,18 @@
+import { Capacitor } from '@capacitor/core';
+
 function detectPlatform() {
+  try {
+    const cap = Capacitor.getPlatform();
+    if (cap === 'ios') return 'ios';
+    if (cap === 'android') return 'android';
+  } catch {
+    /* ignore */
+  }
+  if (typeof window !== 'undefined' && window.allmodelai?.isElectron) {
+    if (window.allmodelai.platform === 'darwin') return 'mac';
+    if (window.allmodelai.platform === 'win32') return 'windows';
+    return 'desktop';
+  }
   const ua = navigator.userAgent || '';
   const isIOS =
     /iPhone|iPad|iPod/i.test(ua) ||

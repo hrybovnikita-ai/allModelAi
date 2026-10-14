@@ -53,7 +53,7 @@ export function resolveAuthApiUrl(path) {
 
 export async function authPost(path, body, options) {
   const url = resolveAuthApiUrl(path);
-  return postJson(url, body, options);
+  return postJson(url, body, { phase: 'auth', ...options });
 }
 
 export async function authGet(path, options = {}) {

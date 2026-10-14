@@ -1,0 +1,66 @@
+/* Native shells: Capacitor (iOS/Android) + Electron (macOS/Windows) */
+
+html[data-shell='electron'] body {
+  user-select: none;
+}
+
+html[data-shell='electron'] .app,
+html[data-shell='electron'] #root {
+  min-height: 100dvh;
+}
+
+html[data-shell='electron'] .navbar,
+html[data-shell='electron'] .floating-glass-nav {
+  -webkit-app-region: drag;
+}
+
+html[data-shell='electron'] .navbar a,
+html[data-shell='electron'] .navbar button,
+html[data-shell='electron'] .floating-glass-nav a,
+html[data-shell='electron'] .floating-glass-nav button,
+html[data-shell='electron'] input,
+html[data-shell='electron'] textarea,
+html[data-shell='electron'] select {
+  -webkit-app-region: no-drag;
+}
+
+html[data-shell='electron'][data-platform='mac'] .navbar,
+html[data-shell='electron'][data-platform='mac'] .header {
+  padding-left: max(72px, calc(16px + var(--safe-left)));
+}
+
+html[data-native-app='true'] .chat-page--standalone {
+  min-height: 100dvh;
+  min-height: 100svh;
+}
+
+/* iPad / tablet landscape — persistent sidebar chat layout */
+@media (min-width: 768px) and (orientation: landscape) {
+  html[data-platform='ios'] .chat-page:not(.sidebar-collapsed),
+  html[data-viewport='tablet'] .chat-page:not(.sidebar-collapsed) {
+    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  }
+
+  html[data-platform='ios'] .chat-page .chat-sidebar,
+  html[data-viewport='tablet'] .chat-page .chat-sidebar {
+    position: relative;
+    transform: none;
+    visibility: visible;
+  }
+}
+
+/* Desktop / laptop — wider chat column */
+@media (min-width: 1280px) {
+  html[data-shell='electron'] .chat-page,
+  html[data-viewport='desktop'] .chat-page,
+  html[data-viewport='laptop'] .chat-page {
+    --chat-content-max: min(920px, 100%);
+  }
+}
+
+@media (min-width: 1600px) {
+  html[data-shell='electron'] .chat-page .chat-main,
+  html[data-viewport='desktop'] .chat-page .chat-main {
+    padding-inline: clamp(16px, 2vw, 48px);
+  }
+}

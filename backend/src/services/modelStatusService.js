@@ -24,6 +24,8 @@ function buildModelStatusPayload() {
         },
         models: {
             ...availability,
+            anonin: true,
+            smart: true,
             cloudflare: Boolean(isCloudflareWorkersAiConfigured() || availability.others),
             'gpt-oss': isCloudflareWorkersAiConfigured(),
             nemotron: isOpenRouterFreeConfigured('nemotron'),

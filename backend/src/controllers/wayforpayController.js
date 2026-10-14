@@ -1,6 +1,11 @@
 const crypto = require('node:crypto');
 const { publicAppOrigin } = require('../publicAccess');
-const { subscriptionPlans, normalizePlanKey, planAmountDecimal, periodEndFor, planSlugForKey } = require('../billing/plans');
+const { subscriptionPlans, normalizePlanKey, periodEndFor, planSlugForKey } = require('../billing/plans');
+const {
+    resolveWayforpayCurrency,
+    planAmountForCurrency,
+    wayforpayLanguageForCurrency,
+} = require('../wayforpay/currency');
 const { activateSubscription } = require('../billing/subscriptions');
 const { activateSubscriptionAsync } = require('../billing/subscriptionsAsync');
 const { isPostgresConnection } = require('../db/postgresHttpReads');
@@ -82,9 +87,13 @@ async function wfpUpdatePayment(appDb, orderReference, patch) {
         : updatePaymentStatus(appDb.database, orderReference, patch);
 }
 
-const insertPendingTestPayment = async (appDb, { userId, email, planKey, cfg }) => {
+const insertPendingTestPayment = async (appDb, { userId, email, planKey, cfg, currency }) => {
     const plan = subscriptionPlans[planKey];
-    const amount = planAmountDecimal(planKey);
+    const checkoutCurrency = resolveWayforpayCurrency(currency, cfg.currency);
+    const amount = planAmountForCurrency(planKey, checkoutCurrency);
+    if (!amount) {
+        throw Object.assign(new Error('Invalid plan amount for checkout.'), { status: 400 });
+    }
     const orderReference = createOrderReference(userId);
     const now = new Date().toISOString();
     const merchantAccount = cfg.merchantAccount || 'allmodelai_test';
@@ -94,7 +103,7 @@ const insertPendingTestPayment = async (appDb, { userId, email, planKey, cfg }) 
         userId,
         planKey,
         amount: Number(amount),
-        currency: cfg.currency,
+        currency: checkoutCurrency,
         status: PAYMENT_STATUS.CREATED,
         merchantAccount,
         paymentProvider: 'wayforpay',
@@ -104,7 +113,7 @@ const insertPendingTestPayment = async (appDb, { userId, email, planKey, cfg }) 
         updatedAt: now,
     });
     await wfpUpdatePayment(appDb, orderReference, { status: PAYMENT_STATUS.PENDING });
-    return { orderReference, amount, plan, merchantAccount };
+    return { orderReference, amount, plan, merchantAccount, currency: checkoutCurrency };
 };
 
 const simulateMockApprovedCallback = async (appDb, paymentRow, cfg) => {
@@ -280,16 +289,28 @@ const createWayforpayPayment = async (req, res) => {
         });
     }
 
-    const { orderReference, amount } = await insertPendingTestPayment(req.app.locals.db, {
-        userId: req.user.id,
-        email,
-        planKey,
-        cfg,
-    });
+    const checkoutCurrency = resolveWayforpayCurrency(req.body?.currency, cfg.currency);
+    let orderReference;
+    let amount;
+    let storedCurrency;
+    try {
+        ({ orderReference, amount, currency: storedCurrency } = await insertPendingTestPayment(req.app.locals.db, {
+            userId: req.user.id,
+            email,
+            planKey,
+            cfg,
+            currency: checkoutCurrency,
+        }));
+    } catch (error) {
+        if (error.status === 400) {
+            return res.status(400).json({ message: error.message || 'Invalid checkout request.' });
+        }
+        throw error;
+    }
 
     if (cfg.testMode) {
         if (!(await assertWayforpayTestCheckoutAllowed(req, res))) return undefined;
-        logPayment('Checkout created (TEST MODE mock)', { orderReference, plan: planKey, email });
+        logPayment('Checkout created (TEST MODE mock)', { orderReference, plan: planKey, email, currency: storedCurrency });
         return res.status(201).json({
             provider: 'wayforpay',
             mockCheckout: true,
@@ -298,12 +319,12 @@ const createWayforpayPayment = async (req, res) => {
             plan: planKey,
             planName: plan.name,
             amount,
-            currency: cfg.currency,
+            currency: storedCurrency,
             message: 'Test checkout only — no redirect to WayForPay. Complete payment with mock-complete.',
         });
     }
 
-    logPayment('Checkout created (live hosted)', { orderReference, plan: planKey, email });
+    logPayment('Checkout created (live hosted)', { orderReference, plan: planKey, email, currency: storedCurrency });
 
     const orderDate = Math.floor(Date.now() / 1000);
     const productName = [`AllModelAI ${plan.name}`];
@@ -323,7 +344,7 @@ const createWayforpayPayment = async (req, res) => {
         orderReference,
         orderDate,
         amount,
-        currency: cfg.currency,
+        currency: storedCurrency,
         productName,
         productCount,
         productPrice,
@@ -340,13 +361,13 @@ const createWayforpayPayment = async (req, res) => {
         orderReference,
         orderDate: String(orderDate),
         amount,
-        currency: cfg.currency,
+        currency: storedCurrency,
         productName,
         productCount,
         productPrice,
         clientEmail: email,
         clientAccountId: email,
-        language: 'EN',
+        language: wayforpayLanguageForCurrency(storedCurrency),
         returnUrl: `${frontendOrigin}/checkout/success?plan=${encodeURIComponent(planSlugForKey(planKey))}&orderReference=${encodeURIComponent(orderReference)}`,
         serviceUrl: `${serviceBase}/api/payments/wayforpay/callback`,
     };

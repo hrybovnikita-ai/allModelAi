@@ -19,7 +19,8 @@ import { shouldPreferGoogleRedirectSignIn } from '../../lib/socialSignInEnv';
 import { canUseGoogleRedirectSignIn } from '../../lib/storageAvailability';
 import { markFreshLogin } from '../../lib/session';
 import { useSession } from '../Session/SessionProvider';
-import { isRetryableSocialSignInError, socialError } from '../../lib/socialSession';
+import { isBenignGoogleSignInCancellation, isRetryableSocialSignInError, socialError } from '../../lib/socialSession';
+import { classifyNetworkError } from '../../lib/networkErrors';
 import AuthDebugPanel from '../SocialAuth/AuthDebugPanel';
 import GoogleSignInIcon from './GoogleSignInIcon';
 import './Login.css';
@@ -144,9 +145,16 @@ function LoginForm({
           return;
         }
         document.activeElement?.blur();
+        markFreshLogin();
         await refresh({ force: true });
+        onClose?.();
         await navigateAfterSocialLogin(outcome, { navigate, replaceDashboard: true });
       } catch (requestError) {
+        if (isBenignGoogleSignInCancellation(requestError)) {
+          setError('');
+          setSocialErrorCode('');
+          return;
+        }
         setSocialErrorCode(requestError?.code || '');
         if (requestError.code === 'SESSION_NOT_CONFIRMED') {
           setError('Sign-in reached Google but your AllModelAI session could not be verified. Please try again.');
@@ -211,8 +219,10 @@ function LoginForm({
       applyAuthResponsePayload(data);
       const user = await confirmSession(data.user);
       markFreshLogin();
+      await refresh({ force: true });
 
       document.activeElement?.blur();
+      onClose?.();
 
       if (signingUp) {
         setSuccessNotice('Welcome to AllModelAI');
@@ -247,18 +257,28 @@ function LoginForm({
         setError(
           'Sign-in reached the server but your session could not be verified. Check that VITE_API_BASE_URL points to your Render backend and that Render allows cross-site cookies (COOKIE_SAME_SITE=none, COOKIE_SECURE=true, FRONTEND_ORIGIN).',
         );
-      } else if (requestError.status === 401 && !signingUp && requestError.code !== 'PASSWORD_SETUP_REQUIRED') {
-        setError('Incorrect email or password');
-      } else if (requestError.message?.includes('Failed to fetch')) {
-        setError(
-          signingUp
-            ? 'Registration service is temporarily unavailable. Please try again.'
-            : 'Could not reach the authentication server. Check your connection or API configuration.',
-        );
+      } else if (
+        !signingUp
+        && (requestError.status === 401 || requestError.code === 'INVALID_CREDENTIALS')
+        && requestError.code !== 'PASSWORD_SETUP_REQUIRED'
+      ) {
+        setError('Invalid email or password.');
+      } else if (
+        requestError.code === 'DATABASE_UNAVAILABLE'
+        || requestError.status === 503
+      ) {
+        setError(requestError.message || 'Sign-in is temporarily unavailable. Please try again in a moment.');
+      } else if (
+        requestError.message?.includes('Failed to fetch')
+        || requestError.code === 'AUTH_NETWORK_ERROR'
+        || requestError.code === 'BACKEND_UNREACHABLE'
+      ) {
+        const { message } = classifyNetworkError(requestError, { phase: 'auth' });
+        setError(message);
       } else {
         setError(
           requestError.message ||
-            'Could not connect to the backend. Please try again.',
+            (signingUp ? 'Could not create your account. Please try again.' : 'Could not sign in. Please try again.'),
         );
       }
     } finally {
@@ -450,7 +470,8 @@ function LoginForm({
           <button
             className="login-submit"
             type="submit"
-            disabled={socialDisabled}
+            disabled={submitting || Boolean(socialBusy)}
+            aria-busy={submitting}
           >
             {submitting
               ? signingUp
@@ -459,6 +480,7 @@ function LoginForm({
               : signingUp
                 ? 'Create account'
                 : 'Sign in'}
+            {submitting && <span className="login-social-spinner login-submit-spinner" aria-hidden="true" />}
           </button>
 
           <div className="login-switch">

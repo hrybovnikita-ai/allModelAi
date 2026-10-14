@@ -36,6 +36,18 @@ export function classifyNetworkError(error, context = {}) {
     return { code: 'GOOGLE_REDIRECT_FAILED', message: msg || 'Google redirect sign-in could not be completed.' };
   }
 
+  if (context.phase === 'auth' && (status === 401 || status === 403)) {
+    return {
+      code: 'AUTH_REJECTED',
+      message: status === 401 ? 'Invalid email or password.' : 'Sign-in was rejected. Please try again.',
+    };
+  }
+  if (context.phase === 'auth' && (msg.includes('Failed to fetch') || msg.includes('Network request failed'))) {
+    return {
+      code: 'AUTH_NETWORK_ERROR',
+      message: 'Could not reach the sign-in server. Check your connection and try again.',
+    };
+  }
   if (context.phase === 'session' && status === 401) {
     return { code: 'BACKEND_SESSION_FAILED', message: 'No active server session. Sign in again.' };
   }

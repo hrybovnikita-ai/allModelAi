@@ -7,7 +7,8 @@ import './CheckoutDemo.css';
 import './CheckoutPremium.css';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { fetchCheckoutInfo, fetchCheckoutPlan, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
-import { runTestWayforpayCheckout, submitWayforpayCheckout } from '../../lib/wayforpay';
+import { DEFAULT_WAYFORPAY_CURRENCIES } from '../../lib/wayforpay';
+import WayforpayPaymentModal from './WayforpayPaymentModal';
 import { useSession } from '../Session/SessionProvider';
 import { isAuthInitializing } from '../../lib/authSessionStatus';
 import ProductionStripeCheckoutForm from './ProductionStripeCheckoutForm';
@@ -16,6 +17,7 @@ import CheckoutSummaryCard from './CheckoutSummaryCard';
 import PaymentFormCard from './PaymentFormCard';
 import PaymentButton from './PaymentButton';
 import CheckoutAiCreditPackages from './CheckoutAiCreditPackages';
+import PaddleCheckoutButton from './PaddleCheckoutButton';
 import {
   openStripeBillingPortal,
   openStripeBillingPortalFromApiError,
@@ -46,7 +48,7 @@ export default function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { status: sessionStatus, user: sessionUser } = useSession();
+  const { status: sessionStatus, user: sessionUser, refresh: refreshSession } = useSession();
   const planSlug = useMemo(() => {
     const fromQuery = searchParams.get('plan');
     if (fromQuery === 'developer') return 'developer';
@@ -67,11 +69,22 @@ export default function Checkout() {
   const [stripeReady, setStripeReady] = useState(false);
   const [ownerTestCheckout, setOwnerTestCheckout] = useState(false);
   const [canUseWayforpayTestCheckout, setCanUseWayforpayTestCheckout] = useState(false);
+  const [wayforpayCurrency, setWayforpayCurrency] = useState('USD');
+  const [wayforpayModalOpen, setWayforpayModalOpen] = useState(false);
+  const wayforpaySuccessNavRef = useRef(null);
   const [activePlanConflict, setActivePlanConflict] = useState(null);
   const stripeAutoLoadRef = useRef(false);
   const paymentProvider = checkoutInfo?.primaryProvider || null;
   const paymentsAvailable = Boolean(checkoutInfo?.checkoutAvailable);
   const useStripeProduction = Boolean(paymentsAvailable && paymentProvider === 'stripe');
+  const usePaddlePrimary = Boolean(paymentsAvailable && paymentProvider === 'paddle');
+  const paddleCheckoutEnabled = Boolean(checkoutInfo?.paddleCheckoutEnabled);
+  const showPaddleAlternate = Boolean(
+    paddleCheckoutEnabled
+    && !usePaddlePrimary
+    && !isDeveloper
+    && !activePlanConflict,
+  );
   const showTestBanner = Boolean(checkoutInfo?.showTestModeBanner)
     || (ownerTestCheckout && checkoutInfo?.wayforpayTestMode);
   const testBannerText = checkoutInfo?.testModeBannerText || TEST_MODE_BANNER;
@@ -83,7 +96,12 @@ export default function Checkout() {
     : '—';
 
   useEffect(() => {
-    fetchCheckoutInfo().then(setCheckoutInfo);
+    fetchCheckoutInfo().then((info) => {
+      setCheckoutInfo(info);
+      if (info?.wayforpayDefaultCurrency) {
+        setWayforpayCurrency(info.wayforpayDefaultCurrency);
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -210,7 +228,7 @@ export default function Checkout() {
   }, [planSlug]);
 
   useEffect(() => {
-    if (!useStripeProduction || isDeveloper) return undefined;
+    if (!useStripeProduction || isDeveloper || usePaddlePrimary) return undefined;
     if (isAuthInitializing(sessionStatus) || sessionStatus !== 'authenticated') return undefined;
     if (stripeReady || checkoutBusy || stripeAutoLoadRef.current) return undefined;
 
@@ -242,6 +260,7 @@ export default function Checkout() {
     return () => { cancelled = true; };
   }, [
     useStripeProduction,
+    usePaddlePrimary,
     isDeveloper,
     sessionStatus,
     stripeReady,
@@ -256,29 +275,14 @@ export default function Checkout() {
     && (canUseWayforpayTestCheckout || ownerTestCheckout),
   );
 
-  const startWayforpayCheckout = async () => {
-    setCheckoutBusy(true);
-    setError('');
-    try {
-      if (checkoutInfo?.wayforpayTestMode && !canUseWayforpayTestCheckout && !ownerTestCheckout) {
-        throw new Error('WayForPay test checkout is not available for this account in this environment.');
-      }
-      if (wayforpayTestFlow) {
-        const result = await runTestWayforpayCheckout(apiClient, planSlug);
-        navigate(`/checkout/success?plan=${encodeURIComponent(planSlug)}&orderReference=${encodeURIComponent(result.orderReference)}`, { replace: true });
-        return;
-      }
-      const response = await apiClient.post('/api/payments/wayforpay/create', { plan: planSlug });
-      if (response.data.mockCheckout) {
-        throw new Error('Unexpected test response. Refresh and try again.');
-      }
-      submitWayforpayCheckout(response.data);
-    } catch (requestError) {
-      const payload = requestError.response?.data;
-      setError(payload?.message || payload?.userMessage || requestError.message || 'Payment could not be started.');
-    } finally {
-      setCheckoutBusy(false);
+  const openWayforpayModal = () => {
+    if (checkoutInfo?.wayforpayTestMode && !canUseWayforpayTestCheckout && !ownerTestCheckout) {
+      setError('WayForPay test checkout is not available for this account in this environment.');
+      return;
     }
+    setError('');
+    wayforpaySuccessNavRef.current = null;
+    setWayforpayModalOpen(true);
   };
 
   const stripeReturnUrl = useMemo(() => {
@@ -380,6 +384,22 @@ export default function Checkout() {
 
           {!isDeveloper && (
             <>
+              {usePaddlePrimary && !activePlanConflict && (
+                <>
+                  {checkoutInfo?.showPaddleSandboxHint && (
+                    <p className="checkout-owner-test-note" role="status">
+                      Paddle Sandbox — no real charges. Access is granted only after Paddle webhooks confirm payment.
+                    </p>
+                  )}
+                  <PaddleCheckoutButton
+                    planSlug={planSlug}
+                    disabled={!sessionReady}
+                    paddleSandbox={Boolean(checkoutInfo?.paddleSandbox)}
+                    label={`Subscribe with Paddle — $${summary?.amountDisplay || ''} / month`}
+                  />
+                </>
+              )}
+
               {useStripeProduction && !activePlanConflict ? (
                 <ProductionStripeCheckoutForm
                   publishableKey={stripePublishableKey}
@@ -400,7 +420,7 @@ export default function Checkout() {
                   showTestModeBanner={showTestBanner}
                   secureCheckoutLabel={checkoutInfo?.secureCheckoutLabel || 'Secure payment'}
                 />
-              ) : (
+              ) : !usePaddlePrimary ? (
                 <>
                   <MockCheckoutForm
                     planName={summary?.name || (planSlug === 'enterprise' ? 'Enterprise' : 'Pro')}
@@ -421,21 +441,28 @@ export default function Checkout() {
                     <div className="checkout-wayforpay-alt checkout-wayforpay-alt--primary">
                       {wayforpayTestFlow && (
                         <p className="checkout-owner-test-note" role="status">
-                          Simulated WayForPay test payment — no redirect, no real charge. Subscription activates only after server confirms the mock callback.
+                          Test mode — use mock card 4242… or complete a simulated payment with no real charge.
                         </p>
                       )}
                       <PaymentButton
                         type="button"
-                        loading={checkoutBusy}
-                        loadingLabel="Processing…"
                         disabled={!sessionReady || (checkoutInfo?.wayforpayTestMode && !canUseWayforpayTestCheckout && !ownerTestCheckout)}
-                        onClick={() => { void startWayforpayCheckout(); }}
+                        onClick={openWayforpayModal}
                       >
-                        {wayforpayTestFlow ? 'Complete WayForPay test payment' : 'Continue with WayForPay'}
+                        {wayforpayTestFlow ? 'Open test checkout' : 'Continue with WayForPay'}
                       </PaymentButton>
                     </div>
                   )}
                 </>
+              ) : null}
+
+              {showPaddleAlternate && (
+                <PaddleCheckoutButton
+                  planSlug={planSlug}
+                  disabled={!sessionReady}
+                  paddleSandbox={Boolean(checkoutInfo?.paddleSandbox)}
+                  label={useStripeProduction ? 'Or pay with Paddle (sandbox)' : 'Pay with Paddle (sandbox)'}
+                />
               )}
 
               {!sessionReady && !isAuthInitializing(sessionStatus) && (
@@ -472,6 +499,37 @@ export default function Checkout() {
         sessionReady={sessionReady}
         showTestBanner={showTestBanner}
         testBannerText={testBannerText}
+      />
+
+      <WayforpayPaymentModal
+        open={wayforpayModalOpen}
+        onClose={() => {
+          setWayforpayModalOpen(false);
+          const orderReference = wayforpaySuccessNavRef.current;
+          wayforpaySuccessNavRef.current = null;
+          if (orderReference) {
+            navigate(
+              `/checkout/success?plan=${encodeURIComponent(planSlug)}&orderReference=${encodeURIComponent(orderReference)}`,
+              { replace: true },
+            );
+          }
+        }}
+        planKey={planSlug}
+        planTitle={summary?.name ? `${summary.name} — ${priceLabel}` : 'Subscription'}
+        priceLabel={priceLabel}
+        httpClient={apiClient}
+        serverTestMode={Boolean(checkoutInfo?.wayforpayTestMode)}
+        developerMode={false}
+        userEmail={sessionUser?.email || ''}
+        currency={wayforpayCurrency}
+        onCurrencyChange={setWayforpayCurrency}
+        supportedCurrencies={checkoutInfo?.wayforpaySupportedCurrencies || DEFAULT_WAYFORPAY_CURRENCIES}
+        onPaymentSuccess={async (data) => {
+          await refreshSession({ force: true });
+          if (data?.orderReference) {
+            wayforpaySuccessNavRef.current = data.orderReference;
+          }
+        }}
       />
     </main>
   );

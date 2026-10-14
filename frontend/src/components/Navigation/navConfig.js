@@ -48,6 +48,7 @@ export const NAV_MORE_GROUPS = [
       { to: '/arena', label: 'Arena', description: 'Side-by-side model battles' },
       { to: '/model-comparison', label: 'Model Comparison', description: 'Structured comparisons' },
       { to: '/usage-analytics', label: 'Usage Analytics', description: 'Usage and cost insights' },
+      { to: '/provider-health', label: 'Provider Health', description: 'AI provider availability and latency' },
     ],
   },
   {

@@ -1,5 +1,6 @@
 const { wayforpayCheckoutAvailable, wayforpayConfig } = require('../wayforpay/config');
 const { assertStripeCheckoutAllowed, getStripeMode, isStripeTestMode } = require('./stripeMode');
+const { paddleCheckoutEnabledForDeployment, paddlePaymentsConfigured } = require('./paddleConfig');
 
 const envTrim = (name) => String(process.env[name] || '').trim();
 
@@ -29,14 +30,25 @@ function resolvePrimaryPaymentProvider() {
     const forced = envTrim('PAYMENT_PROVIDER').toLowerCase();
     const wfp = wayforpayCheckoutAvailable();
     const stripeOn = stripePaymentsConfigured();
+    const paddleOn = paddleCheckoutEnabledForDeployment();
 
     if (forced === 'wayforpay') return wfp ? 'wayforpay' : null;
     if (forced === 'stripe') return stripeOn ? 'stripe' : null;
+    if (forced === 'paddle') return paddleOn ? 'paddle' : null;
 
     if (wfp && !shouldPreferStripeOverWayforpay()) return 'wayforpay';
     if (stripeOn) return 'stripe';
+    if (paddleOn) return 'paddle';
     if (wfp) return 'wayforpay';
     return null;
+}
+
+function listAvailableCheckoutProviders() {
+    const providers = [];
+    if (stripeCheckoutEnabledForDeployment()) providers.push('stripe');
+    if (paddleCheckoutEnabledForDeployment()) providers.push('paddle');
+    if (wayforpayCheckoutEnabledForDeployment()) providers.push('wayforpay');
+    return providers;
 }
 
 function stripeCheckoutEnabledForDeployment() {
@@ -51,7 +63,7 @@ function wayforpayCheckoutEnabledForDeployment() {
 }
 
 function paymentsCheckoutAvailable() {
-    return Boolean(resolvePrimaryPaymentProvider());
+    return listAvailableCheckoutProviders().length > 0;
 }
 
 module.exports = {
@@ -60,6 +72,9 @@ module.exports = {
     shouldPreferStripeOverWayforpay,
     stripeCheckoutEnabledForDeployment,
     wayforpayCheckoutEnabledForDeployment,
+    paddleCheckoutEnabledForDeployment,
+    listAvailableCheckoutProviders,
     paymentsCheckoutAvailable,
     stripePaymentsConfigured,
+    paddlePaymentsConfigured,
 };

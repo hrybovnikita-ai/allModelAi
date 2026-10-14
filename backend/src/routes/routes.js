@@ -21,7 +21,6 @@ const {
     getCredits,
     setAccessMode,
     getModelStatus,
-    getProviderHealth,
     getAdminStats,
     getChatHistory,
     createChatHistory,
@@ -108,6 +107,7 @@ const {
     getWayforpayPaymentStatus,
     getPaymentHistory,
 } = require('../controllers/wayforpayController');
+const { createPaddleCheckout, getPaddlePublicConfig } = require('../controllers/paddleController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { authAttemptRateLimit } = require('../authRateLimit');
 const { prepareAppGeneration } = require('../appGeneration');
@@ -124,14 +124,44 @@ const {
     queryKnowledgeBase,
 } = require('../controllers/knowledgeBaseController');
 const { postMultiAgentResearch } = require('../controllers/multiAgentResearchController');
+const {
+    revealAnoninMessage,
+    listAnoninRevealed,
+    postAnoninChatAlias,
+    gateAnoninRevealedAlias,
+} = require('../controllers/anoninController');
 
 const router = express.Router();
+
+function registerAnoninChatRoutes() {
+    router.post('/chat/anonin/reveal', requireAuth, revealAnoninMessage);
+    router.post('/chat/anonim/reveal', requireAuth, revealAnoninMessage);
+    router.post('/chat/anonymous/reveal', requireAuth, revealAnoninMessage);
+    router.get('/chat/anonin/revealed/:conversationId', requireAuth, listAnoninRevealed);
+    router.get('/chat/anonim/revealed/:conversationId', requireAuth, listAnoninRevealed);
+    router.get('/chat/anonymous/revealed/:conversationId', requireAuth, listAnoninRevealed);
+    router.get('/chat/:anoninAlias/revealed/:conversationId', requireAuth, gateAnoninRevealedAlias, listAnoninRevealed);
+    router.post('/chat/anonin', requireAuth, postAnoninChatAlias);
+    router.post('/chat/anonim', requireAuth, postAnoninChatAlias);
+    router.post('/chat/anonymous', requireAuth, postAnoninChatAlias);
+}
+
 const socialAuth = require('../socialAuth');
 router.post('/auth/firebase/challenge', socialAuth.browserRequest, socialAuth.challenge);
 router.post('/auth/firebase', socialAuth.browserRequest, socialAuth.exchange);
 router.get('/auth/connections', socialAuth.connections);
+registerAnoninChatRoutes();
 const { cachePublicResponse } = require('../cache');
 const { logAuthStage } = require('../authRouteStages');
+const {
+    getHealthSummary,
+    getHealthProviders,
+    getHealthProviderById,
+    getHealthModels,
+    getHealthModelById,
+    getAdminHealthProviders,
+    postAdminHealthCheck,
+} = require('../controllers/healthMonitorController');
 
 // Local PyTorch AI Learning Engine routes
 router.get('/python-llm/health', requireAuth, getPythonLlmHealth);
@@ -194,7 +224,13 @@ router.post('/auth/logout', logout);
 router.post('/auth/password-reset/request', authAttemptRateLimit('password-reset-request', { emailScoped: true, limit: 20 }), requestPasswordReset);
 router.post('/auth/password-reset/confirm', authAttemptRateLimit('password-reset-confirm', { limit: 30 }), confirmPasswordReset);
 router.get('/status/models', logAuthStage('MODELS_STATUS_ROUTE_ENTERED'), getModelStatus);
-router.get('/health/providers', cachePublicResponse('allmodelai:public:provider-health:v1'), getProviderHealth);
+router.get('/health/providers', cachePublicResponse('allmodelai:public:provider-health:v2'), getHealthProviders);
+router.get('/health/summary', cachePublicResponse('allmodelai:public:health-summary:v1'), getHealthSummary);
+router.get('/health/providers/:providerId', cachePublicResponse('allmodelai:public:health-provider:v1'), getHealthProviderById);
+router.get('/health/models', cachePublicResponse('allmodelai:public:health-models:v1'), getHealthModels);
+router.get('/health/models/:modelId', cachePublicResponse('allmodelai:public:health-model:v1'), getHealthModelById);
+router.get('/admin/health/providers', requireAdmin, getAdminHealthProviders);
+router.post('/admin/health/check', requireAdmin, postAdminHealthCheck);
 router.get('/health', health);
 router.get('/ready', getReady);
 router.get('/health/detailed', healthDetailed);
@@ -260,11 +296,14 @@ router.get('/payments/plans', getCheckoutPlans);
 router.get('/payments/plans/:slug', getCheckoutPlanQuote);
 router.get('/payments/config', requireAuth, getPaymentConfig);
 router.post('/payments/wayforpay/create', requireAuth, createWayforpayPayment);
+router.post('/payments/wayforpay/checkout', requireAuth, createWayforpayPayment);
 router.post('/payments/wayforpay/mock-complete', requireAuth, completeMockWayforpayPayment);
 router.post('/payments/wayforpay/test-checkout', requireAuth, completeTestWayforpayCheckout);
 router.get('/payments/wayforpay/status/:orderReference', requireAuth, getWayforpayPaymentStatus);
 router.get('/payments/history', requireAuth, getPaymentHistory);
 router.post('/payments/checkout', requireAuth, createCheckoutSession);
+router.post('/payments/paddle/checkout', requireAuth, createPaddleCheckout);
+router.get('/payments/paddle/config', getPaddlePublicConfig);
 router.post('/payments/billing-portal', requireAuth, createBillingPortalSession);
 router.post('/payments/create-intent', requireAuth, createPaymentIntent);
 router.get('/payments/intent/:intentId', requireAuth, verifyPaymentIntent);

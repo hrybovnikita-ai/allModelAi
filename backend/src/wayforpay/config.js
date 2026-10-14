@@ -22,11 +22,14 @@ const wayforpayCheckoutAvailable = () => {
     return wayforpayConfigured();
 };
 
+const { SUPPORTED_CURRENCIES, resolveWayforpayCurrency } = require('./currency');
+
 const wayforpayConfig = () => ({
     merchantAccount: process.env.WAYFORPAY_MERCHANT_ACCOUNT?.trim() || '',
     secretKey: process.env.WAYFORPAY_SECRET_KEY?.trim() || '',
     merchantDomainName: wayforpayMerchantDomain(),
-    currency: (process.env.WAYFORPAY_CURRENCY || 'USD').trim().toUpperCase(),
+    currency: resolveWayforpayCurrency(process.env.WAYFORPAY_CURRENCY, 'USD'),
+    supportedCurrencies: SUPPORTED_CURRENCIES,
     payUrl: WAYFORPAY_PAY_URL,
     testMode: wayforpayTestModeEnabled(),
     livePaymentsAllowed: !wayforpayTestModeEnabled() && process.env.WAYFORPAY_LIVE_CONFIRM === 'true',

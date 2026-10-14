@@ -383,7 +383,7 @@ const loginUser = async (req, res) => {
     authLog(`LOGIN user found ${Boolean(user)}`, user ? { userId: user.id } : undefined);
     if (!user) {
         authLog('Login rejected', { reason: 'USER_NOT_FOUND' });
-        return res.status(401).json({ message: 'Incorrect email or password' });
+        return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password' });
     }
 
     authLog(`LOGIN passwordHash exists ${Boolean(user.passwordHash)}`);
@@ -398,12 +398,12 @@ const loginUser = async (req, res) => {
         passwordMatches = await verifyPassword(password, user.passwordHash);
     } catch (error) {
         authLog('Login rejected', { reason: 'PASSWORD_VERIFY_ERROR', code: error.code || 'unknown' });
-        return res.status(401).json({ message: 'Incorrect email or password' });
+        return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password' });
     }
     authLog(`LOGIN password verified ${passwordMatches}`);
     if (!passwordMatches) {
         authLog('Login rejected', { reason: 'PASSWORD_MISMATCH' });
-        return res.status(401).json({ message: 'Incorrect email or password' });
+        return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password' });
     }
 
     try {
@@ -536,7 +536,7 @@ const getSession = async (req, res) => {
             req.app.locals.db,
             hashToken(token),
             Date.now(),
-            { timeoutMs: Number(process.env.SESSION_LOOKUP_TIMEOUT_MS) || 8000 },
+            { timeoutMs: Number(process.env.SESSION_LOOKUP_TIMEOUT_MS) || 6000 },
         );
         authLog('SESSION_LOOKUP_SUCCESS', {
             durationMs: Date.now() - lookupStartedAt,
@@ -877,11 +877,19 @@ const getModelStatus = (_req, res) => {
 };
 
 const getProviderHealth = async (req, res) => {
-    const { buildProviderHealth } = require('../providerHealth');
-    const adminProbe = process.env.ADMIN_KEY && req.get('x-admin-key') === process.env.ADMIN_KEY;
-    const probe = req.query.probe === '1' && (process.env.NODE_ENV !== 'production' || adminProbe);
-    const providers = await buildProviderHealth({ probe });
-    return res.json({ updatedAt: new Date().toISOString(), providers });
+    const { buildPublicHealthSummary } = require('../services/healthMonitorService');
+    const payload = await buildPublicHealthSummary(req.app.locals.db, {
+        window: req.query.window || '1h',
+    });
+    return res.json({
+        updatedAt: payload.updatedAt,
+        window: payload.window,
+        summary: payload.summary,
+        providers: payload.providers,
+        models: payload.models,
+        charts: payload.charts,
+        notes: payload.notes,
+    });
 };
 
 const getAdminStats = async (req, res) => {
@@ -1229,11 +1237,14 @@ const createCheckoutSession = async (req, res) => {
 
 const getPaymentConfig = (_req, res) => {
     const { publishableKeyFromEnv, stripeConfigurationReport } = require('../payments/stripeConfig');
+    const { paddleConfigurationReport, clientTokenFromEnv } = require('../payments/paddleConfig');
     const publishableKey = publishableKeyFromEnv() || null;
     const stripeConfig = stripeConfigurationReport();
+    const paddleConfig = paddleConfigurationReport();
     return res.json({
         ...buildCheckoutInfo(),
         publishableKey,
+        paddleClientToken: paddleConfig.ok ? clientTokenFromEnv() : null,
         userMessage: stripeConfig.userMessage,
         stripeConfiguration: {
             ok: stripeConfig.ok,
@@ -1241,6 +1252,13 @@ const getPaymentConfig = (_req, res) => {
             testMode: stripeConfig.testMode,
             webhookConfigured: stripeConfig.webhookConfigured,
             userMessage: stripeConfig.userMessage,
+        },
+        paddleConfiguration: {
+            ok: paddleConfig.ok,
+            missingEnvVars: paddleConfig.missing,
+            sandbox: paddleConfig.sandbox,
+            webhookConfigured: paddleConfig.webhookConfigured,
+            setupInstructions: paddleConfig.setupInstructions,
         },
         wallets: { applePay: true, googlePay: true },
     });
@@ -1627,7 +1645,7 @@ const previewRouter = async (req, res) => {
     const hasImage = Boolean(req.body.image || req.body.hasImage);
     if (!prompt && !hasImage) return res.status(400).json({ message: 'Prompt or image is required' });
     const access = await getCreditStatusAsync(req.app.locals.db, req.user.email);
-    const modelAllowedPreview = (slug) => access.models.includes('all') || access.models.includes(slug) || slug === 'ai_python';
+    const modelAllowedPreview = (slug) => access.models.includes('all') || access.models.includes(slug) || slug === 'ai_python' || slug === 'anonin';
     const route = chooseSmartRoute(prompt, req.body.routerMode, hasImage, modelAllowedPreview);
     if (!modelAllowedPreview(route.model)) {
         route.model = 'gemini';
@@ -1671,9 +1689,33 @@ const previewRouter = async (req, res) => {
 async function createChatResponseImpl(req, res) {
     const requestStartedAt = Date.now();
     const chatCorrelationId = String(req.correlationId || req.headers['x-request-id'] || req.headers['x-correlation-id'] || `chat-${Date.now()}`);
-    const { messages, model = 'gpt', variant, conversationId, temporary = false, routerMode = 'balanced', responsePrefs = {}, useKnowledge = true, systemInstructions = '', maxTokens, fallbackEnabled = true } = req.body;
-    const resolvedVariantId = model === 'deepseek' && variant != null ? resolveDeepSeekVariantId(variant) : variant;
-    const selectedVariant = resolvedVariantId == null ? null : modelVariants[model]?.find((item) => item.id === resolvedVariantId);
+    const {
+        messages,
+        model = 'gpt',
+        variant,
+        conversationId,
+        temporary = false,
+        routerMode = 'balanced',
+        responsePrefs = {},
+        useKnowledge = true,
+        systemInstructions = '',
+        maxTokens,
+        fallbackEnabled = true,
+        assistantMessageId: clientAssistantMessageId,
+        anoninStrategy = 'random',
+    } = req.body;
+    const { normalizeVirtualChatModelSlug, isAnoninVirtualSlug, ANONIN_SLUG } = require('../services/anoninService');
+    const requestedModel = normalizeVirtualChatModelSlug(model || 'gpt');
+    if (isAnoninVirtualSlug(model) && requestedModel === ANONIN_SLUG) {
+        req.body.model = ANONIN_SLUG;
+    }
+    const assistantMessageId = clientAssistantMessageId
+        || (requestedModel === 'anonin' ? `${chatCorrelationId}-anonin` : null);
+    if (requestedModel === 'anonin' && variant != null) {
+        return res.status(400).json({ message: 'Anonin Model does not support manual version selection.' });
+    }
+    const resolvedVariantId = requestedModel === 'deepseek' && variant != null ? resolveDeepSeekVariantId(variant) : variant;
+    const selectedVariant = resolvedVariantId == null ? null : modelVariants[requestedModel]?.find((item) => item.id === resolvedVariantId);
     if (variant != null && !selectedVariant) return res.status(400).json({ message: 'Unknown version for the selected model.' });
     const allowFallback = !selectedVariant && fallbackEnabled !== false;
     const userEmail = req.user.email;
@@ -1695,7 +1737,7 @@ async function createChatResponseImpl(req, res) {
         nemotron: 'nvidia/nemotron-3-ultra-550b-a55b:free',
         'deepseek-r1': 'deepseek/deepseek-r1-0528:free',
     };
-    if (selectedVariant) providerModels[model] = selectedVariant.gateway;
+    if (selectedVariant) providerModels[requestedModel] = selectedVariant.gateway;
     const configuredGrokModel = process.env.GROK_MODEL?.trim();
     const grokModel = selectedVariant?.gateway || (configuredGrokModel && !/grok-3-mini/i.test(configuredGrokModel)
         ? configuredGrokModel
@@ -1726,7 +1768,8 @@ async function createChatResponseImpl(req, res) {
     const creditStatus = await getCreditStatusAsync(req.app.locals.db, userEmail);
     const modelAllowedEarly = (slug) => hasModelAccess(creditStatus, slug);
     let routerPerformance = {};
-    if (model === 'smart') {
+    const anoninStrategyNormalized = String(anoninStrategy || 'random').trim().toLowerCase();
+    if (requestedModel === 'smart' || (requestedModel === 'anonin' && anoninStrategyNormalized === 'smart')) {
         const { isAdaptiveRouterEnabled, loadProviderPerformance } = require('../services/smartRouter2/routerPolicy');
         if (isAdaptiveRouterEnabled()) {
             routerPerformance = await loadProviderPerformance(req.app.locals.db);
@@ -1756,17 +1799,18 @@ async function createChatResponseImpl(req, res) {
         });
     }
     const modelAllowed = (slug) => hasModelAccess(creditStatus, slug);
-    if (model !== 'smart' && !modelAllowed(model)) {
+    if (requestedModel !== 'smart' && requestedModel !== 'anonin' && !modelAllowed(requestedModel)) {
         return res.status(403).json({
-            message: `${model} is not included in your current plan. Upgrade for premium models.`,
+            message: `${requestedModel} is not included in your current plan. Upgrade for premium models.`,
             code: 'MODEL_NOT_ALLOWED',
         });
     }
-    if (model === 'smart' && !modelAllowed(routeDecision.model)) {
+    if (requestedModel === 'smart' && !modelAllowed(routeDecision.model)) {
         routeDecision.model = 'gemini';
         routeDecision.reason = 'Smart Router picked Gemini from models available in User mode.';
     }
-    if (model === 'smart') {
+    let anoninExecution = null;
+    if (requestedModel === 'smart') {
         const preferred = routeDecision.model;
         const available = hasAttachedImage
             ? findVisionRoutedModel(preferred, modelAllowed)
@@ -1790,9 +1834,39 @@ async function createChatResponseImpl(req, res) {
             logSmartRouter('selected provider', { provider: available, category: routeDecision.category });
         }
     }
-    let routedModel = model === 'smart' ? routeDecision.model : model;
+    if (requestedModel === 'anonin') {
+        const { resolveAnoninRouting } = require('../services/anoninService');
+        const anoninResult = await resolveAnoninRouting({
+            connection: req.app.locals.db,
+            email: userEmail,
+            conversationId,
+            strategy: anoninStrategyNormalized,
+            modelAllowed,
+            hasVision: hasAttachedImage,
+            chooseSmartRoute,
+            latestPrompt,
+            routerMode,
+            normalizedInputMessages,
+            responsePrefs,
+            routerPerformance,
+        });
+        if (!anoninResult.ok) {
+            return res.status(503).json({
+                message: anoninResult.message,
+                code: anoninResult.code || 'ANONIN_UNAVAILABLE',
+            });
+        }
+        anoninExecution = anoninResult;
+        routeDecision.model = anoninResult.slug;
+        routeDecision.reason = 'Anonin Model selected a backend provider for this turn.';
+        routeDecision.displayName = 'Anonin Model';
+        routeDecision.category = routeDecision.category || 'anonin';
+    }
+    let routedModel = requestedModel === 'smart' || requestedModel === 'anonin'
+        ? routeDecision.model
+        : requestedModel;
     if (hasAttachedImage && !isVisionCapableSlug(routedModel)) {
-        if (model !== 'smart') {
+        if (requestedModel !== 'smart' && requestedModel !== 'anonin') {
             return res.status(400).json({
                 message: `${displayModelName(routedModel) || routedModel} cannot analyze images. Switch to Smart Router, Gemini, GPT, or Claude.`,
                 code: 'VISION_UNSUPPORTED_MODEL',
@@ -1805,6 +1879,13 @@ async function createChatResponseImpl(req, res) {
             routedModel = forcedVision;
             routeDecision.model = forcedVision;
         }
+    }
+
+    const anoninFallbackGateway = process.env.ANONIN_FALLBACK_OPENROUTER_MODEL?.trim()
+        || process.env.ANONIN_OPENROUTER_MODEL?.trim()
+        || '';
+    if (requestedModel === ANONIN_SLUG && anoninFallbackGateway && providerModels[routedModel]) {
+        providerModels[routedModel] = anoninFallbackGateway;
     }
 
     if (routedModel === 'ai_python') {
@@ -1920,7 +2001,7 @@ async function createChatResponseImpl(req, res) {
     } = require('../services/openRouterFreeModels');
     const directPerplexityKey = getPerplexityApiKey();
     const preferGemini = process.env.PREFER_GEMINI === 'true' && Boolean(process.env.GEMINI_API_KEY?.trim());
-    const usePreferredGemini = preferGemini && model === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
+    const usePreferredGemini = preferGemini && requestedModel === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
     let isOpenAI = Boolean(openAIKey && !usePreferredGemini && (routedModel === 'gpt' || routedModel === 'copilot'));
     let isXAI = routedModel === 'grok' && Boolean(xaiKey) && process.env.GROK_PROVIDER !== 'openrouter';
     let isClaude = routedModel === 'claude' && Boolean(process.env.CLAUDE_API_KEY?.trim());
@@ -1981,8 +2062,43 @@ async function createChatResponseImpl(req, res) {
         logSmartRouter('provider failed', { provider: routedModel, reason: 'missing_api_key' });
         return res.status(503).json(buildNoAiProvidersPayload());
     }
+    if (isAnoninVirtualSlug(routedModel) || routedModel === ANONIN_SLUG) {
+        return res.status(503).json({
+            message: 'Anonin Model is temporarily unavailable. Please try again later or select another AI model.',
+            code: 'ANONIN_UNAVAILABLE',
+        });
+    }
     if (!providerModels[routedModel]) {
-        return res.status(400).json({ message: 'Unsupported AI model' });
+        const recovered = requestedModel === 'smart'
+            ? (resolveAvailableSmartModel(routedModel, modelAllowed) || findRoutedModelWithApiKey(routedModel, modelAllowed))
+            : null;
+        if (recovered && providerModels[recovered]) {
+            routedModel = recovered;
+            routeDecision.model = recovered;
+        } else if (requestedModel === ANONIN_SLUG || isAnoninVirtualSlug(model)) {
+            const { pickEmergencyAnoninSlug } = require('../services/anoninService');
+            const emergency = pickEmergencyAnoninSlug(modelAllowed, { hasVision: hasAttachedImage });
+            if (emergency && providerModels[emergency]) {
+                routedModel = emergency;
+                routeDecision.model = emergency;
+            } else {
+                return res.status(503).json({
+                    message: 'Anonin Model is temporarily unavailable. Please try again later or select another AI model.',
+                    code: 'ANONIN_UNAVAILABLE',
+                });
+            }
+        } else if (isAnoninVirtualSlug(routedModel)) {
+            return res.status(503).json({
+                message: 'Anonin Model is temporarily unavailable. Please try again later or select another AI model.',
+                code: 'ANONIN_UNAVAILABLE',
+            });
+        } else {
+            return res.status(400).json({
+                message: 'Unsupported AI model',
+                code: 'UNSUPPORTED_MODEL',
+                model: requestedModel,
+            });
+        }
     }
 
     const connection = req.app.locals.db;
@@ -2064,7 +2180,7 @@ async function createChatResponseImpl(req, res) {
         source: languageContext.policy?.source,
         confidence: languageContext.policy?.confidence,
         preference: responsePrefs.responseLanguage,
-        selectedModel: model === 'smart' ? routeDecision?.model : model,
+        selectedModel: requestedModel === 'smart' || requestedModel === 'anonin' ? routeDecision?.model : requestedModel,
         systemLanguageApplied: true,
         languageInstructionIncluded: providerPayloadIncludesLanguage(systemPrompt, languageContext.policy),
     });
@@ -2580,8 +2696,45 @@ async function createChatResponseImpl(req, res) {
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
         const freeTierModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1']);
-        res.write(`data: ${JSON.stringify({ unlimited: creditStatus.unlimited, plan: creditStatus.plan, requestedModel:model, routedModel, actualModelId:selectedVariant ? ((isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isPerplexity || isCloudflare || isGptOssCf) ? (isPerplexity ? resolvePerplexityDirectModel(selectedVariant) : (isGptOssCf ? resolveGptOssModelId(selectedVariant.direct) : selectedVariant.direct)) : selectedVariant.gateway) : fallbackUsed ? providerModels[fallbackModel] : (isOpenRouterFree ? resolveOpenRouterFreeModelId(routedModel, providerModels[routedModel]) : routedModel === 'gpt-oss' ? resolveGptOssModelId() : providerModels[routedModel]), actualProviderModel: fallbackUsed ? fallbackModel : routedModel, routeReason:model === 'smart' ? routeDecision.reason : 'Exact model selected manually.', routeCategory:routeDecision.category, routeTaskType:routeDecision.taskType || routeDecision.category, routeDisplayName: isOpenRouterFree ? openRouterFreeRoute.displayName : routedModel === 'gpt-oss' ? 'GPT-OSS (Cloudflare)' : routeDecision.displayName, routeFallbacks:routeDecision.fallbacks || routeDecision.fallbackSlugs, router:routerMetaFromDecision(routeDecision, fallbackUsed), responseLanguage: languageContext.policy?.language, responseLanguageSource: languageContext.policy?.source, responseLanguageConfidence: languageContext.policy?.confidence, languageCorrelationId, knowledgeSources:knowledge.map(({id,name,excerpt,score,pageNumber,sectionLabel})=>({id,name,excerpt,score,pageNumber,sectionLabel})), costTier:freeTierModels.has(fallbackUsed ? fallbackModel : routedModel)?'free-allowance':'paid' })}\n\n`);
-        if (fallbackUsed) res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: fallbackModel })}\n\n`);
+        const resolvedActualModelId = selectedVariant
+            ? ((isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isPerplexity || isCloudflare || isGptOssCf)
+                ? (isPerplexity ? resolvePerplexityDirectModel(selectedVariant) : (isGptOssCf ? resolveGptOssModelId(selectedVariant.direct) : selectedVariant.direct))
+                : selectedVariant.gateway)
+            : fallbackUsed
+                ? providerModels[fallbackModel]
+                : (isOpenRouterFree
+                    ? resolveOpenRouterFreeModelId(routedModel, providerModels[routedModel])
+                    : routedModel === 'gpt-oss' ? resolveGptOssModelId() : providerModels[routedModel]);
+        const streamMeta = {
+            unlimited: creditStatus.unlimited,
+            plan: creditStatus.plan,
+            requestedModel,
+            routedModel,
+            actualModelId: resolvedActualModelId,
+            actualProviderModel: fallbackUsed ? fallbackModel : routedModel,
+            routeReason: requestedModel === 'smart' ? routeDecision.reason : requestedModel === 'anonin' ? 'Anonin Model is answering with a hidden backend provider.' : 'Exact model selected manually.',
+            routeCategory: routeDecision.category,
+            routeTaskType: routeDecision.taskType || routeDecision.category,
+            routeDisplayName: isOpenRouterFree ? openRouterFreeRoute.displayName : routedModel === 'gpt-oss' ? 'GPT-OSS (Cloudflare)' : routeDecision.displayName,
+            routeFallbacks: routeDecision.fallbacks || routeDecision.fallbackSlugs,
+            router: routerMetaFromDecision(routeDecision, fallbackUsed),
+            responseLanguage: languageContext.policy?.language,
+            responseLanguageSource: languageContext.policy?.source,
+            responseLanguageConfidence: languageContext.policy?.confidence,
+            languageCorrelationId,
+            knowledgeSources: knowledge.map(({ id, name, excerpt, score, pageNumber, sectionLabel }) => ({
+                id, name, excerpt, score, pageNumber, sectionLabel,
+            })),
+            costTier: freeTierModels.has(fallbackUsed ? fallbackModel : routedModel) ? 'free-allowance' : 'paid',
+        };
+        const { maskStreamMetaForAnonin } = require('../services/anoninService');
+        const clientStreamMeta = requestedModel === 'anonin'
+            ? maskStreamMetaForAnonin(streamMeta, { assistantMessageId })
+            : streamMeta;
+        res.write(`data: ${JSON.stringify(clientStreamMeta)}\n\n`);
+        if (fallbackUsed && requestedModel !== 'anonin') {
+            res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: fallbackModel })}\n\n`);
+        }
         if (shouldAugmentWithWeb) {
             if (webSourcesForResponse.length) {
                 res.write(`data: ${JSON.stringify({
@@ -2608,7 +2761,11 @@ async function createChatResponseImpl(req, res) {
             const cloudflareData = await apiResponse.json();
             assistantText = String(cloudflareData.result?.response || '');
             if (!assistantText) throw new Error('Cloudflare returned no response text');
-            res.write(`data: ${JSON.stringify({ text: assistantText, provider: 'Cloudflare', model: providerModels.cloudflare })}\n\n`);
+            res.write(`data: ${JSON.stringify(
+                requestedModel === 'anonin'
+                    ? { text: assistantText }
+                    : { text: assistantText, provider: 'Cloudflare', model: providerModels.cloudflare },
+            )}\n\n`);
         }
 
         const reader = isCloudflare ? null : apiResponse.body?.getReader?.();
@@ -2696,6 +2853,22 @@ async function createChatResponseImpl(req, res) {
                     const chatConnection = req.app.locals.db;
                     const createdAt = new Date().toISOString();
                     const savedMessages = normalizeMessages([...messages, { role: 'assistant', content: assistantText }]);
+                    if (requestedModel === 'anonin' && assistantMessageId && String(assistantText || '').trim()) {
+                        const { buildIdentityLabels } = require('../services/anoninService');
+                        const { saveMessageIdentityAsync } = require('../services/anoninPersistence');
+                        const labels = buildIdentityLabels(actualUsageModel, resolvedActualModelId);
+                        await saveMessageIdentityAsync(chatConnection, {
+                            messageId: String(assistantMessageId),
+                            conversationId,
+                            email: userEmail,
+                            actualSlug: actualUsageModel,
+                            providerLabel: labels.providerLabel,
+                            modelLabel: labels.modelLabel,
+                            gatewayModelId: resolvedActualModelId,
+                            strategy: anoninExecution?.strategy || anoninStrategyNormalized,
+                            fallbackFromSlug: anoninExecution?.fallbackFrom || null,
+                        });
+                    }
                     recordRouterMetric(chatConnection, {
                         email: userEmail,
                         taskType: routeDecision.taskType || routeDecision.category,
@@ -2720,7 +2893,7 @@ async function createChatResponseImpl(req, res) {
                             userEmail,
                             conversationId,
                             temporary,
-                            model,
+                            model: requestedModel,
                             savedMessages,
                             title: createConversationTitle(savedMessages),
                             bumpUsage: !temporary && !require('../billing/accessControl').ownerPlusActive(creditStatus),
@@ -2747,7 +2920,7 @@ async function createChatResponseImpl(req, res) {
                         data.conversations.push({
                             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                             email: normalizedEmail,
-                            model,
+                            model: requestedModel,
                             title: createConversationTitle(mergedMessages),
                             messages: mergedMessages,
                             createdAt: now,
@@ -2764,11 +2937,13 @@ async function createChatResponseImpl(req, res) {
         return res.end();
     } catch (error) {
         const timedOut = error.name === 'TimeoutError' || /timed?\s*out/i.test(error.message);
-        const message = timedOut
-            ? 'The AI provider took too long to respond. Try again or choose another configured model.'
-            : hasAttachedImage
-                ? 'Image analysis failed due to a provider or network error. Retry with Smart Router or a smaller screenshot.'
-                : 'Could not connect to the AI service. Check your internet connection and backend API key.';
+        const message = requestedModel === 'anonin'
+            ? 'Anonin Model is temporarily unavailable. Please try again later or select another AI model.'
+            : timedOut
+                ? 'The AI provider took too long to respond. Try again or choose another configured model.'
+                : hasAttachedImage
+                    ? 'Image analysis failed due to a provider or network error. Retry with Smart Router or a smaller screenshot.'
+                    : 'Could not connect to the AI service. Check your internet connection and backend API key.';
         console.error('[CHAT_PROVIDER]', chatCorrelationId, error.name, error.message);
         setImmediate(() => {
             try {
@@ -2821,6 +2996,13 @@ function buildChatInternalErrorMessage(body = {}) {
 const createChatResponse = async (req, res) => {
     const correlationId = String(req.correlationId || req.headers['x-request-id'] || `chat-${Date.now()}`);
     try {
+        const { normalizeVirtualChatModelSlug, ANONIN_SLUG } = require('../services/anoninService');
+        if (req.body && req.body.model != null && String(req.body.model).trim()) {
+            const normalized = normalizeVirtualChatModelSlug(req.body.model);
+            if (normalized === ANONIN_SLUG) {
+                req.body.model = ANONIN_SLUG;
+            }
+        }
         await createChatResponseImpl(req, res);
     } catch (error) {
         const internalHint = error?.code ? ` code=${error.code}` : '';

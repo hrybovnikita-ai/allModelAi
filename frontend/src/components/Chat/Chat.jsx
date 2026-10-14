@@ -69,6 +69,7 @@ import './ComposerModern.css';
 import './ComposerToolSurfaces.css';
 import './ChatMobileLayout.css';
 import './ChatModelSelector.css';
+import './AnoninMessageReveal.css';
 import {
   IconArrowRight,
   IconCamera,
@@ -92,10 +93,13 @@ import { isStandaloneApp } from '../../lib/appMode';
 import { readResponsePrefs } from '../../lib/responseLanguagePrefs.js';
 import { formatPaymentError } from '../../lib/formatPaymentError';
 import { normalizeCreditStatus } from '../../lib/creditStatus';
-import { runTestWayforpayCheckout, submitWayforpayCheckout } from '../../lib/wayforpay';
+import WayforpayPaymentModal from '../Checkout/WayforpayPaymentModal';
 import './SubscribeModalPremium.css';
 import { copyToClipboard } from '../../lib/clipboard';
 import MessageActions from './MessageActions';
+import AnoninMessageReveal from './AnoninMessageReveal';
+import { fetchAnoninRevealedIds } from '../../lib/anoninClient';
+import { isAnoninModelSlug, normalizeAnoninModelSlug } from '../../lib/anoninModelSlug';
 import ChatSidebar from './ChatSidebar';
 import { IconToolKnowledgeBase } from './ChatSidebarIcons';
 import KnowledgeSourceChips from './KnowledgeSourceChips';
@@ -191,7 +195,14 @@ function safeJSON(value, fallback) {
 
 const fallbackModel = dashboardModels.find((model) => model.slug === 'gpt') || dashboardModels[0];
 function validModelSlug(slug) {
-  return dashboardModels.some((model) => model.slug === slug) ? slug : fallbackModel.slug;
+  const normalized = normalizeAnoninModelSlug(slug);
+  if (dashboardModels.some((model) => model.slug === normalized)) {
+    if (normalized === 'anonin' && normalized !== String(slug || '').trim().toLowerCase()) {
+      safeStorageSet('localStorage', 'allmodelai_selected_model', 'anonin');
+    }
+    return normalized;
+  }
+  return fallbackModel.slug;
 }
 
 function subscribeVoices(synthesis, onVoices) {
@@ -234,6 +245,9 @@ export default function Chat() {
       safeStorageGet('localStorage', 'allmodelai_selected_model', 'gpt');
     return validModelSlug(requested);
   });
+  const [anoninStrategy, setAnoninStrategy] = useState(() => (
+    safeStorageGet('localStorage', 'allmodelai_anonin_strategy', 'random') || 'random'
+  ));
   const [prompt, setPrompt] = useState(location.state?.starterPrompt || '');
   const [isSending, setIsSending] = useState(false);
   const [isStreamingResponse, setIsStreamingResponse] = useState(false);
@@ -333,7 +347,11 @@ export default function Chat() {
   const [subscribeError, setSubscribeError] = useState('');
   const [primaryPaymentProvider, setPrimaryPaymentProvider] = useState(null);
   const [wayforpayTestMode, setWayforpayTestMode] = useState(false);
+  const [wayforpayCurrency, setWayforpayCurrency] = useState('USD');
   const [paymentsConfigLoaded, setPaymentsConfigLoaded] = useState(false);
+  const [wayforpayPayOpen, setWayforpayPayOpen] = useState(false);
+  const [wayforpayCheckoutCtx, setWayforpayCheckoutCtx] = useState(null);
+  const wayforpayPaySucceededRef = useRef(false);
 
   const standaloneApp = useMemo(() => isStandaloneApp(), []);
 
@@ -375,32 +393,9 @@ export default function Chat() {
 
   const updateSubscribeForm = (field, value) => setSubscribeForm((form) => ({ ...form, [field]: value }));
 
-  const startWayforpayCheckout = async (planId) => {
-    const checkoutPlan = CHAT_PLAN_TO_CHECKOUT[planId] || 'common';
-    if (wayforpayTestMode) {
-      const result = await runTestWayforpayCheckout(apiFetch, checkoutPlan);
-      if (!result?.paid) {
-        throw new Error(result?.message || t('Test payment could not be confirmed.'));
-      }
-      const creditsRes = await apiFetch(`/api/credits?email=${encodeURIComponent(user.email)}`);
-      if (creditsRes.ok) setCreditStatus(await creditsRes.json());
-      setSubscribeModalOpen(false);
-      logger.success('WayForPay test subscription activated (simulated, no charge)');
-      return;
-    }
-    const response = await apiFetch('/api/payments/wayforpay/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan: checkoutPlan }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data.message || data.userMessage || t('Could not start WayForPay checkout.'));
-    }
-    if (data.mockCheckout) {
-      throw new Error(t('Test checkout should use the simulated payment flow. Refresh and try again.'));
-    }
-    submitWayforpayCheckout(data);
+  const refreshCreditsAfterPayment = async () => {
+    const creditsRes = await apiFetch(`/api/credits?email=${encodeURIComponent(user.email)}`);
+    if (creditsRes.ok) setCreditStatus(normalizeCreditStatus(await creditsRes.json()));
   };
 
   const submitSubscription = async () => {
@@ -422,8 +417,6 @@ export default function Chat() {
         setCreditStatus(data);
         setSubscribeModalOpen(false);
         logger.success('Developer test subscription activated (no charge)');
-      } else if (primaryPaymentProvider === 'wayforpay') {
-        await startWayforpayCheckout(subscribePlan.id);
       } else {
         const checkoutPlan = CHAT_PLAN_TO_CHECKOUT[subscribePlan.id] || 'common';
         const response = await apiFetch('/api/payments/checkout', {
@@ -637,6 +630,21 @@ export default function Chat() {
   }, [activeConversationId]);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!activeConversationId || isGuest) return;
+      const revealedIds = await fetchAnoninRevealedIds(activeConversationId);
+      if (cancelled || !revealedIds.length) return;
+      setMessages((current) => current.map((message) => (
+        message.id && revealedIds.includes(message.id)
+          ? { ...message, anoninRevealed: true }
+          : message
+      )));
+    })();
+    return () => { cancelled = true; };
+  }, [activeConversationId, isGuest]);
+
+  useEffect(() => {
     activeProjectRef.current = activeProject;
   }, [activeProject]);
 
@@ -749,12 +757,12 @@ export default function Chat() {
   }, [attachedImage, isListening, isSending, selectedModel.name, selectedSkill, t, voiceInputState]);
 
   const modelIsOnline = (slug) => {
-    if (!Object.keys(modelStatus).length || slug === 'smart') return true;
+    if (!Object.keys(modelStatus).length || slug === 'smart' || isAnoninModelSlug(slug)) return true;
     const statusKey = ['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'perplexity'].includes(slug) ? slug : 'others';
     return modelStatus[statusKey] !== false;
   };
 
-  const modelAllowed = (slug) => slug === 'smart'
+  const modelAllowed = (slug) => slug === 'smart' || isAnoninModelSlug(slug)
     || Boolean(creditStatus?.models?.includes('all') || creditStatus?.models?.includes(slug));
 
   const changeAccessMode = async (mode) => {
@@ -771,7 +779,7 @@ export default function Chat() {
       if (!response.ok) throw new Error(access.message || 'Could not change the access mode.');
       setCreditStatus(normalizeCreditStatus(access) || access);
       globalThis.dispatchEvent(new CustomEvent('allmodelai:access-mode-updated', { detail: access }));
-      if (!access.models.includes('all') && !access.models.includes(selectedSlug) && selectedSlug !== 'smart') {
+      if (!access.models.includes('all') && !access.models.includes(selectedSlug) && selectedSlug !== 'smart' && !isAnoninModelSlug(selectedSlug)) {
         setSelectedSlug('gemini');
         safeStorageSet('localStorage', 'allmodelai_selected_model', 'gemini');
         navigate('/chat?model=gemini', { replace: true });
@@ -805,6 +813,8 @@ export default function Chat() {
     if (model.slug === 'smart') {
       logger.action('Smart Router selected');
       logger.router('Chat mode selected', { provider: 'Smart Router' });
+    } else if (model.slug === 'anonin') {
+      logger.action('Anonin Model selected');
     } else {
       logger.action('Chat mode selected', { model: model.slug, version: version?.id });
       logger.router('Provider selected', { model: model.name, slug: model.slug, version: version?.name });
@@ -1333,6 +1343,9 @@ export default function Chat() {
         if (cancelled) return;
         setPrimaryPaymentProvider(config.primaryProvider || null);
         setWayforpayTestMode(Boolean(config.wayforpayTestMode));
+        if (config.wayforpayDefaultCurrency) {
+          setWayforpayCurrency(config.wayforpayDefaultCurrency);
+        }
         if (config.primaryProvider === 'stripe' && !config.stripeConfiguration?.ok) {
           setSubscribeError(formatPaymentError(config, t('Secure checkout is temporarily unavailable.')));
         }
@@ -1673,7 +1686,9 @@ export default function Chat() {
     const controller = new AbortController();
     activeRequest.current = controller;
     const assistantIndex = nextMessages.length;
+    const assistantMessageId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     setMessages([...nextMessages, {
+      id: assistantMessageId,
       role: 'assistant',
       text: generatingVideo ? 'Creating your video… This can take several minutes.' : generatingImage ? 'Generating image…' : hadImageAttachment ? 'Analyzing your screenshot with vision AI…' : selectedSkill === 'web' ? 'Searching the web…' : selectedSkill === 'deep-research' ? 'Starting Deep Research…' : '',
       modelSlug: selectedSlug,
@@ -1972,7 +1987,24 @@ export default function Chat() {
       const response = await apiFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ responseMode: generatingFile ? 'file' : 'chat', maxTokens: generatingFile ? 4096 : undefined, model: selectedSlug, variant: selectedVersion?.id, messages: nextMessages, userEmail: user.email, conversationId, temporary: temporaryChat, webSearch: webSearchFlag, useKnowledge: useKnowledgeBase, routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced', responsePrefs: readResponsePrefs(typeof localStorage !== 'undefined' ? localStorage : null), systemInstructions: safeStorageGet('localStorage', 'allmodelai_system_instructions') || '', fallbackEnabled: !selectedVersion }),
+        body: JSON.stringify({
+          responseMode: generatingFile ? 'file' : 'chat',
+          maxTokens: generatingFile ? 4096 : undefined,
+          model: normalizeAnoninModelSlug(selectedSlug) || selectedSlug,
+          variant: selectedVersion?.id,
+          messages: nextMessages,
+          userEmail: user.email,
+          conversationId,
+          temporary: temporaryChat,
+          webSearch: webSearchFlag,
+          useKnowledge: useKnowledgeBase,
+          routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced',
+          responsePrefs: readResponsePrefs(typeof localStorage !== 'undefined' ? localStorage : null),
+          systemInstructions: safeStorageGet('localStorage', 'allmodelai_system_instructions') || '',
+          fallbackEnabled: !selectedVersion,
+          assistantMessageId: isAnoninModelSlug(selectedSlug) ? assistantMessageId : undefined,
+          anoninStrategy: isAnoninModelSlug(selectedSlug) ? anoninStrategy : undefined,
+        }),
         signal: controller.signal,
       });
 
@@ -2058,7 +2090,7 @@ export default function Chat() {
           }
           if (event.unlimited) setCreditStatus((current) => ({ ...current, ...event, unlimited: true }));
           if (event.routedModel) {
-            if (selectedSlug !== 'smart' && event.actualModelId) {
+            if (selectedSlug !== 'smart' && !isAnoninModelSlug(selectedSlug) && event.actualModelId) {
               logger.router('Alternate model answering', { selected: selectedModel.name, actual: event.actualModelId });
             }
             if (selectedSlug === 'smart' && !routerGroupOpened) {
@@ -2083,7 +2115,7 @@ export default function Chat() {
             logger.router(`${event.requestedModel} unavailable`);
             logger.router('Trying fallback', { provider: event.actualModel });
           }
-          if (event.router || event.knowledgeSources || event.routeDisplayName) {
+          if (!isAnoninModelSlug(selectedSlug) && (event.router || event.knowledgeSources || event.routeDisplayName)) {
             setMessages((current) => current.map((message, idx) => (
               idx === assistantIndex
                 ? {
@@ -2099,6 +2131,16 @@ export default function Chat() {
                 }
                 : message
             )));
+          }
+          if (isAnoninModelSlug(selectedSlug) && event.knowledgeSources) {
+            setMessages((current) => current.map((message, idx) => (
+              idx === assistantIndex
+                ? { ...message, knowledgeSources: event.knowledgeSources }
+                : message
+            )));
+          }
+          if (isAnoninModelSlug(selectedSlug) && event.assistantMessageId && !event.anoninMode) {
+            /* ignore leaked routing metadata */
           }
           if (event.agentProgress?.agent) {
             setMessages((current) => current.map((message, idx) => (
@@ -2801,6 +2843,7 @@ export default function Chat() {
                 const allowed = modelAllowed(model.slug);
                 const online = modelIsOnline(model.slug);
                 if (model.slug === 'smart') return <button type="button" role="option" aria-selected={selectedSlug === 'smart'} className={selectedSlug === 'smart' ? 'selected' : ''} key={model.slug} onClick={() => chooseModel(model)}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {t("Ready")}</small></span>{selectedSlug === 'smart' && <b>✓</b>}</button>;
+                if (model.slug === 'anonin') return <button type="button" role="option" aria-selected={isAnoninModelSlug(selectedSlug)} className={isAnoninModelSlug(selectedSlug) ? 'selected' : ''} key={model.slug} onClick={() => chooseModel(model)}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{t('Mystery AI · reveal after reply')}</small></span>{isAnoninModelSlug(selectedSlug) && <b>✓</b>}</button>;
                 return <div className="model-family-group" role="group" aria-labelledby={`model-family-${model.slug}`} key={model.slug}>
                   <div className="model-family-heading" id={`model-family-${model.slug}`}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {!allowed ? 'Subscription / Developer' : online ? t("Ready") : t("API needed")}</small></span>{!allowed && <button type="button" className="subscribe-btn" onClick={(event) => { event.stopPropagation(); setModelMenuOpen(false); openSubscribe(); }}><span>🔒</span> {t('Subscribe')}</button>}</div>
                   {(variantCatalog[model.slug] || []).map((version) => {
@@ -2946,7 +2989,10 @@ export default function Chat() {
             )
           )}
           {messages.map((message, index) => {
-            const messageModel = dashboardModels.find((model) => model.slug === message.modelSlug) || selectedModel;
+            const anoninCatalog = dashboardModels.find((model) => model.slug === 'anonin');
+            const messageModel = message.modelSlug === 'anonin'
+              ? anoninCatalog || selectedModel
+              : dashboardModels.find((model) => model.slug === message.modelSlug) || selectedModel;
             const text = message.content ?? message.text ?? '';
             const generatedFile = message.role === 'assistant' ? parseGeneratedFile(text) : null;
             const filePending = message.generatingFile && isSending && index === messages.length - 1;
@@ -2967,7 +3013,7 @@ export default function Chat() {
                 rating={messageRatings[index] || null}
                 feedbackReason={feedback || ''}
                 isFavorite={favoriteEntry}
-                modelInfo={message.role === 'assistant' ? messageModel : null}
+                modelInfo={message.role === 'assistant' && message.modelSlug !== 'anonin' ? messageModel : null}
                 conversationId={temporaryChat ? null : activeConversationId}
                 isSending={isSending}
                 isRegenerating={regeneratingMessageIndex === index}
@@ -2991,6 +3037,36 @@ export default function Chat() {
                 translate={t}
               />
             )}
+            {message.role === 'assistant'
+              && message.modelSlug === 'anonin'
+              && text
+              && !activelyStreaming
+              && !editing && (
+              <AnoninMessageReveal
+                messageId={message.id}
+                conversationId={temporaryChat ? null : activeConversationId}
+                revealed={Boolean(message.anoninRevealed)}
+                revealData={message.anoninReveal}
+                disabled={isSending}
+                translate={t}
+                onRevealed={(payload) => {
+                  setMessages((current) => current.map((item, idx) => (
+                    idx === index
+                      ? {
+                        ...item,
+                        anoninRevealed: true,
+                        anoninReveal: {
+                          providerLabel: payload.providerLabel,
+                          modelLabel: payload.modelLabel,
+                          actualSlug: payload.actualSlug,
+                          fallbackFromSlug: payload.fallbackFromSlug,
+                        },
+                      }
+                      : item
+                  )));
+                }}
+              />
+            )}
             </div>
            </article>
             })}
@@ -3010,6 +3086,44 @@ export default function Chat() {
         </div>
 
         <form className={`chat-composer chat-composer-modern ${messages.length === 0 ? 'welcome-composer' : 'conversation-composer'}`} onSubmit={sendMessage}>
+          {isAnoninModelSlug(selectedSlug) && (
+            <div className="anonin-mode-bar" role="group" aria-label={t('Anonin routing strategy')}>
+              <span>{t('Anonin Model')}</span>
+              <button
+                type="button"
+                className={anoninStrategy === 'random' ? 'active' : ''}
+                aria-pressed={anoninStrategy === 'random'}
+                onClick={() => {
+                  setAnoninStrategy('random');
+                  safeStorageSet('localStorage', 'allmodelai_anonin_strategy', 'random');
+                }}
+              >
+                {t('Random')}
+              </button>
+              <button
+                type="button"
+                className={anoninStrategy === 'smart' ? 'active' : ''}
+                aria-pressed={anoninStrategy === 'smart'}
+                onClick={() => {
+                  setAnoninStrategy('smart');
+                  safeStorageSet('localStorage', 'allmodelai_anonin_strategy', 'smart');
+                }}
+              >
+                {t('Smart')}
+              </button>
+              <button
+                type="button"
+                className={anoninStrategy === 'per_message' ? 'active' : ''}
+                aria-pressed={anoninStrategy === 'per_message'}
+                onClick={() => {
+                  setAnoninStrategy('per_message');
+                  safeStorageSet('localStorage', 'allmodelai_anonin_strategy', 'per_message');
+                }}
+              >
+                {t('New model each message')}
+              </button>
+            </div>
+          )}
           <div className="composer-quick-texts">
             <button type="button" onClick={() => chooseSuggestion(t('Write a short story about a time traveler.'))}>{t('Write a short story about a time traveler.')}</button>
             <button type="button" onClick={() => chooseSuggestion(t('Summarize the main benefits of daily exercise.'))}>{t('Summarize the main benefits of daily exercise.')}</button>
@@ -3495,15 +3609,25 @@ export default function Chat() {
             </>
           ) : primaryPaymentProvider === 'wayforpay' ? (
             <>
-              <p className="subscribe-stripe-label">{t('Secure card payment via WayForPay')}</p>
-              <p className="subscribe-dev-note">{t('TEST MODE — NO REAL MONEY WILL BE CHARGED. Test payment simulates a WayForPay callback on the server.')}</p>
+              <p className="subscribe-stripe-label">{t('Secure checkout — card, Apple Pay, or Google Pay via WayForPay')}</p>
+              {wayforpayTestMode && (
+                <p className="subscribe-dev-note">{t('TEST MODE — NO REAL MONEY WILL BE CHARGED. Test payment simulates a WayForPay callback on the server.')}</p>
+              )}
               <button
                 disabled={subscribeBusy}
                 className="subscribe-confirm"
                 type="button"
-                onClick={() => submitSubscription()}
+                onClick={() => {
+                  setWayforpayCheckoutCtx({
+                    planKey: CHAT_PLAN_TO_CHECKOUT[subscribePlan.id] || 'common',
+                    planTitle: `${subscribePlan.name} — ${subscribePlan.price}`,
+                    priceLabel: subscribePlan.price,
+                  });
+                  wayforpayPaySucceededRef.current = false;
+                  setWayforpayPayOpen(true);
+                }}
               >
-                {subscribeBusy ? t('Processing…') : `${t('Pay with WayForPay')} · ${subscribePlan.price}`}
+                {t('Continue to payment')} · {subscribePlan.price}
               </button>
             </>
           ) : (
@@ -3564,6 +3688,33 @@ export default function Chat() {
       </section></div>}
       {feedbackModalOpen && <div className="feature-modal-backdrop" onClick={() => setFeedbackModalOpen(false)}><section className="feature-modal" onClick={(event) => event.stopPropagation()}><span className="feature-modal-icon">💬</span><small>FEEDBACK</small><h2>Tell us what this response did well</h2><p>Your feedback helps improve the model.</p><textarea autoFocus value={feedbackText} onChange={(event) => setFeedbackText(event.target.value)} placeholder="Example: very clear explanation, great code example" rows="4" /><div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:12}}><button className="modal-cancel" onClick={() => setFeedbackModalOpen(false)}>{t("Cancel")}</button><button disabled={!feedbackText.trim()} onClick={submitFeedback}>Send feedback</button></div></section></div>}
       <AiCreditsPurchaseDialog open={aiCreditsPurchaseOpen} onClose={() => setAiCreditsPurchaseOpen(false)} t={t} />
+      <WayforpayPaymentModal
+        open={wayforpayPayOpen && Boolean(wayforpayCheckoutCtx?.planKey)}
+        onClose={() => {
+          setWayforpayPayOpen(false);
+          setWayforpayCheckoutCtx(null);
+          if (wayforpayPaySucceededRef.current) {
+            wayforpayPaySucceededRef.current = false;
+            setSubscribeModalOpen(false);
+            setSubscribePlan(null);
+          }
+        }}
+        planKey={wayforpayCheckoutCtx?.planKey}
+        planTitle={wayforpayCheckoutCtx?.planTitle}
+        priceLabel={wayforpayCheckoutCtx?.priceLabel}
+        httpClient={apiFetch}
+        serverTestMode={wayforpayTestMode}
+        developerMode={false}
+        userEmail={user?.email || ''}
+        currency={wayforpayCurrency}
+        onCurrencyChange={setWayforpayCurrency}
+        t={t}
+        onPaymentSuccess={async () => {
+          wayforpayPaySucceededRef.current = true;
+          await refreshCreditsAfterPayment();
+          logger.success(t('Subscription updated'));
+        }}
+      />
     </main>
   );
 }

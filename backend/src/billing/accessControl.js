@@ -48,7 +48,7 @@ function modelsForPlan(planKey) {
 
 function hasModelAccess(access, modelSlug) {
     const slug = String(modelSlug || '').trim();
-    if (!slug || slug === 'smart' || slug === 'ai_python') return true;
+    if (!slug || slug === 'smart' || slug === 'ai_python' || slug === 'anonin') return true;
     if (ownerPlusActive(access)) return true;
     const allowed = access?.models || modelsForPlan(access?.plan);
     if (allowed.includes('all')) return true;

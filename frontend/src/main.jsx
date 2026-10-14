@@ -6,7 +6,7 @@ installHooksDevDiagnostics()
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, HashRouter } from 'react-router-dom'
 import './index.css'
 import './styles/design-system.css'
 import './styles/premium-ui.css'
@@ -17,7 +17,11 @@ import App from './App.jsx'
 import { SessionProvider } from './components/Session/SessionProvider.jsx'
 import RouteErrorBoundary from './components/ErrorBoundary/RouteErrorBoundary.jsx'
 import { applyDeviceProfile } from './lib/deviceProfile.js'
+import { initPlatformShell } from './lib/platformBootstrap.js'
+import { isElectronShell } from './lib/nativePlatform.js'
+import './styles/platform-shell.css'
 import { installNativeFetchInterceptor } from './lib/nativeFetch.js'
+import { startBackendHealthCheck } from './lib/backendHealthCheck.js'
 import { initPwaInstallPrompt } from './lib/pwaInstall.js'
 import { initServiceWorker } from './lib/serviceWorker.js'
 import { startRedirectPrerequisitesPreload } from './lib/authRedirectPreload.js'
@@ -25,6 +29,9 @@ import { ensureSocialAuthReady } from './lib/firebase.js'
 import { reconcileStaleRedirectIntent } from './lib/socialRedirectState.js'
 
 installNativeFetchInterceptor()
+if (isElectronShell()) {
+  startBackendHealthCheck({ attempts: 6, intervalMs: 2500 })
+}
 void startRedirectPrerequisitesPreload().catch(() => {
   /* Redirect gate surfaces recovery errors. */
 })
@@ -62,18 +69,21 @@ const applyTheme = () => {
 applyTheme()
 systemTheme.addEventListener('change', applyTheme)
 applyDeviceProfile()
+initPlatformShell()
 
 initPwaInstallPrompt()
 void initServiceWorker()
 
+const AppRouter = isElectronShell() ? HashRouter : BrowserRouter
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <BrowserRouter>
+    <AppRouter>
       <RouteErrorBoundary>
         <SessionProvider>
           <App />
         </SessionProvider>
       </RouteErrorBoundary>
-    </BrowserRouter>
+    </AppRouter>
   </StrictMode>,
 )

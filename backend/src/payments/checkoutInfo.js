@@ -6,11 +6,15 @@ const {
     paymentsCheckoutAvailable,
     stripeCheckoutEnabledForDeployment,
     wayforpayCheckoutEnabledForDeployment,
+    paddleCheckoutEnabledForDeployment,
+    listAvailableCheckoutProviders,
     stripePaymentsConfigured,
 } = require('./paymentProvider');
 const { stripeConfigurationReport } = require('./stripeConfig');
+const { paddleConfigurationReport, isPaddleSandbox } = require('./paddleConfig');
 
 const TEST_MODE_BANNER = 'Stripe Test Mode — No real charges';
+const PADDLE_SANDBOX_BANNER = 'Paddle Sandbox — No real charges';
 
 const buildCheckoutInfo = () => {
     const stripeGuard = assertStripeCheckoutAllowed();
@@ -20,9 +24,13 @@ const buildCheckoutInfo = () => {
     const wayforpayOn = wayforpayCheckoutAvailable();
     const primaryProvider = resolvePrimaryPaymentProvider();
     const paymentMode = getPaymentMode();
+    const paddleReport = paddleConfigurationReport();
+    const paddleOn = paddleCheckoutEnabledForDeployment();
+    const checkoutProviders = listAvailableCheckoutProviders();
     const wayforpayTestMode = wayforpayOn && wayforpayConfig().testMode;
     const stripeTestMode = stripeOn && isStripeTestMode();
-    const sandboxDeployment = paymentMode === 'test' || wayforpayTestMode || stripeTestMode;
+    const paddleSandbox = paddleReport.sandbox || isPaddleSandbox();
+    const sandboxDeployment = paymentMode === 'test' || wayforpayTestMode || stripeTestMode || (paddleOn && paddleSandbox);
     const liveWayforpayReady = wayforpayOn && !wayforpayTestMode && wayforpayConfigured()
         && process.env.WAYFORPAY_LIVE_CONFIRM === 'true';
     const showTestModeBanner = sandboxDeployment && !liveWayforpayReady;
@@ -31,13 +39,15 @@ const buildCheckoutInfo = () => {
         ? 'WayForPay'
         : primaryProvider === 'stripe'
             ? 'Stripe'
-            : null;
+            : primaryProvider === 'paddle'
+                ? 'Paddle'
+                : null;
 
     let checkoutUnavailableMessage = null;
     if (!paymentsCheckoutAvailable()) {
         checkoutUnavailableMessage = process.env.NODE_ENV === 'production'
             ? 'Payments are temporarily unavailable. Please try again later.'
-            : 'Payments are not configured. Add WayForPay or Stripe credentials on the server.';
+            : 'Payments are not configured. Add Stripe, Paddle, or WayForPay credentials on the server.';
     } else if (primaryProvider === 'stripe' && stripeKeyPresent && !stripeGuard.ok) {
         checkoutUnavailableMessage = stripeGuard.message;
     } else if (primaryProvider === 'stripe' && !stripeConfig.ok) {
@@ -68,18 +78,33 @@ const buildCheckoutInfo = () => {
         wayforpayCheckoutEnabled: wayforpayCheckoutEnabledForDeployment(),
         wayforpayTestMode,
         wayforpayMockCheckout: wayforpayTestMode,
-        recurringBillingSupported: primaryProvider === 'stripe',
+        recurringBillingSupported: primaryProvider === 'stripe' || primaryProvider === 'paddle',
         renewalNotice: primaryProvider === 'stripe'
             ? 'Subscriptions renew automatically each billing period until you cancel in the billing portal.'
-            : 'Each successful payment grants one month of access. Automatic card renewal is not enabled yet — renew manually before your period ends unless we enable WayForPay recurring billing.',
+            : primaryProvider === 'paddle'
+                ? 'Paddle subscriptions renew automatically each billing period until you cancel in the Paddle customer portal.'
+                : 'Each successful payment grants one month of access. Automatic card renewal is not enabled yet — renew manually before your period ends unless we enable WayForPay recurring billing.',
+        wayforpaySupportedCurrencies: wayforpayOn ? wayforpayConfig().supportedCurrencies : [],
+        wayforpayDefaultCurrency: wayforpayOn ? wayforpayConfig().currency : null,
         supportedPaymentMethodsNote: primaryProvider === 'wayforpay'
             ? 'Visa, MasterCard, Google Pay, and Apple Pay through WayForPay secure checkout.'
             : primaryProvider === 'stripe'
                 ? 'Cards and wallets supported by Stripe.'
-                : null,
+                : primaryProvider === 'paddle'
+                    ? 'Cards and wallets supported by Paddle secure checkout.'
+                    : null,
+        checkoutProviders,
+        paddleConfigured: paddleReport.ok,
+        paddleCheckoutEnabled: paddleOn,
+        paddleSandbox,
+        paddleSetupInstructions: paddleReport.setupInstructions,
+        paddleMissingEnvVars: paddleReport.missing,
         showTestModeBanner,
-        testModeBannerText: showTestModeBanner ? TEST_MODE_BANNER : null,
+        testModeBannerText: showTestModeBanner
+            ? (primaryProvider === 'paddle' && paddleSandbox ? PADDLE_SANDBOX_BANNER : TEST_MODE_BANNER)
+            : null,
         showStripeTestCardHint: Boolean(primaryProvider === 'stripe' && stripeTestMode),
+        showPaddleSandboxHint: Boolean(paddleOn && paddleSandbox),
         secureCheckoutLabel: showTestModeBanner ? 'Secure test checkout' : 'Secure payment',
     };
 };

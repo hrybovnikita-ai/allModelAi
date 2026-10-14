@@ -48,6 +48,15 @@ function analyzeBillingPortalAccess(detail, { hasSubscription = false, active = 
         };
     }
 
+    if (provider === 'paddle') {
+        return {
+            canManageStripeBilling: false,
+            billingManagementCode: 'PADDLE_SUBSCRIPTION',
+            billingManagementMessage:
+                'Your subscription is billed through Paddle. Manage billing in the Paddle customer portal (link from your Paddle receipt email).',
+        };
+    }
+
     if (isRealStripeCustomerId(customerId)) {
         return {
             canManageStripeBilling: true,

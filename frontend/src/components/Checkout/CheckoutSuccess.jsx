@@ -14,7 +14,7 @@ import './CheckoutProduction.css';
 export default function CheckoutSuccess() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { status: sessionStatus } = useSession();
+  const { status: sessionStatus, refresh } = useSession();
   const [phase, setPhase] = useState('confirming');
   const [error, setError] = useState('');
   const [testMode, setTestMode] = useState(false);
@@ -24,6 +24,7 @@ export default function CheckoutSuccess() {
   const intentId = searchParams.get('payment_intent') || searchParams.get('intent');
   const orderReference = searchParams.get('orderReference');
   const sessionId = searchParams.get('session_id');
+  const paymentProvider = searchParams.get('provider');
   const isDeveloper = planSlug === 'developer';
 
   const returnPath = useMemo(() => {
@@ -80,7 +81,25 @@ export default function CheckoutSuccess() {
           if (cancelled) return;
           if (!paid?.paid) throw new Error('Payment confirmation is still pending.');
           setTestMode((prev) => Boolean(paid.testMode ?? prev));
+          await refresh({ force: true });
           setPhase('success');
+          return;
+        }
+        if (paymentProvider === 'paddle') {
+          for (let attempt = 0; attempt < 10; attempt += 1) {
+            const subRes = await apiFetch('/api/subscription');
+            if (cancelled) return;
+            if (subRes.ok) {
+              const sub = await subRes.json();
+              if (sub?.hasSubscription && sub?.active && sub?.paymentProvider === 'paddle') {
+                setTestMode((prev) => Boolean(sub?.paddleSandbox ?? sub?.showTestModeBanner ?? prev));
+                setPhase('success');
+                return;
+              }
+            }
+            await new Promise((resolve) => { setTimeout(resolve, 1500); });
+          }
+          setPhase('pending');
           return;
         }
         throw new Error('Missing payment confirmation. Return to checkout and try again.');
@@ -97,7 +116,7 @@ export default function CheckoutSuccess() {
     })();
 
     return () => { cancelled = true; };
-  }, [sessionStatus, intentId, sessionId, orderReference, navigate, returnPath, isDeveloper]);
+  }, [sessionStatus, intentId, sessionId, orderReference, paymentProvider, navigate, returnPath, isDeveloper, refresh]);
 
   const planName = isDeveloper ? 'Developer' : (planQuote?.name || (planSlug === 'enterprise' ? 'Enterprise' : 'Pro'));
   const billingLabel = planQuote ? `$${planQuote.amountDisplay} / ${planQuote.interval}` : null;

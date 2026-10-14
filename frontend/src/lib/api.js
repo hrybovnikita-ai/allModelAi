@@ -92,6 +92,9 @@ export async function checkChatResponse(response) {
       message = data.message || 'The chat server hit an unexpected error. Please retry in a moment.';
     }
     else if (data.code === 'PAYLOAD_TOO_LARGE') message = 'The upload is too large for the server. Use a smaller screenshot.';
+    else if (data.code === 'ANONIN_UNAVAILABLE') {
+      message = data.message || 'Anonin Model is temporarily unavailable. Please try again later or select another AI model.';
+    }
     else if (data.code === 'VISION_INVALID_IMAGE' || data.code === 'VISION_UNSUPPORTED_FORMAT') message = 'Invalid or unsupported image format.';
     else if (response.status === 402) message = 'Insufficient credits or quota for this request.';
     else if (response.status === 413) message = 'Request payload too large (often an oversized image). Try a smaller screenshot.';

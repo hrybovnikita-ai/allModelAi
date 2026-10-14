@@ -1,39 +1,44 @@
+import { isCapacitorNative } from './apiBase.js';
+import { isElectronShell, submitHostedPaymentForm } from './nativePlatform.js';
+
 /**
  * POST redirect to WayForPay hosted checkout (merchantSignature is prepared on the server).
  */
-export function submitWayforpayCheckout({ payUrl, fields }) {
-  const testBlock = import.meta.env.VITE_WAYFORPAY_TEST_MODE !== 'false'
-    && (import.meta.env.VITE_WAYFORPAY_TEST_MODE === 'true' || import.meta.env.DEV);
-  if (testBlock) {
-    throw new Error('Test mode: real WayForPay checkout is blocked. Use Complete test payment.');
+export function submitWayforpayCheckout(checkoutPayload) {
+  const payUrl = checkoutPayload?.payUrl;
+  const fields = checkoutPayload?.fields;
+  if (checkoutPayload?.mockCheckout || checkoutPayload?.testMode) {
+    throw new Error('Test mode: complete payment using the test checkout button on this page.');
   }
   if (!payUrl || !fields) {
     throw new Error('WayForPay checkout payload is incomplete.');
   }
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = payUrl;
-  form.acceptCharset = 'UTF-8';
-  form.style.display = 'none';
-
-  const appendField = (name, value) => {
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = name;
-    input.value = String(value);
-    form.appendChild(input);
-  };
-
-  Object.entries(fields).forEach(([key, value]) => {
-    if (Array.isArray(value)) {
-      value.forEach((item) => appendField(`${key}[]`, item));
-    } else {
-      appendField(key, value);
-    }
+  const useSystemBrowser = isElectronShell() || isCapacitorNative();
+  return submitHostedPaymentForm({
+    payUrl,
+    fields,
+    openInSystemBrowser: useSystemBrowser,
   });
+}
 
-  document.body.appendChild(form);
-  form.submit();
+export async function createWayforpayCheckout(httpClient, { plan, currency }) {
+  const isAxios = typeof httpClient?.post === 'function';
+  const body = { plan, ...(currency ? { currency } : {}) };
+  if (isAxios) {
+    const response = await httpClient.post('/api/payments/wayforpay/create', body, { withCredentials: true });
+    return response.data;
+  }
+  const response = await httpClient('/api/payments/wayforpay/create', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || data.userMessage || 'Could not start WayForPay checkout.');
+  }
+  return data;
 }
 
 /** Single-step WayForPay TEST MODE checkout (create + simulated callback). */
@@ -93,3 +98,5 @@ export async function pollWayforpayPaymentStatus(apiFetch, orderReference, { att
   }
   throw new Error('Payment is still processing. Your plan will update automatically after WayForPay confirms the payment.');
 }
+
+export const DEFAULT_WAYFORPAY_CURRENCIES = ['USD', 'EUR', 'UAH'];

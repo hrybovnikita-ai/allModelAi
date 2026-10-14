@@ -25,15 +25,28 @@ import {
 } from '../../lib/socialRedirectState.js';
 import { socialAuthDebug } from '../../lib/socialAuthDiagnostics.js';
 import { COOKIE_CONSENT_UPDATED_EVENT } from '../../lib/cookieConsent.js';
+import { startFirebaseAuthSessionSync } from '../../lib/firebaseAuthSync.js';
 
 export const SessionContext = createContext(null);
 
-function initialStatus() {
+function initialSessionState() {
   reconcileStaleRedirectIntent();
   if (shouldShowGoogleRedirectRecoveryUI()) {
-    return AUTH_STATUS.CHECKING_REDIRECT;
+    return {
+      status: AUTH_STATUS.CHECKING_REDIRECT,
+      user: null,
+      sessionVerified: false,
+      connectionIssue: null,
+    };
   }
-  return AUTH_STATUS.CHECKING_SESSION;
+  const cached = readStoredSessionUser();
+  const warmUser = cached?.email && hasSessionRestoreHint() ? cached : null;
+  return {
+    status: AUTH_STATUS.CHECKING_SESSION,
+    user: warmUser,
+    sessionVerified: false,
+    connectionIssue: null,
+  };
 }
 
 function connectionIssueFromError(error) {
@@ -62,12 +75,7 @@ function connectionIssueState(current, error) {
 }
 
 export function SessionProvider({ children }) {
-  const [state, setState] = useState(() => ({
-    status: initialStatus(),
-    user: null,
-    sessionVerified: false,
-    connectionIssue: null,
-  }));
+  const [state, setState] = useState(initialSessionState);
 
   const applySessionUser = useCallback((user) => {
     const meta = consumeSessionRestoreMeta();
@@ -180,6 +188,11 @@ export function SessionProvider({ children }) {
       if (refreshInFlight.current === run) refreshInFlight.current = null;
     }
   }, [applySessionUser]);
+
+  useEffect(() => {
+    const stopFirebaseSync = startFirebaseAuthSessionSync();
+    return () => stopFirebaseSync?.();
+  }, []);
 
   useEffect(() => {
     let active = true;

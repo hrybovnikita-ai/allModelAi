@@ -1,3 +1,4 @@
+import WindowsDownloadButton from '../Download/WindowsDownloadButton';
 import './Footer.css';
 
 export default function Footer() {
@@ -7,6 +8,7 @@ export default function Footer() {
         <div className="footer-info">
           <div className="footer-brand">AllModelAI</div>
           <p>One platform. All AI models. Unlimited possibilities.</p>
+          <WindowsDownloadButton variant="footer" />
         </div>
         <div className="footer-links">
           <div className="link-group">

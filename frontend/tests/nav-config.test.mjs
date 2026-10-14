@@ -11,6 +11,7 @@ describe('navigation config', () => {
   });
 
   test('more menu active on secondary workspace routes', () => {
+    assert.equal(isMoreMenuActive('/provider-health', { canUseDeveloper: false, isOwner: false }), true);
     assert.equal(isMoreMenuActive('/storage', { canUseDeveloper: true, isOwner: false }), true);
     assert.equal(isMoreMenuActive('/dashboard', { canUseDeveloper: true, isOwner: false }), false);
     assert.equal(

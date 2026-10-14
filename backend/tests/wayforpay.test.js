@@ -183,6 +183,31 @@ test('WayForPay HTTP integration', async (t) => {
         assert.equal(purchases.length, 1);
     });
 
+    await t.test('live create accepts EUR currency with signed amount', async () => {
+        process.env.WAYFORPAY_TEST_MODE = 'false';
+        process.env.WAYFORPAY_LIVE_CONFIRM = 'true';
+        const cookie = await registerAndCookie(`wfp-eur-${Date.now()}@example.com`);
+        const res = await request(app)
+            .post('/api/payments/wayforpay/create')
+            .set('Cookie', cookie)
+            .send({ plan: 'starter', currency: 'EUR' });
+        assert.equal(res.status, 201);
+        assert.equal(res.body.fields.currency, 'EUR');
+        assert.ok(res.body.fields.merchantSignature);
+        const payload = {
+            merchantAccount: res.body.fields.merchantAccount,
+            merchantDomainName: res.body.fields.merchantDomainName,
+            orderReference: res.body.fields.orderReference,
+            orderDate: res.body.fields.orderDate,
+            amount: res.body.fields.amount,
+            currency: res.body.fields.currency,
+            productName: res.body.fields.productName,
+            productCount: res.body.fields.productCount,
+            productPrice: res.body.fields.productPrice,
+        };
+        assert.equal(signPurchaseRequest(payload, TEST_SECRET), res.body.fields.merchantSignature);
+    });
+
     await t.test('live create returns signed checkout when TEST MODE is off', async () => {
         process.env.WAYFORPAY_TEST_MODE = 'false';
         process.env.WAYFORPAY_LIVE_CONFIRM = 'true';

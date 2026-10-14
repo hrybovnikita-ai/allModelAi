@@ -36,5 +36,11 @@ export function shouldPreferGoogleRedirectSignIn(userAgent = typeof navigator !=
 /** Desktop and Android may use popup sign-in when supported. */
 export function shouldTryGooglePopupFirst(userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
   if (isCapacitorNativeEnv()) return false;
+  try {
+    if (import.meta.env?.VITE_ELECTRON === 'true') return false;
+  } catch {
+    /* ignore */
+  }
+  if (typeof window !== 'undefined' && window.allmodelai?.isElectron) return false;
   return !isIosTouchDevice(userAgent);
 }
