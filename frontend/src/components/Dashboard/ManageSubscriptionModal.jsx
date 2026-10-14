@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { apiFetch } from '../../lib/api';
 import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
+import './ManageSubscriptionModal.css';
 
 export default function ManageSubscriptionModal({ onClose, onUpdated }) {
   const [summary, setSummary] = useState(null);
@@ -19,6 +21,19 @@ export default function ManageSubscriptionModal({ onClose, onUpdated }) {
       })
       .catch(() => setError('Could not load subscription details.'));
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' && !busy) onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onClose, busy]);
 
   const openStripePortal = async () => {
     setBusy(true);
@@ -51,10 +66,18 @@ export default function ManageSubscriptionModal({ onClose, onUpdated }) {
     }
   };
 
-  return (
+  const modalTree = (
     <div className="dashboard-modal-backdrop" role="presentation" onClick={onClose}>
-      <div className="dashboard-modal" role="dialog" aria-labelledby="manage-sub-title" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="dashboard-modal-close" onClick={onClose} aria-label="Close">×</button>
+      <div
+        className="dashboard-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="manage-sub-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button type="button" className="dashboard-modal-close" onClick={onClose} aria-label="Close">
+          ×
+        </button>
         <h2 id="manage-sub-title">Manage subscription</h2>
         {(summary?.showTestModeBanner || summary?.canUseOwnerTestCheckout) && summary?.wayforpayTestMode && (
           <p className="dashboard-sub-test-note">TEST MODE — simulated WayForPay only. No real money is charged.</p>
@@ -112,4 +135,7 @@ export default function ManageSubscriptionModal({ onClose, onUpdated }) {
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return modalTree;
+  return createPortal(modalTree, document.body);
 }

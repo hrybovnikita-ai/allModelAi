@@ -51,6 +51,7 @@
   }
 
   .settings-modal-backdrop,
+  .dashboard-modal-backdrop,
   .login-overlay {
     padding:
       max(12px, var(--safe-top))
