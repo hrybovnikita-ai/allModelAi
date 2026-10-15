@@ -172,6 +172,8 @@ export default function App() {
       <Route path="/privacy" element={<InfoPage type="privacy" />} />
       <Route path="/terms" element={<InfoPage type="terms" />} />
       <Route path="/refunds" element={<InfoPage type="refund" />} />
+      <Route path="/acceptable-use" element={<InfoPage type="aup" />} />
+      <Route path="/contact" element={<InfoPage type="contact" />} />
       <Route path="/cookies" element={<InfoPage type="cookies" />} />
       <Route path="/explore" element={<ModelExplorer />} />
       <Route path="/provider-health" element={<ProviderHealthDashboard />} />

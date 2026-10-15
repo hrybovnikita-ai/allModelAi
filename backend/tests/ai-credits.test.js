@@ -47,9 +47,9 @@ test('public credit packages: four USD tiers with server-defined credits', () =>
     const packages = getPublicCreditPackages();
     assert.equal(packages.length, 4);
     assert.deepEqual(packages.map((p) => p.id), ['starter', 'plus', 'pro', 'ultimate']);
-    assert.equal(packages[0].priceDisplay, '$4.99');
-    assert.equal(packages[0].creditsIncluded, 300);
-    assert.equal(packages[3].creditsIncluded, 4500);
+    assert.equal(packages[0].priceDisplay, '$5.00');
+    assert.equal(packages[0].creditsIncluded, 500);
+    assert.equal(packages[3].creditsIncluded, 6500);
 });
 
 test('ledger grant is idempotent and deducts only on success path', async () => {
@@ -106,11 +106,11 @@ test('fulfill AI credit checkout validates USD amount and grants credits once', 
         },
     };
     const grant = await fulfillAiCreditCheckoutSession(connection, session);
-    assert.equal(grant.credits, 300);
-    assert.equal(await readBalanceAsync(connection, 'credits@example.com'), 370);
+    assert.equal(grant.credits, starter.credits);
+    assert.equal(await readBalanceAsync(connection, 'credits@example.com'), 70 + starter.credits);
     const again = await fulfillAiCreditCheckoutSession(connection, session);
     assert.equal(again.duplicate, true);
-    assert.equal(await readBalanceAsync(connection, 'credits@example.com'), 370);
+    assert.equal(await readBalanceAsync(connection, 'credits@example.com'), 70 + starter.credits);
 });
 
 test('credits are granted only via fulfill (webhook path), not by success URL alone', async () => {
@@ -128,14 +128,14 @@ test('credits are granted only via fulfill (webhook path), not by success URL al
         metadata: {
             purchaseType: 'ai_credit_pack',
             packageId: 'starter',
-            credits: '300',
+            credits: String(starter.credits),
             email: 'credits@example.com',
         },
     });
-    assert.equal(await readBalanceAsync(connection, 'credits@example.com'), before + 300);
+    assert.equal(await readBalanceAsync(connection, 'credits@example.com'), before + starter.credits);
     const entry = await findLedgerByReferenceAsync(connection, `stripe_checkout_${sessionId}`);
     assert.ok(entry);
-    assert.equal(entry.amount, 300);
+    assert.equal(entry.amount, starter.credits);
 });
 
 test('credit checkout endpoint rejects tampered client price and credits', async () => {

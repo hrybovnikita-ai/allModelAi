@@ -26,6 +26,7 @@ const {
     publicJobPayload,
     updateImageJob,
 } = require('./services/imageJobService');
+const { screenPromptWithCreem } = require('./payments/creemModeration');
 
 const configuredModel = (provider) => {
     if (provider === 'comfy-cloud') return String(process.env.COMFY_CLOUD_CHECKPOINT || 'flux1-schnell-fp8.safetensors').trim();
@@ -157,6 +158,22 @@ const generateImage = async (req, res) => {
             style: validation.value.style,
         });
         const generationPrompt = promptPayload.enhancedPrompt;
+
+        try {
+            await screenPromptWithCreem({
+                prompt: validation.value.prompt,
+                externalId: `user_${req.user?.id || 'anon'}:image_${Date.now()}`,
+            });
+        } catch (moderationError) {
+            if (String(moderationError?.code || '').startsWith('CREEM_')) {
+                return res.status(moderationError.status || 503).json({
+                    success: false,
+                    code: moderationError.code,
+                    message: moderationError.message || 'Prompt could not be moderated.',
+                });
+            }
+            console.error('[IMAGE] moderation_wrapper', moderationError?.message || moderationError);
+        }
 
         if (validation.value.provider) {
             const allowed = listConfiguredImageProviders();

@@ -20,10 +20,10 @@ function envNum(name, fallback) {
 
 /** USD cents — override via AI_CREDIT_PACK_* env vars. */
 const DEFAULT_PACKS = {
-    starter: { name: 'Starter', credits: 300, priceUsdCents: 499, apiCostBasisUsdCents: 320 },
-    plus: { name: 'Plus', credits: 800, priceUsdCents: 1199, apiCostBasisUsdCents: 850 },
-    pro: { name: 'Pro', credits: 2000, priceUsdCents: 2799, apiCostBasisUsdCents: 1980 },
-    ultimate: { name: 'Ultimate', credits: 4500, priceUsdCents: 5999, apiCostBasisUsdCents: 4200 },
+    starter: { name: 'Starter', credits: 500, priceUsdCents: 500, apiCostBasisUsdCents: 380 },
+    plus: { name: 'Plus', credits: 1100, priceUsdCents: 1000, apiCostBasisUsdCents: 820 },
+    pro: { name: 'Pro', credits: 2400, priceUsdCents: 2000, apiCostBasisUsdCents: 1680 },
+    ultimate: { name: 'Ultimate', credits: 6500, priceUsdCents: 5000, apiCostBasisUsdCents: 4100 },
 };
 
 function resolvePackConfig(packageId) {
@@ -43,6 +43,20 @@ function resolvePackConfig(packageId) {
 function stripePriceIdForCreditPack(packageId) {
     const id = String(packageId || '').trim().toLowerCase();
     return String(process.env[`STRIPE_PRICE_AI_CREDITS_${id.toUpperCase()}`] || '').trim();
+}
+
+function creemProductIdForCreditPack(packageId) {
+    const id = String(packageId || '').trim().toLowerCase();
+    return String(process.env[`CREEM_PRODUCT_AI_CREDITS_${id.toUpperCase()}`] || '').trim();
+}
+
+function resolvePackageIdFromCreemProduct(productId) {
+    const pid = String(productId || '').trim();
+    if (!pid) return null;
+    for (const id of PACK_IDS) {
+        if (creemProductIdForCreditPack(id) === pid) return id;
+    }
+    return null;
 }
 
 function processingFeePercent() {
@@ -68,8 +82,8 @@ function buildPricingTransparency(pack) {
         estimatedNetAfterFeesUsdCents: netAfterFees,
         feePercentExample: feePct,
         feeFixedUsdCentsExample: feeFixed,
-        disclaimer: 'One-time prepaid AI credits via Stripe Checkout (TEST MODE). Credits are granted only after verified webhook events.',
-        prepaidEligibilityNote: 'Confirm prepaid AI credit eligibility with Stripe before enabling live payments.',
+        disclaimer: 'One-time prepaid AI credits. Credits are granted only after verified payment webhooks (Stripe or Creem). Real Creem checkout stays disabled until merchant approval.',
+        prepaidEligibilityNote: 'Confirm prepaid AI credit eligibility with your payment provider before enabling live payments.',
     };
 }
 
@@ -102,8 +116,10 @@ function assertValidCreditPackageId(packageId) {
 module.exports = {
     PACK_IDS,
     assertValidCreditPackageId,
+    creemProductIdForCreditPack,
     getPublicCreditPackage,
     getPublicCreditPackages,
+    resolvePackageIdFromCreemProduct,
     resolvePackConfig,
     stripePriceIdForCreditPack,
 };

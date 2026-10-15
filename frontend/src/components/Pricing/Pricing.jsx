@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchCheckoutInfo, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
+import AiCreditsPurchaseModal from './AiCreditsPurchaseModal';
 import './Pricing.css';
 
 /** Owner review: Developer card shows 5,000 req/mo; Pro shows 3,000 — confirm quotas before changing copy. */
@@ -51,26 +52,55 @@ const PLANS = [
   },
 ];
 
-function PricingCard({ plan, onSelect }) {
+const AI_CREDITS_PLAN = {
+  slug: 'ai-credits',
+  tier: 'AI Credits',
+  price: 'From $5',
+  priceSuffix: '',
+  desc: 'Pay as you go — top up prepaid credits for chat usage',
+  features: [
+    'Starter, Plus, Pro, and Ultimate packs',
+    'Credits never replace subscription quotas',
+    'Fulfillment via verified payment webhooks',
+    'Creem checkout coming after merchant approval',
+  ],
+  cta: 'Buy Credits',
+  featured: false,
+  creditsCard: true,
+};
+
+function PricingCard({ plan, onSelect, onCreditsOpen }) {
   const handleKeyDown = (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      onSelect(plan.path);
+      if (plan.creditsCard) onCreditsOpen();
+      else onSelect(plan.path);
     }
   };
 
+  const handleActivate = (event) => {
+    event.stopPropagation();
+    if (plan.creditsCard) onCreditsOpen();
+    else onSelect(plan.path);
+  };
+
+  const priceSuffix = plan.priceSuffix ?? '/month';
+
   return (
     <article
-      className={`pricing-card${plan.featured ? ' featured' : ''}`}
+      className={`pricing-card${plan.featured ? ' featured' : ''}${plan.creditsCard ? ' credits-card' : ''}`}
       role="button"
       tabIndex={0}
-      aria-label={`${plan.tier} plan, ${plan.price} per month. ${plan.cta}`}
-      onClick={() => onSelect(plan.path)}
+      aria-label={`${plan.tier} plan, ${plan.price}${priceSuffix}. ${plan.cta}`}
+      onClick={() => (plan.creditsCard ? onCreditsOpen() : onSelect(plan.path))}
       onKeyDown={handleKeyDown}
     >
       {plan.featured && <span className="featured-badge">Most Popular</span>}
       <span className="pricing-tier">{plan.tier}</span>
-      <div className="price">{plan.price}<span>/month</span></div>
+      <div className="price">
+        {plan.price}
+        {priceSuffix ? <span>{priceSuffix}</span> : null}
+      </div>
       <p className="price-desc">{plan.desc}</p>
       <ul className="pricing-features">
         {plan.features.map((item) => (
@@ -78,12 +108,9 @@ function PricingCard({ plan, onSelect }) {
         ))}
       </ul>
       <button
-        className={`pricing-btn${plan.featured ? ' featured-btn' : ''}`}
+        className={`pricing-btn${plan.featured ? ' featured-btn' : ''}${plan.creditsCard ? ' credits-btn' : ''}`}
         type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onSelect(plan.path);
-        }}
+        onClick={handleActivate}
       >
         {plan.cta}
       </button>
@@ -95,6 +122,7 @@ export default function Pricing() {
   const navigate = useNavigate();
   const [banner, setBanner] = useState({ showTestBanner: false, testBannerText: TEST_MODE_BANNER });
   const [paddleNote, setPaddleNote] = useState('');
+  const [creditsModalOpen, setCreditsModalOpen] = useState(false);
 
   useEffect(() => {
     fetchCheckoutInfo().then((info) => {
@@ -126,9 +154,20 @@ export default function Pricing() {
       </div>
       <div className="pricing-grid">
         {PLANS.map((plan) => (
-          <PricingCard key={plan.slug} plan={plan} onSelect={(path) => navigate(path)} />
+          <PricingCard
+            key={plan.slug}
+            plan={plan}
+            onSelect={(path) => navigate(path)}
+            onCreditsOpen={() => setCreditsModalOpen(true)}
+          />
         ))}
+        <PricingCard
+          plan={AI_CREDITS_PLAN}
+          onSelect={(path) => navigate(path)}
+          onCreditsOpen={() => setCreditsModalOpen(true)}
+        />
       </div>
+      <AiCreditsPurchaseModal open={creditsModalOpen} onClose={() => setCreditsModalOpen(false)} />
     </section>
   );
 }

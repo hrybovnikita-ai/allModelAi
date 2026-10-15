@@ -3,6 +3,7 @@ const cookieParser = require('cookie-parser');
 const routes = require('./src/routes/routes');
 const { stripeWebhook } = require('./src/controllers/controllers');
 const { paddleWebhook } = require('./src/controllers/paddleController');
+const { creemWebhook } = require('./src/controllers/creemController');
 const { wayforpayCallback } = require('./src/controllers/wayforpayController');
 const { connectDatabase } = require('./src/db');
 const { configureTrustProxy, createCredentialedCorsMiddleware } = require('./src/publicAccess');
@@ -67,6 +68,7 @@ if (storedData.users.length) {
 
 app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
 app.post('/api/payments/paddle/webhook', express.raw({ type: 'application/json' }), paddleWebhook);
+app.post('/api/payments/creem/webhook', express.raw({ type: 'application/json' }), creemWebhook);
 app.post(
     '/api/payments/wayforpay/callback',
     express.urlencoded({ extended: true, limit: '256kb' }),

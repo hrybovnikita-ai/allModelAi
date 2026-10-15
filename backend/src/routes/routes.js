@@ -329,10 +329,16 @@ const {
     createAiCreditCheckout,
     verifyAiCreditCheckoutSession,
 } = require('../controllers/aiCreditController');
+const {
+    createAiCreditCreemCheckout,
+    getCreemCheckoutStatus,
+} = require('../controllers/creemController');
 router.get('/credits/packages', getAiCreditPackages);
 router.get('/credits/wallet', requireAuth, getAiCreditWallet);
 router.get('/credits/ledger', requireAuth, getAiCreditLedger);
 router.post('/payments/credit-checkout', requireAuth, createAiCreditCheckout);
+router.post('/payments/creem/credit-checkout', requireAuth, createAiCreditCreemCheckout);
+router.get('/payments/creem/status', getCreemCheckoutStatus);
 router.get('/payments/credit-session/:sessionId', requireAuth, verifyAiCreditCheckoutSession);
 router.get('/subscription', requireAuth, getSubscriptionSummary);
 router.post('/subscription/cancel-test', requireAuth, cancelTestSubscriptionHandler);

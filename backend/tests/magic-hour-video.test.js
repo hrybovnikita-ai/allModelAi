@@ -14,6 +14,7 @@ const savedVideoAlias = process.env.AllModelAi_API_KEY_VIDEO;
 const savedTypo = process.env.MAGIC_CHOUR_API_KEY;
 const savedGemini = process.env.GEMINI_API_KEY;
 const savedProvider = process.env.VIDEO_PROVIDER;
+const nativeFetch = globalThis.fetch;
 
 test.afterEach(() => {
     clearResolvedMagicHourKeyCache();
@@ -27,7 +28,8 @@ test.afterEach(() => {
     else process.env.GEMINI_API_KEY = savedGemini;
     if (savedProvider === undefined) delete process.env.VIDEO_PROVIDER;
     else process.env.VIDEO_PROVIDER = savedProvider;
-    delete global.fetch;
+    if (typeof nativeFetch === 'function') globalThis.fetch = nativeFetch;
+    else delete globalThis.fetch;
 });
 
 test('validateVideoBody accepts text-to-video payload', () => {

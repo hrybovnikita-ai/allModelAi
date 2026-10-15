@@ -6,13 +6,14 @@ const {
     resolvePackConfig,
     stripePriceIdForCreditPack,
 } = require('../billing/aiCreditPackages');
+const { fulfillAiCreditPackPurchase } = require('../billing/aiCreditFulfillment');
 const {
-    grantCreditsIdempotentAsync,
     listLedgerAsync,
     readWalletSummaryAsync,
     reverseCreditsIdempotentAsync,
     findLedgerByReferenceAsync,
 } = require('../billing/aiCreditLedger');
+const { assertCreemCheckoutAllowed, creemConfigurationReport } = require('../payments/creemConfig');
 const { assertStripeCheckoutAllowed, isStripeTestMode, shouldPreferStripeOverWayforpay } = require('../payments/stripeMode');
 const { stripeGuardUserMessage } = require('../payments/stripeUserMessages');
 const { stripeCheckoutWalletOptions, ensureStripePaymentMethodDomain } = require('../stripeWallet');
@@ -29,9 +30,25 @@ function frontendOrigin(req) {
 const { stripeCheckoutEnabledForDeployment } = require('../payments/paymentProvider');
 
 const getAiCreditPackages = (_req, res) => {
+    const creem = creemConfigurationReport();
+    const creemGuard = assertCreemCheckoutAllowed();
+    const checkoutAvailable = Boolean(creemGuard.ok);
     return res.json({
         packages: getPublicCreditPackages(),
         testModeOnly: isStripeTestMode(),
+        creem: {
+            configured: creem.configured,
+            checkoutEnabled: creem.checkoutEnabled,
+            merchantApprovalPending: creem.merchantApprovalPending,
+            moderationEnabled: creem.moderationEnabled,
+            testMode: creem.testMode,
+            userMessage: creem.userMessage,
+        },
+        checkoutAvailable,
+        checkoutUnavailableMessage: checkoutAvailable
+            ? null
+            : (creem.userMessage
+                || 'Real checkout is not yet available. Preview packages below; purchases will open after payment provider approval.'),
         conditions: {
             oneTimePayment: true,
             noSavedCardCharges: true,
@@ -178,19 +195,23 @@ async function fulfillAiCreditCheckoutSession(connection, session) {
         throw new Error('Credit amount mismatch — grant aborted');
     }
     const serverPrice = pack.priceUsdCents;
-    if (session.amount_total != null && Number(session.amount_total) !== serverPrice) {
+    if (session.amount_total == null || !Number.isFinite(Number(session.amount_total))) {
+        throw new Error('Paid amount missing on AI credit checkout session');
+    }
+    if (Number(session.amount_total) !== serverPrice) {
         throw new Error('Paid amount does not match configured package price');
     }
     const email = String(session.metadata?.email || session.customer_details?.email || '').toLowerCase();
     if (!email) throw new Error('Missing email on AI credit checkout session');
     const referenceId = `stripe_checkout_${session.id}`;
-    const result = await grantCreditsIdempotentAsync(connection, {
+    return fulfillAiCreditPackPurchase(connection, {
         email,
-        amount: serverCredits,
+        packageId,
+        amountPaidCents: session.amount_total,
         referenceId,
-        entryType: 'purchase',
+        provider: 'stripe',
+        requirePaidAmount: true,
         metadata: {
-            packageId,
             stripeSessionId: session.id,
             paymentIntent: session.payment_intent || null,
             amountTotal: session.amount_total,
@@ -198,7 +219,6 @@ async function fulfillAiCreditCheckoutSession(connection, session) {
             testMode: session.metadata?.isTestMode === 'true',
         },
     });
-    return { email, packageId, credits: serverCredits, ...result };
 }
 
 async function handleAiCreditStripeEvent(connection, event) {

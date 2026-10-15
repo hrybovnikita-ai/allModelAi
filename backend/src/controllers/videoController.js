@@ -10,6 +10,7 @@ const {
     GeminiVideoError,
 } = require('../services/videoOrchestrator');
 const { getJobForUser, readStoredVideo } = require('../services/videoJobStore');
+const { screenPromptWithCreem } = require('../payments/creemModeration');
 
 const USER_UNAVAILABLE = 'Video generation is temporarily unavailable. Please try again in a moment.';
 
@@ -73,6 +74,21 @@ const postVideoGenerate = async (req, res) => {
         durationSeconds: validation.value.durationSeconds,
         provider: validation.value.provider || 'auto',
     });
+    try {
+        await screenPromptWithCreem({
+            prompt: validation.value.prompt,
+            externalId: `user_${req.user?.id || 'anon'}:video_${correlationId}`,
+        });
+    } catch (moderationError) {
+        if (String(moderationError?.code || '').startsWith('CREEM_')) {
+            return res.status(moderationError.status || 503).json({
+                success: false,
+                code: moderationError.code,
+                message: moderationError.message || 'Prompt could not be moderated.',
+            });
+        }
+        console.error('[VIDEO_GENERATE]', correlationId, 'moderation_wrapper', moderationError?.message || moderationError);
+    }
     try {
         const job = await startVideoGeneration({
             connection: req.app.locals.db,

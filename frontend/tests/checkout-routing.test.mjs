@@ -31,6 +31,8 @@ test('pricing paid plans navigate to dedicated checkout paths', () => {
   assert.match(pricingSource, /\/checkout\/pro/);
   assert.match(pricingSource, /\/checkout\/enterprise/);
   assert.match(pricingSource, /onSelect/);
+  assert.match(pricingSource, /AI Credits/);
+  assert.match(pricingSource, /Buy Credits/);
 });
 
 test('Stripe checkout uses embedded Custom Checkout (Checkout Session)', () => {

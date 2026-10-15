@@ -12,6 +12,7 @@ const {
 } = require('./paymentProvider');
 const { stripeConfigurationReport } = require('./stripeConfig');
 const { paddleConfigurationReport, isPaddleSandbox } = require('./paddleConfig');
+const { creemConfigurationReport } = require('./creemConfig');
 
 const TEST_MODE_BANNER = 'Stripe Test Mode — No real charges';
 const PADDLE_SANDBOX_BANNER = 'Paddle Sandbox — No real charges';
@@ -26,6 +27,7 @@ const buildCheckoutInfo = () => {
     const paymentMode = getPaymentMode();
     const paddleReport = paddleConfigurationReport();
     const paddleOn = paddleCheckoutEnabledForDeployment();
+    const creemReport = creemConfigurationReport();
     const checkoutProviders = listAvailableCheckoutProviders();
     const wayforpayTestMode = wayforpayOn && wayforpayConfig().testMode;
     const stripeTestMode = stripeOn && isStripeTestMode();
@@ -106,6 +108,13 @@ const buildCheckoutInfo = () => {
         showStripeTestCardHint: Boolean(primaryProvider === 'stripe' && stripeTestMode),
         showPaddleSandboxHint: Boolean(paddleOn && paddleSandbox),
         secureCheckoutLabel: showTestModeBanner ? 'Secure test checkout' : 'Secure payment',
+        creemConfigured: creemReport.configured,
+        creemCheckoutEnabled: creemReport.checkoutEnabled,
+        creemMerchantApprovalPending: creemReport.merchantApprovalPending,
+        creemTestMode: creemReport.testMode,
+        creemMissingEnvVars: creemReport.missing,
+        creemUserMessage: creemReport.userMessage,
+        aiCreditsCheckoutPreviewOnly: !creemReport.checkoutEnabled,
     };
 };
 

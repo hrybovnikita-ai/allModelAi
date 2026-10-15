@@ -21,12 +21,15 @@ export default function Footer() {
             <h4>Company</h4>
             <a href="#about">About Us</a>
             <a href="#careers">Careers</a>
-            <a href="#contact">Contact</a>
+            <a href="/contact">Contact</a>
           </div>
           <div className="link-group">
             <h4>Legal</h4>
             <a href="/privacy">Privacy Policy</a>
             <a href="/terms">Terms of Service</a>
+            <a href="/acceptable-use">Acceptable Use</a>
+            <a href="/refunds">Refund Policy</a>
+            <a href="/contact">Contact</a>
             <a href="/cookies">Cookie Policy</a>
           </div>
         </div>
