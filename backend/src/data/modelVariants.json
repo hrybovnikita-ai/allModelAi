@@ -24,6 +24,11 @@
     {"id":"4.3","name":"Grok 4.3","speed":"Medium","gateway":"x-ai/grok-4.3","direct":"grok-4.3"},
     {"id":"4.6","name":"Grok 4.6","speed":"High","gateway":"x-ai/grok-4.6","direct":"grok-4.6"}
   ],
+  "groq": [
+    {"id":"70b","name":"Llama 3.3 70B","speed":"High","gateway":"groq/llama-3.3-70b-versatile","direct":"llama-3.3-70b-versatile"},
+    {"id":"8b","name":"Llama 3.1 8B Instant","speed":"Fast","gateway":"groq/llama-3.1-8b-instant","direct":"llama-3.1-8b-instant"},
+    {"id":"70b-31","name":"Llama 3.1 70B","speed":"Medium","gateway":"groq/llama-3.1-70b-versatile","direct":"llama-3.1-70b-versatile"}
+  ],
   "copilot": [
     {"id":"mini","name":"GPT-4.1 Mini (OpenAI)","speed":"Fast","gateway":"openai/gpt-4.1-mini","direct":"gpt-4.1-mini"},
     {"id":"full","name":"GPT-4.1 (OpenAI)","speed":"High","gateway":"openai/gpt-4.1","direct":"gpt-4.1"}

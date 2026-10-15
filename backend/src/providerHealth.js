@@ -33,6 +33,11 @@ function providerCatalog() {
             modelEnv: 'XAI_MODEL',
             defaultModel: 'grok-2-latest',
         },
+        groq: {
+            keys: ['GROQ_API_KEY'],
+            modelEnv: 'GROQ_MODEL',
+            defaultModel: 'llama-3.3-70b-versatile',
+        },
         mistral: {
             keys: ['MISTRAL_API_KEY'],
             modelEnv: 'MISTRAL_MODEL',
@@ -139,6 +144,23 @@ async function probeGemini() {
     }
 }
 
+async function probeGroq() {
+    const key = String(process.env.GROQ_API_KEY || '').trim();
+    if (!key) return { status: 'missing_configuration' };
+    try {
+        const response = await fetch('https://api.groq.com/openai/v1/models', {
+            headers: { Authorization: `Bearer ${key}` },
+            signal: AbortSignal.timeout(8000),
+        });
+        if (response.status === 401 || response.status === 403) return { status: 'authentication_failed' };
+        if (response.status === 429) return { status: 'rate_limited' };
+        if (!response.ok) return { status: 'configuration_error', httpStatus: response.status };
+        return { status: 'ok' };
+    } catch (error) {
+        return { status: 'network_error', message: error.message };
+    }
+}
+
 async function probeOpenRouter() {
     const key = getOpenRouterApiKey();
     if (!key) return { status: 'missing_configuration' };
@@ -172,6 +194,7 @@ async function buildProviderHealth({ probe = false } = {}) {
     const probes = {
         openai: probeOpenAI,
         gemini: probeGemini,
+        groq: probeGroq,
         openrouter: probeOpenRouter,
     };
     await Promise.all(Object.entries(probes).map(async ([id, fn]) => {
@@ -272,6 +295,7 @@ function providerAvailabilityForRouter() {
         gemini: directProviderUsable('gemini', snapshot) || viaOpenRouter,
         claude: directProviderUsable('claude', snapshot) || viaOpenRouter,
         grok: directProviderUsable('grok', snapshot) || viaOpenRouter,
+        groq: directProviderUsable('groq', snapshot) || viaOpenRouter,
         mistral: directProviderUsable('mistral', snapshot) || viaOpenRouter,
         kimi: directProviderUsable('kimi', snapshot) || viaOpenRouter,
         perplexity,
@@ -282,7 +306,7 @@ function providerAvailabilityForRouter() {
 const { isCloudflareWorkersAiConfigured } = require('./services/cloudflareWorkersAiConfig');
 const { isOpenRouterFreeConfigured } = require('./services/openRouterFreeModels');
 
-const SMART_ROUTE_FALLBACK_ORDER = ['gemini', 'gpt-oss', 'gpt', 'deepseek', 'claude', 'mistral', 'llama', 'perplexity', 'grok', 'cloudflare'];
+const SMART_ROUTE_FALLBACK_ORDER = ['gemini', 'gpt-oss', 'gpt', 'deepseek', 'claude', 'mistral', 'groq', 'llama', 'perplexity', 'grok', 'cloudflare'];
 
 function isRoutedModelAvailable(modelSlug, availability) {
     if (modelSlug === 'gpt-oss') {
@@ -303,6 +327,7 @@ function isRoutedModelAvailable(modelSlug, availability) {
         gemini: 'gemini',
         claude: 'claude',
         grok: 'grok',
+        groq: 'groq',
         mistral: 'mistral',
         kimi: 'kimi',
         deepseek: 'others',

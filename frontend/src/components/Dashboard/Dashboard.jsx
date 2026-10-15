@@ -24,7 +24,7 @@ import { fetchAccountSecurity } from '../../lib/accountSecurity.js';
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
 
 const dashboardModelStatusKey = (slug) => (
-  ['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'perplexity'].includes(slug) ? slug : 'others'
+  ['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'groq', 'perplexity'].includes(slug) ? slug : 'others'
 );
 
 const modelProviderStatus = (slug, modelStatus) => {

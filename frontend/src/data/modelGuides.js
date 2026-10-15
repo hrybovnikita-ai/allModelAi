@@ -43,6 +43,13 @@ export const modelGuides = {
     'Challenge this startup idea. Give me the three strongest reasons it could fail, then redesign it to address those weaknesses.',
     'A confident or entertaining tone is not evidence of accuracy. Verify current facts and avoid treating provocative framing as objective analysis.'
   ),
+  groq: guide(
+    'Groq routes requests to Meta Llama and other open models with very low latency through an OpenAI-compatible API on the AllModelAI backend.',
+    'Use short, explicit prompts and pick a version (8B Instant for speed, 3.3 70B for quality). Groq excels at fast drafts, summaries, and coding snippets.',
+    'Choose Groq when you need quick streaming answers, lightweight coding help, or cost-efficient open-model inference.',
+    'Summarize the following meeting notes into decisions, owners, and next steps in under 150 words.',
+    'Groq rate limits apply per API key. If you hit limits, wait briefly or switch to Smart Router or another configured model.'
+  ),
   copilot: guide(
     'Copilot is presented in AllModelAI as a productivity-oriented assistant for turning rough workplace input into usable drafts, plans, and code-related guidance.',
     'Provide the source notes, the intended audience, and the action you want readers to take. Ask for concise workplace language when the result will be shared with a team.',

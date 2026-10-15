@@ -13,6 +13,7 @@ export const MODEL_TECH_SPECS = {
   mistral: { modelId: 'mistral-small-latest', contextWindow: null, toolUse: false },
   kimi: { modelId: 'kimi-k2.5', contextWindow: '256K', toolUse: false },
   grok: { modelId: 'grok-latest', contextWindow: null, toolUse: false },
+  groq: { modelId: 'llama-3.3-70b-versatile', contextWindow: '128K', toolUse: false },
   cloudflare: { modelId: 'llama-3.3-70b-instruct-fp8-fast', contextWindow: null, toolUse: false },
   'gpt-oss': { modelId: '@cf/openai/gpt-oss-20b', contextWindow: null, toolUse: false },
   nemotron: { modelId: 'nvidia/nemotron-3-ultra-550b-a55b:free', contextWindow: null, toolUse: false },
@@ -60,6 +61,10 @@ export const MODEL_CAPABILITY_FLAGS = {
   grok: {
     coding: true, reasoning: true, vision: false, longContext: false, fast: true,
     research: false, streaming: true, writing: true, summarization: false, translation: false,
+  },
+  groq: {
+    coding: true, reasoning: true, vision: false, longContext: true, fast: true,
+    research: false, streaming: true, writing: true, summarization: true, translation: true,
   },
   cloudflare: {
     coding: true, reasoning: false, vision: false, longContext: false, fast: true,
@@ -126,7 +131,7 @@ export function modalitiesForSlug(slug) {
 
 export function statusKeyForSlug(slug) {
   if (slug === 'smart') return null;
-  if (['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'perplexity'].includes(slug)) return slug;
+  if (['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'groq', 'perplexity'].includes(slug)) return slug;
   return 'others';
 }
 

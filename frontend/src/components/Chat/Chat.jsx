@@ -758,7 +758,7 @@ export default function Chat() {
 
   const modelIsOnline = (slug) => {
     if (!Object.keys(modelStatus).length || slug === 'smart' || isAnoninModelSlug(slug)) return true;
-    const statusKey = ['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'perplexity'].includes(slug) ? slug : 'others';
+    const statusKey = ['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'groq', 'perplexity'].includes(slug) ? slug : 'others';
     return modelStatus[statusKey] !== false;
   };
 

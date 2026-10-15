@@ -26,6 +26,7 @@ export const modelBenchmarks = {
     context: "64K",
   },
   grok: { reasoning: 86, coding: 80, writing: 84, speed: 90, context: "128K" },
+  groq: { reasoning: 88, coding: 86, writing: 83, speed: 98, context: "128K" },
   mistral: {
     reasoning: 82,
     coding: 84,

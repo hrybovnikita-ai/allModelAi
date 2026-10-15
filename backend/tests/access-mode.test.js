@@ -8,6 +8,8 @@ process.env.DB_FILE = path.join(os.tmpdir(), `allmodelai-access-${process.pid}.s
 process.env.ENABLE_PLUS_TEST_MODE = 'true';
 process.env.DEVELOPER_EMAILS = 'developer@access.test';
 process.env.API_KEY = 'test-gateway';
+const { subscriptionPlans } = require('../src/billing/plans');
+const FREE_USER_MODEL_COUNT = subscriptionPlans.free.models.length;
 const app = require('../app');
 let user, developer;
 const originalFetch = global.fetch;
@@ -17,9 +19,12 @@ before(async () => {
   await developer.post('/api/auth/register').send({ name: 'Developer', email: 'developer@access.test', password: 'access-test-password' });
 });
 after(() => { global.fetch = originalFetch; app.locals.db.close(); });
-test('User has exactly five models and cannot grant Developer access', async () => {
+test('User tier model list matches free plan and cannot grant Developer access', async () => {
   const access = await user.get('/api/credits');
-  assert.equal(access.body.mode, 'user'); assert.equal(access.body.models.length, 11);
+  assert.equal(access.body.mode, 'user');
+  assert.equal(access.body.models.length, FREE_USER_MODEL_COUNT);
+  assert.deepEqual(access.body.models, subscriptionPlans.free.models);
+  assert.ok(access.body.models.includes('groq'), 'Groq is included in the free User tier catalog');
   assert.equal(access.body.canUseDeveloper, false);
   assert.equal((await user.patch('/api/access-mode').send({mode:'developer',email:'developer@access.test'})).status, 403);
   global.fetch = () => { throw new Error('premium must never call upstream'); };
@@ -28,7 +33,7 @@ test('User has exactly five models and cannot grant Developer access', async () 
 });
 test('Developer can switch to User preview and back, persisted on the server', async () => {
   assert.equal((await developer.get('/api/credits')).body.unlimited, true);
-  assert.equal((await developer.patch('/api/access-mode').send({mode:'user'})).body.models.length, 11);
+  assert.equal((await developer.patch('/api/access-mode').send({mode:'user'})).body.models.length, FREE_USER_MODEL_COUNT);
   assert.equal((await developer.get('/api/credits')).body.mode, 'user');
   assert.equal((await developer.post('/api/chat').send({model:'claude',messages:[{role:'user',text:'hello'}]})).status, 403);
   const full = await developer.patch('/api/access-mode').send({mode:'developer'});
@@ -41,7 +46,7 @@ test('Active subscriptions unlock all models; canceled and expired subscriptions
   db.prepare("UPDATE subscription_details SET status='canceled' WHERE email=?").run('user@access.test');
   assert.equal((await user.get('/api/credits')).body.canUseDeveloper, false);
   db.prepare("UPDATE subscription_details SET status='active',period_end='2000-01-01T00:00:00Z' WHERE email=?").run('user@access.test');
-  assert.equal((await user.get('/api/credits')).body.models.length, 11);
+  assert.equal((await user.get('/api/credits')).body.models.length, FREE_USER_MODEL_COUNT);
 });
 test('Smart Router and provider fallback stay within User models', async () => {
   const preview = await user.post('/api/router/preview').send({prompt:'hello'});

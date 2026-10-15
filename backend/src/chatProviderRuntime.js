@@ -58,6 +58,7 @@ const CHAT_PROVIDER_ENV = {
     claude: { keys: ['CLAUDE_API_KEY'], optional: ['CLAUDE_MODEL'] },
     openrouter: { keys: [...OPENROUTER_KEY_ENV_NAMES], optional: ['OPENROUTER_FALLBACK_MODELS', 'OPENROUTER_FREE_MODEL'] },
     grok: { keys: ['XAI_API_KEY', 'GROK_API_KEY'], optional: ['GROK_MODEL', 'GROK_PROVIDER', 'XAI_MODEL'] },
+    groq: { keys: ['GROQ_API_KEY'], optional: ['GROQ_MODEL', 'GROQ_PROVIDER'] },
     mistral: { keys: ['MISTRAL_API_KEY'], optional: ['MISTRAL_MODEL'] },
     kimi: { keys: ['KIMI_API_KEY'], optional: ['KIMI_MODEL', 'KIMI_PROVIDER', 'KIMI_BASE_URL'] },
     cloudflare: {
@@ -87,6 +88,9 @@ function isChatProviderConfigured(providerId) {
             return isOpenRouterConfigured();
         case 'grok':
             return Boolean(xaiKey()) || Boolean(gateway);
+        case 'groq':
+            if (envTrim('GROQ_PROVIDER') === 'openrouter') return Boolean(gateway);
+            return Boolean(envTrim('GROQ_API_KEY')) || Boolean(gateway);
         case 'mistral':
             return Boolean(mistralKey()) || Boolean(gateway);
         case 'kimi':
@@ -132,6 +136,9 @@ function routedModelHasApiKey(routedModel) {
         case 'grok':
             if (envTrim('GROK_PROVIDER') === 'openrouter') return Boolean(gateway);
             return Boolean(xaiKey()) || Boolean(gateway);
+        case 'groq':
+            if (envTrim('GROQ_PROVIDER') === 'openrouter') return Boolean(gateway);
+            return Boolean(envTrim('GROQ_API_KEY')) || Boolean(gateway);
         case 'mistral':
             return Boolean(mistralKey()) || Boolean(gateway);
         case 'kimi':

@@ -9,6 +9,7 @@ function slugToProviderId(slug) {
         gemini: 'gemini',
         claude: 'claude',
         grok: 'grok',
+        groq: 'groq',
         mistral: 'mistral',
         kimi: 'kimi',
         perplexity: 'perplexity',

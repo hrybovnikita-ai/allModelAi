@@ -10,6 +10,7 @@ export const HERO_ORBIT_PROVIDERS = [
   { slug: 'claude', label: 'Claude', ring: 'inner' },
   { slug: 'copilot', label: 'Copilot', ring: 'inner' },
   { slug: 'grok', label: 'Grok', ring: 'inner' },
+  { slug: 'groq', label: 'Groq', ring: 'inner' },
   { slug: 'perplexity', label: 'Perplexity', ring: 'inner' },
   { slug: 'deepseek', label: 'DeepSeek', ring: 'outer' },
   { slug: 'mistral', label: 'Mistral', ring: 'outer' },

@@ -1731,6 +1731,7 @@ async function createChatResponseImpl(req, res) {
         claude: 'anthropic/claude-haiku-4.5',
         gemini: 'google/gemini-2.5-flash',
         grok: '~x-ai/grok-latest',
+        groq: 'groq/llama-3.3-70b-versatile',
         copilot: DEFAULT_OPENROUTER_GPT(),
         perplexity: 'perplexity/sonar',
         kimi: process.env.KIMI_MODEL || 'moonshotai/kimi-k2.5',
@@ -2011,7 +2012,15 @@ async function createChatResponseImpl(req, res) {
         missingOpenRouterFreeConfigPayload,
         OPENROUTER_CHAT_COMPLETIONS_URL,
     } = require('../services/openRouterFreeModels');
+    const {
+        getGroqApiKey,
+        resolveGroqDirectModel,
+        GROQ_CHAT_COMPLETIONS_URL,
+        mapGroqHttpError,
+        logGroqHttpError,
+    } = require('../services/groqChat');
     const directPerplexityKey = getPerplexityApiKey();
+    const directGroqKey = getGroqApiKey();
     const preferGemini = process.env.PREFER_GEMINI === 'true' && Boolean(process.env.GEMINI_API_KEY?.trim());
     const usePreferredGemini = preferGemini && requestedModel === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
     let isOpenAI = Boolean(openAIKey && !usePreferredGemini && (routedModel === 'gpt' || routedModel === 'copilot'));
@@ -2025,6 +2034,7 @@ async function createChatResponseImpl(req, res) {
     let isKimi = routedModel === 'kimi' && Boolean(directKimiKey || gatewayKey);
     let isMistral = routedModel === 'mistral' && Boolean(directMistralKey);
     let isPerplexity = routedModel === 'perplexity' && Boolean(directPerplexityKey);
+    let isGroq = routedModel === 'groq' && Boolean(directGroqKey) && process.env.GROQ_PROVIDER !== 'openrouter';
     const hasCloudflareDirect = isCloudflareWorkersAiConfigured();
     let isGptOssCf = routedModel === 'gpt-oss' && hasCloudflareDirect;
     let isCloudflare = routedModel === 'cloudflare' && hasCloudflareDirect;
@@ -2060,8 +2070,8 @@ async function createChatResponseImpl(req, res) {
         }
     }
     const cloudflareKey = getCloudflareWorkersAiToken();
-    let apiKey = isOpenRouterFree ? openRouterFreeRoute.apiKey : isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isDeepSeek ? process.env.DEEPSEEK_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isPerplexity ? directPerplexityKey : (isGptOssCf || isCloudflare) ? cloudflareKey : gatewayKey;
-    const usesDirectProvider = Boolean(isOpenAI || isXAI || isClaude || isGemini || isDeepSeek || (isKimi && directKimiKey) || isMistral || isPerplexity || isCloudflare || isGptOssCf);
+    let apiKey = isOpenRouterFree ? openRouterFreeRoute.apiKey : isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isDeepSeek ? process.env.DEEPSEEK_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isPerplexity ? directPerplexityKey : isGroq ? directGroqKey : (isGptOssCf || isCloudflare) ? cloudflareKey : gatewayKey;
+    const usesDirectProvider = Boolean(isOpenAI || isXAI || isClaude || isGemini || isDeepSeek || (isKimi && directKimiKey) || isMistral || isPerplexity || isGroq || isCloudflare || isGptOssCf);
     const noCrossProviderFallback = routedModel === 'gpt-oss' || isOpenRouterFreeSlug(routedModel) || geminiDirectOnly;
     if (model === 'gemini' && !isGeminiConfigured()) {
         return res.status(503).json({
@@ -2311,12 +2321,12 @@ async function createChatResponseImpl(req, res) {
         };
         let openRouterAttempted = false;
         const initialUsesOpenRouter = !isOpenRouterFree && !isGptOssCf && !isOpenAI && !isXAI && !isClaude && !isGemini && !isDeepSeek
-            && !(isKimi && directKimiKey) && !isMistral && !isPerplexity && !isCloudflare;
+            && !(isKimi && directKimiKey) && !isMistral && !isPerplexity && !isGroq && !isCloudflare;
         if (initialUsesOpenRouter) openRouterAttempted = true;
-        let apiResponse = await fetchProvider(isOpenRouterFree ? OPENROUTER_CHAT_COMPLETIONS_URL : isGptOssCf ? gptOssCompletionsUrl : isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isDeepSeek ? 'https://api.deepseek.com/chat/completions' : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
+        let apiResponse = await fetchProvider(isOpenRouterFree ? OPENROUTER_CHAT_COMPLETIONS_URL : isGptOssCf ? gptOssCompletionsUrl : isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isDeepSeek ? 'https://api.deepseek.com/chat/completions' : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isGroq ? GROQ_CHAT_COMPLETIONS_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             signal: requestSignal(),
-            headers: isOpenRouterFree || isGptOssCf || isOpenAI || isXAI ? {
+            headers: isOpenRouterFree || isGptOssCf || isOpenAI || isXAI || isGroq ? {
                 Authorization: `Bearer ${apiKey.trim()}`,
                 'Content-Type': 'application/json',
             } : isDeepSeek ? {
@@ -2336,6 +2346,9 @@ async function createChatResponseImpl(req, res) {
                 'Content-Type': 'application/json',
             } : isPerplexity ? {
                 Authorization: `Bearer ${directPerplexityKey.trim()}`,
+                'Content-Type': 'application/json',
+            } : isGroq ? {
+                Authorization: `Bearer ${directGroqKey.trim()}`,
                 'Content-Type': 'application/json',
             } : isCloudflare ? {
                 Authorization: `Bearer ${apiKey.trim()}`,
@@ -2390,6 +2403,11 @@ async function createChatResponseImpl(req, res) {
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : isPerplexity ? {
                 model: resolvePerplexityDirectModel(selectedVariant),
+                stream: true,
+                max_tokens: outputTokenLimit,
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
+            } : isGroq ? {
+                model: resolveGroqDirectModel(selectedVariant),
                 stream: true,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
@@ -2481,6 +2499,7 @@ async function createChatResponseImpl(req, res) {
                         isKimi = false;
                         isMistral = false;
                         isPerplexity = false;
+                        isGroq = false;
                         isCloudflare = false;
                         isGptOssCf = false;
                         isOpenRouterFree = false;
@@ -2506,6 +2525,15 @@ async function createChatResponseImpl(req, res) {
                     } else {
                         upstreamError = await apiResponse.json().catch(() => ({}));
                     }
+                } else if (routedModel === 'groq' && isGroq && (billingOrQuota || apiResponse.status === 401 || apiResponse.status === 403 || apiResponse.status === 429)) {
+                    apiResponse = await fetchOpenRouterChat(gatewayModel);
+                    if (apiResponse.ok) {
+                        equivalenceViaOpenRouter = true;
+                        isGroq = false;
+                        logSmartRouter('equivalence fallback', { from: 'groq-direct', to: 'openrouter', gatewayModel });
+                    } else {
+                        upstreamError = await apiResponse.json().catch(() => ({}));
+                    }
                 } else if (routedModel === 'kimi' && isKimi && directKimiKey && billingOrQuota) {
                     apiResponse = await fetchOpenRouterChat(gatewayModel);
                     if (apiResponse.ok) {
@@ -2527,6 +2555,7 @@ async function createChatResponseImpl(req, res) {
                 isKimi = false;
                 isMistral = false;
                 isPerplexity = false;
+                isGroq = false;
                 isCloudflare = false;
                 isGptOssCf = false;
                 isOpenRouterFree = false;
@@ -2564,6 +2593,7 @@ async function createChatResponseImpl(req, res) {
             isKimi = false;
             isMistral = false;
             isPerplexity = false;
+            isGroq = false;
             isCloudflare = false;
             isGptOssCf = false;
             isOpenRouterFree = false;
@@ -2626,6 +2656,7 @@ async function createChatResponseImpl(req, res) {
                     isKimi = false;
                     isMistral = false;
                     isPerplexity = false;
+                    isGroq = false;
                     isCloudflare = false;
                     isGptOssCf = false;
                     isOpenRouterFree = false;
@@ -2660,6 +2691,7 @@ async function createChatResponseImpl(req, res) {
                         isKimi = false;
                         isMistral = false;
                         isPerplexity = false;
+                        isGroq = false;
                         isCloudflare = false;
                         isGptOssCf = false;
                         isOpenRouterFree = false;
@@ -2695,7 +2727,15 @@ async function createChatResponseImpl(req, res) {
                 : ((routedModel === 'gemini' && isGemini)
                     ? mapGeminiHttpError(apiResponse.status, detail)
                     : null);
-            const message = geminiMapped?.message || openRouterBillingMapped?.message || openRouterFreeMapped?.message || cloudflareMapped?.message || (billingError || (!geminiDirectOnly && apiResponse.status === 402)
+            const groqMapped = routedModel === 'groq' ? mapGroqHttpError(apiResponse.status, detail) : null;
+            if (groqMapped) {
+                logGroqHttpError(apiResponse.status, data, {
+                    routedModel,
+                    correlationId: chatCorrelationId,
+                    model: resolveGroqDirectModel(selectedVariant),
+                });
+            }
+            const message = groqMapped?.message || geminiMapped?.message || openRouterBillingMapped?.message || openRouterFreeMapped?.message || cloudflareMapped?.message || (billingError || (!geminiDirectOnly && apiResponse.status === 402)
                 ? `${providerLabel} could not complete this request because the provider account has insufficient balance or quota. Add credits in the provider billing console or configure another connection for this model.`
                 : visionUpstream
                     ? 'The selected model could not analyze this image. Try Smart Router or switch to Gemini or GPT.'
@@ -2705,10 +2745,10 @@ async function createChatResponseImpl(req, res) {
                 : hasAttachedImage
                     ? 'Image analysis failed. Retry or use Smart Router with Gemini or GPT configured.'
                 : 'The selected AI service could not answer. Retry or check the model configuration.');
-            const errorCode = geminiMapped ? `GEMINI_${geminiMapped.errorClass.toUpperCase()}` : (openRouterBillingMapped?.code || openRouterFreeMapped?.code || cloudflareMapped?.code || (billingError ? 'AI_BILLING'
+            const errorCode = groqMapped?.code || (geminiMapped ? `GEMINI_${geminiMapped.errorClass.toUpperCase()}` : (openRouterBillingMapped?.code || openRouterFreeMapped?.code || cloudflareMapped?.code || (billingError ? 'AI_BILLING'
                 : visionUpstream ? 'VISION_UPSTREAM'
                 : hasAttachedImage && apiResponse.status >= 500 ? 'VISION_PROVIDER_ERROR'
-                : 'AI_UPSTREAM'));
+                : 'AI_UPSTREAM')));
             logSmartRouter('provider failed', { provider: routedModel, status: apiResponse.status, billing: billingError, vision: hasAttachedImage });
             if (onOpenRouterPath || equivalenceViaOpenRouter) {
                 logOpenRouterHttpError(apiResponse.status, data, {
@@ -2741,7 +2781,7 @@ async function createChatResponseImpl(req, res) {
                     console.warn('[PROVIDER_HEALTH]', telemetryError.message);
                 }
             });
-            const clientStatus = geminiMapped?.clientStatus || openRouterBillingMapped?.clientStatus || openRouterFreeMapped?.clientStatus || cloudflareMapped?.clientStatus || mapUpstreamStatusForClient(apiResponse.status);
+            const clientStatus = groqMapped?.clientStatus || geminiMapped?.clientStatus || openRouterBillingMapped?.clientStatus || openRouterFreeMapped?.clientStatus || cloudflareMapped?.clientStatus || mapUpstreamStatusForClient(apiResponse.status);
             return res.status(clientStatus).json({
                 message,
                 code: errorCode,
@@ -2773,8 +2813,8 @@ async function createChatResponseImpl(req, res) {
         res.flushHeaders?.();
         const freeTierModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1']);
         const resolvedActualModelId = selectedVariant
-            ? ((isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isPerplexity || isCloudflare || isGptOssCf)
-                ? (isPerplexity ? resolvePerplexityDirectModel(selectedVariant) : (isGptOssCf ? resolveGptOssModelId(selectedVariant.direct) : selectedVariant.direct))
+            ? ((isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isPerplexity || isGroq || isCloudflare || isGptOssCf)
+                ? (isPerplexity ? resolvePerplexityDirectModel(selectedVariant) : isGroq ? resolveGroqDirectModel(selectedVariant) : (isGptOssCf ? resolveGptOssModelId(selectedVariant.direct) : selectedVariant.direct))
                 : selectedVariant.gateway)
             : fallbackUsed
                 ? providerModels[fallbackModel]
@@ -3810,7 +3850,7 @@ const getArenaLeaderboard = async (req, res) => {
             ? await listArenaVotesAsync(connection)
             : connection.database.prepare('SELECT model_a, model_b, winner FROM arena_votes').all();
 
-        const candidateModels = ['gpt', 'claude', 'gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'deepseek', 'llama', 'grok', 'copilot', 'perplexity', 'kimi', 'mistral', 'qwen', 'cohere'];
+        const candidateModels = ['gpt', 'claude', 'gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'deepseek', 'llama', 'grok', 'groq', 'copilot', 'perplexity', 'kimi', 'mistral', 'qwen', 'cohere'];
         const stats = {};
         candidateModels.forEach(model => {
             stats[model] = {

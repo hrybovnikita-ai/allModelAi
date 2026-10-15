@@ -1,10 +1,39 @@
-import { isCapacitorNative, getCapacitorPlatform, isElectronShell } from './apiBase.js';
+import {
+  getCapacitorPlatform,
+  isCapacitorNative,
+  isCapacitorWebViewHost,
+  isElectronShell,
+} from './apiBase.js';
 
 export { isElectronShell };
 
+/** Safe Capacitor detection for WebView / native shells (never throws). */
+export function isCapacitorShell() {
+  if (typeof window === 'undefined') return false;
+  if (import.meta.env?.VITE_CAPACITOR_NATIVE === 'true') return true;
+  try {
+    const protocol = String(window.location?.protocol || '').toLowerCase();
+    if (protocol === 'capacitor:' || protocol === 'ionic:') return true;
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (isCapacitorWebViewHost()) return true;
+    return isCapacitorNative();
+  } catch {
+    return false;
+  }
+}
+
 export function getNativeShell() {
   if (isElectronShell()) return 'electron';
-  if (isCapacitorNative()) return getCapacitorPlatform();
+  if (isCapacitorShell()) {
+    try {
+      return getCapacitorPlatform();
+    } catch {
+      return 'web';
+    }
+  }
   return 'web';
 }
 
@@ -21,7 +50,7 @@ export async function openExternalUrl(url) {
     return window.allmodelai.openExternal(target);
   }
 
-  if (isCapacitorNative()) {
+  if (isCapacitorShell()) {
     try {
       const { Browser } = await import('@capacitor/browser');
       await Browser.open({
@@ -50,7 +79,7 @@ export async function submitHostedPaymentForm({ payUrl, fields, openInSystemBrow
     return;
   }
 
-  if (isCapacitorNative() && openInSystemBrowser) {
+  if (isCapacitorShell() && openInSystemBrowser) {
     const { Browser } = await import('@capacitor/browser');
     const html = buildAutoPostHtml(payUrl, fields);
     await Browser.open({
