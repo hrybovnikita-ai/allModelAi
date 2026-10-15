@@ -112,7 +112,14 @@
 }
 
 .chat-page .model-orb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   border-radius: calc(var(--radius-lg) - 4px);
+}
+
+.chat-page .active-model img {
+  object-fit: contain;
 }
 
 .chat-page .chat-empty h1 {

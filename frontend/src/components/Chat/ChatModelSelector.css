@@ -74,7 +74,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .chat-page .model-select-trigger__label {
