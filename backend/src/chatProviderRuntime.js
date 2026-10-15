@@ -27,8 +27,10 @@ function claudeKey() {
     return envTrim('CLAUDE_API_KEY');
 }
 
+const { getGrokDirectApiKey, grokProviderMode } = require('./services/grokChat');
+
 function xaiKey() {
-    return envTrim('XAI_API_KEY') || envTrim('GROK_API_KEY');
+    return getGrokDirectApiKey();
 }
 
 function mistralKey() {
@@ -134,7 +136,7 @@ function routedModelHasApiKey(routedModel) {
         case 'claude':
             return Boolean(claudeKey()) || Boolean(gateway);
         case 'grok':
-            if (envTrim('GROK_PROVIDER') === 'openrouter') return Boolean(gateway);
+            if (grokProviderMode() === 'openrouter') return Boolean(gateway);
             return Boolean(xaiKey()) || Boolean(gateway);
         case 'groq':
             if (envTrim('GROQ_PROVIDER') === 'openrouter') return Boolean(gateway);

@@ -19,6 +19,8 @@ test('routes international Kimi and gateway Grok with their own credentials', as
         {model:'kimi', variant:'k2.5', env:{KIMI_API_KEY:'test-kimi', KIMI_PROVIDER:'openrouter'}, url:'https://openrouter.ai/api/v1/chat/completions', key:'test-gateway', upstream:'moonshotai/kimi-k2.5'},
         {model:'kimi', variant:'k2', env:{KIMI_API_KEY:'test-kimi', KIMI_BASE_URL:'https://api.moonshot.ai/v1/'}, url:'https://api.moonshot.ai/v1/chat/completions', key:'test-kimi', upstream:'kimi-k2-0711-preview'},
         {model:'grok', variant:'4.3', env:{XAI_API_KEY:'test-xai', GROK_PROVIDER:'openrouter'}, url:'https://openrouter.ai/api/v1/chat/completions', key:'test-gateway', upstream:'x-ai/grok-4.3'},
+        {model:'grok', variant:'4.3', env:{XAI_API_KEY:'test-xai'}, url:'https://api.x.ai/v1/chat/completions', key:'test-xai', upstream:'grok-4.3', bodyField:'max_completion_tokens'},
+        {model:'grok', variant:'4.6', env:{XAI_API_KEY:'test-xai'}, url:'https://api.x.ai/v1/chat/completions', key:'test-xai', upstream:'grok-4.6', reasoning:'high'},
     ];
     for (const c of cases) {
         const previous = Object.fromEntries(Object.keys(c.env).map(k => [k, process.env[k]]));
@@ -28,7 +30,10 @@ test('routes international Kimi and gateway Grok with their own credentials', as
             called = true;
             assert.equal(url, c.url);
             assert.equal(options.headers.Authorization, `Bearer ${c.key}`);
-            assert.equal(JSON.parse(options.body).model, c.upstream);
+            const payload = JSON.parse(options.body);
+            assert.equal(payload.model, c.upstream);
+            if (c.bodyField) assert.ok(payload[c.bodyField]);
+            if (c.reasoning) assert.equal(payload.reasoning_effort, c.reasoning);
             return new Response('data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: [DONE]\n\n', {status:200});
         };
         try {

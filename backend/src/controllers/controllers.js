@@ -856,6 +856,19 @@ const {
     normalizeOpenRouterGatewayModel,
 } = require('../services/openRouterModelMapping');
 const {
+    DEFAULT_GROK_OPENROUTER_GATEWAY,
+    XAI_CHAT_COMPLETIONS_URL,
+    buildGrokDirectRequestBody,
+    getGrokDirectApiKey,
+    grokUpstreamDetail,
+    logGrokHttpError,
+    mapGrokHttpError,
+    resolveGrokDirectModel,
+    resolveGrokOpenRouterGateway,
+    shouldAttemptGrokOpenRouterRecovery,
+    shouldUseGrokDirect,
+} = require('../services/grokChat');
+const {
     checkUsageLimit,
     hasModelAccess,
     resolveOpenRouterModelId,
@@ -1730,7 +1743,7 @@ async function createChatResponseImpl(req, res) {
         gpt: DEFAULT_OPENROUTER_GPT(),
         claude: 'anthropic/claude-haiku-4.5',
         gemini: 'google/gemini-2.5-flash',
-        grok: '~x-ai/grok-latest',
+        grok: DEFAULT_GROK_OPENROUTER_GATEWAY,
         groq: 'groq/llama-3.3-70b-versatile',
         copilot: DEFAULT_OPENROUTER_GPT(),
         perplexity: 'perplexity/sonar',
@@ -1752,9 +1765,11 @@ async function createChatResponseImpl(req, res) {
         providerModels[requestedModel] = normalizeOpenRouterGatewayModel(selectedVariant.gateway, requestedModel);
     }
     const configuredGrokModel = process.env.GROK_MODEL?.trim();
-    const grokModel = selectedVariant?.gateway || (configuredGrokModel && !/grok-3-mini/i.test(configuredGrokModel)
-        ? configuredGrokModel
-        : providerModels.grok);
+    const grokModel = resolveGrokOpenRouterGateway({
+        selectedVariant,
+        configuredGrokModel,
+        fallbackGateway: providerModels.grok,
+    });
     
     const normalizedInputMessages = normalizeMessages(messages);
     if (!Array.isArray(normalizedInputMessages) || normalizedInputMessages.length === 0) {
@@ -1988,7 +2003,7 @@ async function createChatResponseImpl(req, res) {
     // Explicit Claude uses Anthropic when CLAUDE_API_KEY is set. OpenRouter is only a labeled fallback.
     const gatewayKey = openRouterKey();
     const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
-    const xaiKey = (process.env.XAI_API_KEY || process.env.GROK_API_KEY)?.trim();
+    const xaiKey = getGrokDirectApiKey();
     const directKimiKey = process.env.KIMI_PROVIDER === 'openrouter' ? undefined : process.env.KIMI_API_KEY?.trim();
     const directMistralKey = process.env.MISTRAL_API_KEY?.trim();
     const {
@@ -2024,7 +2039,7 @@ async function createChatResponseImpl(req, res) {
     const preferGemini = process.env.PREFER_GEMINI === 'true' && Boolean(process.env.GEMINI_API_KEY?.trim());
     const usePreferredGemini = preferGemini && requestedModel === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
     let isOpenAI = Boolean(openAIKey && !usePreferredGemini && (routedModel === 'gpt' || routedModel === 'copilot'));
-    let isXAI = routedModel === 'grok' && Boolean(xaiKey) && process.env.GROK_PROVIDER !== 'openrouter';
+    let isXAI = shouldUseGrokDirect(routedModel);
     let isClaude = routedModel === 'claude' && Boolean(process.env.CLAUDE_API_KEY?.trim());
     const { shouldUseGoogleGeminiDirect } = require('../services/geminiModelRouting');
     const { isGeminiConfigured } = require('../services/geminiApiService');
@@ -2323,7 +2338,8 @@ async function createChatResponseImpl(req, res) {
         const initialUsesOpenRouter = !isOpenRouterFree && !isGptOssCf && !isOpenAI && !isXAI && !isClaude && !isGemini && !isDeepSeek
             && !(isKimi && directKimiKey) && !isMistral && !isPerplexity && !isGroq && !isCloudflare;
         if (initialUsesOpenRouter) openRouterAttempted = true;
-        let apiResponse = await fetchProvider(isOpenRouterFree ? OPENROUTER_CHAT_COMPLETIONS_URL : isGptOssCf ? gptOssCompletionsUrl : isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? 'https://api.x.ai/v1/chat/completions' : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isDeepSeek ? 'https://api.deepseek.com/chat/completions' : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isGroq ? GROQ_CHAT_COMPLETIONS_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
+        const grokDirectModelId = isXAI ? resolveGrokDirectModel(selectedVariant) : null;
+        let apiResponse = await fetchProvider(isOpenRouterFree ? OPENROUTER_CHAT_COMPLETIONS_URL : isGptOssCf ? gptOssCompletionsUrl : isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? XAI_CHAT_COMPLETIONS_URL : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isDeepSeek ? 'https://api.deepseek.com/chat/completions' : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isGroq ? GROQ_CHAT_COMPLETIONS_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             signal: requestSignal(),
             headers: isOpenRouterFree || isGptOssCf || isOpenAI || isXAI || isGroq ? {
@@ -2375,12 +2391,13 @@ async function createChatResponseImpl(req, res) {
                 stream: true,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
-            } : isXAI ? {
-                model: selectedVariant?.direct || process.env.XAI_MODEL || 'grok-4-latest',
-                stream: true,
-                max_tokens: outputTokenLimit,
-                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
-            } : isDeepSeek ? {
+            } : isXAI ? buildGrokDirectRequestBody({
+                model: grokDirectModelId,
+                systemPrompt,
+                standardInput,
+                outputTokenLimit,
+                selectedVariant,
+            }) : isDeepSeek ? {
                 model: resolveDeepSeekApiModel(selectedVariant?.id),
                 stream: true,
                 max_tokens: outputTokenLimit,
@@ -2531,6 +2548,15 @@ async function createChatResponseImpl(req, res) {
                         equivalenceViaOpenRouter = true;
                         isGroq = false;
                         logSmartRouter('equivalence fallback', { from: 'groq-direct', to: 'openrouter', gatewayModel });
+                    } else {
+                        upstreamError = await apiResponse.json().catch(() => ({}));
+                    }
+                } else if (routedModel === 'grok' && isXAI && shouldAttemptGrokOpenRouterRecovery(apiResponse.status, detail)) {
+                    apiResponse = await fetchOpenRouterChat(grokModel, { phase: 'grok-direct-recovery', directModel: grokDirectModelId });
+                    if (apiResponse.ok) {
+                        equivalenceViaOpenRouter = true;
+                        isXAI = false;
+                        logSmartRouter('equivalence fallback', { from: 'xai-direct', to: 'openrouter', gatewayModel: grokModel, directModel: grokDirectModelId });
                     } else {
                         upstreamError = await apiResponse.json().catch(() => ({}));
                     }
@@ -2735,7 +2761,15 @@ async function createChatResponseImpl(req, res) {
                     model: resolveGroqDirectModel(selectedVariant),
                 });
             }
-            const message = groqMapped?.message || geminiMapped?.message || openRouterBillingMapped?.message || openRouterFreeMapped?.message || cloudflareMapped?.message || (billingError || (!geminiDirectOnly && apiResponse.status === 402)
+            const grokMapped = routedModel === 'grok' ? mapGrokHttpError(apiResponse.status, detail) : null;
+            if (grokMapped) {
+                logGrokHttpError(apiResponse.status, data, {
+                    route: isXAI ? 'xai-direct' : (equivalenceViaOpenRouter || openRouterAttempted ? 'openrouter' : 'unknown'),
+                    correlationId: chatCorrelationId,
+                    model: grokDirectModelId || grokModel,
+                });
+            }
+            const message = groqMapped?.message || grokMapped?.message || geminiMapped?.message || openRouterBillingMapped?.message || openRouterFreeMapped?.message || cloudflareMapped?.message || (billingError || (!geminiDirectOnly && apiResponse.status === 402)
                 ? `${providerLabel} could not complete this request because the provider account has insufficient balance or quota. Add credits in the provider billing console or configure another connection for this model.`
                 : visionUpstream
                     ? 'The selected model could not analyze this image. Try Smart Router or switch to Gemini or GPT.'
@@ -2745,7 +2779,7 @@ async function createChatResponseImpl(req, res) {
                 : hasAttachedImage
                     ? 'Image analysis failed. Retry or use Smart Router with Gemini or GPT configured.'
                 : 'The selected AI service could not answer. Retry or check the model configuration.');
-            const errorCode = groqMapped?.code || (geminiMapped ? `GEMINI_${geminiMapped.errorClass.toUpperCase()}` : (openRouterBillingMapped?.code || openRouterFreeMapped?.code || cloudflareMapped?.code || (billingError ? 'AI_BILLING'
+            const errorCode = groqMapped?.code || grokMapped?.code || (geminiMapped ? `GEMINI_${geminiMapped.errorClass.toUpperCase()}` : (openRouterBillingMapped?.code || openRouterFreeMapped?.code || cloudflareMapped?.code || (billingError ? 'AI_BILLING'
                 : visionUpstream ? 'VISION_UPSTREAM'
                 : hasAttachedImage && apiResponse.status >= 500 ? 'VISION_PROVIDER_ERROR'
                 : 'AI_UPSTREAM')));
@@ -2781,7 +2815,7 @@ async function createChatResponseImpl(req, res) {
                     console.warn('[PROVIDER_HEALTH]', telemetryError.message);
                 }
             });
-            const clientStatus = groqMapped?.clientStatus || geminiMapped?.clientStatus || openRouterBillingMapped?.clientStatus || openRouterFreeMapped?.clientStatus || cloudflareMapped?.clientStatus || mapUpstreamStatusForClient(apiResponse.status);
+            const clientStatus = groqMapped?.clientStatus || grokMapped?.clientStatus || geminiMapped?.clientStatus || openRouterBillingMapped?.clientStatus || openRouterFreeMapped?.clientStatus || cloudflareMapped?.clientStatus || mapUpstreamStatusForClient(apiResponse.status);
             return res.status(clientStatus).json({
                 message,
                 code: errorCode,

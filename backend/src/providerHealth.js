@@ -31,7 +31,7 @@ function providerCatalog() {
         grok: {
             keys: ['XAI_API_KEY', 'GROK_API_KEY'],
             modelEnv: 'XAI_MODEL',
-            defaultModel: 'grok-2-latest',
+            defaultModel: 'grok-4.3',
         },
         groq: {
             keys: ['GROQ_API_KEY'],
