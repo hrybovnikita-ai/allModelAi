@@ -244,11 +244,13 @@ const {
     updateUserMemory,
     deleteUserMemory,
     clearUserMemories,
+    searchUserMemories,
     postResponseFeedback,
     getAdminAiImprovementDashboard,
 } = require('../controllers/aiImprovementController');
 router.get('/ai/memory/settings', requireAuth, getMemorySettings);
 router.patch('/ai/memory/settings', requireAuth, patchMemorySettings);
+router.get('/ai/memory/search', requireAuth, searchUserMemories);
 router.get('/ai/memory', requireAuth, listUserMemories);
 router.post('/ai/memory', requireAuth, createUserMemory);
 router.patch('/ai/memory/:id', requireAuth, updateUserMemory);

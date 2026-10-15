@@ -14,8 +14,10 @@ const { stripeConfigurationReport } = require('./stripeConfig');
 const { paddleConfigurationReport, isPaddleSandbox } = require('./paddleConfig');
 const { creemConfigurationReport } = require('./creemConfig');
 
-const TEST_MODE_BANNER = 'Stripe Test Mode — No real charges';
+const STRIPE_TEST_MODE_BANNER = 'Stripe Test Mode — No real charges';
+const WAYFORPAY_TEST_MODE_BANNER = 'WayForPay Test Mode — No real charges';
 const PADDLE_SANDBOX_BANNER = 'Paddle Sandbox — No real charges';
+const TEST_MODE_BANNER = STRIPE_TEST_MODE_BANNER;
 
 const buildCheckoutInfo = () => {
     const stripeGuard = assertStripeCheckoutAllowed();
@@ -32,10 +34,20 @@ const buildCheckoutInfo = () => {
     const wayforpayTestMode = wayforpayOn && wayforpayConfig().testMode;
     const stripeTestMode = stripeOn && isStripeTestMode();
     const paddleSandbox = paddleReport.sandbox || isPaddleSandbox();
-    const sandboxDeployment = paymentMode === 'test' || wayforpayTestMode || stripeTestMode || (paddleOn && paddleSandbox);
     const liveWayforpayReady = wayforpayOn && !wayforpayTestMode && wayforpayConfigured()
         && process.env.WAYFORPAY_LIVE_CONFIRM === 'true';
-    const showTestModeBanner = sandboxDeployment && !liveWayforpayReady;
+    const showTestModeBanner = (
+        (primaryProvider === 'stripe' && stripeTestMode)
+        || (primaryProvider === 'paddle' && paddleSandbox)
+        || (primaryProvider === 'wayforpay' && wayforpayTestMode && !liveWayforpayReady)
+    );
+
+    let testModeBannerText = null;
+    if (showTestModeBanner) {
+        if (primaryProvider === 'stripe') testModeBannerText = STRIPE_TEST_MODE_BANNER;
+        else if (primaryProvider === 'paddle') testModeBannerText = PADDLE_SANDBOX_BANNER;
+        else if (primaryProvider === 'wayforpay') testModeBannerText = WAYFORPAY_TEST_MODE_BANNER;
+    }
 
     const providerDisplayName = primaryProvider === 'wayforpay'
         ? 'WayForPay'
@@ -102,11 +114,9 @@ const buildCheckoutInfo = () => {
         paddleSetupInstructions: paddleReport.setupInstructions,
         paddleMissingEnvVars: paddleReport.missing,
         showTestModeBanner,
-        testModeBannerText: showTestModeBanner
-            ? (primaryProvider === 'paddle' && paddleSandbox ? PADDLE_SANDBOX_BANNER : TEST_MODE_BANNER)
-            : null,
+        testModeBannerText,
         showStripeTestCardHint: Boolean(primaryProvider === 'stripe' && stripeTestMode),
-        showPaddleSandboxHint: Boolean(paddleOn && paddleSandbox),
+        showPaddleSandboxHint: Boolean(primaryProvider === 'paddle' && paddleSandbox),
         secureCheckoutLabel: showTestModeBanner ? 'Secure test checkout' : 'Secure payment',
         creemConfigured: creemReport.configured,
         creemCheckoutEnabled: creemReport.checkoutEnabled,

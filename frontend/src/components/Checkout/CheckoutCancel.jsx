@@ -7,7 +7,11 @@ export default function CheckoutCancel() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const plan = searchParams.get('plan') || 'pro';
-  const checkoutPath = plan === 'enterprise' || plan === 'plus' ? '/checkout/enterprise' : '/checkout/pro';
+  const checkoutPath = plan === 'starter'
+    ? '/checkout/starter'
+    : (plan === 'enterprise' || plan === 'plus' || plan === 'unlimited'
+      ? '/checkout/unlimited'
+      : '/checkout/pro');
 
   return (
     <main className="checkout-page checkout-page--premium purchase-success-page">

@@ -68,6 +68,54 @@ async function clearUserMemories(req, res) {
     return res.json(result);
 }
 
+/** Review helper: search the caller's own memories only (no chat injection). */
+async function searchUserMemories(req, res) {
+    try {
+        const query = String(req.query.q || req.body?.query || '').trim();
+        if (!query) {
+            return res.status(400).json({ message: 'Query is required', code: 'MEMORY_QUERY_REQUIRED' });
+        }
+        const limit = Number(req.query.limit) || 8;
+        const store = require('../services/zilliz/zillizMemoryStore');
+        let items = [];
+        let matchMode = 'preview';
+        if (store.isZillizMemoryConfigured()) {
+            try {
+                items = await store.searchMemoryVectors({
+                    userId: req.user.email,
+                    query,
+                    limit,
+                });
+                matchMode = 'vector';
+            } catch (vectorError) {
+                console.warn('[AI_MEMORY_SEARCH] vector search fallback:', vectorError.code || vectorError.message);
+                items = [];
+            }
+        }
+        // Preview fallback covers disabled/unavailable Zilliz and sync lag during review.
+        if (!items.length) {
+            items = await userMemoryService.searchMemoriesByPreview(
+                req.app.locals.db,
+                req.user.email,
+                query,
+                { limit },
+            );
+            if (items.length) matchMode = 'preview';
+        }
+        return res.json({
+            items,
+            matchMode,
+            chatInjectionEnabled: false,
+            note: 'Results are for review only; chat injection remains disabled until explicitly approved.',
+        });
+    } catch (error) {
+        return res.status(error.status || 500).json({
+            message: error.message,
+            code: error.code,
+        });
+    }
+}
+
 async function postResponseFeedback(req, res) {
     try {
         const result = await recordFeedback(req.app.locals.db, req.user.email, req.body || {});
@@ -153,6 +201,7 @@ module.exports = {
     updateUserMemory,
     deleteUserMemory,
     clearUserMemories,
+    searchUserMemories,
     postResponseFeedback,
     getAdminAiImprovementDashboard,
 };

@@ -1,3 +1,14 @@
+.chat-recovery-notice {
+  margin: 0 0 0.55rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.78;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
 .chat-api-error {
   max-width: 850px;
   margin: 0 auto 18px;
@@ -507,10 +518,10 @@ html[data-theme="light"] .chat-message.assistant p{color:#202123}html[data-theme
     opacity:1!important;
   }
   .chat-messages{
-    padding-bottom:190px!important;
-    scroll-padding-bottom:190px!important;
+    padding-bottom:24px!important;
+    scroll-padding-bottom:24px!important;
   }
-  .chat-scroll-tail{height:190px!important}
+  .chat-scroll-tail{height:48px!important}
 }
 
 @media (min-width:601px) and (max-width:900px){

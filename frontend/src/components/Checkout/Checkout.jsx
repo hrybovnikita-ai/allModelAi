@@ -5,6 +5,7 @@ import './Checkout.css';
 import './CheckoutProduction.css';
 import './CheckoutDemo.css';
 import './CheckoutPremium.css';
+import './CheckoutStripeLayout.css';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { fetchCheckoutInfo, fetchCheckoutPlan, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
 import { DEFAULT_WAYFORPAY_CURRENCIES } from '../../lib/wayforpay';
@@ -38,10 +39,20 @@ const DEVELOPER_FALLBACK = {
 };
 
 function planSlugFromPath(pathname) {
-  if (pathname.endsWith('/enterprise')) return 'enterprise';
+  if (pathname.endsWith('/enterprise') || pathname.endsWith('/unlimited')) return 'unlimited';
+  if (pathname.endsWith('/starter')) return 'starter';
   if (pathname.endsWith('/pro')) return 'pro';
   if (pathname.endsWith('/developer')) return 'developer';
   return 'pro';
+}
+
+function normalizeCheckoutPlanSlug(raw) {
+  const slug = String(raw || '').toLowerCase();
+  if (slug === 'starter') return 'starter';
+  if (slug === 'pro' || slug === 'common') return 'pro';
+  if (slug === 'unlimited' || slug === 'enterprise' || slug === 'plus' || slug === 'power') return 'unlimited';
+  if (slug === 'developer') return 'developer';
+  return null;
 }
 
 export default function Checkout() {
@@ -50,15 +61,12 @@ export default function Checkout() {
   const [searchParams] = useSearchParams();
   const { status: sessionStatus, user: sessionUser, refresh: refreshSession } = useSession();
   const planSlug = useMemo(() => {
-    const fromQuery = searchParams.get('plan');
-    if (fromQuery === 'developer') return 'developer';
-    if (location.pathname.endsWith('/enterprise')) return 'enterprise';
-    if (location.pathname.endsWith('/pro')) return 'pro';
-    if (fromQuery === 'enterprise' || fromQuery === 'plus') return 'enterprise';
-    if (fromQuery === 'pro' || fromQuery === 'common') return 'pro';
+    const fromQuery = normalizeCheckoutPlanSlug(searchParams.get('plan'));
+    if (fromQuery) return fromQuery;
     return planSlugFromPath(location.pathname);
   }, [location.pathname, searchParams]);
   const isDeveloper = planSlug === 'developer';
+  const stripeCheckoutPlan = planSlug === 'unlimited' ? 'unlimited' : planSlug;
 
   const [checkoutInfo, setCheckoutInfo] = useState(null);
   const [planQuote, setPlanQuote] = useState(null);
@@ -88,12 +96,17 @@ export default function Checkout() {
   const showTestBanner = Boolean(checkoutInfo?.showTestModeBanner)
     || (ownerTestCheckout && checkoutInfo?.wayforpayTestMode);
   const testBannerText = checkoutInfo?.testModeBannerText || TEST_MODE_BANNER;
-  const providerLabel = checkoutInfo?.providerDisplayName || 'Payment provider';
+  const providerLabel = useStripeProduction
+    ? 'Stripe'
+    : (checkoutInfo?.providerDisplayName || 'Payment provider');
 
   const summary = isDeveloper ? DEVELOPER_FALLBACK : planQuote;
   const priceLabel = summary
     ? (Number(summary.amountDisplay) === 0 ? '$0' : `$${summary.amountDisplay}`)
     : '—';
+  const payAmountLabel = summary?.amountDisplay
+    ? `$${summary.amountDisplay}`
+    : priceLabel;
 
   useEffect(() => {
     fetchCheckoutInfo().then((info) => {
@@ -184,9 +197,8 @@ export default function Checkout() {
     setStripePublishableKey('');
     setStripeReady(false);
     try {
-      const checkoutPlan = planSlug === 'enterprise' ? 'enterprise' : planSlug === 'pro' ? 'pro' : planSlug;
       const response = await apiClient.post('/api/payments/checkout', {
-        plan: checkoutPlan,
+        plan: stripeCheckoutPlan,
         embedded: true,
       });
       let publishableKey = String(response.data.publishableKey || '').trim();
@@ -221,7 +233,7 @@ export default function Checkout() {
     } finally {
       setCheckoutBusy(false);
     }
-  }, [planSlug, checkoutInfo?.paymentMode]);
+  }, [stripeCheckoutPlan, checkoutInfo?.paymentMode]);
 
   useEffect(() => {
     stripeAutoLoadRef.current = false;
@@ -298,34 +310,37 @@ export default function Checkout() {
   const sessionReady = sessionStatus === 'authenticated';
 
   return (
-    <main className={`checkout-page checkout-page--premium${useStripeProduction ? '' : ' checkout-page--mock'}`}>
-      <header className="checkout-header">
-        <nav className="checkout-nav checkout-nav--premium" aria-label="Checkout">
-          <Link className="checkout-brand" to="/">
-            <AllModelAILogoMark />
-            <span>AllModelAI</span>
-          </Link>
-          <div className="checkout-nav-links">
-            <Link to="/">Home</Link>
-            <Link to="/pricing">Pricing</Link>
-            <Link to="/dashboard">Dashboard</Link>
-          </div>
-        </nav>
-      </header>
+    <main className={`checkout-page checkout-page--premium${useStripeProduction ? ' checkout-page--stripe-layout' : ' checkout-page--mock'}`}>
+      {!useStripeProduction && (
+        <header className="checkout-header">
+          <nav className="checkout-nav checkout-nav--premium" aria-label="Checkout">
+            <Link className="checkout-brand" to="/">
+              <AllModelAILogoMark />
+              <span>AllModelAI</span>
+            </Link>
+            <div className="checkout-nav-links">
+              <Link to="/">Home</Link>
+              <Link to="/pricing">Pricing</Link>
+              <Link to="/dashboard">Dashboard</Link>
+            </div>
+          </nav>
+        </header>
+      )}
 
       {showTestBanner && (
         <p className="checkout-test-mode-banner checkout-test-mode-banner--prominent" role="status">{testBannerText}</p>
       )}
 
-      <section className="checkout-layout checkout-layout--split">
+      <section className={`checkout-layout ${useStripeProduction ? 'checkout-layout--cursor' : 'checkout-layout--split'}`}>
         <CheckoutSummaryCard
           isDeveloper={isDeveloper}
           summary={summary}
           priceLabel={priceLabel}
           providerLabel={providerLabel}
+          backHref="/pricing"
         />
 
-        <PaymentFormCard>
+        <PaymentFormCard light={useStripeProduction}>
           {canceled && (
             <div className="checkout-state checkout-state--cancel" role="status">
               <p>Payment wasn&apos;t completed.</p>
@@ -406,6 +421,7 @@ export default function Checkout() {
                   clientSecret={stripeClientSecret}
                   returnUrl={stripeReturnUrl || checkoutReturnUrl}
                   defaultEmail={sessionUser?.email || ''}
+                  emailLocked={Boolean(sessionUser?.email)}
                   disabled={!sessionReady}
                   stripeLoading={checkoutBusy && !stripeReady}
                   stripeLoadError={!checkoutBusy && !stripeReady && error ? error : ''}
@@ -414,16 +430,17 @@ export default function Checkout() {
                     stripeAutoLoadRef.current = false;
                     void startStripeCheckout();
                   }}
-                  payLabel={`Subscribe — $${summary?.amountDisplay || ''} / month`}
+                  payLabel={`Subscribe — ${payAmountLabel}/month`}
                   processingLabel="Processing payment…"
                   showStripeTestCardHint={Boolean(checkoutInfo?.showStripeTestCardHint)}
-                  showTestModeBanner={showTestBanner}
+                  showTestModeBanner={false}
                   secureCheckoutLabel={checkoutInfo?.secureCheckoutLabel || 'Secure payment'}
+                  appearance="light"
                 />
               ) : !usePaddlePrimary ? (
                 <>
                   <MockCheckoutForm
-                    planName={summary?.name || (planSlug === 'enterprise' ? 'Enterprise' : 'Pro')}
+                    planName={summary?.name || (planSlug === 'unlimited' ? 'Unlimited' : planSlug === 'starter' ? 'Starter' : 'Pro')}
                     planSlug={planSlug}
                     priceLabel={priceLabel}
                     interval={summary?.interval || 'month'}
@@ -437,7 +454,7 @@ export default function Checkout() {
                     }
                   />
 
-                  {paymentProvider === 'wayforpay' && paymentsAvailable && (
+                  {paymentProvider === 'wayforpay' && paymentsAvailable && !useStripeProduction && (
                     <div className="checkout-wayforpay-alt checkout-wayforpay-alt--primary">
                       {wayforpayTestFlow && (
                         <p className="checkout-owner-test-note" role="status">

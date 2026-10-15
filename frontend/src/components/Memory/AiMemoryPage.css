@@ -1,0 +1,65 @@
+.ai-memory-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+}
+
+.ai-memory-page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.ai-memory-back,
+.ai-memory-settings-link {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  color: inherit;
+  opacity: 0.85;
+  text-decoration: none;
+}
+
+.ai-memory-back:hover,
+.ai-memory-settings-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.ai-memory-page h1 {
+  margin: 0.25rem 0;
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+}
+
+.ai-memory-lead {
+  max-width: 52rem;
+  margin: 0.35rem 0 0;
+  opacity: 0.85;
+  line-height: 1.5;
+}
+
+.ai-memory-privacy {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ai-memory-privacy h2 {
+  margin: 0 0 0.65rem;
+  font-size: 1.1rem;
+}
+
+.ai-memory-privacy ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  opacity: 0.88;
+  line-height: 1.55;
+}
+
+@media (max-width: 640px) {
+  .ai-memory-page {
+    padding: 1rem 0.85rem 2.5rem;
+  }
+}

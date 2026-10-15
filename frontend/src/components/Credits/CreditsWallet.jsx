@@ -25,6 +25,9 @@ export default function CreditsWallet() {
   const [wallet, setWallet] = useState(null);
   const [ledger, setLedger] = useState([]);
   const [conditions, setConditions] = useState(null);
+  const [creditWeights, setCreditWeights] = useState(null);
+  const [subscriptionPlans, setSubscriptionPlans] = useState([]);
+  const [subscription, setSubscription] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [checkoutBusy, setCheckoutBusy] = useState('');
   const [notice, setNotice] = useState('');
@@ -39,17 +42,21 @@ export default function CreditsWallet() {
       if (packRes.ok) {
         setPackages(packData.packages || []);
         setConditions(packData.conditions || null);
+        setCreditWeights(packData.creditWeights || null);
+        setSubscriptionPlans(packData.subscriptionPlans || []);
       }
       if (!authed) return;
-      const [walletRes, ledgerRes] = await Promise.all([
+      const [walletRes, ledgerRes, subRes] = await Promise.all([
         apiFetch('/api/credits/wallet'),
         apiFetch('/api/credits/ledger?limit=40'),
+        apiFetch('/api/subscription'),
       ]);
       if (walletRes.ok) setWallet(await walletRes.json());
       if (ledgerRes.ok) {
         const ledgerData = await ledgerRes.json();
         setLedger(ledgerData.entries || []);
       }
+      if (subRes.ok) setSubscription(await subRes.json());
     } catch (error) {
       setLoadError(error.message || 'Could not load credits.');
     }
@@ -123,6 +130,56 @@ export default function CreditsWallet() {
       {notice ? <p className="credits-notice" role="status">{notice}</p> : null}
       {loadError ? <p className="credits-purchase-error" role="alert">{loadError}</p> : null}
 
+      {authed && subscription ? (
+        <section className="credits-conditions" aria-label="Current subscription">
+          <h3>Subscription & quotas</h3>
+          <ul>
+            <li>Current plan: {subscription.planLabel || subscription.plan || subscription.subscription?.plan || '—'}</li>
+            <li>
+              Plan allowance remaining:{' '}
+              {subscription.remaining != null
+                ? formatCredits(subscription.remaining)
+                : subscription.subscription?.remaining != null
+                  ? formatCredits(subscription.subscription.remaining)
+                  : '—'}
+            </li>
+            <li>
+              Renews / resets:{' '}
+              {subscription.currentPeriodEnd
+                || subscription.subscription?.currentPeriodEnd
+                || subscription.renewsAt
+                || '—'}
+            </li>
+            <li>
+              Payment status:{' '}
+              {subscription.status || subscription.subscription?.status || subscription.paymentStatus || '—'}
+            </li>
+            <li>
+              Prepaid AI credits are separate from monthly plan request equivalents.
+              Failed AI answers are not charged.
+            </li>
+          </ul>
+          <p className="credits-wallet-sub">
+            <Link to="/checkout">Upgrade or change plan</Link>
+            {' · '}
+            <Link to="/ai-memory">AI memory settings</Link>
+          </p>
+        </section>
+      ) : null}
+
+      {subscriptionPlans.length > 0 ? (
+        <section className="credits-conditions" aria-label="Plan catalog">
+          <h3>Subscription plans (server-defined)</h3>
+          <ul>
+            {subscriptionPlans.map((plan) => (
+              <li key={plan.key}>
+                {plan.label}: ${plan.amountUsd}/mo · {formatCredits(plan.monthlyRequestEquivalents)} base-request equivalents
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section className="credits-packages-grid" aria-label="Credit packages">
         {packages.map((pack) => (
           <article key={pack.id} className={`credits-package-card credits-package-${pack.id}`}>
@@ -155,6 +212,22 @@ export default function CreditsWallet() {
             <li>Failed AI requests are not charged.</li>
             <li>Stripe TEST MODE until you enable live checkout on the server.</li>
             <li>{packages[0]?.prepaidEligibilityNote || 'Confirm prepaid AI credit eligibility with Stripe before production.'}</li>
+          </ul>
+        </section>
+      ) : null}
+
+      {creditWeights?.models?.length ? (
+        <section className="credits-conditions" aria-label="Per-model credit costs">
+          <h3>Per-model credit weights</h3>
+          <p className="credits-wallet-sub">{creditWeights.note}</p>
+          <ul className="credits-ledger-list">
+            {creditWeights.models.slice(0, 12).map((row) => (
+              <li key={row.model}>
+                <span>{row.model}</span>
+                <span>weight {row.weight}</span>
+                <span>~{row.exampleCreditsPer1kTokens} credits / 1k tokens</span>
+              </li>
+            ))}
           </ul>
         </section>
       ) : null}

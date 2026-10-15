@@ -1,61 +1,118 @@
+import { Link } from 'react-router-dom';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { IconCheck, IconLock, IconShield } from './CheckoutIcons';
+
+function planBlurb(summary) {
+  if (!summary) return 'Premium AI access with monthly request allowance.';
+  const limit = summary.requestLimit?.toLocaleString?.() || summary.requestLimit;
+  if (summary.slug === 'starter' || summary.name === 'Starter') {
+    return `Core AI models, ${limit} requests per month, and email support.`;
+  }
+  if (summary.slug === 'unlimited' || summary.name === 'Unlimited') {
+    return `All connected providers, ${limit} requests per month, image generation, and dedicated support.`;
+  }
+  return `Premium AI models, ${limit} requests per month, image generation, and priority routing.`;
+}
+
+function formatUsd(summary, priceLabel) {
+  if (summary?.amountDisplay != null) return `$${summary.amountDisplay}`;
+  if (!priceLabel || priceLabel === '—') return '—';
+  if (String(priceLabel).includes('.')) return priceLabel.startsWith('$') ? priceLabel : `$${priceLabel}`;
+  const numeric = String(priceLabel).replace(/[^0-9.]/g, '');
+  if (!numeric) return priceLabel;
+  return `$${Number(numeric).toFixed(2)}`;
+}
 
 export default function CheckoutSummaryCard({
   isDeveloper,
   summary,
   priceLabel,
-  providerLabel,
+  providerLabel = 'Stripe',
+  backHref = '/',
 }) {
-  const planTitle = isDeveloper
-    ? 'Developer access'
-    : `AllModelAI ${summary?.name || 'Pro'}`;
+  const planName = isDeveloper ? 'Developer' : (summary?.name || 'Pro');
+  const headline = isDeveloper
+    ? 'Activate AllModelAI Developer'
+    : `Subscribe to AllModelAI ${planName}`;
+  const intervalLabel = summary?.interval === 'year' ? 'year' : 'month';
+  const displayAmount = isDeveloper ? '$0.00' : formatUsd(summary, priceLabel);
 
   return (
-    <aside className="checkout-summary-panel glass-panel checkout-summary-panel--premium">
-      <div className="checkout-summary-panel__glow" aria-hidden="true" />
-      <p className="checkout-eyebrow">Order summary</p>
-      <h1>{planTitle}</h1>
+    <aside className="checkout-summary-panel checkout-summary-panel--cursor" aria-label="Subscription summary">
+      <div className="checkout-summary-brand-row">
+        <Link className="checkout-summary-brand" to="/">
+          <AllModelAILogoMark size={40} />
+          <span>AllModelAI</span>
+        </Link>
+        <Link className="checkout-summary-back" to={backHref}>← Back</Link>
+      </div>
 
-      {!isDeveloper && summary && (
-        <>
-          <div className="checkout-plan checkout-plan--hero checkout-plan--glass checkout-plan--premium">
-            <div>
-              <span className="checkout-plan-label">Selected plan</span>
-              <strong className="checkout-plan-name">{summary.name}</strong>
-            </div>
-            <div className="checkout-plan-price">
-              <strong>{priceLabel}</strong>
-              <small> / {summary.interval}</small>
-            </div>
+      <p className="checkout-summary-kicker">Subscription</p>
+      <h1 className="checkout-summary-headline">{headline}</h1>
+
+      {!isDeveloper && (
+        <p className="checkout-summary-hero-price">
+          <strong>{displayAmount}</strong>
+          <span> / {intervalLabel}</span>
+        </p>
+      )}
+
+      <article className="checkout-order-card">
+        <header className="checkout-order-card__head">
+          <div>
+            <small>Selected plan</small>
+            <strong>AllModelAI {planName}</strong>
           </div>
-          <p className="checkout-summary-requests">
-            {summary.requestLimit?.toLocaleString?.() || summary.requestLimit} requests per {summary.interval}
-          </p>
-        </>
-      )}
+          <div className="checkout-order-card__price">
+            <strong>{displayAmount}</strong>
+            <span>/{intervalLabel}</span>
+          </div>
+        </header>
 
-      <h2 className="checkout-summary-features-title">Included in your plan</h2>
-      <ul className="checkout-summary-list checkout-summary-list--intro checkout-summary-list--premium">
-        {(summary?.features || []).map((perk) => (
-          <li key={perk}>
-            <IconCheck className="checkout-feature-icon" />
-            <span>{perk}</span>
-          </li>
-        ))}
-      </ul>
+        <p className="checkout-order-card__blurb">{planBlurb(summary)}</p>
 
-      {!isDeveloper && summary && (
-        <dl className="checkout-meta-list checkout-meta-list--summary">
-          <div><dt>Currency</dt><dd>USD</dd></div>
-          <div><dt>Billing period</dt><dd>{summary.interval === 'year' ? 'Yearly' : 'Monthly'}</dd></div>
-          <div><dt>Total due today</dt><dd>{priceLabel}</dd></div>
-          <div><dt>Provider</dt><dd>{providerLabel}</dd></div>
-        </dl>
-      )}
+        <ul className="checkout-summary-list checkout-summary-list--premium">
+          {(summary?.features || []).map((perk) => (
+            <li key={perk}>
+              <IconCheck className="checkout-feature-icon" />
+              <span>{perk}</span>
+            </li>
+          ))}
+        </ul>
 
-      <ul className="checkout-trust-list checkout-trust-list--summary checkout-trust-list--premium">
+        {!isDeveloper && summary && (
+          <dl className="checkout-totals">
+            <div>
+              <dt>Subtotal</dt>
+              <dd>{displayAmount}</dd>
+            </div>
+            <div>
+              <dt>Tax</dt>
+              <dd>Calculated by Stripe if applicable</dd>
+            </div>
+            <div className="checkout-totals__due">
+              <dt>Total due today</dt>
+              <dd>{displayAmount}</dd>
+            </div>
+            <div>
+              <dt>Currency</dt>
+              <dd>USD</dd>
+            </div>
+            <div>
+              <dt>Billing</dt>
+              <dd>{intervalLabel === 'year' ? 'Yearly' : 'Monthly'} · renews until canceled</dd>
+            </div>
+            <div>
+              <dt>Processor</dt>
+              <dd>{providerLabel}</dd>
+            </div>
+          </dl>
+        )}
+      </article>
+
+      <ul className="checkout-trust-list checkout-trust-list--summary">
         <li><IconLock className="checkout-trust-icon" /> Encrypted checkout</li>
-        <li><IconShield className="checkout-trust-icon" /> Cancel anytime</li>
+        <li><IconShield className="checkout-trust-icon" /> Cancel anytime in billing portal</li>
       </ul>
     </aside>
   );

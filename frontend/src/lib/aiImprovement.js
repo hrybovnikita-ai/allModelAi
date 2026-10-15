@@ -51,12 +51,35 @@ export async function updateUserMemory(id, content) {
 
 export async function deleteUserMemory(id) {
   const response = await apiFetch(`/api/ai/memory/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!response.ok) throw new Error('Could not delete memory.');
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || 'Could not delete memory.');
+  }
 }
 
 export async function clearAllUserMemories() {
   const response = await apiFetch('/api/ai/memory', { method: 'DELETE' });
-  if (!response.ok) throw new Error('Could not clear memories.');
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || 'Could not clear memories.');
+  }
+  return response.json().catch(() => ({ cleared: true }));
+}
+
+export async function searchUserMemories(query, { limit = 8 } = {}) {
+  const q = String(query || '').trim();
+  if (!q) {
+    throw new Error('Query is required.');
+  }
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  const response = await apiFetch(`/api/ai/memory/search?${params.toString()}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || 'Could not search memories.');
+  return {
+    items: data.items || [],
+    matchMode: data.matchMode || 'preview',
+    chatInjectionEnabled: data.chatInjectionEnabled === true,
+  };
 }
 
 export async function submitResponseFeedback(payload) {

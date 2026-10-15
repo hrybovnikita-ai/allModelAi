@@ -42,7 +42,7 @@ export default function DashboardResources() {
       <footer className="dashboard-footer">
         <div className="dashboard-footer-main">
           <div className="dashboard-footer-brand"><Link to="/" className="dashboard-brand"><AllModelAILogoMark />AllModelAI</Link><p>A place to think, build, and explore with AI.</p></div>
-          <nav aria-label="Footer workspace"><h3>Workspace</h3><Link to="/chat">Chat</Link><Link to="/model-comparison">Compare models</Link><Link to="/usage-analytics">Usage analytics</Link><Link to="/provider-health">Provider health</Link><Link to="/explore">Model library</Link><Link to="/studio">Studio</Link></nav>
+          <nav aria-label="Footer workspace"><h3>Workspace</h3><Link to="/chat">Chat</Link><Link to="/model-comparison">Compare models</Link><Link to="/usage-analytics">Usage analytics</Link><Link to="/provider-health">Provider health</Link><Link to="/credits">Credits & subscription</Link><Link to="/ai-memory">AI memory</Link><Link to="/explore">Model library</Link><Link to="/studio">Studio</Link></nav>
           <nav aria-label="Footer resources"><h3>Resources</h3><Link to="/prompts">Prompt library</Link><Link to="/api-docs">API documentation</Link><Link to="/features">Features</Link></nav>
           <nav aria-label="Footer account"><h3>Account</h3><Link to="/settings">Settings</Link><Link to="/checkout?plan=pro">Plans & upgrades</Link><Link to="/control-center">Control center</Link></nav>
         </div>

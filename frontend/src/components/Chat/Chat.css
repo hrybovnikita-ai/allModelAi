@@ -158,8 +158,8 @@ html[data-theme="light"] .chat-workspace:has(.chat-empty){background-image:radia
 
 /* Keep the final answer fully scrollable above the fixed composer. */
 .chat-messages{scroll-padding-bottom:280px;overscroll-behavior:contain}
-.chat-scroll-tail{display:block;width:100%;height:280px;pointer-events:none}
-@media(max-width:600px){.chat-messages{scroll-padding-bottom:150px}.chat-scroll-tail{height:150px}}
+.chat-scroll-tail{display:block;width:100%;height:72px;pointer-events:none;flex-shrink:0}
+@media(max-width:600px){.chat-messages{scroll-padding-bottom:120px}.chat-scroll-tail{height:56px}}
 
 /* User-selected input color from Personal Chat Settings. */
 .chat-page .composer-box{background:var(--composer-color,#262626)!important}
@@ -238,21 +238,21 @@ html[data-theme="light"] .chat-page .chat-composer textarea::placeholder{
   .chat-workspace{grid-template-rows:60px auto minmax(0,1fr) auto}
 }
 
-/* Leave enough scroll room to read the last lines above the composer. */
+/* Composer sits in its own grid row — keep a small tail for comfortable scrolling. */
 .chat-messages{
   overflow-y:auto;
   overflow-x:hidden;
-  padding-bottom:clamp(120px,18vh,240px);
-  scroll-padding-bottom:clamp(120px,18vh,240px);
+  padding-bottom:24px;
+  scroll-padding-bottom:24px;
 }
-.chat-scroll-tail{height:clamp(120px,18vh,240px)}
+.chat-scroll-tail{height:48px}
 
 @media (max-width:600px){
   .chat-messages{
-    padding-bottom:140px;
-    scroll-padding-bottom:140px;
+    padding-bottom:16px;
+    scroll-padding-bottom:16px;
   }
-  .chat-scroll-tail{height:140px}
+  .chat-scroll-tail{height:40px}
 }
 
 /* ==========================================================================

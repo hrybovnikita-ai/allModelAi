@@ -100,6 +100,13 @@ function buildProviderHealthRow(id, context) {
         ? Date.now() - new Date(lastObservedAt).getTime() > STALE_MS
         : merged.source === 'config';
 
+    let circuitBreaker = null;
+    try {
+        circuitBreaker = require('./providerCircuitBreaker').snapshot(id);
+    } catch {
+        circuitBreaker = null;
+    }
+
     return {
         id,
         displayName: id,
@@ -118,6 +125,12 @@ function buildProviderHealthRow(id, context) {
         recentErrorTypes: telemetryRow?.errorTypeCounts || {},
         recentIncidents: (telemetryRow?.incidents || []).slice(0, 5),
         probeStatus: snapshotRow?.status || null,
+        circuitBreaker,
+        automaticRecovery: circuitBreaker?.state === 'open'
+            ? 'waiting_for_half_open'
+            : circuitBreaker?.state === 'half_open'
+                ? 'probing'
+                : 'ready',
     };
 }
 

@@ -126,6 +126,13 @@ async function createMemory(connection, email, { content, sourceType = 'user', s
         err.status = 400;
         throw err;
     }
+    const { containsSensitiveContent } = require('./memoryRetrieval');
+    if (containsSensitiveContent(text)) {
+        const err = new Error('Memory looks like it contains a secret (API key, password, or card number). Remove secrets before saving.');
+        err.status = 400;
+        err.code = 'MEMORY_SENSITIVE_CONTENT';
+        throw err;
+    }
     const { stored, preview } = encryptMemory(text);
     const id = `mem-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
@@ -144,6 +151,15 @@ async function createMemory(connection, email, { content, sourceType = 'user', s
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(id, normalized, stored, preview, sourceType, sourceConversationId, now, now);
     }
+    await syncMemoryVectorBestEffort({
+        userId: normalized,
+        memoryId: id,
+        content: text,
+        contentPreview: preview,
+        sourceType,
+        createdAt: now,
+        updatedAt: now,
+    });
     return { id, contentPreview: preview, sourceType, sourceConversationId, createdAt: now, updatedAt: now };
 }
 
@@ -153,6 +169,13 @@ async function updateMemory(connection, email, memoryId, content) {
     if (!text) {
         const err = new Error('Memory text is required.');
         err.status = 400;
+        throw err;
+    }
+    const { containsSensitiveContent } = require('./memoryRetrieval');
+    if (containsSensitiveContent(text)) {
+        const err = new Error('Memory looks like it contains a secret (API key, password, or card number). Remove secrets before saving.');
+        err.status = 400;
+        err.code = 'MEMORY_SENSITIVE_CONTENT';
         throw err;
     }
     const { stored, preview } = encryptMemory(text);
@@ -180,6 +203,14 @@ async function updateMemory(connection, email, memoryId, content) {
             throw err;
         }
     }
+    await syncMemoryVectorBestEffort({
+        userId: normalized,
+        memoryId,
+        content: text,
+        contentPreview: preview,
+        sourceType: 'user',
+        updatedAt: now,
+    });
     return { id: memoryId, contentPreview: preview, updatedAt: now };
 }
 
@@ -196,6 +227,7 @@ async function deleteMemory(connection, email, memoryId) {
             err.status = 404;
             throw err;
         }
+        await deleteMemoryVectorBestEffort({ userId: normalized, memoryId });
         return { deleted: true };
     }
     const info = connection.database.prepare(
@@ -206,6 +238,7 @@ async function deleteMemory(connection, email, memoryId) {
         err.status = 404;
         throw err;
     }
+    await deleteMemoryVectorBestEffort({ userId: normalized, memoryId });
     return { deleted: true };
 }
 
@@ -216,10 +249,67 @@ async function clearAllMemories(connection, email) {
     } else {
         connection.database.prepare('DELETE FROM user_ai_memories WHERE email = ?').run(normalized);
     }
+    await clearMemoryVectorsBestEffort(normalized);
     return { cleared: true };
 }
 
-async function getDecryptedMemoriesForChat(connection, email, { temporary = false } = {}) {
+/** Preview search over the caller's own memories (SQL). Used when vector store is unavailable. */
+async function searchMemoriesByPreview(connection, email, query, { limit = 8 } = {}) {
+    const normalized = normalizeEmail(email);
+    const needle = String(query || '').trim().toLowerCase();
+    if (!needle) return [];
+    const safeLimit = Math.min(Math.max(Number(limit) || 8, 1), 40);
+    const items = await listMemories(connection, normalized);
+    return items
+        .filter((item) => String(item.contentPreview || '').toLowerCase().includes(needle))
+        .slice(0, safeLimit)
+        .map((item) => ({
+            id: item.id,
+            userId: normalized,
+            contentPreview: item.contentPreview,
+            sourceType: item.sourceType,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+            score: null,
+            matchMode: 'preview',
+        }));
+}
+
+async function syncMemoryVectorBestEffort(payload) {
+    try {
+        const store = require('./zilliz/zillizMemoryStore');
+        if (!store.isZillizMemoryConfigured()) return;
+        await store.upsertMemoryVector(payload);
+    } catch (error) {
+        console.warn('[ZILLIZ_MEMORY] vector sync skipped:', error.code || error.message);
+    }
+}
+
+async function deleteMemoryVectorBestEffort({ userId, memoryId }) {
+    try {
+        const store = require('./zilliz/zillizMemoryStore');
+        if (!store.isZillizMemoryConfigured()) return;
+        await store.deleteMemoryVector({ userId, memoryId });
+    } catch (error) {
+        console.warn('[ZILLIZ_MEMORY] vector delete skipped:', error.code || error.message);
+    }
+}
+
+async function clearMemoryVectorsBestEffort(userId) {
+    try {
+        const store = require('./zilliz/zillizMemoryStore');
+        if (!store.isZillizMemoryConfigured()) return;
+        await store.deleteAllMemoryVectorsForUser({ userId });
+    } catch (error) {
+        console.warn('[ZILLIZ_MEMORY] vector clear skipped:', error.code || error.message);
+    }
+}
+
+async function getDecryptedMemoriesForChat(connection, email, {
+    temporary = false,
+    query = '',
+    ranked = true,
+} = {}) {
     const settings = await getSettings(connection, email);
     if (!settings.memoryEnabled) return [];
     if (temporary && settings.excludeTemporaryFromMemory) return [];
@@ -229,13 +319,13 @@ async function getDecryptedMemoriesForChat(connection, email, { temporary = fals
     if (isPostgresConnection(connection)) {
         const result = await pgQuery(
             connection,
-            `SELECT content_encrypted FROM user_ai_memories WHERE email = $1 ORDER BY updated_at DESC LIMIT 20`,
+            `SELECT content_encrypted FROM user_ai_memories WHERE email = $1 ORDER BY updated_at DESC LIMIT 40`,
             [normalized],
         );
         rows = result.rows;
     } else {
         rows = connection.database.prepare(
-            `SELECT content_encrypted FROM user_ai_memories WHERE email = ? ORDER BY updated_at DESC LIMIT 20`,
+            `SELECT content_encrypted FROM user_ai_memories WHERE email = ? ORDER BY updated_at DESC LIMIT 40`,
         ).all(normalized);
     }
 
@@ -243,7 +333,13 @@ async function getDecryptedMemoriesForChat(connection, email, { temporary = fals
     const decrypted = rows
         .map((row) => decryptMemory(row.content_encrypted))
         .filter(Boolean);
-    return [...decrypted, ...legacy].slice(0, 25);
+    const combined = [...decrypted, ...legacy];
+    if (!ranked) return combined.slice(0, 25);
+
+    const { rankAndSelectMemories, containsSensitiveContent } = require('./memoryRetrieval');
+    const safe = combined.filter((text) => !containsSensitiveContent(text));
+    const selected = rankAndSelectMemories(safe, query);
+    return selected.texts;
 }
 
 async function loadLegacyWorkspaceMemories(connection, normalizedEmail) {
@@ -286,6 +382,7 @@ module.exports = {
     updateMemory,
     deleteMemory,
     clearAllMemories,
+    searchMemoriesByPreview,
     getDecryptedMemoriesForChat,
     MAX_MEMORY_CHARS,
 };

@@ -21,6 +21,7 @@ import Users from "./components/Users/Users";
 import Footer from "./components/Footer/Footer";
 import Dashboard from "./components/Dashboard/Dashboard";
 import CreditsWallet from "./components/Credits/CreditsWallet";
+import AiMemoryPage from "./components/Memory/AiMemoryPage";
 import ModelDetails from "./components/ModelDetails/ModelDetails";
 import Chat from "./components/Chat/Chat";
 import Checkout from "./components/Checkout/Checkout";
@@ -189,13 +190,16 @@ export default function App() {
       <Route path="/checkout/success" element={<CheckoutSuccess />} />
       <Route path="/checkout/cancel" element={<CheckoutCancel />} />
       <Route path="/checkout" element={<Checkout />} />
+      <Route path="/checkout/starter" element={<Checkout />} />
       <Route path="/checkout/pro" element={<Checkout />} />
+      <Route path="/checkout/unlimited" element={<Checkout />} />
       <Route path="/checkout/enterprise" element={<Checkout />} />
       <Route element={<RequireAuth />}>
       <Route path="/models/:slug" element={<ModelDetails />} />
       <Route path="/prompts" element={<PromptGallery />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/credits" element={<CreditsWallet />} />
+      <Route path="/ai-memory" element={<AiMemoryPage />} />
       <Route path="/everyday-ai" element={<EverydayAI />} />
       <Route path="/everyday-ai/:tool" element={<EverydayAI />} />
       <Route path="/settings" element={<Settings />} />

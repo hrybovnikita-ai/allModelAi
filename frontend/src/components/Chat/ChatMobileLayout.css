@@ -355,11 +355,11 @@
   }
 
   .chat-page .chat-scroll-tail {
-    height: 120px;
+    height: 40px;
   }
 
   .chat-page .chat-messages {
-    scroll-padding-bottom: 120px;
+    scroll-padding-bottom: 16px;
   }
 }
 

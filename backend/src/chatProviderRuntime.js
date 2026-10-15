@@ -165,11 +165,23 @@ function routedModelHasApiKey(routedModel) {
     }
 }
 
+function providerCircuitAllowsSlug(slug) {
+    try {
+        const { slugToProviderId } = require('./services/providerErrorClassification');
+        const { canAttempt } = require('./services/providerCircuitBreaker');
+        const providerId = slugToProviderId(slug) || slug;
+        return canAttempt(providerId);
+    } catch {
+        return true;
+    }
+}
+
 function findRoutedModelWithApiKey(preferredModel, modelAllowed) {
     const availability = providerAvailabilityForRouter();
     const trySlug = (slug) => modelAllowed(slug)
         && isRoutedModelAvailable(slug, availability)
-        && routedModelHasApiKey(slug);
+        && routedModelHasApiKey(slug)
+        && providerCircuitAllowsSlug(slug);
     if (trySlug(preferredModel)) return preferredModel;
     for (const candidate of SMART_ROUTE_FALLBACK_ORDER) {
         if (trySlug(candidate)) return candidate;

@@ -33,6 +33,8 @@ const getAiCreditPackages = (_req, res) => {
     const creem = creemConfigurationReport();
     const creemGuard = assertCreemCheckoutAllowed();
     const checkoutAvailable = Boolean(creemGuard.ok);
+    const { listPublicCreditWeights } = require('../billing/aiCreditUsage');
+    const { subscriptionPlans, PLAN_UI_LABELS } = require('../billing/plans');
     return res.json({
         packages: getPublicCreditPackages(),
         testModeOnly: isStripeTestMode(),
@@ -55,6 +57,14 @@ const getAiCreditPackages = (_req, res) => {
             creditsGrantedViaWebhookOnly: true,
             separateFromProviderQuota: true,
         },
+        creditWeights: listPublicCreditWeights(),
+        subscriptionPlans: ['free', 'starter', 'common', 'plus'].map((key) => ({
+            key,
+            label: PLAN_UI_LABELS[key] || subscriptionPlans[key]?.name,
+            amountUsd: ((subscriptionPlans[key]?.amount || 0) / 100).toFixed(2),
+            monthlyRequestEquivalents: subscriptionPlans[key]?.limit ?? null,
+            models: subscriptionPlans[key]?.models || [],
+        })),
     });
 };
 

@@ -293,6 +293,17 @@ export default function ProviderHealthDashboard() {
                       {provider.explanation && (
                         <p className="provider-health-card-note">{provider.explanation}</p>
                       )}
+                      {provider.automaticRecovery && (
+                        <p className="provider-health-card-note">
+                          Automatic recovery: {provider.automaticRecovery}
+                          {provider.circuitState ? ` (${provider.circuitState})` : ''}
+                        </p>
+                      )}
+                      {Array.isArray(provider.recentErrorCategories) && provider.recentErrorCategories.length > 0 && (
+                        <p className="provider-health-card-note">
+                          Error categories: {provider.recentErrorCategories.map((c) => c.replace(/_/g, ' ')).join(', ')}
+                        </p>
+                      )}
                       <div className="provider-health-model-table-wrap">
                         <table className="provider-health-model-table">
                           <thead>

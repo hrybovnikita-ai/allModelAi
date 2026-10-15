@@ -286,18 +286,28 @@ function openRouterUsable(snapshot) {
     return true;
 }
 
+function circuitAllowsProvider(providerId) {
+    try {
+        const { canAttempt } = require('./services/providerCircuitBreaker');
+        return canAttempt(providerId);
+    } catch {
+        return true;
+    }
+}
+
 function providerAvailabilityForRouter() {
     const snapshot = buildProviderSnapshot();
-    const viaOpenRouter = openRouterUsable(snapshot);
-    const perplexity = directProviderUsable('perplexity', snapshot) || viaOpenRouter;
+    const viaOpenRouter = openRouterUsable(snapshot) && circuitAllowsProvider('openrouter');
+    const directOrGateway = (id) => (directProviderUsable(id, snapshot) && circuitAllowsProvider(id)) || viaOpenRouter;
+    const perplexity = directOrGateway('perplexity');
     return {
-        gpt: directProviderUsable('openai', snapshot) || viaOpenRouter,
-        gemini: directProviderUsable('gemini', snapshot) || viaOpenRouter,
-        claude: directProviderUsable('claude', snapshot) || viaOpenRouter,
-        grok: directProviderUsable('grok', snapshot) || viaOpenRouter,
-        groq: directProviderUsable('groq', snapshot) || viaOpenRouter,
-        mistral: directProviderUsable('mistral', snapshot) || viaOpenRouter,
-        kimi: directProviderUsable('kimi', snapshot) || viaOpenRouter,
+        gpt: directOrGateway('openai'),
+        gemini: directOrGateway('gemini'),
+        claude: directOrGateway('claude'),
+        grok: directOrGateway('grok'),
+        groq: directOrGateway('groq'),
+        mistral: directOrGateway('mistral'),
+        kimi: directOrGateway('kimi'),
         perplexity,
         others: viaOpenRouter,
     };

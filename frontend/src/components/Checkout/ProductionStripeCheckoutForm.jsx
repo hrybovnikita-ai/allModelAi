@@ -26,6 +26,8 @@ export default function ProductionStripeCheckoutForm({
   showStripeTestCardHint = false,
   showTestModeBanner = false,
   secureCheckoutLabel = 'Secure payment',
+  emailLocked = false,
+  appearance = 'light',
 }) {
   const confirmRef = useRef(null);
   const [fields, setFields] = useState(() => ({ ...BILLING_FIELD_INITIAL, email: defaultEmail }));
@@ -95,10 +97,11 @@ export default function ProductionStripeCheckoutForm({
         disabled={disabled || payBusy}
         testModeLabel={testModeLabel}
         secureLabel={secureCheckoutLabel}
+        emailLocked={emailLocked || Boolean(defaultEmail)}
       />
 
       <fieldset className="mock-checkout-fieldset mock-checkout-fieldset--payment" disabled={disabled || payBusy}>
-        <legend className="mock-checkout-legend">Payment details</legend>
+        <legend className="mock-checkout-legend">Payment method</legend>
         <div className="production-stripe-checkout__brands">
           <p className="production-stripe-checkout__brands-label">Supported cards</p>
           <CardBrandBadges className="production-stripe-checkout__badges" />
@@ -134,6 +137,7 @@ export default function ProductionStripeCheckoutForm({
             getBillingDetails={getBillingDetails}
             confirmRef={confirmRef}
             hidePayButton
+            appearance={appearance}
             onError={(message) => {
               if (message) setFieldError(message);
               onStripeError?.(message);

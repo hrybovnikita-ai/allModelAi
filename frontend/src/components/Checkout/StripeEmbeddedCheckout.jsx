@@ -32,6 +32,31 @@ export const stripeCheckoutAppearance = {
   },
 };
 
+/** Light Payment Element theme for the Cursor-inspired checkout column. */
+export const stripeCheckoutAppearanceLight = {
+  theme: 'stripe',
+  variables: {
+    colorPrimary: '#6d5ef5',
+    colorBackground: '#ffffff',
+    colorText: '#0f172a',
+    colorTextSecondary: '#64748b',
+    colorDanger: '#dc2626',
+    borderRadius: '10px',
+    fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+    spacingUnit: '4px',
+  },
+  rules: {
+    '.Input': {
+      border: '1px solid #d1d5db',
+      boxShadow: 'none',
+      backgroundColor: '#ffffff',
+    },
+    '.Label': { color: '#475569', fontWeight: '600' },
+    '.Tab': { borderColor: '#e5e7eb', backgroundColor: '#f8fafc' },
+    '.Tab--selected': { borderColor: '#6d5ef5', backgroundColor: '#ffffff' },
+  },
+};
+
 function StripeCheckoutInner({
   returnUrl,
   onError,
@@ -165,6 +190,7 @@ export default function StripeEmbeddedCheckout({
   getBillingDetails,
   confirmRef,
   hidePayButton = false,
+  appearance = 'night',
 }) {
   const stripePromise = useMemo(() => {
     if (!publishableKey) return null;
@@ -174,9 +200,12 @@ export default function StripeEmbeddedCheckout({
   const providerOptions = useMemo(
     () => ({
       clientSecret,
-      elementsOptions: { appearance: stripeCheckoutAppearance, loader: 'auto' },
+      elementsOptions: {
+        appearance: appearance === 'light' ? stripeCheckoutAppearanceLight : stripeCheckoutAppearance,
+        loader: 'auto',
+      },
     }),
-    [clientSecret],
+    [clientSecret, appearance],
   );
 
   if (!publishableKey || !clientSecret || !stripePromise || !returnUrl) {

@@ -5,9 +5,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const testsDir = join(root, 'tests');
-const renderTest = 'auth-transition-render.test.mjs';
+const renderTests = new Set([
+  'auth-transition-render.test.mjs',
+  'confirm-dialog-render.test.mjs',
+  'user-memory-settings-render.test.mjs',
+]);
 const staticTests = readdirSync(testsDir)
-  .filter((name) => name.endsWith('.test.mjs') && name !== renderTest)
+  .filter((name) => name.endsWith('.test.mjs') && !renderTests.has(name))
   .map((name) => join(testsDir, name));
 
 const staticRun = spawnSync(process.execPath, ['--test', ...staticTests], {
@@ -25,7 +29,7 @@ const renderRun = spawnSync(
     '--import',
     'tsx',
     '--test',
-    join(testsDir, renderTest),
+    ...[...renderTests].map((name) => join(testsDir, name)),
   ],
   { cwd: root, stdio: 'inherit' },
 );

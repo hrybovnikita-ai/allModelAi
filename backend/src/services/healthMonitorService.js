@@ -58,7 +58,15 @@ function statusExplanation(status, stale) {
     return null;
 }
 
+function publicRecoveryLabel(circuitState) {
+    if (circuitState === 'open') return 'Automatic recovery pending';
+    if (circuitState === 'half_open') return 'Probing recovery';
+    if (circuitState === 'closed') return 'Healthy routing';
+    return null;
+}
+
 function sanitizeProviderRow(row) {
+    const circuitState = row.circuitBreaker?.state || null;
     return {
         id: row.id,
         displayName: row.displayName || row.id,
@@ -72,6 +80,8 @@ function sanitizeProviderRow(row) {
         staleObservation: Boolean(row.staleObservation),
         explanation: statusExplanation(row.status, row.staleObservation),
         recentErrorCategories: Object.keys(row.recentErrorTypes || {}),
+        automaticRecovery: publicRecoveryLabel(circuitState),
+        circuitState: circuitState === 'open' || circuitState === 'half_open' ? circuitState : undefined,
     };
 }
 

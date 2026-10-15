@@ -1,4 +1,5 @@
 const { classifyProviderError } = require('./providerErrorClassification');
+const circuitBreaker = require('./providerCircuitBreaker');
 
 const WINDOW_MS = 60 * 60 * 1000;
 const MAX_EVENTS = 2000;
@@ -86,13 +87,15 @@ function recordProviderRequest({
         row.avgLatencyMs = Math.round(row.latencySum / row.latencyCount);
     }
 
+    let errorClass = null;
     if (success) {
         row.successes += 1;
         row.lastSuccessAt = now;
         row.lastError = null;
+        circuitBreaker.recordSuccess(id);
     } else {
         row.failures += 1;
-        const errorClass = resolveErrorClass({ errorCategory, httpStatus, message, timedOut });
+        errorClass = resolveErrorClass({ errorCategory, httpStatus, message, timedOut });
         row.lastError = errorClass;
         row.errorTypeCounts[errorClass] = (row.errorTypeCounts[errorClass] || 0) + 1;
         if (errorClass === 'rate_limited') row.rateLimited += 1;
@@ -106,6 +109,7 @@ function recordProviderRequest({
         if (fallbackUsed && !row.errorTypeCounts.degraded_fallback) {
             row.errorTypeCounts.degraded_fallback = 1;
         }
+        circuitBreaker.recordFailure(id, { errorClass });
     }
     byProvider.set(id, row);
 
@@ -125,6 +129,25 @@ function recordProviderRequest({
 function passiveOperationalStatus(providerId, configured, row) {
     if (!configured) {
         return { operationalStatus: 'not_configured', availability: 'not_configured', source: 'config' };
+    }
+    const breaker = circuitBreaker.snapshot(providerId);
+    if (breaker.state === 'open') {
+        return {
+            operationalStatus: 'unavailable',
+            availability: 'circuit_open',
+            source: 'circuit_breaker',
+            circuitBreaker: breaker,
+            lastLatencyMs: row?.lastLatencyMs,
+        };
+    }
+    if (breaker.state === 'half_open') {
+        return {
+            operationalStatus: 'degraded',
+            availability: 'circuit_half_open',
+            source: 'circuit_breaker',
+            circuitBreaker: breaker,
+            lastLatencyMs: row?.lastLatencyMs,
+        };
     }
     if (!row || Date.now() - row.lastAt > WINDOW_MS) {
         return { operationalStatus: 'unknown', availability: 'not_tested', source: 'passive' };
@@ -213,6 +236,7 @@ function snapshotPassiveProviders() {
 
 function resetForTests() {
     byProvider.clear();
+    circuitBreaker.resetCircuitBreakersForTests();
 }
 
 module.exports = {

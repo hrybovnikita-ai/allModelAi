@@ -1813,17 +1813,34 @@ async function createChatResponseImpl(req, res) {
     if (!usageGate.allowed) {
         return res.status(usageGate.status).json({ message: usageGate.message, code: usageGate.code });
     }
-    const { checkAiCreditsBeforeChat, checkUpstreamBudgetGate, aiCreditsEnabled, creditsForUsage } = require('../billing/aiCreditUsage');
+    const {
+        checkAiCreditsBeforeChat,
+        checkUpstreamBudgetGate,
+        aiCreditsEnabled,
+        creditsForUsage,
+        estimateMaxCreditHold,
+    } = require('../billing/aiCreditUsage');
     const upstreamGate = checkUpstreamBudgetGate();
     if (!upstreamGate.allowed) {
         return res.status(upstreamGate.status).json({ message: upstreamGate.message, code: upstreamGate.code });
     }
-    const aiCreditGate = checkAiCreditsBeforeChat(creditStatus, creditStatus.aiCredits?.balance);
+    const estimatedInputTokensEarly = Math.ceil(
+        normalizedInputMessages.reduce((sum, message) => sum + String(message.content || '').length, 0) / 4,
+    );
+    const creditHoldEstimate = estimateMaxCreditHold({
+        model: requestedModel === 'smart' || requestedModel === 'anonin' ? 'gemini' : requestedModel,
+        inputTokens: estimatedInputTokensEarly,
+        maxOutputTokens: Math.min(Math.max(Number(maxTokens) || Number(process.env.MAX_TOKENS) || 2048, 128), 4096),
+    });
+    const aiCreditGate = checkAiCreditsBeforeChat(creditStatus, creditStatus.aiCredits?.balance, {
+        minRequired: aiCreditsEnabled() ? creditHoldEstimate : 1,
+    });
     if (!aiCreditGate.allowed) {
         return res.status(aiCreditGate.status).json({
             message: aiCreditGate.message,
             code: aiCreditGate.code,
             aiCreditsBalance: aiCreditGate.aiCreditsBalance,
+            required: aiCreditGate.required,
         });
     }
     const modelAllowed = (slug) => hasModelAccess(creditStatus, slug);
@@ -2143,6 +2160,8 @@ async function createChatResponseImpl(req, res) {
     const { getDecryptedMemoriesForChat } = require('../services/userMemoryService');
     const memories = await getDecryptedMemoriesForChat(connection, normalizedChatEmail, {
         temporary: Boolean(temporary),
+        query: latestPrompt,
+        ranked: true,
     });
     const knowledge = useKnowledge ? await findKnowledgeForUser(connection, userEmail, latestPrompt, 4) : [];
     const safePreference = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
@@ -2300,6 +2319,36 @@ async function createChatResponseImpl(req, res) {
     };
 
     const standardInput = buildOpenAIMessages(providerInputMessages);
+
+    const creditReserveRef = `chat_reserve_${chatCorrelationId}`;
+    let creditReservation = null;
+    const shouldReserveCredits = aiCreditsEnabled()
+        && !require('../billing/accessControl').ownerPlusActive(creditStatus);
+    if (shouldReserveCredits) {
+        try {
+            const holdAmount = estimateMaxCreditHold({
+                model: routedModel,
+                inputTokens: estimatedInputTokensEarly,
+                maxOutputTokens: outputTokenLimit,
+            });
+            const { reserveCreditsAsync } = require('../billing/aiCreditLedger');
+            creditReservation = await reserveCreditsAsync(connection, {
+                email: userEmail,
+                amount: holdAmount,
+                referenceId: creditReserveRef,
+                metadata: { model: routedModel, phase: 'pre_provider' },
+            });
+        } catch (reserveError) {
+            if (reserveError.code === 'AI_CREDITS_EXHAUSTED') {
+                return res.status(402).json({
+                    message: 'Not enough AI credits to start this request.',
+                    code: 'AI_CREDITS_EXHAUSTED',
+                    aiCreditsBalance: creditStatus.aiCredits?.balance ?? 0,
+                });
+            }
+            console.warn('[AI_CREDITS] reserve failed:', reserveError.message);
+        }
+    }
 
     try {
         const { resolveGeminiDirectModel } = require('../services/geminiModelRouting');
@@ -2816,6 +2865,18 @@ async function createChatResponseImpl(req, res) {
                 }
             });
             const clientStatus = groqMapped?.clientStatus || grokMapped?.clientStatus || geminiMapped?.clientStatus || openRouterBillingMapped?.clientStatus || openRouterFreeMapped?.clientStatus || cloudflareMapped?.clientStatus || mapUpstreamStatusForClient(apiResponse.status);
+            if (shouldReserveCredits && creditReservation) {
+                try {
+                    const { releaseReservationAsync } = require('../billing/aiCreditLedger');
+                    await releaseReservationAsync(req.app.locals.db, {
+                        email: userEmail,
+                        referenceId: creditReserveRef,
+                        metadata: { reason: 'upstream_http_error', status: apiResponse.status },
+                    });
+                } catch (releaseError) {
+                    console.warn('[AI_CREDITS] release on upstream error skipped:', releaseError.message);
+                }
+            }
             return res.status(clientStatus).json({
                 message,
                 code: errorCode,
@@ -2883,7 +2944,13 @@ async function createChatResponseImpl(req, res) {
             : streamMeta;
         res.write(`data: ${JSON.stringify(clientStreamMeta)}\n\n`);
         if (fallbackUsed && requestedModel !== 'anonin') {
-            res.write(`data: ${JSON.stringify({ fallback: true, requestedModel: routedModel, actualModel: fallbackModel })}\n\n`);
+            res.write(`data: ${JSON.stringify({
+                fallback: true,
+                autoRecovery: true,
+                requestedModel: routedModel,
+                actualModel: fallbackModel,
+                notice: `Answered with ${fallbackModel} after the preferred model was unavailable.`,
+            })}\n\n`);
         }
         if (shouldAugmentWithWeb) {
             if (webSourcesForResponse.length) {
@@ -2977,24 +3044,51 @@ async function createChatResponseImpl(req, res) {
         const outputTokens = Math.ceil(assistantText.length / 4);
         const actualUsageModel = fallbackUsed ? fallbackModel : routedModel;
         const estimatedCost = Number((((inputTokens * 0.5) + (outputTokens * 1.5)) / 1000000).toFixed(6));
-        if (aiCreditsEnabled() && !require('../billing/accessControl').ownerPlusActive(creditStatus) && String(assistantText || '').trim()) {
+        if (shouldReserveCredits && creditReservation && String(assistantText || '').trim()) {
             try {
-                const { deductCreditsAsync } = require('../billing/aiCreditLedger');
+                const { settleReservationAsync, deductCreditsAsync } = require('../billing/aiCreditLedger');
                 const charge = creditsForUsage({
                     estimatedCostUsd: estimatedCost,
                     inputTokens,
                     outputTokens,
                     model: actualUsageModel,
                 });
-                const deduct = await deductCreditsAsync(req.app.locals.db, {
+                const settled = await settleReservationAsync(req.app.locals.db, {
                     email: userEmail,
-                    amount: charge,
-                    referenceId: `chat_usage_${chatCorrelationId}`,
+                    referenceId: creditReserveRef,
+                    actualAmount: charge,
                     metadata: { model: actualUsageModel, inputTokens, outputTokens, estimatedCost },
                 });
-                res.write(`data: ${JSON.stringify({ creditsCharged: charge, creditsRemaining: deduct.balance })}\n\n`);
+                // If no reservation existed (schema race), fall back to legacy deduct once.
+                if (settled.missing) {
+                    const deduct = await deductCreditsAsync(req.app.locals.db, {
+                        email: userEmail,
+                        amount: charge,
+                        referenceId: `chat_usage_${chatCorrelationId}`,
+                        metadata: { model: actualUsageModel, inputTokens, outputTokens, estimatedCost },
+                    });
+                    res.write(`data: ${JSON.stringify({ creditsCharged: charge, creditsRemaining: deduct.balance })}\n\n`);
+                } else {
+                    res.write(`data: ${JSON.stringify({
+                        creditsCharged: settled.settled ?? charge,
+                        creditsRemaining: settled.balance,
+                        creditsReserved: settled.reserved,
+                        creditsRefunded: settled.refunded || 0,
+                    })}\n\n`);
+                }
             } catch (deductError) {
-                console.warn('[AI_CREDITS] deduction skipped:', deductError.message);
+                console.warn('[AI_CREDITS] settle skipped:', deductError.message);
+            }
+        } else if (shouldReserveCredits && creditReservation && !String(assistantText || '').trim()) {
+            try {
+                const { releaseReservationAsync } = require('../billing/aiCreditLedger');
+                await releaseReservationAsync(req.app.locals.db, {
+                    email: userEmail,
+                    referenceId: creditReserveRef,
+                    metadata: { reason: 'empty_assistant_text' },
+                });
+            } catch (releaseError) {
+                console.warn('[AI_CREDITS] release skipped:', releaseError.message);
             }
         }
         setImmediate(() => {
@@ -3086,6 +3180,18 @@ async function createChatResponseImpl(req, res) {
         res.write('data: [DONE]\n\n');
         return res.end();
     } catch (error) {
+        if (shouldReserveCredits && creditReservation) {
+            try {
+                const { releaseReservationAsync } = require('../billing/aiCreditLedger');
+                await releaseReservationAsync(req.app.locals.db, {
+                    email: userEmail,
+                    referenceId: creditReserveRef,
+                    metadata: { reason: 'provider_error', name: error.name },
+                });
+            } catch (releaseError) {
+                console.warn('[AI_CREDITS] release on error skipped:', releaseError.message);
+            }
+        }
         const timedOut = error.name === 'TimeoutError' || /timed?\s*out/i.test(error.message);
         const message = requestedModel === 'anonin'
             ? 'Anonin Model is temporarily unavailable. Please try again later or select another AI model.'

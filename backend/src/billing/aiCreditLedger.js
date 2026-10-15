@@ -338,10 +338,325 @@ async function readWalletSummaryAsync(connection, email) {
     };
 }
 
+/**
+ * Atomically reserve credits before calling a paid provider.
+ * Idempotent on referenceId. On failure/cancel call releaseReservationAsync.
+ */
+async function reserveCreditsAsync(connection, {
+    email,
+    amount,
+    referenceId,
+    metadata = {},
+}) {
+    await ensureSchemaAsync(connection);
+    const normalized = normalizeEmail(email);
+    const credits = Math.ceil(Number(amount));
+    const ref = String(referenceId || '').trim();
+    if (!normalized || !ref || !Number.isFinite(credits) || credits <= 0) {
+        throw new Error('Invalid credit reservation');
+    }
+    const now = new Date().toISOString();
+    const metaJson = JSON.stringify(metadata);
+
+    if (isPostgresConnection(connection)) {
+        const { queryPgPool, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
+        const pool = resolvePostgresAsyncPool(connection);
+        const existing = await queryPgPool(
+            pool,
+            'SELECT reference_id, status, reserved_amount FROM ai_credit_reservations WHERE reference_id = $1',
+            [ref],
+        );
+        if (existing.rows[0]) {
+            return {
+                duplicate: true,
+                status: existing.rows[0].status,
+                reserved: Number(existing.rows[0].reserved_amount),
+                balance: await readBalanceAsync(connection, normalized),
+            };
+        }
+        await queryPgPool(pool, 'BEGIN');
+        try {
+            await queryPgPool(
+                pool,
+                `INSERT INTO ai_credit_balances (email, balance, updated_at) VALUES ($1, 0, $2)
+                 ON CONFLICT (email) DO NOTHING`,
+                [normalized, now],
+            );
+            const row = await queryPgPool(
+                pool,
+                'SELECT balance FROM ai_credit_balances WHERE email = $1 FOR UPDATE',
+                [normalized],
+            );
+            const current = Number(row.rows[0]?.balance ?? 0);
+            if (current < credits) {
+                await queryPgPool(pool, 'ROLLBACK');
+                const err = new Error('Insufficient AI credits');
+                err.code = 'AI_CREDITS_EXHAUSTED';
+                throw err;
+            }
+            const updated = await queryPgPool(
+                pool,
+                'UPDATE ai_credit_balances SET balance = balance - $1, updated_at = $2 WHERE email = $3 RETURNING balance',
+                [credits, now, normalized],
+            );
+            const balanceAfter = Number(updated.rows[0]?.balance ?? 0);
+            await queryPgPool(
+                pool,
+                `INSERT INTO ai_credit_ledger (email, entry_type, amount, balance_after, reference_id, metadata, created_at)
+                 VALUES ($1, 'reserve', $2, $3, $4, $5::jsonb, $6)`,
+                [normalized, -credits, balanceAfter, ref, metaJson, now],
+            );
+            await queryPgPool(
+                pool,
+                `INSERT INTO ai_credit_reservations
+                 (reference_id, email, reserved_amount, settled_amount, status, metadata, created_at, updated_at)
+                 VALUES ($1, $2, $3, NULL, 'reserved', $4::jsonb, $5, $5)`,
+                [ref, normalized, credits, metaJson, now],
+            );
+            await queryPgPool(pool, 'COMMIT');
+            return { duplicate: false, status: 'reserved', reserved: credits, balance: balanceAfter };
+        } catch (error) {
+            await queryPgPool(pool, 'ROLLBACK');
+            if (error.code === 'AI_CREDITS_EXHAUSTED') throw error;
+            if (/unique|duplicate/i.test(String(error.message))) {
+                return {
+                    duplicate: true,
+                    balance: await readBalanceAsync(connection, normalized),
+                    status: 'reserved',
+                    reserved: credits,
+                };
+            }
+            throw error;
+        }
+    }
+
+    ensureSchemaSync(connection);
+    const db = connection.database;
+    const tx = db.transaction(() => {
+        const prior = db.prepare('SELECT status, reserved_amount FROM ai_credit_reservations WHERE reference_id = ?').get(ref);
+        if (prior) {
+            return {
+                duplicate: true,
+                status: prior.status,
+                reserved: Number(prior.reserved_amount),
+                balance: readBalanceSync(connection, normalized),
+            };
+        }
+        db.prepare(
+            `INSERT INTO ai_credit_balances (email, balance, updated_at) VALUES (?, 0, ?)
+             ON CONFLICT(email) DO NOTHING`,
+        ).run(normalized, now);
+        const current = readBalanceSync(connection, normalized);
+        if (current < credits) {
+            const err = new Error('Insufficient AI credits');
+            err.code = 'AI_CREDITS_EXHAUSTED';
+            throw err;
+        }
+        db.prepare(
+            'UPDATE ai_credit_balances SET balance = balance - ?, updated_at = ? WHERE email = ?',
+        ).run(credits, now, normalized);
+        const balanceAfter = readBalanceSync(connection, normalized);
+        db.prepare(
+            `INSERT INTO ai_credit_ledger (email, entry_type, amount, balance_after, reference_id, metadata, created_at)
+             VALUES (?, 'reserve', ?, ?, ?, ?, ?)`,
+        ).run(normalized, -credits, balanceAfter, ref, metaJson, now);
+        db.prepare(
+            `INSERT INTO ai_credit_reservations
+             (reference_id, email, reserved_amount, settled_amount, status, metadata, created_at, updated_at)
+             VALUES (?, ?, ?, NULL, 'reserved', ?, ?, ?)`,
+        ).run(ref, normalized, credits, metaJson, now, now);
+        return { duplicate: false, status: 'reserved', reserved: credits, balance: balanceAfter };
+    });
+    return tx();
+}
+
+/** Finalize reservation: keep actualCost, refund unused reserved credits. Idempotent. */
+async function settleReservationAsync(connection, {
+    email,
+    referenceId,
+    actualAmount,
+    metadata = {},
+}) {
+    await ensureSchemaAsync(connection);
+    const normalized = normalizeEmail(email);
+    const ref = String(referenceId || '').trim();
+    const actual = Math.max(0, Math.ceil(Number(actualAmount) || 0));
+    if (!normalized || !ref) throw new Error('Invalid settle payload');
+    const now = new Date().toISOString();
+    const releaseRef = `release_${ref}`;
+
+    if (isPostgresConnection(connection)) {
+        const { queryPgPool, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
+        const pool = resolvePostgresAsyncPool(connection);
+        const existing = await queryPgPool(
+            pool,
+            'SELECT * FROM ai_credit_reservations WHERE reference_id = $1',
+            [ref],
+        );
+        const row = existing.rows[0];
+        if (!row) {
+            return { missing: true, balance: await readBalanceAsync(connection, normalized) };
+        }
+        if (row.status === 'settled' || row.status === 'released') {
+            return {
+                duplicate: true,
+                status: row.status,
+                settled: Number(row.settled_amount ?? 0),
+                balance: await readBalanceAsync(connection, normalized),
+            };
+        }
+        const reserved = Number(row.reserved_amount);
+        const keep = Math.min(actual || reserved, reserved);
+        const refund = Math.max(0, reserved - keep);
+        if (refund > 0) {
+            await grantCreditsIdempotentAsync(connection, {
+                email: normalized,
+                amount: refund,
+                referenceId: releaseRef,
+                entryType: 'release',
+                metadata: { ...metadata, reserved, kept: keep, reason: 'settle_unused' },
+            });
+        }
+        await queryPgPool(
+            pool,
+            `UPDATE ai_credit_reservations
+             SET status = 'settled', settled_amount = $1, updated_at = $2, metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb
+             WHERE reference_id = $4`,
+            [keep, now, JSON.stringify({ ...metadata, kept: keep, refunded: refund }), ref],
+        );
+        return {
+            duplicate: false,
+            status: 'settled',
+            reserved,
+            settled: keep,
+            refunded: refund,
+            balance: await readBalanceAsync(connection, normalized),
+        };
+    }
+
+    ensureSchemaSync(connection);
+    const db = connection.database;
+    const row = db.prepare('SELECT * FROM ai_credit_reservations WHERE reference_id = ?').get(ref);
+    if (!row) {
+        return { missing: true, balance: readBalanceSync(connection, normalized) };
+    }
+    if (row.status === 'settled' || row.status === 'released') {
+        return {
+            duplicate: true,
+            status: row.status,
+            settled: Number(row.settled_amount ?? 0),
+            balance: readBalanceSync(connection, normalized),
+        };
+    }
+    const reserved = Number(row.reserved_amount);
+    const keep = Math.min(actual || reserved, reserved);
+    const refund = Math.max(0, reserved - keep);
+    if (refund > 0) {
+        await grantCreditsIdempotentAsync(connection, {
+            email: normalized,
+            amount: refund,
+            referenceId: releaseRef,
+            entryType: 'release',
+            metadata: { ...metadata, reserved, kept: keep, reason: 'settle_unused' },
+        });
+    }
+    db.prepare(
+        `UPDATE ai_credit_reservations
+         SET status = 'settled', settled_amount = ?, updated_at = ?, metadata = ?
+         WHERE reference_id = ?`,
+    ).run(keep, now, JSON.stringify({ ...metadata, kept: keep, refunded: refund }), ref);
+    return {
+        duplicate: false,
+        status: 'settled',
+        reserved,
+        settled: keep,
+        refunded: refund,
+        balance: await readBalanceAsync(connection, normalized),
+    };
+}
+
+/** Full refund of a reservation when the AI call failed or was cancelled. Idempotent. */
+async function releaseReservationAsync(connection, {
+    email,
+    referenceId,
+    metadata = {},
+}) {
+    await ensureSchemaAsync(connection);
+    const normalized = normalizeEmail(email);
+    const ref = String(referenceId || '').trim();
+    if (!normalized || !ref) throw new Error('Invalid release payload');
+    const now = new Date().toISOString();
+    const releaseRef = `release_${ref}`;
+
+    const loadRow = async () => {
+        if (isPostgresConnection(connection)) {
+            const { queryPgPool, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
+            const pool = resolvePostgresAsyncPool(connection);
+            const result = await queryPgPool(
+                pool,
+                'SELECT * FROM ai_credit_reservations WHERE reference_id = $1',
+                [ref],
+            );
+            return result.rows[0] || null;
+        }
+        ensureSchemaSync(connection);
+        return connection.database.prepare('SELECT * FROM ai_credit_reservations WHERE reference_id = ?').get(ref) || null;
+    };
+
+    const row = await loadRow();
+    if (!row) {
+        return { missing: true, balance: await readBalanceAsync(connection, normalized) };
+    }
+    if (row.status === 'released' || row.status === 'settled') {
+        return {
+            duplicate: true,
+            status: row.status,
+            balance: await readBalanceAsync(connection, normalized),
+            refunded: 0,
+        };
+    }
+    const reserved = Number(row.reserved_amount);
+    if (reserved > 0) {
+        await grantCreditsIdempotentAsync(connection, {
+            email: normalized,
+            amount: reserved,
+            referenceId: releaseRef,
+            entryType: 'release',
+            metadata: { ...metadata, reason: 'request_failed' },
+        });
+    }
+    if (isPostgresConnection(connection)) {
+        const { queryPgPool, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
+        const pool = resolvePostgresAsyncPool(connection);
+        await queryPgPool(
+            pool,
+            `UPDATE ai_credit_reservations
+             SET status = 'released', settled_amount = 0, updated_at = $1
+             WHERE reference_id = $2`,
+            [now, ref],
+        );
+    } else {
+        connection.database.prepare(
+            `UPDATE ai_credit_reservations
+             SET status = 'released', settled_amount = 0, updated_at = ?
+             WHERE reference_id = ?`,
+        ).run(now, ref);
+    }
+    return {
+        duplicate: false,
+        status: 'released',
+        refunded: reserved,
+        balance: await readBalanceAsync(connection, normalized),
+    };
+}
+
 module.exports = {
     grantCreditsIdempotentAsync,
     deductCreditsAsync,
     reverseCreditsIdempotentAsync,
+    reserveCreditsAsync,
+    settleReservationAsync,
+    releaseReservationAsync,
     findLedgerByReferenceAsync,
     listLedgerAsync,
     readBalanceAsync,
