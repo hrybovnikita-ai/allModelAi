@@ -38,7 +38,6 @@ import {
 } from './googleRedirectRecovery.js';
 import {
   clearSocialRedirectIntent,
-  hasFirebaseRedirectReturnHints,
   isGoogleRedirectRecoveryPending,
   isRedirectFlowCommitted,
   markGooglePopupSignInEnded,
