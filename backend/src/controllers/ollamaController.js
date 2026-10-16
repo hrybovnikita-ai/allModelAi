@@ -4,9 +4,12 @@ const ollamaCloud = require('../services/ollama/ollamaCloudConfig');
 async function getOllamaStatus(req, res) {
     const cloud = await ollamaCloud.listOllamaCloudModels();
     const local = await ollamaAdapter.checkConnection();
+    const localOnline = Boolean(local?.online);
+    const cloudOnline = Boolean(cloud.online);
     const payload = {
+        online: cloudOnline || localOnline,
         cloud: {
-            online: Boolean(cloud.online),
+            online: cloudOnline,
             configured: ollamaCloud.isOllamaCloudConfigured(),
             baseUrl: ollamaCloud.getOllamaCloudBaseUrl(),
             models: cloud.models || [],
@@ -15,7 +18,7 @@ async function getOllamaStatus(req, res) {
         local,
         prefer: ollamaCloud.isOllamaCloudConfigured() ? 'cloud' : 'local',
     };
-    const ok = payload.cloud.configured || local.online;
+    const ok = payload.cloud.configured || localOnline;
     return res.status(ok ? 200 : 503).json(payload);
 }
 

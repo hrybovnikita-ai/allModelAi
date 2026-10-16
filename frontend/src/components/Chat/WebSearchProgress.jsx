@@ -98,4 +98,3 @@ export default function WebSearchProgress({
   );
 }
 
-export { STAGES as WEB_SEARCH_PROGRESS_STAGES, stageIndex as webSearchStageIndex };

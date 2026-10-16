@@ -295,6 +295,8 @@ function persistSqliteChatTurn(database, {
     savedMessages,
     title,
     bumpUsage,
+    now: nowOverride = null,
+    expiresAt: expiresAtOverride = null,
 }) {
     const {
         computeExpiresAt,
@@ -304,7 +306,7 @@ function persistSqliteChatTurn(database, {
     } = require('../services/temporaryChat');
     const { mergePersistedMessages } = require('../services/chatMessageMerge');
     const normalizedEmail = String(userEmail).trim().toLowerCase();
-    const now = nowIso();
+    const now = nowOverride || nowIso();
     if (bumpUsage) {
         try {
             database.prepare(`
@@ -362,7 +364,9 @@ function persistSqliteChatTurn(database, {
 
     const id = conversationId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const isTemp = Boolean(temporary);
-    const expiresAt = isTemp ? computeExpiresAt(now) : null;
+    const expiresAt = isTemp
+        ? (expiresAtOverride || computeExpiresAt(now))
+        : null;
     try {
         database.prepare(`
             INSERT INTO conversations (
@@ -1252,6 +1256,8 @@ const createChatHistory = async (req, res) => {
             savedMessages: messages,
             title: conversation.title,
             bumpUsage: false,
+            now,
+            expiresAt,
         });
         if (result?.skipped) {
             return res.status(503).json({

@@ -36,7 +36,7 @@ export default function AiWorkflowsPage() {
     load().catch((e) => setError(e.message));
   }, [load]);
 
-  const useTemplate = (template) => {
+  const applyTemplate = (template) => {
     setGraph(template.graph);
     setName(template.name);
     setSuccess(t('Template loaded. Review steps before running.'));
@@ -115,7 +115,7 @@ export default function AiWorkflowsPage() {
           {templates.map((template) => (
             <li key={template.id}>
               <span>{template.name}</span>
-              <button type="button" onClick={() => useTemplate(template)}>{t('Use')}</button>
+              <button type="button" onClick={() => applyTemplate(template)}>{t('Use')}</button>
             </li>
           ))}
         </ul>

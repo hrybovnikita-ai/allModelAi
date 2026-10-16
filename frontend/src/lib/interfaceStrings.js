@@ -148,7 +148,6 @@ export const INTERFACE_STRINGS = {
     "Chats in this project stay grouped here.": "Chats in this project stay grouped here.",
     "Pin": "Pin",
     "Unpin": "Unpin",
-    "Rename": "Rename",
     "Project chats": "Project chats"
   },
   "ru": {

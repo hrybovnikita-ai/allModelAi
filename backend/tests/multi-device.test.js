@@ -21,17 +21,19 @@ test('two devices share one account and history while keeping independent sessio
     const desktop = request.agent(app);
     const phone = request.agent(app);
     const account = { name: 'Device User', email: 'devices@example.com', password: 'DeviceTest123!', rememberMe: true };
+    // Production CSRF requires an allowlisted Origin on cookie-authenticated mutations.
+    const withOrigin = (req) => req.set('Origin', 'http://localhost:5173');
     try {
-        const registered = await desktop.post('/api/auth/register').send(account);
+        const registered = await withOrigin(desktop.post('/api/auth/register')).send(account);
         assert.equal(registered.status, 201);
         assert.doesNotMatch(registered.headers['set-cookie'][0], /; Secure/i);
         assert.match(registered.headers['set-cookie'][0], /HttpOnly/);
         assert.match(registered.headers['set-cookie'][0], /Max-Age=/);
-        const login = await phone.post('/api/auth/login').send(account);
+        const login = await withOrigin(phone.post('/api/auth/login')).send(account);
         assert.equal(login.status, 200);
         assert.equal(login.body.user.id, registered.body.user.id);
         assert.notEqual(login.headers['set-cookie'][0], registered.headers['set-cookie'][0]);
-        const chat = await desktop.post('/api/chat/history').send({ model: 'gpt', messages: [{ role: 'user', text: 'Shared between devices' }] });
+        const chat = await withOrigin(desktop.post('/api/chat/history')).send({ model: 'gpt', messages: [{ role: 'user', text: 'Shared between devices' }] });
         assert.equal(chat.status, 201);
         for (const client of [desktop, phone]) {
             assert.equal((await client.get('/api/auth/session')).status, 200);
@@ -45,7 +47,7 @@ test('two devices share one account and history while keeping independent sessio
         delete process.env.ALLOW_SQLITE_PRODUCTION;
         assert.equal((await desktop.get('/api/auth/session')).status, 200);
         assert.equal((await phone.get('/api/auth/session')).status, 200);
-        assert.equal((await desktop.post('/api/auth/logout')).status, 204);
+        assert.equal((await withOrigin(desktop.post('/api/auth/logout'))).status, 204);
         const revoked = await desktop.get('/api/auth/session');
         assert.equal(revoked.status, 200);
         assert.equal(revoked.body.user, null);

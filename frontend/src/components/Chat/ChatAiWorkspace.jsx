@@ -73,8 +73,8 @@ export default function ChatAiWorkspace({
       if (!model) return null;
       const known = Object.prototype.hasOwnProperty.call(modelStatus || {}, slug);
       const online = resolveModelOnlineStatus(slug, modelStatus || {});
-      let state = 'Unavailable';
-      let labelKey = 'Unavailable';
+      let state;
+      let labelKey;
       if (statusLoading && !known) {
         state = 'Loading';
         labelKey = 'Checking…';
