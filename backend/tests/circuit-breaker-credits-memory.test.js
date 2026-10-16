@@ -185,8 +185,11 @@ test('memory opt-in isolation ranking and sensitive filter', async () => {
     await createMemory(connection, emailA, { content: 'I enjoy hiking on weekends' });
     await createMemory(connection, emailB, { content: 'Secret other-user memory about baking' });
 
+    const { syntheticOpenAiSk } = require('./syntheticSecrets');
     await assert.rejects(
-        () => createMemory(connection, emailA, { content: 'My API key is sk-abcdefghijklmnopqrstuvwxyz123456' }),
+        () => createMemory(connection, emailA, {
+            content: `My API key is ${syntheticOpenAiSk('abcdefghijklmnopqrstuvwxyz123456')}`,
+        }),
         (err) => err.code === 'MEMORY_SENSITIVE_CONTENT',
     );
     assert.equal(containsSensitiveContent('password: hunter2'), true);

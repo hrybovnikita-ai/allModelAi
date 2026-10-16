@@ -150,13 +150,14 @@ test('upsert/search/delete enforce user isolation', async () => {
 });
 
 test('refuses to index sensitive secrets', async () => {
+    const { syntheticOpenAiSk } = require('./syntheticSecrets');
     const client = createMockClient({ collections: new Set([MEMORY_COLLECTION]) });
     await assert.rejects(
         () => upsertMemoryVector({
             client,
             userId: 'alice@example.com',
             memoryId: 'mem-secret',
-            content: 'api_key: sk-abcdefghijklmnopqrstuvwxyz0123456789',
+            content: `api_key: ${syntheticOpenAiSk('abcdefghijklmnopqrstuvwxyz0123456789')}`,
         }),
         (err) => err.code === 'MEMORY_SENSITIVE_CONTENT',
     );

@@ -23,12 +23,13 @@ const {
     mapOpenRouterBillingError,
 } = require('../src/modelProviderEquivalence');
 const { normalizeOpenRouterGatewayModel } = require('../src/services/openRouterModelMapping');
+const { syntheticOpenAiSk, syntheticOpenAiSkProj } = require('./syntheticSecrets');
 
 describe('OpenAI key shape for GPT routing', () => {
     test('rejects Cloudflare Workers AI tokens mis-set as OPENAI_API_KEY', () => {
         assert.equal(looksLikeOpenAiApiKey('cfut_ML_example_token_value_here'), false);
-        assert.equal(looksLikeOpenAiApiKey('sk-proj-abcdefghijklmnopqrstuvwxyz012345'), true);
-        assert.equal(looksLikeOpenAiApiKey('sk-abcdefghijklmnopqrstuvwxyz012345'), true);
+        assert.equal(looksLikeOpenAiApiKey(syntheticOpenAiSkProj('abcdefghijklmnopqrstuvwxyz012345')), true);
+        assert.equal(looksLikeOpenAiApiKey(syntheticOpenAiSk('abcdefghijklmnopqrstuvwxyz012345')), true);
     });
 
     test('openAiKey ignores Cloudflare-shaped env values', () => {
@@ -161,7 +162,7 @@ describe('GPT chat provider selection HTTP', () => {
     });
 
     test('valid OpenAI key selects direct OpenAI for GPT-4.1 Mini', async () => {
-        process.env.OPENAI_API_KEY = 'sk-testvalidopenaiakeyvalue1234567890';
+        process.env.OPENAI_API_KEY = syntheticOpenAiSk('testvalidopenaiakeyvalue1234567890');
         delete require.cache[require.resolve('../src/chatProviderRuntime')];
         const urls = [];
         const bodies = [];
@@ -195,7 +196,7 @@ describe('GPT chat provider selection HTTP', () => {
     });
 
     test('direct OpenAI rate-limit errors are not labeled as OpenRouter Gemini issues', async () => {
-        process.env.OPENAI_API_KEY = 'sk-testvalidopenaiakeyvalue1234567890';
+        process.env.OPENAI_API_KEY = syntheticOpenAiSk('testvalidopenaiakeyvalue1234567890');
         delete process.env.OPENROUTER_API_KEY;
         delete process.env.ALLMODELAI_OPENROUTER_API_KEY;
         delete require.cache[require.resolve('../src/chatProviderRuntime')];

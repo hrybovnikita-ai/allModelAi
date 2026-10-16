@@ -31,7 +31,9 @@ test('classifyProviderError distinguishes quota vs generic 429', () => {
 });
 
 test('sanitizeProviderHint redacts key-like tokens', () => {
-    const hint = sanitizeProviderHint('Failed with sk-abcdefghijklmnopqrstuvwxyz1234567890');
+    const { syntheticOpenAiSk } = require('./syntheticSecrets');
+    const fakeKey = syntheticOpenAiSk('abcdefghijklmnopqrstuvwxyz1234567890');
+    const hint = sanitizeProviderHint(`Failed with ${fakeKey}`);
     assert.match(hint, /\[redacted\]/);
     assert.doesNotMatch(hint, /sk-abc/);
 });
