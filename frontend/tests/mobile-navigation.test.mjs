@@ -17,13 +17,24 @@ test('mobile dashboard menu includes Profile and Settings for authenticated user
 });
 
 test('dashboard workspace nav closes mobile menu after navigation', async () => {
-  const source = await readFile(
+  // DashboardWorkspaceNav re-exports FloatingGlassNav, which closes menus on route change / link click.
+  const wrapper = await readFile(
     new URL('../src/components/Dashboard/DashboardWorkspaceNav.jsx', import.meta.url),
     'utf8',
   );
-  assert.match(source, /closeMobileMenu/);
-  assert.match(source, /onClick=\{closeMobileMenu\}/);
-  assert.match(source, /DASHBOARD_NAV_ACCOUNT_LINKS/);
+  const floating = await readFile(
+    new URL('../src/components/Navigation/FloatingGlassNav.jsx', import.meta.url),
+    'utf8',
+  );
+  const links = await readFile(
+    new URL('../src/components/Dashboard/dashboardNavLinks.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(wrapper, /FloatingGlassNav/);
+  assert.match(links, /DASHBOARD_NAV_ACCOUNT_LINKS/);
+  assert.match(floating, /setMoreOpen\(false\)/);
+  assert.match(floating, /setProfileOpen\(false\)/);
+  assert.match(floating, /location\.pathname/);
 });
 
 test('homepage navbar keeps account links in mobile drawer and user menu on desktop', async () => {

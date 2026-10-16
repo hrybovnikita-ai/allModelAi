@@ -15,8 +15,25 @@ function openRouterKey() {
     return getOpenRouterApiKey();
 }
 
+/**
+ * OpenAI keys are sk-… / sk-proj-…. Cloudflare Workers AI tokens (cfut_…) are
+ * often mis-assigned to OPENAI_API_KEY and must not select the OpenAI chat path.
+ */
+function looksLikeOpenAiApiKey(value) {
+    const key = String(value || '').trim();
+    if (!key) return false;
+    if (/^cfut_/i.test(key) || /^cf[-_]/i.test(key)) return false;
+    if (/^sk-[a-zA-Z0-9_-]{8,}/.test(key)) return true;
+    // Integration tests use non-secret placeholders such as "openai-test-key".
+    if (process.env.NODE_ENV === 'test' && key.length >= 8 && !/^gemini|^xai|^kimi/i.test(key)) {
+        return true;
+    }
+    return false;
+}
+
 function openAiKey() {
-    return envTrim('OPENAI_API_KEY') || envTrim('OPEN_AI_API_KEY');
+    const raw = envTrim('OPENAI_API_KEY') || envTrim('OPEN_AI_API_KEY');
+    return looksLikeOpenAiApiKey(raw) ? raw : '';
 }
 
 function geminiKey() {
@@ -72,7 +89,10 @@ const CHAT_PROVIDER_ENV = {
         optional: ['CLOUDFLARE_GPT_OSS_MODEL', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_API_KEY'],
     },
     perplexity: { keys: ['PERPLEXITY_API_KEY'], optional: ['PERPLEXITY_MODEL'] },
-    nemotron: { keys: ['OPENROUTER_CHAT_FREE_API_KEY'], optional: [] },
+    nemotron: {
+        keys: ['OPENROUTER_CHAT_FREE_API_KEY', 'ALLMODELAI_OPENROUTER_API_KEY', 'OPENROUTER_API_KEY'],
+        optional: [],
+    },
     'deepseek-r1': { keys: ['OPENROUTER_DEEPSEEK_FREE_API_KEY'], optional: ['AllModelAI-DeepSeek-Free-v2'] },
     ollama: { keys: ['OLLAMA_API_KEY'], optional: ['OLLAMA_BASE_URL', 'OLLAMA_CLOUD_MODEL'] },
     tavily: { keys: ['TAVILY_API_KEY'], optional: [] },
@@ -203,6 +223,10 @@ function buildNoAiProvidersPayload() {
 }
 
 function logAiProviderStatus() {
+    const rawOpenAi = envTrim('OPENAI_API_KEY') || envTrim('OPEN_AI_API_KEY');
+    if (rawOpenAi && !looksLikeOpenAiApiKey(rawOpenAi)) {
+        console.warn('[AI] OPENAI_API_KEY is set but does not look like an OpenAI secret key (expected sk-…). GPT chat will not call api.openai.com; OpenRouter is used when configured.');
+    }
     for (const providerId of Object.keys(CHAT_PROVIDER_ENV)) {
         const configured = isChatProviderConfigured(providerId);
         console.log(`[AI] provider=${providerId} configured=${configured}`);
@@ -228,6 +252,8 @@ module.exports = {
     listConfiguredChatProviderIds,
     logAiProviderStatus,
     logSmartRouter,
+    looksLikeOpenAiApiKey,
+    openAiKey,
     openRouterKey,
     routedModelHasApiKey,
 };

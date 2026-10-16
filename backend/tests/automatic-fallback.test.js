@@ -19,6 +19,9 @@ const {
     runFallbackChain,
     isFallbackFeatureEnabled,
     maxFallbackAttempts,
+    fallbackCodeForCategory,
+    FALLBACK_CODES,
+    isFreeTierSlug,
 } = require('../src/services/automaticFallback');
 
 describe('fallback failure classification', () => {
@@ -118,5 +121,42 @@ describe('fallback tracker and recovery', () => {
     test('feature flag defaults to enabled', () => {
         delete process.env.FEATURE_AI_FALLBACK;
         assert.equal(isFallbackFeatureEnabled(), true);
+    });
+
+    test('structured FALLBACK_* codes map from failure categories', () => {
+        assert.equal(fallbackCodeForCategory(ERROR_CATEGORIES.timeout), FALLBACK_CODES.timeout);
+        assert.equal(fallbackCodeForCategory(ERROR_CATEGORIES.rate_limit), FALLBACK_CODES.rate_limit);
+        assert.equal(fallbackCodeForCategory(ERROR_CATEGORIES.auth), FALLBACK_CODES.authentication);
+        assert.equal(fallbackCodeForCategory('not-a-category'), FALLBACK_CODES.unknown);
+        const tracker = createFallbackTracker({ requestedSlug: 'claude' });
+        const event = tracker.record({
+            from: 'claude',
+            to: 'gemini',
+            category: ERROR_CATEGORIES.timeout,
+            success: true,
+        });
+        assert.equal(event.code, FALLBACK_CODES.timeout);
+        assert.match(
+            buildFallbackNotice({
+                requestedModel: 'claude',
+                actualModel: 'gemini',
+                category: 'timeout',
+                code: FALLBACK_CODES.timeout,
+            }),
+            /FALLBACK_TIMEOUT/,
+        );
+    });
+
+    test('free-tier requests never select paid fallback candidates', () => {
+        assert.equal(isFreeTierSlug('nemotron'), true);
+        const candidates = selectFallbackCandidates({
+            requestedSlug: 'nemotron',
+            preferredChain: ['gpt', 'claude', 'gemini', 'gpt-oss', 'deepseek'],
+            maxAttempts: 5,
+        });
+        assert.deepEqual(candidates, ['gemini', 'gpt-oss']);
+        assert.ok(!candidates.includes('gpt'));
+        assert.ok(!candidates.includes('claude'));
+        assert.ok(!candidates.includes('deepseek'));
     });
 });

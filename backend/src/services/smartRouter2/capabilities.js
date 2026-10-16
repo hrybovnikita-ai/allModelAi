@@ -178,7 +178,7 @@ const MODEL_CAPABILITIES = {
     },
     nemotron: {
         provider: 'openrouter',
-        model: 'nemotron-3-ultra-550b-a55b:free',
+        model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
         coding: true,
         reasoning: true,
         vision: false,
@@ -283,7 +283,7 @@ function displayModelName(slug) {
         cloudflare: 'Cloudflare Llama',
         'gpt-oss': 'GPT-OSS (Cloudflare)',
         ollama: 'Ollama Cloud',
-        nemotron: 'Nemotron 3 Ultra (Free)',
+        nemotron: 'NVIDIA Nemotron 3 Ultra (Free)',
         'deepseek-r1': 'DeepSeek R1 (Free)',
         qwen: 'Qwen 2.5',
         cohere: 'Cohere Command',

@@ -20,8 +20,8 @@ export const AUTH_STATE_FALLBACK_TIMEOUT_MS = 1000;
 /** WebKit often resolves getRedirectResult slowly on iPad/iPhone Safari — wait for the full promise. */
 export const IOS_REDIRECT_RESULT_TIMEOUT_MS = 28000;
 export const IOS_AUTH_STATE_FALLBACK_TIMEOUT_MS = 10000;
-/** After getRedirectResult returns empty on iOS, short grace for currentUser (ms). */
-export const IOS_LATE_REDIRECT_GRACE_MS = 2000;
+/** After getRedirectResult returns empty on iOS, grace for late currentUser / auth state (ms). */
+export const IOS_LATE_REDIRECT_GRACE_MS = 4500;
 
 const MAX_REDIRECT_RESULT_ATTEMPTS = 2;
 
@@ -134,11 +134,12 @@ async function settleGetRedirectResultIos(auth) {
 
   await new Promise((resolve) => setTimeout(resolve, IOS_LATE_REDIRECT_GRACE_MS));
   if (auth.currentUser) {
+    authRecoveryLog('iOS currentUser available after grace');
     return { user: auth.currentUser, source: 'currentUser-after-ios-wait' };
   }
 
-  if (timedResult !== '__timeout__') {
-    return timedResult?.user ? timedResult : null;
+  if (timedResult !== '__timeout__' && timedResult?.user) {
+    return timedResult;
   }
 
   try {
@@ -152,6 +153,12 @@ async function settleGetRedirectResultIos(auth) {
     }
   } catch {
     /* already logged */
+  }
+
+  // Last resort: onAuthStateChanged may still deliver the redirected user on WebKit.
+  const authStateUser = await waitForAuthStateUser(auth, getAuthStateFallbackTimeoutMs());
+  if (authStateUser) {
+    return { user: authStateUser, source: 'authState-after-ios-null' };
   }
 
   return null;

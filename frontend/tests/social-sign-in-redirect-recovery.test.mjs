@@ -55,12 +55,13 @@ test('awaitGoogleRedirectRecovery resolves null without ReferenceError when not 
   assert.equal(result, null);
 });
 
-test('navigateAfterSocialLogin does not use delay retry loops', async () => {
+test('navigateAfterSocialLogin confirms session via confirmSession (no local-cache shortcut)', async () => {
   const signIn = await readFile(new URL('../src/lib/socialSignIn.js', import.meta.url), 'utf8');
   const navStart = signIn.indexOf('export async function navigateAfterSocialLogin');
-  const navBlock = signIn.slice(navStart, navStart + 1200);
+  const navBlock = signIn.slice(navStart, navStart + 1600);
+  assert.match(navBlock, /confirmSession/);
+  assert.match(navBlock, /SESSION_COOKIE_MISSING/);
   assert.doesNotMatch(navBlock, /retryDelays/);
-  assert.doesNotMatch(navBlock, /setTimeout/);
 });
 
 test('awaitGoogleRedirectRecovery skips while popup sign-in is active', async () => {

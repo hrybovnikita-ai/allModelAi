@@ -298,6 +298,10 @@ const connectDatabase = () => {
             CREATE INDEX IF NOT EXISTS conversations_owner_temporary
             ON conversations(email, is_temporary, updated_at DESC)
         `);
+        database.exec(`
+            CREATE INDEX IF NOT EXISTS conversations_owner_updated
+            ON conversations(email, updated_at DESC)
+        `);
     } catch {
         // Older SQLite builds without partial indexes — primary access still works.
     }

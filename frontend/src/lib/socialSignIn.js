@@ -7,10 +7,16 @@ import {
   sendEmailVerification,
   signOut,
 } from 'firebase/auth';
-import { ensureSocialAuthReady, getEffectiveFirebaseConfig, getFirebaseOAuthOrigin, getSocialAuth } from './firebase.js';
+import {
+  applyAuthPersistenceAfterRedirectRecovery,
+  ensureSocialAuthReady,
+  getEffectiveFirebaseConfig,
+  getFirebaseOAuthOrigin,
+  getSocialAuth,
+} from './firebase.js';
 import { isCapacitorNative, prefersSameOriginApi } from './apiBase.js';
 import { isElectronShell } from './nativePlatform.js';
-import { rememberSession, restoreSession } from './session.js';
+import { confirmSession, rememberSession } from './session.js';
 import { invalidateAuthBootstrap } from './authBootstrap.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
 import { SOCIAL_PROVIDER_LABELS } from './socialProviders.js';
@@ -366,21 +372,30 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
       path: typeof window !== 'undefined' ? window.location.pathname : '',
       authDomain: getEffectiveFirebaseConfig().authDomain,
     });
+    socialAuthDebug('APP_RETURNED_FROM_GOOGLE', {
+      path: typeof window !== 'undefined' ? window.location.pathname : '',
+      authDomain: getEffectiveFirebaseConfig().authDomain,
+    });
 
     let redirectResult;
     try {
+      // Always allow auth-state fallback on iOS WebKit; URL oauth hints are often stripped.
       redirectResult = await consumeFirebaseRedirectResult(auth, consumer, {
-        allowAuthStateFallback: hasFirebaseRedirectReturnHints() || isMobileWebSafari(),
+        allowAuthStateFallback: true,
       });
     } catch (error) {
+      await applyAuthPersistenceAfterRedirectRecovery(auth).catch(() => {});
       clearSocialRedirectIntent();
+      endGoogleSignInFlow();
       socialAuthDebug('FIREBASE_REDIRECT_RESULT', { ok: false, code: error?.code, message: error?.message });
       throw error;
     }
 
     if (!redirectResult?.user) {
+      await applyAuthPersistenceAfterRedirectRecovery(auth).catch(() => {});
       if (isGooglePopupSignInActive() || !isGoogleRedirectRecoveryPending()) {
         clearSocialRedirectIntent();
+        endGoogleSignInFlow();
         return null;
       }
       const authDomain = getEffectiveFirebaseConfig().authDomain;
@@ -400,6 +415,8 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
         stage: err.diagnosticStage,
         authDomain,
       });
+      clearSocialRedirectIntent();
+      endGoogleSignInFlow();
       throw err;
     }
 
@@ -416,8 +433,16 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
         ...options,
         challenge,
       });
+      // Persistence was deferred on OAuth return so getRedirectResult could run first.
+      await applyAuthPersistenceAfterRedirectRecovery(auth).catch(() => {});
       clearSocialRedirectIntent();
+      endGoogleSignInFlow();
       return user;
+    } catch (error) {
+      await applyAuthPersistenceAfterRedirectRecovery(auth).catch(() => {});
+      clearSocialRedirectIntent();
+      endGoogleSignInFlow();
+      throw error;
     } finally {
       await signOut(auth).catch(() => {});
     }
@@ -453,21 +478,23 @@ export async function navigateAfterSocialLogin(user, { navigate, replaceDashboar
   if (!user?.email) return;
   clearSocialRedirectIntent();
 
-  const sameEmail = (left, right) =>
-    left?.email?.toLowerCase() === right?.email?.toLowerCase();
-
-  let sessionUser = user;
-  let serverVerified = false;
+  // Never navigate on a local cache alone — confirmSession hits /api/auth/session with retries.
+  let sessionUser;
   try {
-    const verified = await restoreSession({ force: true });
-    if (sameEmail(verified, user)) {
-      sessionUser = verified;
-      serverVerified = true;
-    }
-  } catch {
-    /* exchange stored cookie hint; SessionProvider will confirm on dashboard */
+    sessionUser = await confirmSession(user);
+    socialAuthDebug('SESSION_CONFIRMED', { email: sessionUser.email });
+  } catch (error) {
+    socialAuthDebug('SESSION_CONFIRM_FAILED', { code: error?.code, message: error?.message });
+    const err = new Error(
+      'Google sign-in finished in the browser, but the AllModelAI session could not be confirmed. Please try again.',
+    );
+    err.code = 'SESSION_COOKIE_MISSING';
+    err.diagnosticStage = 'backend-session-unconfirmed';
+    err.cause = error;
+    throw err;
   }
-  rememberSession(sessionUser, { serverVerified });
+
+  rememberSession(sessionUser, { serverVerified: true });
   const useSpaNav = prefersSameOriginApi() && typeof navigate === 'function';
   if (useSpaNav) {
     socialAuthDebug('DASHBOARD_REDIRECT', { mode: 'spa', pathname: '/dashboard' });

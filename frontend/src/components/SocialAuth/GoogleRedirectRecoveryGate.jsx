@@ -96,18 +96,22 @@ export default function GoogleRedirectRecoveryGate() {
         if (cancelRecoveryRef.current || !active) return;
         clearTimeout(safetyTimer);
         if (!user?.email) {
+          // Only surface incomplete after the shared recovery pipeline has settled.
+          clearSocialRedirectIntent();
           const stored = consumeStoredSocialAuthError();
           const storedCode = consumeStoredSocialAuthErrorCode();
           const fallback = storedCode
             ? socialError({ code: storedCode, message: stored })
             : stored;
           setFailureMessage(fallback || 'Google sign-in could not be completed. Please try again.');
-          if (storedCode) {
-            authRecoveryLog('Redirect recovery gate failure', { code: storedCode });
-          }
+          authRecoveryLog('Redirect recovery gate failure', {
+            code: storedCode || 'REDIRECT_RESULT_MISSING',
+            stage: 'gate-empty-user',
+          });
           setRecovering(false);
           return;
         }
+        // Establishes + verifies backend session before /dashboard navigation.
         await navigateAfterSocialLogin(user, { navigate, replaceDashboard: true });
         await refresh({ force: true });
         if (active) {

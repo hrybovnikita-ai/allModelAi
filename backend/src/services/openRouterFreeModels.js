@@ -1,6 +1,10 @@
 /**
- * OpenRouter :free models with dedicated API keys (no fallback to paid OpenRouter keys).
+ * OpenRouter :free models.
+ * Prefer dedicated free-model keys; Nemotron may reuse the shared OPENROUTER_API_KEY.
+ * Paid OpenRouter model IDs are never selected for these slugs.
  */
+
+const { getOpenRouterApiKey, getOpenRouterKeySourceEnvName } = require('../openRouterConfig');
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -11,13 +15,24 @@ const OPENROUTER_CHAT_FREE_KEY_ENV = 'OPENROUTER_CHAT_FREE_API_KEY';
 const OPENROUTER_DEEPSEEK_FREE_KEY_ENV = 'OPENROUTER_DEEPSEEK_FREE_API_KEY';
 const DEEPSEEK_FREE_OPENROUTER_KEY_LEGACY_ENV = 'AllModelAI-DeepSeek-Free-v2';
 
-/** @type {Record<string, { slug: string, modelId: string, keyEnv: string, legacyKeyEnvs?: string[], displayName: string }>} */
+/**
+ * @type {Record<string, {
+ *   slug: string,
+ *   modelId: string,
+ *   keyEnv: string,
+ *   legacyKeyEnvs?: string[],
+ *   displayName: string,
+ *   allowSharedOpenRouterKey?: boolean,
+ * }>}
+ */
 const OPENROUTER_FREE_BY_SLUG = {
     nemotron: {
         slug: 'nemotron',
         modelId: NEMOTRON_FREE_MODEL,
         keyEnv: OPENROUTER_CHAT_FREE_KEY_ENV,
-        displayName: 'Nemotron 3 Ultra (Free)',
+        displayName: 'NVIDIA Nemotron 3 Ultra (Free)',
+        // Shared OpenRouter key is allowed; requests still use the :free model id only.
+        allowSharedOpenRouterKey: true,
     },
     'deepseek-r1': {
         slug: 'deepseek-r1',
@@ -25,6 +40,7 @@ const OPENROUTER_FREE_BY_SLUG = {
         keyEnv: OPENROUTER_DEEPSEEK_FREE_KEY_ENV,
         legacyKeyEnvs: [DEEPSEEK_FREE_OPENROUTER_KEY_LEGACY_ENV],
         displayName: 'DeepSeek R1 (Free)',
+        allowSharedOpenRouterKey: false,
     },
 };
 
@@ -43,14 +59,32 @@ function getDedicatedOpenRouterFreeKey(config) {
     return '';
 }
 
+function resolveOpenRouterFreeApiKey(config) {
+    const dedicated = getDedicatedOpenRouterFreeKey(config);
+    if (dedicated) {
+        return {
+            apiKey: dedicated,
+            keySourceEnv: envTrim(config.keyEnv)
+                ? config.keyEnv
+                : (config.legacyKeyEnvs || []).find((name) => envTrim(name)) || config.keyEnv,
+        };
+    }
+    if (config.allowSharedOpenRouterKey) {
+        const shared = getOpenRouterApiKey();
+        if (shared) {
+            return {
+                apiKey: shared,
+                keySourceEnv: getOpenRouterKeySourceEnvName() || 'OPENROUTER_API_KEY',
+            };
+        }
+    }
+    return { apiKey: '', keySourceEnv: null };
+}
+
 function getOpenRouterFreeKeySourceEnvName(slug) {
     const config = OPENROUTER_FREE_BY_SLUG[slug];
     if (!config) return null;
-    if (envTrim(config.keyEnv)) return config.keyEnv;
-    for (const legacy of config.legacyKeyEnvs || []) {
-        if (envTrim(legacy)) return legacy;
-    }
-    return null;
+    return resolveOpenRouterFreeApiKey(config).keySourceEnv;
 }
 
 function isOpenRouterFreeSlug(slug) {
@@ -60,7 +94,7 @@ function isOpenRouterFreeSlug(slug) {
 function isOpenRouterFreeConfigured(slug) {
     const config = OPENROUTER_FREE_BY_SLUG[String(slug || '').trim()];
     if (!config) return false;
-    return Boolean(getDedicatedOpenRouterFreeKey(config));
+    return Boolean(resolveOpenRouterFreeApiKey(config).apiKey);
 }
 
 /**
@@ -70,22 +104,25 @@ function resolveOpenRouterFreeRoute(slug) {
     const key = String(slug || '').trim();
     const config = OPENROUTER_FREE_BY_SLUG[key];
     if (!config) return null;
-    const apiKey = getDedicatedOpenRouterFreeKey(config);
-    if (!apiKey) return null;
+    const resolved = resolveOpenRouterFreeApiKey(config);
+    if (!resolved.apiKey) return null;
     return {
         slug: config.slug,
+        // Always the free id — never a paid Nemotron/DeepSeek OpenRouter route.
         modelId: config.modelId,
-        apiKey,
-        keySourceEnv: getOpenRouterFreeKeySourceEnvName(key),
+        apiKey: resolved.apiKey,
+        keySourceEnv: resolved.keySourceEnv,
         displayName: config.displayName,
     };
 }
 
 function resolveOpenRouterFreeModelId(slug, variantGatewayOrDirect) {
     const route = OPENROUTER_FREE_BY_SLUG[String(slug || '').trim()];
+    if (!route) return String(variantGatewayOrDirect || '').trim();
     const fromVariant = String(variantGatewayOrDirect || '').trim();
+    // Accept only :free variants; never upgrade a free slug to a paid OpenRouter id.
     if (fromVariant.includes(':free')) return fromVariant;
-    return route?.modelId || fromVariant;
+    return route.modelId;
 }
 
 /**
@@ -97,7 +134,7 @@ function mapOpenRouterFreeHttpError(httpStatus, detailMessage = '') {
 
     if (status === 401 || /unauthorized|invalid.*api.*key|authentication/i.test(detail)) {
         return {
-            message: 'OpenRouter rejected the free-model API key. Verify the dedicated key env var on the server.',
+            message: 'OpenRouter rejected the free-model API key. Verify OPENROUTER_CHAT_FREE_API_KEY or OPENROUTER_API_KEY on the server.',
             code: 'OPENROUTER_FREE_AUTH_FAILED',
             clientStatus: 401,
             retryable: false,
@@ -161,9 +198,12 @@ function mapOpenRouterFreeHttpError(httpStatus, detailMessage = '') {
 
 function missingOpenRouterFreeConfigPayload(slug) {
     const config = OPENROUTER_FREE_BY_SLUG[String(slug || '').trim()];
-    const envName = config?.keyEnv || 'OPENROUTER_*_FREE_API_KEY';
+    const dedicated = config?.keyEnv || 'OPENROUTER_*_FREE_API_KEY';
+    const hint = config?.allowSharedOpenRouterKey
+        ? `Set ${dedicated} or OPENROUTER_API_KEY on the server (backend only). Free-tier availability and rate limits still apply.`
+        : `Set ${dedicated} on the server (backend only).`;
     return {
-        message: `${config?.displayName || slug} is not configured. Set ${envName} on the server (backend only).`,
+        message: `${config?.displayName || slug} is not configured. ${hint}`,
         code: 'OPENROUTER_FREE_NOT_CONFIGURED',
     };
 }

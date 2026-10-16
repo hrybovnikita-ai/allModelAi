@@ -11,9 +11,9 @@ const messageContentSource = readFileSync(path.join(root, 'src/components/Chat/C
 test('Chat.jsx passes activeConversationId to ChatMessageContent in message map', () => {
   assert.match(
     chatSource,
-    /ChatMessageContent[\s\S]*?conversationId=\{temporaryChat \? null : activeConversationId\}/,
+    /ChatMessageContent[\s\S]{0,240}?conversationId=\{activeConversationId\}/,
   );
-  assert.doesNotMatch(chatSource, /ChatMessageContent[\s\S]*?conversationId=\{conversationId\}/);
+  assert.doesNotMatch(chatSource, /ChatMessageContent[\s\S]{0,240}?conversationId=\{conversationId\}/);
 });
 
 test('ChatMessageContent treats conversationId as optional prop', () => {
@@ -21,7 +21,10 @@ test('ChatMessageContent treats conversationId as optional prop', () => {
 });
 
 test('FileCard and MessageActions use activeConversationId in the same message map', () => {
-  const mapBlock = chatSource.slice(chatSource.indexOf('messages.map((message, index)'), chatSource.indexOf('messages.map((message, index)') + 8000);
-  assert.match(mapBlock, /activeConversationId/);
+  const mapStart = chatSource.indexOf('messages.map((message, index)');
+  assert.ok(mapStart >= 0);
+  const mapBlock = chatSource.slice(mapStart, mapStart + 12000);
+  assert.match(mapBlock, /FileCard[\s\S]{0,120}?conversationId=\{activeConversationId\}/);
+  assert.match(mapBlock, /MessageActions[\s\S]{0,500}?conversationId=\{activeConversationId\}/);
   assert.doesNotMatch(mapBlock, /conversationId=\{conversationId\}/);
 });

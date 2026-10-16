@@ -65,6 +65,8 @@ test('redirect coordinator caches inflight and consumed redirect results', async
   assert.match(source, /resolveRedirectUser/);
   assert.match(source, /GET_REDIRECT_RESULT_TIMEOUT/);
   assert.match(source, /Promise\.race/);
+  assert.match(source, /IOS_LATE_REDIRECT_GRACE_MS/);
+  assert.match(source, /authState-after-ios-null/);
 });
 
 test('SocialAuthCallback does not start redirect; gate owns getRedirectResult recovery', async () => {

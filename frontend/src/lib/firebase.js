@@ -9,9 +9,10 @@ import {
   setPersistence,
 } from 'firebase/auth';
 import { ensureFirebaseSocialConfigLoaded } from './loadFirebaseConfig.js';
-import { getBrowserApiOrigin, getPublicAppOrigin, isHostedWebApp } from './apiBase.js';
+import { getPublicAppOrigin, isHostedWebApp } from './apiBase.js';
 import { isIosTouchDevice, isMobileWebSafari } from './socialSignInEnv.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
+import { shouldAttemptGoogleRedirectRecovery } from './socialRedirectState.js';
 import {
   coerceProductionAuthDomain,
   DEFAULT_FIREBASE_AUTH_DOMAIN,
@@ -65,15 +66,10 @@ export function isCustomAuthDomainEnabled() {
   return import.meta.env?.VITE_FIREBASE_CUSTOM_AUTH_DOMAIN === 'true';
 }
 
+/** Page hostname for OAuth authDomain coercion (not the API host). */
 function hostedSiteAuthDomain() {
   if (typeof window === 'undefined' || !isHostedWebApp()) return '';
-  const origin = getBrowserApiOrigin();
-  if (!origin) return '';
-  try {
-    return new URL(origin).hostname;
-  } catch {
-    return '';
-  }
+  return String(window.location?.hostname || '').trim().toLowerCase();
 }
 
 /**
@@ -236,15 +232,21 @@ function initializeSocialAuth(app) {
   return instance;
 }
 
-/** browserLocal → indexedDB → session → in-memory (Private Browsing safe). */
+let persistenceAppliedAfterRedirect = false;
+
+/**
+ * browserLocal → indexedDB → session → in-memory (Private Browsing safe).
+ * Do NOT call this before getRedirectResult on an OAuth return — WebKit can drop the pending redirect.
+ */
 export async function applyAuthPersistenceSafely(instance) {
   try {
     await setPersistence(instance, browserLocalPersistence);
     socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: 'browserLocal', phase: 'setPersistence' });
-    authRecoveryLog('Persistence ready before redirect checks', {
+    authRecoveryLog('Persistence applied', {
       persistence: 'browserLocal',
       safari: isMobileWebSafari(),
     });
+    persistenceAppliedAfterRedirect = true;
     return 'browserLocal';
   } catch {
     /* fall through to chain */
@@ -255,10 +257,11 @@ export async function applyAuthPersistenceSafely(instance) {
       await setPersistence(instance, persistence);
       const label = persistenceLabel(persistence);
       socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: label, phase: 'setPersistence' });
-      authRecoveryLog('Persistence ready before redirect checks', {
+      authRecoveryLog('Persistence applied', {
         persistence: label,
         safari: isMobileWebSafari(),
       });
+      persistenceAppliedAfterRedirect = true;
       return label;
     } catch {
       /* try next */
@@ -266,7 +269,14 @@ export async function applyAuthPersistenceSafely(instance) {
   }
   await setPersistence(instance, inMemoryPersistence);
   socialAuthDebug('AUTH_PERSISTENCE_READY', { persistence: 'inMemory', phase: 'setPersistence-fallback' });
+  persistenceAppliedAfterRedirect = true;
   return 'inMemory';
+}
+
+/** Apply persistence after a successful redirect recovery (safe once getRedirectResult has run). */
+export async function applyAuthPersistenceAfterRedirectRecovery(instance) {
+  if (persistenceAppliedAfterRedirect) return;
+  return applyAuthPersistenceSafely(instance);
 }
 
 export function getSocialAuth() {
@@ -320,7 +330,10 @@ async function reconcileFirebaseAppAuthDomain() {
 
 let authReadyPromise = null;
 
-/** Load public Firebase config, init auth once, set Safari-friendly persistence before redirect/recovery. */
+/**
+ * Load public Firebase config and init auth once.
+ * On Google redirect return, skip setPersistence until after getRedirectResult (Safari/WebKit).
+ */
 export async function ensureSocialAuthReady() {
   if (authReadyPromise) {
     return authReadyPromise;
@@ -349,7 +362,17 @@ export async function ensureSocialAuthReady() {
         + 'Redeploy with VITE_FIREBASE_AUTH_DOMAIN=auth.all-model-ai.com and hard-refresh (clear PWA cache if needed).',
       );
     }
-    await applyAuthPersistenceSafely(instance);
+
+    // Critical: setPersistence before getRedirectResult clears pending OAuth on iPad/iPhone Safari.
+    if (shouldAttemptGoogleRedirectRecovery()) {
+      socialAuthDebug('AUTH_PERSISTENCE_DEFERRED', { reason: 'redirect-recovery-pending' });
+      authRecoveryLog('Deferring setPersistence until after getRedirectResult', {
+        safari: isMobileWebSafari(),
+        authDomain,
+      });
+    } else {
+      await applyAuthPersistenceSafely(instance);
+    }
     return instance;
   })().catch((error) => {
     authReadyPromise = null;
@@ -361,4 +384,5 @@ export async function ensureSocialAuthReady() {
 
 export function resetSocialAuthReadyForTests() {
   authReadyPromise = null;
+  persistenceAppliedAfterRedirect = false;
 }

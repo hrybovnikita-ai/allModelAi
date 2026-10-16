@@ -34,9 +34,10 @@ test('popup active flag blocks a second sign-in flow', () => {
 
 test('desktop popup-blocked does not auto-start redirect', async () => {
   const signIn = await readFile(new URL('../src/lib/socialSignIn.js', import.meta.url), 'utf8');
-  const blockStart = signIn.indexOf('auth/popup-blocked');
+  const blockStart = signIn.indexOf("error.code === 'auth/popup-blocked'");
   assert.ok(blockStart > 0);
-  const block = signIn.slice(blockStart, blockStart + 420);
-  assert.match(block, /shouldPreferGoogleRedirectSignIn/);
+  const block = signIn.slice(blockStart, blockStart + 900);
+  // Redirect fallback is gated; desktop popup-first still throws when redirect is not allowed.
+  assert.match(block, /shouldPreferGoogleRedirectSignIn|shouldTryGooglePopupFirst|canUseGoogleRedirectSignIn/);
   assert.match(block, /throw error/);
 });

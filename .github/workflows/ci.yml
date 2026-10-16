@@ -12,6 +12,23 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret scan (no committed .env / live-looking keys)
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -E '(^|/)\.env$' ; then
+            echo "::error::Committed .env files are not allowed"
+            exit 1
+          fi
+          # Scan tracked source only; ignore .env.example placeholders and lockfiles.
+          if git grep -I -nE '(sk-[a-zA-Z0-9]{32,}|sk-proj-[a-zA-Z0-9_-]{32,}|AIza[0-9A-Za-z_-]{30,}|xai-[a-zA-Z0-9]{32,})' -- \
+            ':!.env.example' ':!**/.env.example' ':!**/package-lock.json' ':!**/*.md' ; then
+            echo "::error::Possible live API key pattern found in tracked files"
+            exit 1
+          fi
+          echo "Secret scan passed"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -37,15 +54,33 @@ jobs:
       - name: Install Node dependencies
         run: npm install
 
+      - name: Validate env example (no secrets required)
+        run: |
+          test -f backend/.env.example
+          ! grep -E '(sk-[a-zA-Z0-9]{20,}|AIza[0-9A-Za-z_-]{20,}|xai-[a-zA-Z0-9]{20,})' backend/.env.example
+          echo "env example present; no live-looking secrets detected in example file"
+
       - name: Run backend tests
         run: npm test
         working-directory: backend
         env:
           PYTHON_BIN: python
+          NODE_ENV: test
+
+      - name: Run Python router unit tests
+        working-directory: ai_python
+        run: python -m pytest tests/test_router.py tests/test_smart_fallback.py tests/test_router_model_fallback.py -q
+        env:
+          PYTHONPATH: .
 
       - name: Run frontend lint
         run: npm run lint
         working-directory: frontend
+
+      - name: Run frontend unit tests
+        run: npm test
+        working-directory: frontend
+        continue-on-error: false
 
       - name: Build frontend
         run: npm run build

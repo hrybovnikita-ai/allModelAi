@@ -106,12 +106,13 @@ test('home navbar opens Sign In modal only from explicit button clicks', () => {
 });
 
 test('logout navigation targets public home, not login modal route', () => {
-  const nav = readFileSync(`${root}src/components/Dashboard/DashboardWorkspaceNav.jsx`, 'utf8');
+  const profileMenu = readFileSync(`${root}src/components/Navigation/NavProfileMenu.jsx`, 'utf8');
   const settings = readFileSync(`${root}src/components/Settings/Settings.jsx`, 'utf8');
   const requireAuth = readFileSync(`${root}src/components/Login/RequireAuth.jsx`, 'utf8');
 
-  assert.match(nav, /navigate\('\/', \{ replace: true \}\)/);
-  assert.doesNotMatch(nav, /navigate\('\/login'/);
+  assert.match(profileMenu, /performLogout/);
+  assert.match(profileMenu, /navigate\('\/', \{ replace: true \}\)/);
+  assert.doesNotMatch(profileMenu, /navigate\('\/login'/);
   assert.match(settings, /navigate\('\/', \{ replace: true \}\)/);
   assert.doesNotMatch(settings, /navigate\('\/login'/);
   assert.match(requireAuth, /to="\/login"/);

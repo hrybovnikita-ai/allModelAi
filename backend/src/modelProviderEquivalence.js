@@ -23,14 +23,33 @@ function isOpenRouterInsufficientCredits(status, detail) {
         && /credit|balance|afford|payment|purchase/i.test(text);
 }
 
-function mapOpenRouterBillingError(status, detail = '') {
+/**
+ * Accurate OpenRouter billing error for the selected model family.
+ * Never recommend Gemini when the user selected GPT (or another non-Gemini slug).
+ */
+function mapOpenRouterBillingError(status, detail = '', options = {}) {
     const mapped = isOpenRouterInsufficientCredits(status, detail);
     if (!mapped) return null;
+    const routed = String(options.routedModel || options.requestedModel || '').toLowerCase();
+    const gatewayModel = String(options.gatewayModel || options.model || '').trim();
+    const modelLabel = gatewayModel || 'this model';
+    let message;
+    if (routed === 'gpt' || routed === 'copilot') {
+        message = `OpenRouter could not run ${modelLabel}: insufficient credits. Add OpenRouter credits at openrouter.ai/settings/credits, or set a valid OPENAI_API_KEY (sk-…) on the server to call OpenAI directly for GPT.`;
+    } else if (routed === 'gemini') {
+        message = `OpenRouter could not run ${modelLabel}: insufficient credits. Add OpenRouter credits, or set GEMINI_API_KEY to use Google Gemini directly.`;
+    } else if (routed) {
+        message = `OpenRouter could not run ${modelLabel} for ${routed}: insufficient credits. Add OpenRouter credits, or configure a direct API key for the selected provider.`;
+    } else {
+        message = `OpenRouter reports insufficient credits for ${modelLabel}. Add OpenRouter credits, or configure a direct API key for the selected provider.`;
+    }
     return {
         clientStatus: 402,
         code: 'OPENROUTER_INSUFFICIENT_CREDITS',
-        message: 'OpenRouter reports insufficient credits for this model. Add OpenRouter credits or configure GEMINI_API_KEY to use Google Gemini directly.',
+        message,
         provider: 'openrouter',
+        model: gatewayModel || null,
+        routedModel: routed || null,
     };
 }
 

@@ -15,6 +15,7 @@
     "db:init": "node scripts/database.js init",
     "db:check": "node scripts/database.js check",
     "db:migrate": "node scripts/migrate.js",
+    "db:backup": "node scripts/db-backup.js",
     "db:import-sqlite": "node scripts/import-sqlite.js",
     "providers:check": "node scripts/check-providers.js",
     "image:smoke": "node scripts/cloudflare-image-smoke.js",

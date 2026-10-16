@@ -1037,6 +1037,7 @@ const {
     findRoutedModelWithApiKey,
     listConfiguredChatProviderIds,
     logSmartRouter,
+    openAiKey: readValidatedOpenAiKey,
     openRouterKey,
 } = require('../chatProviderRuntime');
 const { displayModelName } = require('../services/smartRouter2/capabilities');
@@ -2002,6 +2003,8 @@ async function createChatResponseImpl(req, res) {
         sleep: sleepFallback,
         buildFallbackNotice,
         maxFallbackAttempts,
+        fallbackCodeForCategory,
+        FALLBACK_CODES,
     } = require('../services/automaticFallback');
     const allowFallback = isFallbackFeatureEnabled()
         && !selectedVariant
@@ -2297,7 +2300,7 @@ async function createChatResponseImpl(req, res) {
 
     // Explicit Claude uses Anthropic when CLAUDE_API_KEY is set. OpenRouter is only a labeled fallback.
     const gatewayKey = openRouterKey();
-    const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
+    const openAIKey = readValidatedOpenAiKey();
     const xaiKey = getGrokDirectApiKey();
     const directKimiKey = process.env.KIMI_PROVIDER === 'openrouter' ? undefined : process.env.KIMI_API_KEY?.trim();
     const directMistralKey = process.env.MISTRAL_API_KEY?.trim();
@@ -2317,7 +2320,6 @@ async function createChatResponseImpl(req, res) {
     const {
         isOpenRouterFreeSlug,
         resolveOpenRouterFreeRoute,
-        resolveOpenRouterFreeModelId,
         mapOpenRouterFreeHttpError,
         missingOpenRouterFreeConfigPayload,
         OPENROUTER_CHAT_COMPLETIONS_URL,
@@ -2792,10 +2794,8 @@ async function createChatResponseImpl(req, res) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(isOpenRouterFree ? {
-                model: resolveOpenRouterFreeModelId(
-                    routedModel,
-                    selectedVariant?.gateway || selectedVariant?.direct || providerModels[routedModel],
-                ),
+                // Always the registered :free id — never upgrade to a paid OpenRouter variant.
+                model: openRouterFreeRoute.modelId,
                 stream: true,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
@@ -2810,7 +2810,7 @@ async function createChatResponseImpl(req, res) {
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : isOpenAI ? {
-                model: selectedVariant?.direct || (hasAttachedImage ? resolveOpenAiVisionModel() : (process.env.OPENAI_MODEL || 'gpt-4o-mini')),
+                model: require('../services/openaiChat').resolveOpenAiDirectModel(selectedVariant, { hasAttachedImage }),
                 stream: true,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
@@ -3042,12 +3042,14 @@ async function createChatResponseImpl(req, res) {
             });
         }
 
-        // Prefer independently configured Gemini connection for failed non-Gemini provider
+        // Prefer Gemini for failed non-GPT selections (and Smart Router). Never silently replace GPT/Copilot.
         if (
             !apiResponse.ok
             && allowFallback
             && !noCrossProviderFallback
             && !isGemini
+            && requestedModel !== 'gpt'
+            && requestedModel !== 'copilot'
             && process.env.GEMINI_API_KEY?.trim()
             && mayAttemptFallback(fallbackFailureCategory)
             && fallbackTracker.canAttempt()
@@ -3293,9 +3295,26 @@ async function createChatResponseImpl(req, res) {
             const openRouterFreeMapped = isOpenRouterFreeSlug(routedModel)
                 ? mapOpenRouterFreeHttpError(apiResponse.status, detail)
                 : null;
-            const openRouterBillingMapped = !geminiDirectOnly
-                ? mapOpenRouterBillingError(apiResponse.status, detail)
+            const onOpenRouterPathForErrors = equivalenceViaOpenRouter || openRouterAttempted || initialUsesOpenRouter;
+            const openRouterBillingMapped = !geminiDirectOnly && onOpenRouterPathForErrors
+                ? mapOpenRouterBillingError(apiResponse.status, detail, {
+                    routedModel,
+                    requestedModel,
+                    gatewayModel: normalizeOpenRouterGatewayModel(providerModels[routedModel], routedModel),
+                })
                 : null;
+            const { mapOpenAiHttpError, logOpenAiHttpError, resolveOpenAiDirectModel } = require('../services/openaiChat');
+            const openAiMapped = !onOpenRouterPathForErrors
+                && (routedModel === 'gpt' || routedModel === 'copilot')
+                ? mapOpenAiHttpError(apiResponse.status, detail)
+                : null;
+            if (openAiMapped) {
+                logOpenAiHttpError(apiResponse.status, data, {
+                    routedModel,
+                    correlationId: chatCorrelationId,
+                    model: resolveOpenAiDirectModel(selectedVariant, { hasAttachedImage }),
+                });
+            }
             const { mapGeminiHttpError } = require('../services/geminiApiService');
             const geminiFailureStatus = geminiDirectFailure?.status ?? apiResponse.status;
             const geminiFailureDetail = geminiDirectFailure?.detail || detail;
@@ -3329,7 +3348,7 @@ async function createChatResponseImpl(req, res) {
                     model: grokDirectModelId || grokModel,
                 });
             }
-            const message = ollamaMapped?.message || groqMapped?.message || grokMapped?.message || geminiMapped?.message || openRouterBillingMapped?.message || openRouterFreeMapped?.message || cloudflareMapped?.message || (billingError || (!geminiDirectOnly && apiResponse.status === 402)
+            const message = ollamaMapped?.message || groqMapped?.message || grokMapped?.message || openAiMapped?.message || geminiMapped?.message || openRouterBillingMapped?.message || openRouterFreeMapped?.message || cloudflareMapped?.message || (billingError || (!geminiDirectOnly && apiResponse.status === 402)
                 ? `${providerLabel} could not complete this request because the provider account has insufficient balance or quota. Add credits in the provider billing console or configure another connection for this model.`
                 : visionUpstream
                     ? 'The selected model could not analyze this image. Try Smart Router or switch to Gemini or GPT.'
@@ -3339,7 +3358,7 @@ async function createChatResponseImpl(req, res) {
                 : hasAttachedImage
                     ? 'Image analysis failed. Retry or use Smart Router with Gemini or GPT configured.'
                 : 'The selected AI service could not answer. Retry or check the model configuration.');
-            const errorCode = ollamaMapped?.code || groqMapped?.code || grokMapped?.code || (geminiMapped ? `GEMINI_${geminiMapped.errorClass.toUpperCase()}` : (openRouterBillingMapped?.code || openRouterFreeMapped?.code || cloudflareMapped?.code || (billingError ? 'AI_BILLING'
+            const errorCode = ollamaMapped?.code || groqMapped?.code || grokMapped?.code || openAiMapped?.code || (geminiMapped ? `GEMINI_${geminiMapped.errorClass.toUpperCase()}` : (openRouterBillingMapped?.code || openRouterFreeMapped?.code || cloudflareMapped?.code || (billingError ? 'AI_BILLING'
                 : visionUpstream ? 'VISION_UPSTREAM'
                 : hasAttachedImage && apiResponse.status >= 500 ? 'VISION_PROVIDER_ERROR'
                 : 'AI_UPSTREAM')));
@@ -3375,7 +3394,7 @@ async function createChatResponseImpl(req, res) {
                     console.warn('[PROVIDER_HEALTH]', telemetryError.message);
                 }
             });
-            const clientStatus = ollamaMapped?.clientStatus || groqMapped?.clientStatus || grokMapped?.clientStatus || geminiMapped?.clientStatus || openRouterBillingMapped?.clientStatus || openRouterFreeMapped?.clientStatus || cloudflareMapped?.clientStatus || mapUpstreamStatusForClient(apiResponse.status);
+            const clientStatus = ollamaMapped?.clientStatus || groqMapped?.clientStatus || grokMapped?.clientStatus || openAiMapped?.clientStatus || geminiMapped?.clientStatus || openRouterBillingMapped?.clientStatus || openRouterFreeMapped?.clientStatus || cloudflareMapped?.clientStatus || mapUpstreamStatusForClient(apiResponse.status);
             if (shouldReserveCredits && creditReservation) {
                 try {
                     const { releaseReservationAsync } = require('../billing/aiCreditLedger');
@@ -3388,22 +3407,38 @@ async function createChatResponseImpl(req, res) {
                     console.warn('[AI_CREDITS] release on upstream error skipped:', releaseError.message);
                 }
             }
-            if (chatSseStarted) {
-                webSearchService.writeSse(res, {
-                    error: message,
-                    code: errorCode,
-                    correlationId: chatCorrelationId,
-                    upstreamStatus: apiResponse.status,
-                });
-                res.write('data: [DONE]\n\n');
-                return res.end();
-            }
-            return res.status(clientStatus).json({
+            const failedProvider = openAiMapped?.provider
+                || openRouterBillingMapped?.provider
+                || ollamaMapped?.provider
+                || groqMapped?.provider
+                || grokMapped?.provider
+                || (geminiMapped ? 'gemini' : null)
+                || (equivalenceViaOpenRouter || openRouterAttempted || initialUsesOpenRouter ? 'openrouter' : slugToProviderId(routedModel));
+            const failedModel = openAiMapped
+                ? resolveOpenAiDirectModel(selectedVariant, { hasAttachedImage })
+                : (openRouterBillingMapped?.model
+                || (selectedVariant?.direct && (isOpenAI || isGemini || isClaude || isXAI) ? selectedVariant.direct : null)
+                || normalizeOpenRouterGatewayModel(providerModels[routedModel], routedModel)
+                || routedModel);
+            const errorPayload = {
                 message,
                 code: errorCode,
                 correlationId: chatCorrelationId,
                 upstreamStatus: apiResponse.status,
-            });
+                provider: failedProvider,
+                model: failedModel,
+                requestedModel: requestedModel || routedModel,
+                routedModel,
+            };
+            if (chatSseStarted) {
+                webSearchService.writeSse(res, {
+                    error: message,
+                    ...errorPayload,
+                });
+                res.write('data: [DONE]\n\n');
+                return res.end();
+            }
+            return res.status(clientStatus).json(errorPayload);
         }
 
         logSmartRouter('request success provider', {
@@ -3440,7 +3475,7 @@ async function createChatResponseImpl(req, res) {
             : fallbackUsed
                 ? providerModels[fallbackModel]
                 : (isOpenRouterFree
-                    ? resolveOpenRouterFreeModelId(routedModel, providerModels[routedModel])
+                    ? openRouterFreeRoute.modelId
                     : routedModel === 'gpt-oss' ? resolveGptOssModelId() : providerModels[routedModel]);
         const streamMeta = {
             unlimited: creditStatus.unlimited,
@@ -3473,15 +3508,19 @@ async function createChatResponseImpl(req, res) {
             : streamMeta;
         res.write(`data: ${JSON.stringify(clientStreamMeta)}\n\n`);
         if (fallbackUsed && requestedModel !== 'anonin') {
+            const fallbackCode = fallbackCodeForCategory(fallbackFailureCategory)
+                || FALLBACK_CODES.unknown;
             res.write(`data: ${JSON.stringify({
                 fallback: true,
                 autoRecovery: true,
                 requestedModel: routedModel,
                 actualModel: fallbackModel,
+                code: fallbackCode,
                 notice: buildFallbackNotice({
                     requestedModel: routedModel,
                     actualModel: fallbackModel,
                     category: fallbackFailureCategory,
+                    code: fallbackCode,
                 }),
                 fallbackEvents: typeof fallbackTracker !== 'undefined' ? fallbackTracker.events : undefined,
             })}\n\n`);
@@ -3820,7 +3859,7 @@ const analyzeVision = async (req, res) => {
 
     const gatewayKey = openRouterKey();
     const geminiKey = process.env.GEMINI_API_KEY?.trim();
-    const openAIKey = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY)?.trim();
+    const openAIKey = readValidatedOpenAiKey();
 
     const modePrompts = {
         navigation: 'Analyze this UI/screenshot in detail. Point out specific buttons, inputs, tabs, and menu items. Give clear, numbered step-by-step instructions on WHERE TO CLICK and what action to take (e.g. "[Top-Right] Click \'Settings\'", "[Center] Enter value", "[Bottom] Click \'Save\'"). If an error is visible, explain how to resolve it.',

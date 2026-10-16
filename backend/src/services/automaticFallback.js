@@ -2,6 +2,7 @@
  * Automatic AI Fallback policy — extends Smart Router 2.0.
  * Opt-in via FEATURE_AI_FALLBACK / request fallbackEnabled.
  * Does not retry authentication or invalid-request failures blindly.
+ * Never silently upgrades free-tier slugs to paid providers.
  */
 
 const {
@@ -13,6 +14,34 @@ const {
 } = require('./smartRouter2/fallbacks');
 const { parseEnvBoolean } = require('../platform/featureRegistry');
 const { securityLog } = require('../security/structuredLog');
+
+/** Free-tier chat slugs that must not auto-failover onto paid gateways. */
+const FREE_TIER_SLUGS = new Set([
+    'gemini',
+    'cloudflare',
+    'gpt-oss',
+    'nemotron',
+    'deepseek-r1',
+]);
+
+/**
+ * Machine-readable codes for SSE / API clients (stable contract).
+ * Categories come from smartRouter2/fallbacks ERROR_CATEGORIES values.
+ */
+const FALLBACK_CODES = Object.freeze({
+    authentication: 'FALLBACK_AUTH_BLOCKED',
+    invalid_request: 'FALLBACK_INVALID_BLOCKED',
+    rate_limit: 'FALLBACK_RATE_LIMIT',
+    timeout: 'FALLBACK_TIMEOUT',
+    unavailable_model: 'FALLBACK_UNAVAILABLE',
+    server_error: 'FALLBACK_UPSTREAM',
+    network: 'FALLBACK_NETWORK',
+    unknown: 'FALLBACK_UNKNOWN',
+    loop_prevented: 'FALLBACK_LOOP_PREVENTED',
+    free_to_paid_blocked: 'FALLBACK_FREE_TO_PAID_BLOCKED',
+    candidates_exhausted: 'FALLBACK_CANDIDATES_EXHAUSTED',
+    budget_blocked: 'FALLBACK_BUDGET_BLOCKED',
+});
 
 function isFallbackFeatureEnabled() {
     return parseEnvBoolean('FEATURE_AI_FALLBACK', true);
@@ -42,6 +71,15 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isFreeTierSlug(slug) {
+    return FREE_TIER_SLUGS.has(String(slug || '').trim().toLowerCase());
+}
+
+function fallbackCodeForCategory(category) {
+    const key = String(category || '').trim().toLowerCase() || 'unknown';
+    return FALLBACK_CODES[key] || FALLBACK_CODES.unknown;
+}
+
 /**
  * Decide whether a failed upstream response may trigger cross-model fallback.
  */
@@ -67,6 +105,7 @@ function mayAttemptFallback(category) {
 
 /**
  * Build an ordered candidate list without duplicates or cycles.
+ * When blockPaidForFreeRequest is set, free-tier origins never receive paid candidates.
  */
 function selectFallbackCandidates({
     requestedSlug,
@@ -74,18 +113,21 @@ function selectFallbackCandidates({
     modelAllowed = () => true,
     visited = new Set(),
     maxAttempts = maxFallbackAttempts(),
+    blockPaidForFreeRequest = true,
 } = {}) {
     const seen = new Set(
         [...visited].map((item) => String(item || '').toLowerCase()).filter(Boolean),
     );
     const requested = String(requestedSlug || '').toLowerCase();
     if (requested) seen.add(requested);
+    const blockPaid = blockPaidForFreeRequest && isFreeTierSlug(requested);
 
     const out = [];
     for (const candidate of preferredChain) {
         const slug = String(candidate || '').trim().toLowerCase();
         if (!slug || seen.has(slug)) continue;
         if (typeof modelAllowed === 'function' && !modelAllowed(slug)) continue;
+        if (blockPaid && !isFreeTierSlug(slug)) continue;
         seen.add(slug);
         out.push(slug);
         if (out.length >= maxAttempts) break;
@@ -93,13 +135,14 @@ function selectFallbackCandidates({
     return out;
 }
 
-function buildFallbackNotice({ requestedModel, actualModel, category } = {}) {
+function buildFallbackNotice({ requestedModel, actualModel, category, code } = {}) {
     const from = requestedModel || 'preferred model';
     const to = actualModel || 'an available model';
     const reason = category && category !== 'unknown'
         ? ` (${String(category).replace(/_/g, ' ')})`
         : '';
-    return `Answered with ${to} after ${from} was unavailable${reason}.`;
+    const codeSuffix = code ? ` [${code}]` : '';
+    return `Answered with ${to} after ${from} was unavailable${reason}.${codeSuffix}`.replace(/\.\./g, '.');
 }
 
 function createFallbackTracker({ requestedSlug } = {}) {
@@ -121,12 +164,14 @@ function createFallbackTracker({ requestedSlug } = {}) {
         markVisited(slug) {
             if (slug) visited.add(String(slug).toLowerCase());
         },
-        record({ from, to, category, latencyMs, success }) {
+        record({ from, to, category, latencyMs, success, code }) {
             attempts += 1;
+            const resolvedCode = code || fallbackCodeForCategory(category);
             const event = {
                 from: from || null,
                 to: to || null,
                 category: category || null,
+                code: resolvedCode,
                 latencyMs: latencyMs == null ? null : Number(latencyMs),
                 success: Boolean(success),
                 at: new Date().toISOString(),
@@ -196,7 +241,11 @@ async function runFallbackChain({
 }
 
 module.exports = {
+    FALLBACK_CODES,
+    FREE_TIER_SLUGS,
     isFallbackFeatureEnabled,
+    isFreeTierSlug,
+    fallbackCodeForCategory,
     maxFallbackAttempts,
     computeBackoffMs,
     sleep,

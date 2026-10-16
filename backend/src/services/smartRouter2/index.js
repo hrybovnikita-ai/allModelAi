@@ -44,6 +44,8 @@ function scoreSlugForTask(slug, taskType, preferSpeed) {
     if (taskType === 'research' && cap.research) score += 4;
     if (taskType === 'vision' && cap.vision) score += 5;
     if (taskType === 'document_analysis' && cap.longContext) score += 3;
+    // Prefer free OpenRouter reasoning when the primary pick is unavailable.
+    if (taskType === 'reasoning' && (slug === 'nemotron' || slug === 'deepseek-r1')) score += 2;
     return score;
 }
 

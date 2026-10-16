@@ -53,7 +53,7 @@ def _handle_json_command(raw_json: str) -> None:
             trainer.reset_model()
             print(json.dumps({"status": "reset"}))
         elif action == "labs_lessons":
-            from lessons.catalog import list_catalog
+            from lessons.catalog import list_catalogg
 
             print(json.dumps(list_catalog()))
         elif action == "lab_linear_regression_train":

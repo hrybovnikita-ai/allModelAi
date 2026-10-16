@@ -11,7 +11,7 @@ function providerCatalog() {
         openai: {
             keys: ['OPENAI_API_KEY', 'OPEN_AI_API_KEY'],
             modelEnv: 'OPENAI_MODEL',
-            defaultModel: 'gpt-4o-mini',
+            defaultModel: 'gpt-4.1-mini',
         },
         gemini: {
             keys: ['GEMINI_API_KEY'],
@@ -105,12 +105,15 @@ function isProviderConfigured(entry) {
 
 function buildProviderSnapshot() {
     const catalog = providerCatalog();
+    const { openAiKey } = require('./chatProviderRuntime');
     const snapshot = {};
     Object.entries(catalog).forEach(([id, entry]) => {
+        let configured = isProviderConfigured(entry);
+        if (id === 'openai') configured = Boolean(openAiKey());
         snapshot[id] = {
-            configured: isProviderConfigured(entry),
+            configured,
             model: process.env[entry.modelEnv]?.trim() || entry.defaultModel || null,
-            status: isProviderConfigured(entry) ? 'configured' : 'missing_configuration',
+            status: configured ? 'configured' : 'missing_configuration',
         };
     });
     snapshot.openrouter.configured = snapshot.openrouter.configured || snapshot.openai.configured;
@@ -118,7 +121,8 @@ function buildProviderSnapshot() {
 }
 
 async function probeOpenAI() {
-    const key = (process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY || '').trim();
+    const { openAiKey } = require('./chatProviderRuntime');
+    const key = openAiKey();
     if (!key) return { status: 'missing_configuration' };
     try {
         const response = await fetch('https://api.openai.com/v1/models', {
@@ -322,7 +326,7 @@ function providerAvailabilityForRouter() {
 const { isCloudflareWorkersAiConfigured } = require('./services/cloudflareWorkersAiConfig');
 const { isOpenRouterFreeConfigured } = require('./services/openRouterFreeModels');
 
-const SMART_ROUTE_FALLBACK_ORDER = ['gemini', 'gpt-oss', 'gpt', 'deepseek', 'claude', 'mistral', 'groq', 'llama', 'perplexity', 'grok', 'cloudflare', 'ollama'];
+const SMART_ROUTE_FALLBACK_ORDER = ['gemini', 'gpt-oss', 'nemotron', 'gpt', 'deepseek', 'claude', 'mistral', 'groq', 'llama', 'perplexity', 'grok', 'cloudflare', 'ollama'];
 
 function isRoutedModelAvailable(modelSlug, availability) {
     if (modelSlug === 'gpt-oss') {

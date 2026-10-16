@@ -4,7 +4,7 @@
  */
 
 export const MODEL_TECH_SPECS = {
-  gpt: { modelId: 'gpt-4o-mini', contextWindow: '128K', toolUse: true },
+  gpt: { modelId: 'gpt-4.1-mini', contextWindow: '128K', toolUse: true },
   claude: { modelId: 'claude-haiku-4.5', contextWindow: '200K', toolUse: false },
   gemini: { modelId: 'gemini-3.5-flash-lite', contextWindow: '1M', toolUse: false },
   perplexity: { modelId: 'sonar', contextWindow: null, toolUse: false },
@@ -16,7 +16,7 @@ export const MODEL_TECH_SPECS = {
   groq: { modelId: 'llama-3.3-70b-versatile', contextWindow: '128K', toolUse: false },
   cloudflare: { modelId: 'llama-3.3-70b-instruct-fp8-fast', contextWindow: null, toolUse: false },
   'gpt-oss': { modelId: '@cf/openai/gpt-oss-20b', contextWindow: null, toolUse: false },
-  nemotron: { modelId: 'nvidia/nemotron-3-ultra-550b-a55b:free', contextWindow: null, toolUse: false },
+  nemotron: { modelId: 'nvidia/nemotron-3-ultra-550b-a55b:free', contextWindow: '1M', toolUse: false },
   'deepseek-r1': { modelId: 'deepseek/deepseek-r1-0528:free', contextWindow: null, toolUse: false },
   qwen: { modelId: 'qwen-2.5-72b-instruct', contextWindow: '128K', toolUse: false },
   cohere: { modelId: 'command-a', contextWindow: '128K', toolUse: false },

@@ -936,7 +936,18 @@ export default function Chat() {
       const next = { ...previous };
       Object.entries(variantCatalog).forEach(([slug, versions]) => {
         const storedId = next[slug];
-        if (!storedId || versions.some((item) => item.id === storedId)) return;
+        if (!storedId) {
+          // Prefer GPT-4.1 Mini as the default GPT version when none is stored.
+          const preferred = slug === 'gpt'
+            ? (versions.find((item) => item.id === 'mini')?.id || versions[0]?.id)
+            : versions[0]?.id;
+          if (preferred) {
+            next[slug] = preferred;
+            changed = true;
+          }
+          return;
+        }
+        if (versions.some((item) => item.id === storedId)) return;
         const mapped = legacyVariantIds[storedId] || versions[0]?.id;
         if (mapped && versions.some((item) => item.id === mapped)) {
           next[slug] = mapped;
