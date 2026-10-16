@@ -153,6 +153,7 @@ export default function ChatSidebar({
   logger,
   temporaryChat,
   startTemporaryChat,
+  temporaryHistory = [],
   selectedSlug,
   messages,
   exportConversation,
@@ -311,6 +312,13 @@ export default function ChatSidebar({
           <SidebarIconButton className="sidebar-rail-btn" label={t('New conversation')} onClick={newChat}>
             <IconSidebarPlus />
           </SidebarIconButton>
+          <SidebarIconButton
+            className={`sidebar-rail-btn${temporaryChat ? ' is-active' : ''}`}
+            label={t('Temporary chat')}
+            onClick={startTemporaryChat}
+          >
+            <IconToolTemporary />
+          </SidebarIconButton>
           <SidebarIconButton className="sidebar-rail-btn" label={t('Your chats')} onClick={expandSidebar}>
             <IconSidebarClock />
           </SidebarIconButton>
@@ -327,14 +335,25 @@ export default function ChatSidebar({
 
         <div className="sidebar-expanded-content">
           <div className="sidebar-upper">
-            <button type="button" className="new-chat new-chat-compact" onClick={newChat}>
-              <IconSidebarPlus />
-              <span>{t('New conversation')}</span>
-            </button>
+            <div className="sidebar-new-chat-row">
+              <button type="button" className="new-chat new-chat-compact" onClick={newChat}>
+                <IconSidebarPlus />
+                <span>{t('New conversation')}</span>
+              </button>
+              <button
+                type="button"
+                className={`new-temp-chat-btn${temporaryChat ? ' is-active' : ''}`}
+                onClick={startTemporaryChat}
+                title={t('Expires in 72 hours')}
+                aria-label={t('Temporary chat')}
+              >
+                <IconToolTemporary />
+              </button>
+            </div>
 
             <SidebarSection id="tools" title={t('AI tools')} open={toolsOpen} onToggle={toggleTools}>
               <div className="sidebar-tools-list">
-                <CompactToolRow icon={IconToolTemporary} label={t('Temporary chat')} hint={t('Not saved to history')} active={temporaryChat} onClick={startTemporaryChat} />
+                <CompactToolRow icon={IconToolTemporary} label={t('Temporary chat')} hint={t('Expires in 72 hours')} active={temporaryChat} onClick={startTemporaryChat} />
                 <CompactToolRow icon={IconToolProject} label={t('New project')} hint={t('Organize chats by goal')} onClick={createProject} />
                 <CompactToolRow icon={IconToolArena} label={t('AI Arena')} hint={t('Compare answers side by side')} onClick={() => goTo('/arena', 'AI Arena')} />
                 <CompactToolRow icon={IconToolSmart} label={t('Smart Router')} hint={t('Choose the best AI automatically')} active={selectedSlug === 'smart'} onClick={openSmartRouter} />
@@ -420,7 +439,21 @@ export default function ChatSidebar({
               />
             </label>
             <div className="sidebar-chats-scroll">
-              {chatHistory.length === 0 && (
+              {temporaryHistory.length > 0 && (
+                <div className="sidebar-chat-group sidebar-temp-chats">
+                  <p className="sidebar-chat-group-label">{t('Temporary Chats')}</p>
+                  {temporaryHistory
+                    .filter((conversation) => {
+                      const q = String(historyQuery || '').trim().toLowerCase();
+                      if (!q) return true;
+                      const title = conversationDisplayTitle(conversation, t).toLowerCase();
+                      return title.includes(q);
+                    })
+                    .map((conversation) => renderConversation(conversation))}
+                </div>
+              )}
+
+              {chatHistory.length === 0 && temporaryHistory.length === 0 && (
                 <p className="sidebar-chats-empty">{t('Your saved chats will appear here.')}</p>
               )}
               {chatHistory.length > 0 && visibleHistory.length === 0 && (

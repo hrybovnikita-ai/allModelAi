@@ -8,6 +8,8 @@ const { ensureIntelligenceSchema } = require('./intelligence/intelligenceSchema'
 const { ensureAiImprovementSchema } = require('./aiImprovementSchema');
 const { ensureVideoGenerationSchema } = require('./videoGenerationSchema');
 const { ensureAiCreditSchema } = require('./billing/aiCreditSchema');
+const { ensureAdminAuditSchema } = require('./security/adminAuditSchema');
+const { ensureWorkflowSchema } = require('./services/aiWorkflows/workflowSchema');
 const { createConnectionApi } = require('./db/connectionApi');
 const { connectPostgresSync } = require('./db/postgresSync');
 const { createAuthPgPool, formatSafePgFailure } = require('./db/pgConfig');
@@ -271,6 +273,34 @@ const connectDatabase = () => {
     ensureAiImprovementSchema(database);
     ensureVideoGenerationSchema(database);
     ensureAiCreditSchema({ database, engine: 'sqlite' });
+    ensureAdminAuditSchema(database);
+    ensureWorkflowSchema(database);
+
+    ensureSqliteColumn(
+        database,
+        'conversations',
+        'is_temporary',
+        'ALTER TABLE conversations ADD COLUMN is_temporary INTEGER NOT NULL DEFAULT 0',
+    );
+    ensureSqliteColumn(
+        database,
+        'conversations',
+        'expires_at',
+        'ALTER TABLE conversations ADD COLUMN expires_at TEXT',
+    );
+    try {
+        database.exec(`
+            CREATE INDEX IF NOT EXISTS conversations_temporary_expires
+            ON conversations(expires_at)
+            WHERE is_temporary = 1
+        `);
+        database.exec(`
+            CREATE INDEX IF NOT EXISTS conversations_owner_temporary
+            ON conversations(email, is_temporary, updated_at DESC)
+        `);
+    } catch {
+        // Older SQLite builds without partial indexes — primary access still works.
+    }
 
     database.exec(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
@@ -337,9 +367,11 @@ const connectDatabase = () => {
                 title,
                 messages,
                 created_at,
-                updated_at
+                updated_at,
+                is_temporary,
+                expires_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         database.transaction(() => {
@@ -401,7 +433,9 @@ const connectDatabase = () => {
                             conversation.messages || []
                         ),
                         conversation.createdAt,
-                        conversation.updatedAt
+                        conversation.updatedAt,
+                        conversation.isTemporary || conversation.is_temporary || conversation.temporary ? 1 : 0,
+                        conversation.expiresAt || conversation.expires_at || null,
                     );
                 }
             );

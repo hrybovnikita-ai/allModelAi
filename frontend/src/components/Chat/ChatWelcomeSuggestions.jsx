@@ -33,17 +33,25 @@ const ICONS = {
   ai: IconAi,
 };
 
+/**
+ * Premium welcome action cards. Preserves existing prompt/action behavior.
+ * @param {{ items: Array<{ title: string, prompt?: string, icon?: string, action?: string }>, onSelect: (prompt: string, item: object) => void, t: (s: string) => string }} props
+ */
 export default function ChatWelcomeSuggestions({ items, onSelect, t }) {
   return (
-    <div className="welcome-suggestion-cards" role="group" aria-label="Suggestion prompts">
-      {items.map((item) => {
+    <div className="welcome-suggestion-cards" role="group" aria-label={t('Suggestion prompts') || 'Suggestion prompts'}>
+      {items.map((item, index) => {
         const Icon = ICONS[item.icon] || IconLightbulb;
+        const title = t(item.title) || item.title;
+        const desc = t(item.prompt) || item.prompt || '';
         return (
           <button
             key={item.title}
             type="button"
             className="welcome-suggestion-card"
-            onClick={() => onSelect(item.prompt)}
+            style={{ '--welcome-card-index': index }}
+            onClick={() => onSelect(item.prompt || '', item)}
+            aria-label={title}
           >
             <span className="welcome-suggestion-card__icon-wrap">
               <span className="welcome-suggestion-card__icon">
@@ -51,8 +59,8 @@ export default function ChatWelcomeSuggestions({ items, onSelect, t }) {
               </span>
             </span>
             <span className="welcome-suggestion-card__body">
-              <span className="welcome-suggestion-card__title">{t(item.title) || item.title}</span>
-              <span className="welcome-suggestion-card__desc">{t(item.prompt) || item.prompt}</span>
+              <span className="welcome-suggestion-card__title">{title}</span>
+              <span className="welcome-suggestion-card__desc">{desc}</span>
             </span>
           </button>
         );

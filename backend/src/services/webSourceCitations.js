@@ -69,14 +69,16 @@ const assignCitationIds = (sources) => sources.map((source, index) => {
     };
 });
 
-const mapSourcesForClient = (sources) => sources.map((source) => ({
+const mapSourcesForClient = (sources, { retrievedAt = null } = {}) => sources.map((source) => ({
     citationId: source.citationId ?? source.rank,
     rank: source.citationId ?? source.rank,
     title: source.title,
     url: isSafeHttpUrl(source.url) ? source.url : '',
     domain: source.domain,
     excerpt: String(source.excerpt || source.snippet || '').slice(0, 320),
-    publishedDate: source.publishedDate || null,
+    publishedDate: source.publishedDate || source.published_date || null,
+    retrievedAt: retrievedAt || source.retrievedAt || null,
+    sourceType: source.sourceType || null,
 }));
 
 const formatSourceContextForModel = (sources) => {
@@ -90,6 +92,7 @@ const formatSourceContextForModel = (sources) => {
             `url: ${source.url}`,
             `domain: ${source.domain}`,
             `sourceType: ${source.sourceType || 'secondary'}`,
+            `publishedDate: ${source.publishedDate || source.published_date || 'unknown'}`,
             `snippet: ${String(source.snippet || source.excerpt || '').slice(0, 400)}`,
         ].join('\n');
     }).join('\n\n');

@@ -18,6 +18,8 @@ function slugToProviderId(slug) {
         cohere: 'cohere',
         cloudflare: 'cloudflare',
         'gpt-oss': 'cloudflare',
+        ollama: 'ollama',
+        ollama_cloud: 'ollama',
         nemotron: 'openrouter',
         'deepseek-r1': 'openrouter',
         llama: 'openrouter',

@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import ChatCodeBlock from './ChatCodeBlock';
-import { parseFenceHeader } from '../../lib/parseCodeFence';
 import { buildCitationSourceMap, isSafeHttpUrl, scrollToSourceCard, splitCitationSegments } from '../../lib/citationLinks.js';
 import { splitRichTextSegments } from '../../lib/chatMessageLinks.js';
+import { splitMessageParts } from '../../lib/splitMessageParts.js';
 
 function InlineFormattedText({ children }) {
   const segments = splitRichTextSegments(String(children));
@@ -155,36 +155,6 @@ function TextBlock({ value, citationMap }) {
   flushList();
   flushTable();
   return elements;
-}
-
-function splitMessageParts(text) {
-  const parts = [];
-  const codePattern = /```([\w.+#:/-]*)[\t ]*\r?\n([\s\S]*?)```/g;
-  let lastIndex = 0;
-  let match;
-
-  while ((match = codePattern.exec(text)) !== null) {
-    if (match.index > lastIndex) parts.push({ type: 'text', value: text.slice(lastIndex, match.index) });
-    const { language, filename } = parseFenceHeader(match[1]);
-    parts.push({ type: 'code', language, filename, value: match[2].replace(/\n$/, '') });
-    lastIndex = codePattern.lastIndex;
-  }
-
-  if (lastIndex < text.length) {
-    const remainder = text.slice(lastIndex);
-    const openFence = remainder.match(/(?:^|\n)[\t ]*```([\w.+#:/-]*)[\t ]*(?:\r?\n|$)([\s\S]*)$/);
-    if (openFence) {
-      const fenceIndex = openFence.index + (openFence[0].startsWith('\n') ? 1 : 0);
-      const beforeFence = remainder.slice(0, fenceIndex);
-      if (beforeFence) parts.push({ type: 'text', value: beforeFence });
-      const { language, filename } = parseFenceHeader(openFence[1]);
-      parts.push({ type: 'code', language, filename, value: openFence[2] });
-    } else {
-      parts.push({ type: 'text', value: remainder });
-    }
-  }
-
-  return parts;
 }
 
 export default function ChatMessageContent({ text, streaming, citationSources, conversationId = null }) {

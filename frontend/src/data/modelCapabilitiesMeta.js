@@ -131,7 +131,8 @@ export function modalitiesForSlug(slug) {
 
 export function statusKeyForSlug(slug) {
   if (slug === 'smart') return null;
-  if (['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'groq', 'perplexity'].includes(slug)) return slug;
+  // Ollama Cloud uses OLLAMA_API_KEY — never map it to OpenRouter "others".
+  if (['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'groq', 'perplexity', 'ollama'].includes(slug)) return slug;
   return 'others';
 }
 

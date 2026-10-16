@@ -21,16 +21,14 @@ import ManageSubscriptionModal from './ManageSubscriptionModal';
 import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
 import { isCompleteCreditStatus, normalizeCreditStatus } from '../../lib/creditStatus';
 import { fetchAccountSecurity } from '../../lib/accountSecurity.js';
-const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
+import { normalizeModelStatusMap, resolveModelOnlineStatus } from '../../data/ollamaCloudVariants';
 
-const dashboardModelStatusKey = (slug) => (
-  ['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'groq', 'perplexity'].includes(slug) ? slug : 'others'
-);
+const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
 
 const modelProviderStatus = (slug, modelStatus) => {
   if (slug === 'smart') return { label: 'Auto route', className: 'neutral' };
   if (!Object.keys(modelStatus).length) return { label: 'Checking…', className: 'pending' };
-  const online = modelStatus[dashboardModelStatusKey(slug)] !== false;
+  const online = resolveModelOnlineStatus(slug, modelStatus);
   return online
     ? { label: 'Configured', className: '' }
     : { label: 'Setup needed', className: 'offline' };
@@ -138,7 +136,11 @@ export default function Dashboard() {
     if (!backendReady) return;
     apiFetch('/api/status/models')
       .then((response) => (response.ok ? response.json() : null))
-      .then((data) => { if (data?.models) setModelStatus(data.models); })
+      .then((data) => {
+        if (data?.models || data?.providers) {
+          setModelStatus(normalizeModelStatusMap(data?.models || {}, data?.providers || {}));
+        }
+      })
       .catch(() => {});
   }, [backendReady]);
 

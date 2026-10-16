@@ -79,24 +79,17 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 const { requestTelemetryMiddleware } = require('./src/middleware/requestTelemetry');
+const {
+    securityHeadersMiddleware,
+    csrfGuardMiddleware,
+    createIpRateLimitMiddleware,
+    validationErrorHandler,
+    safeErrorMessage,
+} = require('./src/security');
+app.use('/api', securityHeadersMiddleware);
 app.use('/api', requestTelemetryMiddleware);
-const requestCounts = new Map();
-app.use('/api', (req, res, next) => {
-    if (process.env.NODE_ENV !== 'production') return next();
-    const bucket = req.path === '/chat' ? 'chat' : 'api';
-    const key = `${req.ip || 'unknown'}:${bucket}`;
-    const now = Date.now();
-    const windowStart = now - 60 * 1000;
-    const timestamps = (requestCounts.get(key) || []).filter((time) => time > windowStart);
-    const limit = req.path === '/chat' ? 60 : 300;
-    if (timestamps.length >= limit) {
-        res.setHeader('Retry-After', '60');
-        return res.status(429).json({ message: 'This account is sending requests too quickly. Wait a moment, then retry your message.' });
-    }
-    timestamps.push(now);
-    requestCounts.set(key, timestamps);
-    return next();
-});
+app.use('/api', createIpRateLimitMiddleware());
+app.use('/api', csrfGuardMiddleware);
 
 app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -122,6 +115,7 @@ app.use((req, res) => {
     res.status(404).json({ message: 'Route not found' });
 });
 
+app.use(validationErrorHandler);
 app.use((err, req, res, _next) => {
     const correlationId = req.correlationId || req.headers['x-request-id'] || 'unknown';
     if (err?.type === 'entity.too.large') {
@@ -131,7 +125,7 @@ app.use((err, req, res, _next) => {
             correlationId,
         });
     }
-    console.error('[EXPRESS_ERROR]', correlationId, err?.name || 'Error', err?.message || err);
+    console.error('[EXPRESS_ERROR]', correlationId, err?.name || 'Error', safeErrorMessage(err));
     if (res.headersSent) {
         return undefined;
     }

@@ -51,6 +51,8 @@ const searchTavily = async ({
     searchDepth = 'basic',
     maxResults = 5,
     days = null,
+    topic: topicOption = 'general',
+    includeDomains = null,
     signal,
 }) => {
     const apiKey = getApiKey();
@@ -63,6 +65,7 @@ const searchTavily = async ({
         throw new TavilyError('invalid_query', 'Research query is too short.', 400);
     }
 
+    const topic = topicOption === 'news' ? 'news' : 'general';
     const body = {
         api_key: apiKey,
         query: q.slice(0, 400),
@@ -71,10 +74,13 @@ const searchTavily = async ({
         include_raw_content: false,
         include_images: false,
         max_results: Math.min(Math.max(Number(maxResults) || 5, 1), 10),
-        topic: 'general',
+        topic,
     };
     if (days && Number(days) > 0) {
         body.days = Math.min(Number(days), 365);
+    }
+    if (Array.isArray(includeDomains) && includeDomains.length) {
+        body.include_domains = includeDomains.slice(0, 20).map(String);
     }
 
     let response;

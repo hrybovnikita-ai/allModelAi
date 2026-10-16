@@ -57,12 +57,22 @@ function assertStripeCheckoutAllowed() {
 
     const mode = getStripeMode();
     const keyMode = getStripeKeyMode();
+    const { parseEnvBoolean } = require('../platform/featureRegistry');
+    const liveCheckoutEnabled = parseEnvBoolean('FEATURE_BILLING_LIVE_CHECKOUT', false);
 
     if (mode === 'test' && keyMode === 'live') {
         return {
             ok: false,
             code: 'STRIPE_LIVE_KEY_BLOCKED',
             message: 'STRIPE_MODE=test but a live Stripe secret key is configured. Use sk_test_ keys only for development.',
+        };
+    }
+
+    if (keyMode === 'live' && !liveCheckoutEnabled) {
+        return {
+            ok: false,
+            code: 'LIVE_CHECKOUT_DISABLED',
+            message: 'Live billing checkout is disabled. Keep STRIPE_MODE=test / sk_test_ keys, or set FEATURE_BILLING_LIVE_CHECKOUT=true after sandbox verification.',
         };
     }
 

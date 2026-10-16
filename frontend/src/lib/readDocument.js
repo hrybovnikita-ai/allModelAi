@@ -17,9 +17,11 @@ export async function readDocument(file) {
         page.cleanup();
       }
     } finally { await task.destroy(); }
-  } else if (/\.(txt|md)$/i.test(file.name)) {
+  } else if (/\.(txt|md|markdown|csv)$/i.test(file.name)) {
     pages = [{ page: 1, text: await file.text() }];
-  } else throw new Error('Supported files: PDF, TXT and Markdown.');
+  } else if (/\.docx$/i.test(file.name)) {
+    throw new Error('DOCX: export to TXT/PDF or paste extracted text. Binary DOCX is not executed server-side.');
+  } else throw new Error('Supported files: PDF, TXT, CSV and Markdown.');
   const length = pages.reduce((sum, page) => sum + page.text.length, 0);
   if (!length || !pages.some(page => page.text.trim())) throw new Error('No readable text found. Scanned PDFs need OCR before upload.');
   if (length > 300000) throw new Error('This document is too large. Use up to 300,000 text characters.');

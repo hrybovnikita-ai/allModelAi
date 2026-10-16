@@ -14,7 +14,13 @@ function buildModelStatusPayload() {
     const availability = providerAvailabilityForRouter();
     const image = resolveImageProvider();
     const providers = buildProviderSnapshot();
-    return {
+    let ollamaConfigured = false;
+    try {
+        ollamaConfigured = require('./ollama/ollamaCloudConfig').isOllamaCloudConfigured();
+    } catch {
+        ollamaConfigured = false;
+    }
+    const payload = {
         updatedAt: new Date().toISOString(),
         variants: modelVariants,
         imageGeneration: {
@@ -30,9 +36,27 @@ function buildModelStatusPayload() {
             'gpt-oss': isCloudflareWorkersAiConfigured(),
             nemotron: isOpenRouterFreeConfigured('nemotron'),
             'deepseek-r1': isOpenRouterFreeConfigured('deepseek-r1'),
+            // Always emit a boolean so the UI never falls back to OpenRouter "others".
+            ollama: Boolean(ollamaConfigured),
         },
         providers,
     };
+    return ensureOllamaVariants(payload);
+}
+
+/** Ensure Ollama variants are always present for the model selector. */
+function ensureOllamaVariants(payload) {
+    const variants = payload?.variants && typeof payload.variants === 'object'
+        ? { ...payload.variants }
+        : {};
+    if (!Array.isArray(variants.ollama) || variants.ollama.length === 0) {
+        variants.ollama = Array.isArray(modelVariants.ollama) ? [...modelVariants.ollama] : [];
+    }
+    const models = {
+        ...(payload?.models || {}),
+        ollama: Boolean(payload?.models?.ollama),
+    };
+    return { ...payload, variants, models };
 }
 
 /**
@@ -59,6 +83,7 @@ function resetModelStatusCacheForTests() {
 
 module.exports = {
     buildModelStatusPayload,
+    ensureOllamaVariants,
     getPublicModelStatus,
     resetModelStatusCacheForTests,
 };

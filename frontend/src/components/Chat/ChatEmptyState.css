@@ -1,0 +1,93 @@
+/* Empty-chat welcome composition — motion & spacing only (no new hues). */
+
+.chat-page .chat-empty--premium {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(960px, 100%);
+  margin-inline: auto;
+  padding: clamp(12px, 3vh, 28px) 12px 8px;
+  box-sizing: border-box;
+}
+
+.chat-page .chat-empty-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  max-width: 640px;
+}
+
+.chat-page .chat-empty--premium .chat-empty-orb {
+  animation: chat-empty-orb-in 320ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)) both;
+}
+
+.chat-page .chat-empty--premium .chat-empty-eyebrow {
+  animation: chat-empty-rise 300ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)) both;
+  animation-delay: 40ms;
+}
+
+.chat-page .chat-empty--premium .chat-empty-heading {
+  margin: 0;
+  max-width: 18ch;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  animation: chat-empty-rise 340ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)) both;
+  animation-delay: 80ms;
+}
+
+.chat-page .chat-empty--premium .chat-empty-subtitle {
+  max-width: 46ch;
+  margin-top: 10px;
+  line-height: 1.5;
+  animation: chat-empty-rise 360ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)) both;
+  animation-delay: 120ms;
+}
+
+.chat-page .chat-empty--premium .welcome-suggestion-cards {
+  margin-top: clamp(20px, 3.5vh, 32px);
+}
+
+@keyframes chat-empty-orb-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes chat-empty-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .chat-page .chat-empty--premium {
+    padding-top: 8px;
+  }
+
+  .chat-page .chat-empty--premium .chat-empty-heading {
+    max-width: none;
+    font-size: 1.65rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-page .chat-empty--premium .chat-empty-orb,
+  .chat-page .chat-empty--premium .chat-empty-eyebrow,
+  .chat-page .chat-empty--premium .chat-empty-heading,
+  .chat-page .chat-empty--premium .chat-empty-subtitle {
+    animation: none;
+  }
+}

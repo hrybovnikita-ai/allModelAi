@@ -115,6 +115,48 @@
   color: #fca5a5;
 }
 
+.kb-success {
+  color: #86efac;
+}
+
+.kb-empty {
+  color: #94a3b8;
+}
+
+.kb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 0.75rem 0;
+}
+
+.kb-search-row input,
+.kb-panel input,
+.kb-panel textarea,
+.kb-panel select {
+  width: 100%;
+  margin-top: 0.35rem;
+  border-radius: 10px;
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  background: #0b0d14;
+  color: #f8fafc;
+  padding: 0.65rem;
+}
+
+.kb-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+}
+
+.kb-table th,
+.kb-table td {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
 .kb-muted {
   color: #64748b;
 }

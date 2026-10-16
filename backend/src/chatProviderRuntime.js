@@ -74,6 +74,7 @@ const CHAT_PROVIDER_ENV = {
     perplexity: { keys: ['PERPLEXITY_API_KEY'], optional: ['PERPLEXITY_MODEL'] },
     nemotron: { keys: ['OPENROUTER_CHAT_FREE_API_KEY'], optional: [] },
     'deepseek-r1': { keys: ['OPENROUTER_DEEPSEEK_FREE_API_KEY'], optional: ['AllModelAI-DeepSeek-Free-v2'] },
+    ollama: { keys: ['OLLAMA_API_KEY'], optional: ['OLLAMA_BASE_URL', 'OLLAMA_CLOUD_MODEL'] },
     tavily: { keys: ['TAVILY_API_KEY'], optional: [] },
 };
 
@@ -107,6 +108,8 @@ function isChatProviderConfigured(providerId) {
             return isOpenRouterFreeConfigured('deepseek-r1');
         case 'perplexity':
             return Boolean(perplexityKey()) || Boolean(gateway);
+        case 'ollama':
+            return Boolean(envTrim('OLLAMA_API_KEY'));
         case 'tavily':
             return Boolean(envTrim('TAVILY_API_KEY'));
         default:
@@ -160,6 +163,8 @@ function routedModelHasApiKey(routedModel) {
         case 'qwen':
         case 'cohere':
             return Boolean(gateway);
+        case 'ollama':
+            return Boolean(envTrim('OLLAMA_API_KEY'));
         default:
             return Boolean(gateway);
     }

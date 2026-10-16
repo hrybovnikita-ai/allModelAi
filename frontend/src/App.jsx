@@ -72,6 +72,9 @@ import EverydayCards from "./components/EverydayAI/EverydayCards";
 import PythonAILab from "./components/PythonAILab/PythonAILab";
 import AiTrainingHub from "./components/AiTraining/AiTrainingHub";
 import KnowledgeBasePage from "./components/KnowledgeBase/KnowledgeBasePage";
+import AiFilesPage from "./components/AiFiles/AiFilesPage";
+import AiWorkflowsPage from "./components/AiWorkflows/AiWorkflowsPage";
+import EvaluationLabPage from "./components/EvaluationLab/EvaluationLabPage";
 import LessonPage from "./components/AiTraining/LessonPage";
 import AiLearningLab from "./components/AiLearning/AiLearningLab";
 import ModelLab from "./components/ModelLab/ModelLab";
@@ -208,6 +211,9 @@ export default function App() {
       <Route path="/developer/model-diagnostics" element={<ModelDiagnostics />} />
       <Route path="/developer/ai-learning" element={<AILearningDashboard />} />
       <Route path="/knowledge" element={<KnowledgeBasePage />} />
+      <Route path="/ai-files" element={<AiFilesPage />} />
+      <Route path="/ai-workflows" element={<AiWorkflowsPage />} />
+      <Route path="/evaluation-lab" element={<EvaluationLabPage />} />
       <Route path="/files/:conversationId/:fileId" element={<GeneratedFile />} />
       <Route path="/model-comparison" element={<ModelComparison />} />
       <Route path="/usage-analytics" element={<UsageAnalytics />} />

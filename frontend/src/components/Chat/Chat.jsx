@@ -1,3 +1,4 @@
+import { splitChatSse } from '../../lib/chatSse';
 import { parseGeneratedFile } from '../../lib/generatedFiles';
 import { FileCard } from '../GeneratedFile/GeneratedFile';
 import { createVoiceInput } from '../../lib/voiceInput';
@@ -10,6 +11,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams, useOutletContext } from 'react-router-dom';
 import ChatMessageContent from './ChatMessageContent';
 import { dashboardModels } from '../../data/dashboardModels';
+import {
+  markModelOnline,
+  mergeModelVariantCatalog,
+  normalizeModelStatusMap,
+  resolveModelOnlineStatus,
+} from '../../data/ollamaCloudVariants';
+import { historicalProviderErrorPresentation } from '../../lib/historicalProviderErrors';
 import { apiFetch, checkChatResponse } from '../../lib/api';
 import { formatChatVisionError, prepareChatImageAttachment } from '../../lib/imageAttachment';
 import {
@@ -54,7 +62,7 @@ import { finalizeAssistantMessage, stickerFieldsForPersist } from '../../lib/aiS
 import AiCreditsPurchaseDialog from '../Credits/AiCreditsPurchaseDialog';
 import { readAiStickersEnabled, AI_STICKERS_ENABLED_KEY } from '../../lib/aiStickers/settings';
 import ChatAiSticker from './ChatAiSticker';
-import ChatWelcomeSuggestions from './ChatWelcomeSuggestions';
+import ChatEmptyState from './ChatEmptyState';
 import { useChatContextSuggestions } from './useChatContextSuggestions';
 import { logger, timingElapsed, timingNow } from '../../lib/logger';
 import { submitResponseFeedback } from '../../lib/aiImprovement';
@@ -110,6 +118,7 @@ import AnoninMessageReveal from './AnoninMessageReveal';
 import { fetchAnoninRevealedIds } from '../../lib/anoninClient';
 import { isAnoninModelSlug, normalizeAnoninModelSlug } from '../../lib/anoninModelSlug';
 import ChatSidebar from './ChatSidebar';
+import TemporaryChatBanner from './TemporaryChatBanner';
 import { IconToolKnowledgeBase } from './ChatSidebarIcons';
 import KnowledgeSourceChips from './KnowledgeSourceChips';
 
@@ -147,7 +156,12 @@ function formatModelSelectorTriggerLabel(selectedModel, selectedVersion) {
 const suggestions = [
   { icon: 'idea', title: 'Create an idea', prompt: 'Give me three original product ideas for students.' },
   { icon: 'code', title: 'Explain code', prompt: 'Explain React useEffect with a simple example.' },
-  { icon: 'ai', title: 'Compare models', prompt: 'Compare Claude, Gemini, GPT, and Llama.' },
+  {
+    icon: 'ai',
+    title: 'Compare models',
+    prompt: 'Compare Claude, Gemini, GPT, and Llama.',
+    action: 'arena',
+  },
 ];
 
 const chatTextColors = [
@@ -322,6 +336,12 @@ export default function Chat() {
   const [chatMenuId, setChatMenuId] = useState(null);
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState(null);
+  const [webSearchFilters, setWebSearchFilters] = useState({
+    topic: 'general',
+    days: '',
+    language: '',
+    region: '',
+  });
   const contextSuggestions = useChatContextSuggestions({
     prompt,
     messages,
@@ -339,6 +359,8 @@ export default function Chat() {
   const [confirmError, setConfirmError] = useState('');
   const confirmInFlightRef = useRef(false);
   const [temporaryChat, setTemporaryChat] = useState(false);
+  const [temporaryHistory, setTemporaryHistory] = useState([]);
+  const [temporaryExpiresAt, setTemporaryExpiresAt] = useState(null);
   const [projects, setProjects] = useState(() =>
     safeJSON(safeStorageGet('localStorage', 'allmodelai_projects'), []).filter((item) => item && typeof item.name === 'string')
   );
@@ -534,12 +556,21 @@ export default function Chat() {
     return () => window.removeEventListener('storage', syncStickerPref);
   }, []);
 
-  const refreshHistory = useCallback(() => apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
-    .then((response) => response.ok ? response.json() : [])
-    .then((history) => {
+  const refreshHistory = useCallback(() => Promise.all([
+    apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
+      .then((response) => response.ok ? response.json() : []),
+    apiFetch(`/api/chat/history?temporary=true&email=${encodeURIComponent(user.email)}`)
+      .then((response) => response.ok ? response.json() : []),
+  ])
+    .then(([history, temps]) => {
       setChatHistory(history);
+      setTemporaryHistory(Array.isArray(temps) ? temps : []);
       const activeId = activeConversationIdRef.current;
-      const active = history.find((item) => String(item.id) === String(activeId));
+      const active = history.find((item) => String(item.id) === String(activeId))
+        || (Array.isArray(temps) ? temps.find((item) => String(item.id) === String(activeId)) : null);
+      if (active?.expiresAt && active.isTemporary) {
+        setTemporaryExpiresAt(active.expiresAt);
+      }
       if (!active?.messages?.length) return;
       setMessages((current) => {
         const historyMessages = normalizeConversationMessages(active.messages);
@@ -596,7 +627,7 @@ export default function Chat() {
         const copy = [...current];
         if (copy[index]) copy[index] = answer;
         else copy.push(answer);
-        if (!temporaryChat && activeConversationIdRef.current) {
+        if (activeConversationIdRef.current) {
           void apiFetch(`/api/chat/history/${activeConversationIdRef.current}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -783,9 +814,8 @@ export default function Chat() {
   }, [attachedImage, isListening, isSending, selectedModel.name, selectedSkill, t, voiceInputState]);
 
   const modelIsOnline = (slug) => {
-    if (!Object.keys(modelStatus).length || slug === 'smart' || isAnoninModelSlug(slug)) return true;
-    const statusKey = ['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'groq', 'perplexity'].includes(slug) ? slug : 'others';
-    return modelStatus[statusKey] !== false;
+    if (isAnoninModelSlug(slug)) return true;
+    return resolveModelOnlineStatus(slug, modelStatus);
   };
 
   const modelAllowed = (slug) => slug === 'smart' || isAnoninModelSlug(slug)
@@ -828,13 +858,18 @@ export default function Chat() {
     if (version) {
       const next = { ...chosenVersions, [model.slug]: version.id };
       setChosenVersions(next);
-      safeStorageSet('localStorage', 'allmodelai_model_versions', JSON.stringify(next));
+      if (!temporaryChat) {
+        safeStorageSet('localStorage', 'allmodelai_model_versions', JSON.stringify(next));
+      }
     }
 
     if (!modelAllowed(model.slug)) { setChatError('This model is available with a subscription or in Developer mode.'); return; }
     const online = modelIsOnline(model.slug);
     setSelectedSlug(model.slug);
-    safeStorageSet('localStorage', 'allmodelai_selected_model', model.slug);
+    // Temporary Chat must not overwrite the user's persistent model preference.
+    if (!temporaryChat) {
+      safeStorageSet('localStorage', 'allmodelai_selected_model', model.slug);
+    }
     navigate(`/chat?model=${encodeURIComponent(model.slug)}`, { replace: true });
     if (model.slug === 'smart') {
       logger.action('Smart Router selected');
@@ -854,12 +889,40 @@ export default function Chat() {
     setModelMenuOpen(false);
   };
 
-  useEffect(() => {
+  const refreshModelStatus = useCallback(() => {
     apiFetch('/api/status/models')
-      .then((response) => response.ok ? response.json() : null)
-      .then((data) => { if (data?.models) setModelStatus(data.models); if (data?.variants) setVariantCatalog(data.variants); })
-      .catch(() => {});
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data?.models || data?.providers) {
+          setModelStatus(normalizeModelStatusMap(data?.models || {}, data?.providers || {}));
+        }
+        if (data?.variants) setVariantCatalog(mergeModelVariantCatalog(data.variants));
+        else if (data) setVariantCatalog(mergeModelVariantCatalog({}));
+      })
+      .catch(() => {
+        setVariantCatalog((current) => (Object.keys(current || {}).length ? current : mergeModelVariantCatalog({})));
+      });
   }, []);
+
+  useEffect(() => {
+    refreshModelStatus();
+    const onFocus = () => refreshModelStatus();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshModelStatus();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    const intervalId = window.setInterval(refreshModelStatus, 60_000);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(intervalId);
+    };
+  }, [refreshModelStatus]);
+
+  useEffect(() => {
+    if (modelMenuOpen) refreshModelStatus();
+  }, [modelMenuOpen, refreshModelStatus]);
 
   useEffect(() => {
     const legacyVariantIds = {
@@ -1608,13 +1671,18 @@ export default function Chat() {
         : message
     )));
 
-    if (!temporaryChat) {
+    {
       let conversationId = activeConversationId;
       if (!conversationId) {
         const historyResponse = await apiFetch('/api/chat/history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: user.email, model: selectedSlug, messages: nextMessages }),
+          body: JSON.stringify({
+            email: user.email,
+            model: selectedSlug,
+            messages: nextMessages,
+            temporary: Boolean(temporaryChat),
+          }),
         });
         if (historyResponse.ok) {
           const conversation = await historyResponse.json();
@@ -1623,7 +1691,12 @@ export default function Chat() {
             activeConversationIdRef.current = conversation.id;
             setActiveConversationId(conversation.id);
           }
-          setChatHistory((history) => [conversation, ...history]);
+          if (temporaryChat || conversation.isTemporary) {
+            setTemporaryExpiresAt(conversation.expiresAt || temporaryExpiresAt);
+            setTemporaryHistory((history) => [conversation, ...history.filter((item) => String(item.id) !== String(conversation.id))]);
+          } else {
+            setChatHistory((history) => [conversation, ...history]);
+          }
         }
       }
       if (conversationId) {
@@ -1632,8 +1705,7 @@ export default function Chat() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             email: user.email,
-            messages: [...nextMessages, {
-              role: 'assistant',
+            messages: [...nextMessages, {              role: 'assistant',
               text: researchFinal.text,
               modelSlug: selectedSlug,
               ...stickerFieldsForPersist(researchFinal),
@@ -1737,7 +1809,7 @@ export default function Chat() {
       generatingVideo,
       generatingImage,
       visionAnalyzing: hadImageAttachment,
-      webSearching: selectedSkill === 'web' || selectedSkill === 'deep-research',
+      webSearching: options.forceWebSearch || selectedSkill === 'web' || selectedSkill === 'deep-research',
       deepResearch: selectedSkill === 'deep-research',
     }]);
 
@@ -1896,21 +1968,28 @@ export default function Chat() {
             }));
             safeStorageSet('localStorage', 'allmodelai_image_gallery', JSON.stringify([...galleryEntries, ...gallery].slice(0, 8)));
           } catch { /* The server history remains the durable copy. */ }
-          try {
-            const saved = await apiFetch(startedConversationId ? `/api/chat/history/${startedConversationId}` : '/api/chat/history', {
-              method: startedConversationId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ model: selectedSlug, messages: [...nextMessages, answer] }),
-            });
-            if (!saved.ok) throw new Error('save failed');
-            const conversation = await saved.json();
-            if (stillOpen() && !startedConversationId) {
-              activeConversationIdRef.current = conversation.id;
-              setActiveConversationId(conversation.id);
-            }
-            await refreshHistory();
-          } catch {
-            if (stillOpen() || !startedConversationId) setChatError('The image is ready, but saving history failed. Download the picture before closing the chat.');
+        }
+        try {
+          const saved = await apiFetch(startedConversationId ? `/api/chat/history/${startedConversationId}` : '/api/chat/history', {
+            method: startedConversationId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: selectedSlug,
+              messages: [...nextMessages, answer],
+              temporary: Boolean(temporaryChat),
+            }),
+          });
+          if (!saved.ok) throw new Error('save failed');
+          const conversation = await saved.json();
+          if (stillOpen() && !startedConversationId) {
+            activeConversationIdRef.current = conversation.id;
+            setActiveConversationId(conversation.id);
           }
+          if (temporaryChat || conversation.isTemporary) {
+            setTemporaryExpiresAt(conversation.expiresAt || temporaryExpiresAt);
+          }
+          await refreshHistory();
+        } catch {
+          if (stillOpen() || !startedConversationId) setChatError('The image is ready, but saving history failed. Download the picture before closing the chat.');
         }
         logger.success('Assistant response completed', { mode: 'image', durationMs: timingElapsed(requestStartedAt) });
         return;
@@ -1971,24 +2050,29 @@ export default function Chat() {
           conversationId: startedConversationId || activeConversationIdRef.current || '',
         });
         if (stillOpen()) setMessages([...nextMessages, answer]);
-        if (!temporaryChat) {
-          try {
-            const saved = await apiFetch(startedConversationId ? `/api/chat/history/${startedConversationId}` : '/api/chat/history', {
-              method: startedConversationId ? 'PATCH' : 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ model: selectedSlug, messages: [...nextMessages, answer] }),
-            });
-            if (!saved.ok) throw new Error('save failed');
-            const conversation = await saved.json();
-            if (stillOpen() && !startedConversationId) {
-              activeConversationIdRef.current = conversation.id;
-              setActiveConversationId(conversation.id);
-            }
-            await refreshHistory();
-          } catch {
-            if (stillOpen() || !startedConversationId) {
-              setChatError('The video is ready, but saving history failed. Download it before closing the chat.');
-            }
+        try {
+          const saved = await apiFetch(startedConversationId ? `/api/chat/history/${startedConversationId}` : '/api/chat/history', {
+            method: startedConversationId ? 'PATCH' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: selectedSlug,
+              messages: [...nextMessages, answer],
+              temporary: Boolean(temporaryChat),
+            }),
+          });
+          if (!saved.ok) throw new Error('save failed');
+          const conversation = await saved.json();
+          if (stillOpen() && !startedConversationId) {
+            activeConversationIdRef.current = conversation.id;
+            setActiveConversationId(conversation.id);
+          }
+          if (temporaryChat || conversation.isTemporary) {
+            setTemporaryExpiresAt(conversation.expiresAt || temporaryExpiresAt);
+          }
+          await refreshHistory();
+        } catch {
+          if (stillOpen() || !startedConversationId) {
+            setChatError('The video is ready, but saving history failed. Download it before closing the chat.');
           }
         }
         logger.success('Assistant response completed', { mode: 'video', durationMs: timingElapsed(requestStartedAt) });
@@ -1997,11 +2081,16 @@ export default function Chat() {
         return;
       }
       let conversationId = activeConversationId;
-      if (!conversationId && !temporaryChat) {
+      if (!conversationId) {
         const historyResponse = await apiFetch('/api/chat/history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: user.email, model: selectedSlug, messages: nextMessages }),
+          body: JSON.stringify({
+            email: user.email,
+            model: selectedSlug,
+            messages: nextMessages,
+            temporary: Boolean(temporaryChat),
+          }),
         });
         if (historyResponse.status === 401) await checkChatResponse(historyResponse);
         if (historyResponse.ok) {
@@ -2013,7 +2102,15 @@ export default function Chat() {
             activeConversationIdRef.current = conversation.id;
             setActiveConversationId(conversation.id);
           }
-          setChatHistory((history) => [conversation, ...history.filter((item) => String(item.id) !== String(conversation.id))]);
+          if (temporaryChat || conversation.isTemporary) {
+            setTemporaryExpiresAt(conversation.expiresAt || temporaryExpiresAt);
+            setTemporaryHistory((history) => [
+              conversation,
+              ...history.filter((item) => String(item.id) !== String(conversation.id)),
+            ]);
+          } else {
+            setChatHistory((history) => [conversation, ...history.filter((item) => String(item.id) !== String(conversation.id))]);
+          }
         }
       }
 
@@ -2032,7 +2129,7 @@ export default function Chat() {
         });
       };
 
-      const webSearchFlag = webSearchViaChat || selectedSkill === 'web' ? true : selectedSlug === 'smart' ? 'auto' : false;
+      const webSearchFlag = options.forceWebSearch || webSearchViaChat || selectedSkill === 'web' ? true : selectedSlug === 'smart' ? 'auto' : false;
       if (webSearchViaChat) {
         logger.search('Request started via chat fallback', { query: text.length > 120 ? `${text.slice(0, 120)}…` : text });
       }
@@ -2053,6 +2150,14 @@ export default function Chat() {
           conversationId,
           temporary: temporaryChat,
           webSearch: webSearchFlag,
+          webSearchFilters: webSearchFlag
+            ? {
+                topic: webSearchFilters.topic || 'general',
+                days: webSearchFilters.days ? Number(webSearchFilters.days) : null,
+                language: webSearchFilters.language || null,
+                region: webSearchFilters.region || null,
+              }
+            : undefined,
           useKnowledge: useKnowledgeBase,
           routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced',
           responsePrefs: readResponsePrefs(typeof localStorage !== 'undefined' ? localStorage : null),
@@ -2135,13 +2240,11 @@ export default function Chat() {
       while (true) {
         const { done, value } = await reader.read();
         buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-        const events = buffer.replaceAll('\r\n', '\n').split('\n\n');
-        buffer = events.pop() || '';
+        const parsed = splitChatSse(buffer, done);
+        buffer = parsed.buffer;
 
-        for (const eventData of events) {
-          const dataLine = eventData.split('\n').find((line) => line.startsWith('data: '));
-          if (!dataLine || dataLine.slice(6) === '[DONE]') continue;
-          const event = JSON.parse(dataLine.slice(6));
+        for (const eventData of parsed.data) {
+          const event = JSON.parse(eventData);
           if (event.creditsRemaining !== undefined) {
             setCreditStatus((current) => ({
               ...current,
@@ -2156,6 +2259,11 @@ export default function Chat() {
           }
           if (event.unlimited) setCreditStatus((current) => ({ ...current, ...event, unlimited: true }));
           if (event.routedModel) {
+            if (event.routedModel === 'ollama' || event.providerLabel === 'Ollama Cloud' || /^Ollama Cloud/i.test(String(event.routeDisplayName || ''))) {
+              setModelStatus((current) => markModelOnline(current, 'ollama'));
+            } else if (event.routedModel && event.actualModelId) {
+              setModelStatus((current) => markModelOnline(current, event.routedModel));
+            }
             if (selectedSlug !== 'smart' && !isAnoninModelSlug(selectedSlug) && event.actualModelId) {
               logger.router('Alternate model answering', { selected: selectedModel.name, actual: event.actualModelId });
             }
@@ -2214,6 +2322,17 @@ export default function Chat() {
             });
           }
           if (event.error) throw new Error(event.error);
+          if (event.webSearchStatus) {
+            applyAssistantPatch({
+              webSearching: !['no_sources', 'search_unavailable', 'generating'].includes(event.webSearchStatus)
+                || !assistantText,
+              webSearchStatus: event.webSearchStatus,
+              webSearchCount: event.count ?? undefined,
+              webSearchPreviewSources: Array.isArray(event.sources) ? event.sources : undefined,
+              webSearchRetrievedAt: event.retrievedAt || undefined,
+              webSearchError: event.message || undefined,
+            });
+          }
           if (Array.isArray(event.webSources)) {
             webSourcesForMessage = event.webSources;
             if (event.webSources.length) {
@@ -2223,7 +2342,9 @@ export default function Chat() {
               webSources: event.webSources,
               webSearchComplete: event.webSearchComplete === true && event.webSources.length > 0,
               webSearchUnavailable: event.webSearchComplete === false && event.webSearchStatus === 'no_sources',
-              webSearchStatus: event.webSearchStatus === 'no_sources' ? 'no_sources' : undefined,
+              webSearchStatus: event.webSearchStatus || (event.webSearchComplete ? 'generating' : undefined),
+              webSearchRetrievedAt: event.retrievedAt || undefined,
+              webSearching: event.webSearchComplete !== true,
             });
           }
           const eventText = extractAssistantText(event);
@@ -2244,10 +2365,10 @@ export default function Chat() {
 
         if (done) break;
       }
-      if (webSearchViaChat || selectedSkill === 'web') {
+      if (webSearchViaChat || selectedSkill === 'web' || options.forceWebSearch) {
         setSelectedSkill(null);
-        applyAssistantPatch({ webSearching: false, webSearchStatus: null });
       }
+      applyAssistantPatch({ webSearching: false, webSearchStatus: null });
       if (generatingFile && !parseGeneratedFile(assistantText)) setChatError('The model did not return a complete file. Retry in Create file mode or request a smaller file.');
       const streamFinal = !generatingFile && !generatingImage && !generatingVideo
         ? finalizeAssistantMessage(
@@ -2316,6 +2437,9 @@ export default function Chat() {
       }
       if (fallbackProvider) logger.router(`${fallbackProvider} succeeded`);
       if (selectedSlug === 'smart') logger.router('Response completed');
+      if (selectedSlug === 'ollama' || assistantText) {
+        refreshModelStatus();
+      }
       logger.success('Assistant response completed', {
         mode: generatingFile ? 'file' : 'chat',
         durationMs: timingElapsed(requestStartedAt),
@@ -2451,7 +2575,13 @@ export default function Chat() {
     await sendMessage(null, text, previousMessages);
   };
 
-  const chooseSuggestion = (text) => {
+  const chooseSuggestion = (text, item) => {
+    if (item?.action === 'arena') {
+      logger.action('Suggestion opened AI Arena');
+      setArenaOpen(true);
+      if (text) setArenaTask(String(text));
+      return;
+    }
     logger.action('Suggestion prompt clicked', { length: String(text).length });
     setPrompt(text);
     document.querySelector('.chat-composer textarea')?.focus();
@@ -2513,15 +2643,21 @@ export default function Chat() {
   };
 
   const openConversation = (conversation) => {
-    setTemporaryChat(false);
-    const projectId = chatMeta[conversation.id]?.projectId;
-    let project = projectId ? projects.find((item) => item.id === projectId) : null;
-    if (!project && activeProject) {
-      updateChatMeta(conversation.id, { projectId: activeProject.id });
-      project = activeProject;
+    const isTemp = Boolean(conversation?.isTemporary || conversation?.temporary);
+    setTemporaryChat(isTemp);
+    setTemporaryExpiresAt(isTemp ? (conversation.expiresAt || conversation.expires_at || null) : null);
+    if (!isTemp) {
+      const projectId = chatMeta[conversation.id]?.projectId;
+      let project = projectId ? projects.find((item) => item.id === projectId) : null;
+      if (!project && activeProject) {
+        updateChatMeta(conversation.id, { projectId: activeProject.id });
+        project = activeProject;
+      }
+      setActiveProject(project || null);
+      persistActiveProjectId(project || null);
+    } else {
+      setActiveProject(null);
     }
-    setActiveProject(project || null);
-    persistActiveProjectId(project || null);
     setActiveConversationId(conversation.id);
     activeConversationIdRef.current = conversation.id;
     setMessages(normalizeConversationMessages(conversation.messages || []));
@@ -2530,7 +2666,6 @@ export default function Chat() {
     setChatError('');
     setChatMenuId(null);
     setSidebarOpen(false);
-    setChatError('');
   };
 
   const pinConversation = (conversation) => {
@@ -2584,10 +2719,13 @@ export default function Chat() {
       throw new Error(body.message || t('Could not delete chat.') || 'Could not delete chat.');
     }
     setChatHistory((history) => history.filter((item) => item.id !== conversation.id));
+    setTemporaryHistory((history) => history.filter((item) => item.id !== conversation.id));
     removeChatMeta(conversation.id);
     if (activeConversationId === conversation.id) {
       setActiveConversationId(null);
       activeConversationIdRef.current = null;
+      setTemporaryChat(false);
+      setTemporaryExpiresAt(null);
       setMessages([]);
       setPrompt('');
       setChatError('');
@@ -2696,6 +2834,7 @@ export default function Chat() {
     logger.action('New conversation');
     historyBootstrappedRef.current = true;
     setTemporaryChat(false);
+    setTemporaryExpiresAt(null);
     setActiveConversationId(null);
     activeConversationIdRef.current = null;
     setMessages([]);
@@ -2705,7 +2844,47 @@ export default function Chat() {
     setBackgroundNotification(null);
     setSidebarOpen(false);
   };
-  const startTemporaryChat = () => { logger.action('Temporary chat'); newChat(); setTemporaryChat(true); setActiveProject(null); };
+  const startTemporaryChat = async () => {
+    logger.action('Temporary chat');
+    historyBootstrappedRef.current = true;
+    setTemporaryChat(true);
+    setActiveProject(null);
+    persistActiveProjectId(null);
+    setActiveConversationId(null);
+    activeConversationIdRef.current = null;
+    setMessages([]);
+    setPrompt('');
+    setSelectedSkill(null);
+    setChatError('');
+    setBackgroundNotification(null);
+    setSidebarOpen(false);
+    try {
+      const response = await apiFetch('/api/chat/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: user.email,
+          model: selectedSlug,
+          temporary: true,
+          messages: [],
+        }),
+      });
+      if (!response.ok) {
+        setTemporaryExpiresAt(new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString());
+        return;
+      }
+      const conversation = await response.json();
+      activeConversationIdRef.current = conversation.id;
+      setActiveConversationId(conversation.id);
+      setTemporaryExpiresAt(conversation.expiresAt || null);
+      setTemporaryHistory((history) => [
+        conversation,
+        ...history.filter((item) => String(item.id) !== String(conversation.id)),
+      ]);
+    } catch {
+      setTemporaryExpiresAt(new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString());
+    }
+  };
   const createProject = () => {
     setProjectModalOpen(true);
     setSidebarOpen(false);
@@ -2868,6 +3047,7 @@ export default function Chat() {
         logger={logger}
         temporaryChat={temporaryChat}
         startTemporaryChat={startTemporaryChat}
+        temporaryHistory={temporaryHistory}
         selectedSlug={selectedSlug}
         messages={messages}
         exportConversation={exportConversation}
@@ -2986,6 +3166,9 @@ export default function Chat() {
               <span className="sidebar-toggle-icon" aria-hidden="true">{sidebarOpen ? '×' : '☰'}</span>
             </button>
             <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? t("Temporary chat") : activeProject ? activeProject.name : t("Chatting with")}</small><strong>{selectedModel.name}{selectedVersion ? ` · ${selectedVersion.name}` : ''}</strong></span><i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? t("Online") : t("API needed")}</i></div>
+            {temporaryChat && (
+              <TemporaryChatBanner t={t} expiresAt={temporaryExpiresAt} />
+            )}
             <div className="chat-header-model-slot">
           <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onKeyDown={(event) => { if (event.key === 'Escape') setModelMenuOpen(false); }} onBlur={(event) => { const root = event.currentTarget; window.setTimeout(() => { if (!root.contains(document.activeElement) && !root.matches(':hover')) setModelMenuOpen(false); }, 180); }}>
             <div className="model-select-eyebrow" id="chat-model-select-label">{t('Model')}</div>
@@ -3017,7 +3200,15 @@ export default function Chat() {
                     const selected = selectedSlug === model.slug && selectedVersion?.id === version.id;
                     return <button type="button" role="option" aria-selected={selected} disabled={!allowed} key={version.id} className={`model-family-version${selected ? ' selected' : ''}`} onClick={() => chooseModel(model, version)}><img src={model.image} alt="" /><span><strong>{version.name}{version.label ? ` ${version.label}` : ''}<ModelSpeedBadge speed={version.speed} /></strong>{version.description && <small>{version.description}</small>}</span><b>{selected ? '✓' : '›'}</b></button>;
                   })}
-                  {!variantCatalog[model.slug]?.length && <p className="model-versions-note">Versions are unavailable. Reload the page to try again.</p>}
+                  {!variantCatalog[model.slug]?.length && (
+                    <p className="model-versions-note">
+                      {model.slug === 'ollama'
+                        ? (online
+                          ? t('Versions are unavailable. Reload the page to try again.')
+                          : t('Ollama Cloud needs OLLAMA_API_KEY on the server. Versions will appear once the backend is configured.'))
+                        : t('Versions are unavailable. Reload the page to try again.')}
+                    </p>
+                  )}
                 </div>;
               })}
             </div>}
@@ -3152,7 +3343,26 @@ export default function Chat() {
                 </ul>
               </div>
             ) : (
-              <div className="chat-empty"><div className="model-orb">{activeProject && !temporaryChat ? <ProjectIconBadge project={activeProject} className="chat-empty-project-icon" /> : <img src={selectedModel.image} alt={`${selectedModel.name} logo`} />}</div><p className="chat-eyebrow">{activeProject && !temporaryChat ? t('Projects') : `${selectedModel.provider} · ${selectedModel.name}`}</p><h1>{activeProject && !temporaryChat ? activeProject.name : t("What can I help you create?")}</h1><p className="chat-subtitle">{activeProject && !temporaryChat ? t('Chats in this project stay grouped here.') : t("Start with your own question, upload a screenshot (Ctrl+V), or choose one of these ideas.")}</p><ChatWelcomeSuggestions items={suggestions} onSelect={chooseSuggestion} t={t} /></div>
+              <ChatEmptyState
+                t={t}
+                activeProject={activeProject}
+                temporaryChat={temporaryChat}
+                selectedModel={selectedModel}
+                suggestions={suggestions}
+                onSelectSuggestion={chooseSuggestion}
+                chatHistory={chatHistory}
+                projects={projects}
+                modelStatus={modelStatus}
+                prompt={prompt}
+                onOpenConversation={openConversation}
+                onEnterProject={enterProject}
+                onAnalyzeFile={() => fileInput.current?.click()}
+                onAcceptImprovedPrompt={(next) => {
+                  setPrompt(next);
+                  document.querySelector('.chat-composer textarea')?.focus();
+                }}
+                selectedSlug={selectedSlug}
+              />
             )
           )}
           {messages.map((message, index) => {
@@ -3172,8 +3382,11 @@ export default function Chat() {
             const editing = message.role === 'user' && editingMessageIndex === index;
             const feedback = messageFeedback[index];
             const favoriteEntry = favorites.some((item) => item.text === text);
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}`} key={message.id || `${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : message.deepResearch ? <DeepResearchMessageBlock message={message} onClarifyStart={(answers) => handleDeepResearchClarification(index, answers, false)} onClarifySkip={() => handleDeepResearchClarification(index, null, true)} onStopResearch={stopGenerating} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1)); }} /> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} /> : null}{message.role === 'assistant' && message.recoveryNotice ? <p className="chat-recovery-notice" role="status">{message.recoveryNotice}</p> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : imagePending ? <div className="image-gen-status" role="status" aria-live="polite"><span className="image-gen-status__spinner" aria-hidden="true" /><b>{message.imageStatusLabel || 'Generating image…'}</b></div> : generatedFile ? <FileCard file={generatedFile} conversationId={temporaryChat ? null : activeConversationId} temporary={temporaryChat} /> : <><ChatMessageContent text={text} streaming={activelyStreaming} citationSources={message.webSources} conversationId={temporaryChat ? null : activeConversationId} />{aiStickersEnabled && message.aiSticker && !activelyStreaming && <ChatAiSticker sticker={message.aiSticker} />}</> : <p>{text}</p>)}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
-{message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} />}{message.knowledgeSources?.length > 0 && <KnowledgeSourceChips sources={message.knowledgeSources} onSourceClick={() => navigate('/knowledge')} />}{(message.imageUrl || message.images?.length) && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || imageGenerationQuality || 'hd', aspectRatio: message.imageAspect || imageGenerationAspect || '1:1', imageCount: message.requestedImageCount || imageGenerationCount || 1 }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{messageHasPlayableVideo(message) && message.role !== 'user' && <GeneratedVideoCard message={normalizeVideoMessage(message)} onDownloadError={setChatError} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceVideo: true, aspectRatio: message.videoAspect || '16:9', resolution: message.videoResolution || '720p' }); }} />}{text && !activelyStreaming && !editing && (
+            const historicalError = message.role === 'assistant' && (message.status === 'error' || !activelyStreaming)
+              ? historicalProviderErrorPresentation(text, { ollamaConfigured: modelIsOnline('ollama') })
+              : { kind: null, notice: null };
+            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}${historicalError.kind ? ' historical-provider-error' : ''}`} key={message.id || `${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : message.deepResearch ? <DeepResearchMessageBlock message={message} onClarifyStart={(answers) => handleDeepResearchClarification(index, answers, false)} onClarifySkip={() => handleDeepResearchClarification(index, null, true)} onStopResearch={stopGenerating} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1)); }} /> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} sources={message.webSearchPreviewSources || message.webSources || []} error={message.webSearchError} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1), null, { forceWebSearch: true }); }} /> : null}{message.role === 'assistant' && message.recoveryNotice ? <p className="chat-recovery-notice" role="status">{message.recoveryNotice}</p> : null}{historicalError.notice ? <p className="chat-historical-error-notice" role="note">{historicalError.notice}</p> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : imagePending ? <div className="image-gen-status" role="status" aria-live="polite"><span className="image-gen-status__spinner" aria-hidden="true" /><b>{message.imageStatusLabel || 'Generating image…'}</b></div> : generatedFile ? <FileCard file={generatedFile} conversationId={activeConversationId} temporary={temporaryChat} /> : <><ChatMessageContent text={text} streaming={activelyStreaming} citationSources={message.webSources} conversationId={activeConversationId} />{aiStickersEnabled && message.aiSticker && !activelyStreaming && <ChatAiSticker sticker={message.aiSticker} />}</> : <p>{text}</p>)}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
+{message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} retrievedAt={message.webSearchRetrievedAt} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1), null, { forceWebSearch: true }); }} />}{message.knowledgeSources?.length > 0 && <KnowledgeSourceChips sources={message.knowledgeSources} onSourceClick={() => navigate('/knowledge')} />}{(message.imageUrl || message.images?.length) && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || imageGenerationQuality || 'hd', aspectRatio: message.imageAspect || imageGenerationAspect || '1:1', imageCount: message.requestedImageCount || imageGenerationCount || 1 }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{messageHasPlayableVideo(message) && message.role !== 'user' && <GeneratedVideoCard message={normalizeVideoMessage(message)} onDownloadError={setChatError} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceVideo: true, aspectRatio: message.videoAspect || '16:9', resolution: message.videoResolution || '720p' }); }} />}{text && !activelyStreaming && !editing && (
               <MessageActions
                 role={message.role}
                 text={text}
@@ -3183,7 +3396,7 @@ export default function Chat() {
                 feedbackReason={feedback || ''}
                 isFavorite={favoriteEntry}
                 modelInfo={message.role === 'assistant' && message.modelSlug !== 'anonin' ? messageModel : null}
-                conversationId={temporaryChat ? null : activeConversationId}
+                conversationId={activeConversationId}
                 isSending={isSending}
                 isRegenerating={regeneratingMessageIndex === index}
                 speechLanguage={speechLanguage}
@@ -3213,7 +3426,7 @@ export default function Chat() {
               && !editing && (
               <AnoninMessageReveal
                 messageId={message.id}
-                conversationId={temporaryChat ? null : activeConversationId}
+                conversationId={activeConversationId}
                 revealed={Boolean(message.anoninRevealed)}
                 revealData={message.anoninReveal}
                 disabled={isSending}
@@ -3541,6 +3754,60 @@ export default function Chat() {
                   >
                     ×
                   </button>
+                </div>
+              )}
+              {(selectedSkill === 'web' || selectedSlug === 'smart') && (
+                <div className="web-search-filters" role="group" aria-label="Web search filters">
+                  <select
+                    value={webSearchFilters.topic}
+                    onChange={(event) => setWebSearchFilters((prev) => ({ ...prev, topic: event.target.value }))}
+                    aria-label="Search topic"
+                    disabled={isSending}
+                  >
+                    <option value="general">General web</option>
+                    <option value="news">News</option>
+                  </select>
+                  <select
+                    value={webSearchFilters.days}
+                    onChange={(event) => setWebSearchFilters((prev) => ({ ...prev, days: event.target.value }))}
+                    aria-label="Date range"
+                    disabled={isSending}
+                  >
+                    <option value="">Any time</option>
+                    <option value="1">Past day</option>
+                    <option value="7">Past week</option>
+                    <option value="30">Past month</option>
+                    <option value="90">Past 3 months</option>
+                  </select>
+                  <select
+                    value={webSearchFilters.language}
+                    onChange={(event) => setWebSearchFilters((prev) => ({ ...prev, language: event.target.value }))}
+                    aria-label="Language"
+                    disabled={isSending}
+                  >
+                    <option value="">Any language</option>
+                    <option value="en">English</option>
+                    <option value="ru">Russian</option>
+                    <option value="uk">Ukrainian</option>
+                    <option value="pl">Polish</option>
+                    <option value="de">German</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                  </select>
+                  <select
+                    value={webSearchFilters.region}
+                    onChange={(event) => setWebSearchFilters((prev) => ({ ...prev, region: event.target.value }))}
+                    aria-label="Region"
+                    disabled={isSending}
+                  >
+                    <option value="">Any region</option>
+                    <option value="US">United States</option>
+                    <option value="EU">Europe</option>
+                    <option value="UA">Ukraine</option>
+                    <option value="PL">Poland</option>
+                    <option value="GB">United Kingdom</option>
+                    <option value="DE">Germany</option>
+                  </select>
                 </div>
               )}
               {selectedSkill === 'image' && (

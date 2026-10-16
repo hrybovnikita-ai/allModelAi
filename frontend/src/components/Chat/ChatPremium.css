@@ -44,6 +44,29 @@
   padding: var(--space-5) var(--space-4) !important;
 }
 
+.chat-page .sidebar-tool-row,
+.chat-page .sidebar-chat-open,
+.chat-page .new-chat-compact,
+.chat-page .new-temp-chat-btn {
+  transition:
+    transform var(--duration-fast, 120ms) ease,
+    background-color var(--duration-normal, 200ms) ease,
+    border-color var(--duration-normal, 200ms) ease,
+    opacity var(--duration-normal, 200ms) ease;
+}
+
+.chat-page .sidebar-tool-row:focus-visible,
+.chat-page .new-chat-compact:focus-visible,
+.chat-page .new-temp-chat-btn:focus-visible,
+.chat-page .sidebar-chat-open:focus-visible {
+  outline: 2px solid var(--border-active, rgba(157, 123, 255, 0.55));
+  outline-offset: 2px;
+}
+
+.chat-page .sidebar-expanded-content {
+  gap: 4px;
+}
+
 .chat-page .sidebar-links,
 .chat-page .project-list,
 .chat-page .chat-history-list {
@@ -230,10 +253,38 @@
   }
 }
 
+.chat-page .composer-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 12px 10px !important;
+  transition: border-color var(--duration-normal, 200ms) ease, box-shadow var(--duration-normal, 200ms) ease;
+}
+
 .chat-page .composer-box textarea {
   max-height: min(40vh, 220px);
   line-height: 1.55;
   font-size: var(--text-body);
+  padding: 2px 2px 4px;
+}
+
+.chat-page .composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-page .composer-actions button {
+  transition: transform var(--duration-fast, 120ms) ease, opacity var(--duration-fast, 120ms) ease;
+}
+
+.chat-page .composer-actions button:focus-visible {
+  outline: 2px solid var(--border-active, rgba(157, 123, 255, 0.55));
+  outline-offset: 2px;
+}
+
+.chat-page .context-suggestions {
+  margin-bottom: 4px;
 }
 
 .chat-page .thinking-message .typing-indicator b {

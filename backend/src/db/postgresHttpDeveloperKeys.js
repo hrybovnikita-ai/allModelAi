@@ -66,6 +66,8 @@ async function getSharedConversationByTokenAsync(connection, token) {
     const result = await queryPgPool(
         pool,
         `SELECT conversations.title, conversations.model, conversations.messages,
+                COALESCE(conversations.is_temporary, FALSE) AS "isTemporary",
+                conversations.expires_at AS "expiresAt",
                 shared_conversations.created_at AS "sharedAt"
          FROM shared_conversations
          JOIN conversations ON conversations.id = shared_conversations.conversation_id

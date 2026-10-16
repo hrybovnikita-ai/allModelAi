@@ -26,6 +26,8 @@ export const NAV_MORE_GROUPS = [
       { to: '/ai-learning', label: 'AI Learning Lab', description: 'Interactive learning workspace' },
       { to: '/python-ai', label: 'PyTorch Lab', description: 'Local ML experiments and training' },
       { to: '/knowledge', label: 'Knowledge Base', description: 'Documents and retrieval for chat' },
+      { to: '/ai-files', label: 'AI Files', description: 'Secure document upload and grounded Q&A' },
+      { to: '/evaluation-lab', label: 'AI Evaluation Lab', description: 'Comparable model evaluation runs' },
     ],
   },
   {
@@ -33,6 +35,7 @@ export const NAV_MORE_GROUPS = [
     title: 'Workspace',
     items: [
       { to: '/storage', label: 'Storage Hub', description: 'Saved prompts, files, and ideas' },
+      { to: '/ai-workflows', label: 'AI Workflows', description: 'Multi-step AI task pipelines' },
       { to: '/next-20', label: 'Workspace Tools', description: 'Productivity and builder utilities' },
       { to: '/studio', label: 'Studio', description: 'Creative and production workflows' },
       { to: '/website-builder', label: 'Website Builder', description: 'Generate sites from prompts' },
@@ -43,7 +46,7 @@ export const NAV_MORE_GROUPS = [
     title: 'Research & Tools',
     items: [
       { to: '/next-9', label: 'Research & Learning', description: 'Deep research experiences' },
-      { to: '/next-25', label: 'AI Workflows', description: 'Multi-step automation flows' },
+      { to: '/next-25', label: 'Workflow Hub', description: 'Multi-step automation flows' },
       { to: '/next-10', label: 'Model Toolkit', description: 'Compare and evaluate models' },
       { to: '/arena', label: 'Arena', description: 'Side-by-side model battles' },
       { to: '/model-comparison', label: 'Model Comparison', description: 'Structured comparisons' },

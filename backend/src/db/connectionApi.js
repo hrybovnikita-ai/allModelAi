@@ -203,9 +203,11 @@ function createConnectionApi(database, meta = {}) {
                             title,
                             messages,
                             created_at,
-                            updated_at
+                            updated_at,
+                            is_temporary,
+                            expires_at
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 
                         ON CONFLICT(id)
                         DO UPDATE SET
@@ -218,7 +220,11 @@ function createConnectionApi(database, meta = {}) {
                             messages =
                                 excluded.messages,
                             updated_at =
-                                excluded.updated_at
+                                excluded.updated_at,
+                            is_temporary =
+                                excluded.is_temporary,
+                            expires_at =
+                                excluded.expires_at
                     `);
 
                 (
@@ -286,6 +292,8 @@ function createConnectionApi(database, meta = {}) {
                             ),
                             item.createdAt,
                             item.updatedAt,
+                            item.isTemporary || item.is_temporary || item.temporary ? 1 : 0,
+                            item.expiresAt || item.expires_at || null,
                         );
                     },
                 );

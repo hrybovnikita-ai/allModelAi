@@ -65,32 +65,115 @@ class AIRouter:
         messages: list[dict[str, Any]],
         prefer: Optional[list[str]] = None,
         model: Optional[str] = None,
+        enable_fallback: bool = True,
         **kwargs: Any,
     ) -> GenerateResult:
         """
-        Compatibility hook for future Smart Router integration.
-        Picks the first configured provider from `prefer` (default: openrouter, openai, gemini, anthropic).
-        Does not replace Node Smart Router — opt-in from backend only.
+        Opt-in multi-provider generation with bounded automatic fallback.
+
+        Does not replace Node Smart Router. Skips auth/invalid errors, applies
+        exponential backoff, and prevents infinite provider loops.
         """
-        order = prefer or ["openrouter", "openai", "gemini", "anthropic", "grok", "mistral", "deepseek", "kimi"]
+        from time import perf_counter
+
+        from services.fallback_policy import (
+            FallbackEvent,
+            FallbackResult,
+            may_retry,
+            max_attempts,
+            sleep_backoff,
+        )
+
+        order = prefer or [
+            "openrouter",
+            "openai",
+            "gemini",
+            "anthropic",
+            "grok",
+            "mistral",
+            "deepseek",
+            "kimi",
+        ]
         last_error: Optional[ProviderError] = None
+        visited: set[str] = set()
+        events: list[FallbackEvent] = []
+        attempts = 0
+        requested_provider = ""
+        attempt_index = 0
+
         for name in order:
+            name = (name or "").strip().lower()
+            if attempts >= max_attempts():
+                break
             factory = PROVIDER_FACTORIES.get(name)
             if not factory:
+                continue
+            if name in visited:
                 continue
             instance = factory()
             if not instance.is_configured():
                 continue
+            if not requested_provider:
+                requested_provider = name
+            if attempts > 0:
+                if not enable_fallback:
+                    break
+                await sleep_backoff(attempt_index)
+            visited.add(name)
+            started = perf_counter()
             try:
-                default_model = model or getattr(instance, "_default_model", "")
-                return await self.generate(
+                # Explicit model IDs belong to the initial provider only.
+                # An empty ID lets each fallback provider choose its own default.
+                default_model = (model or "") if attempts == 0 else ""
+                result = await self.generate(
                     provider=name,
                     model=default_model,
                     messages=messages,
                     **kwargs,
                 )
+                latency_ms = (perf_counter() - started) * 1000.0
+                events.append(
+                    FallbackEvent(
+                        requested_provider=requested_provider or name,
+                        actual_provider=name,
+                        category="ok",
+                        success=True,
+                        latency_ms=latency_ms,
+                    )
+                )
+                # Attach fallback metadata for callers without breaking GenerateResult shape.
+                if hasattr(result, "__dict__"):
+                    meta = FallbackResult(
+                        result=result,
+                        requested_provider=requested_provider or name,
+                        actual_provider=name,
+                        fallback_used=name != (requested_provider or name),
+                        events=events,
+                    )
+                    setattr(result, "fallback_meta", meta)
+                    setattr(result, "fallback_used", meta.fallback_used)
+                    setattr(result, "requested_provider", meta.requested_provider)
+                    setattr(result, "actual_provider", meta.actual_provider)
+                    notice = meta.notice()
+                    if notice:
+                        setattr(result, "fallback_notice", notice)
+                return result
             except ProviderError as exc:
+                attempts += 1
+                latency_ms = (perf_counter() - started) * 1000.0
+                events.append(
+                    FallbackEvent(
+                        requested_provider=requested_provider or name,
+                        actual_provider=name,
+                        category=exc.code,
+                        success=False,
+                        latency_ms=latency_ms,
+                    )
+                )
                 last_error = exc
+                if not enable_fallback or not may_retry(exc):
+                    break
+                attempt_index += 1
                 continue
         if last_error:
             raise last_error

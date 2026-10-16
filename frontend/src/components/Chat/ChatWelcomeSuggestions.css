@@ -8,6 +8,7 @@
   margin: 32px auto 0;
   padding: 0;
   text-align: left;
+  align-items: stretch;
 }
 
 .chat-page .welcome-suggestion-card {
@@ -16,9 +17,10 @@
   align-items: flex-start;
   gap: 14px;
   width: 100%;
-  min-height: 108px;
+  height: 100%;
+  min-height: 118px;
   padding: 18px 16px;
-  border-radius: 15px;
+  border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: linear-gradient(165deg, #18181d 0%, #101014 55%, #0c0c10 100%) !important;
   color: #fff;
@@ -36,6 +38,8 @@
     background 0.22s ease,
     box-shadow 0.22s ease,
     transform 0.22s ease;
+  animation: welcome-card-enter 320ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)) both;
+  animation-delay: calc(var(--welcome-card-index, 0) * 80ms + 140ms);
 }
 
 .chat-workspace:has(.chat-empty) .welcome-suggestion-cards .welcome-suggestion-card {
@@ -50,7 +54,11 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     inset 0 -1px 0 rgba(0, 0, 0, 0.3),
     0 14px 34px rgba(0, 0, 0, 0.48);
-  transform: translateY(-2px);
+  transform: translateY(-4px);
+}
+
+.chat-page .welcome-suggestion-card:hover .welcome-suggestion-card__icon {
+  transform: scale(1.06);
 }
 
 .chat-page .welcome-suggestion-card:focus-visible {
@@ -59,7 +67,7 @@
 }
 
 .chat-page .welcome-suggestion-card:active {
-  transform: translateY(0);
+  transform: translateY(-1px);
 }
 
 /* Override legacy Chat.css `.prompt-suggestions button > span` purple tiles */
@@ -90,6 +98,7 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     inset 0 -2px 6px rgba(0, 0, 0, 0.45),
     0 0 0 1px rgba(255, 255, 255, 0.12);
+  transition: transform 200ms var(--ease-out, ease);
 }
 
 .chat-page .welcome-suggestion-card__ai-label {
@@ -115,12 +124,12 @@
   width: 100%;
   margin: 0;
   padding: 0;
-  font-size: 0.92rem;
-  font-weight: 650;
+  font-size: 0.94rem;
+  font-weight: 800;
   line-height: 1.25;
   color: #ffffff !important;
   background: transparent !important;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
 }
 
 .chat-page .welcome-suggestion-card__desc {
@@ -172,12 +181,25 @@
   }
 }
 
+@keyframes welcome-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-page .welcome-suggestion-card {
     transition: none;
+    animation: none;
   }
 
-  .chat-page .welcome-suggestion-card:hover {
+  .chat-page .welcome-suggestion-card:hover,
+  .chat-page .welcome-suggestion-card:hover .welcome-suggestion-card__icon {
     transform: none;
   }
 }

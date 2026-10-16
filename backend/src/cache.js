@@ -51,6 +51,13 @@ function createCache({ url = process.env.REDIS_URL, client, now = Date.now } = {
             }
         },
         async close() { memory.clear(); if (redis?.isOpen) redis.destroy(); },
+        /** Test/ops helper: drop local entries whose keys start with prefix. */
+        async flushPrefix(prefix) {
+            const needle = String(prefix || '');
+            for (const key of [...memory.keys()]) {
+                if (!needle || key.startsWith(needle)) memory.delete(key);
+            }
+        },
     };
 }
 const CACHE_MIDDLEWARE_TIMEOUT_MS = Number(process.env.CACHE_MIDDLEWARE_TIMEOUT_MS || 500);

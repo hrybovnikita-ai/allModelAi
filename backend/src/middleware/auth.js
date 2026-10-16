@@ -70,9 +70,24 @@ const requireAuth = async (req, res, next) => {
     }
 };
 
-const requireAdmin = (req, res, next) => {
+const requireAdmin = async (req, res, next) => {
     if (!process.env.ADMIN_KEY) return res.status(503).json({ message: 'Admin access is not configured' });
     if (req.get('x-admin-key') !== process.env.ADMIN_KEY) return res.status(401).json({ message: 'Invalid admin key' });
+    // Persist admin audit before continuing (no private message content).
+    try {
+        const { logAdminAudit } = require('../security/adminAudit');
+        await logAdminAudit(req.app?.locals?.db, {
+            actor: req.get('x-admin-actor') || 'admin-key',
+            action: `${req.method} ${req.path}`,
+            targetType: 'admin_route',
+            targetId: req.path,
+            metadata: { method: req.method, path: req.path },
+            ip: req.ip,
+            correlationId: req.correlationId,
+        });
+    } catch {
+        /* never block admin on audit failure */
+    }
     return next();
 };
 

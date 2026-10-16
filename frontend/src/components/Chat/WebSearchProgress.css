@@ -1,0 +1,201 @@
+/* Premium live search progress — reuses existing web-search / purple tokens only. */
+
+.web-search-progress {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid #3a3a3a;
+  border-radius: 12px;
+  background: #1a1a1a;
+}
+
+.web-search-progress__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.web-search-progress__head strong {
+  display: block;
+  color: #93c5fd;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.web-search-progress__hint {
+  margin: 4px 0 0;
+  color: #9ca3af;
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.web-search-progress__orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+}
+
+.web-search-progress__globe {
+  position: relative;
+  z-index: 1;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.web-search-progress__orbit {
+  position: absolute;
+  inset: 2px;
+  border: 1px solid #1677ff55;
+  border-radius: 50%;
+  border-top-color: #60a5fa;
+  opacity: 0.85;
+}
+
+.web-search-progress__orb.is-active .web-search-progress__orbit {
+  animation: web-search-orbit 1.6s linear infinite;
+}
+
+.web-search-progress__orb.is-active .web-search-progress__globe {
+  animation: globe-spin-pulse 1.4s ease-in-out infinite;
+}
+
+.web-search-progress__timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.web-search-progress__step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 0.72rem;
+}
+
+.web-search-progress__step.is-active {
+  color: #93c5fd;
+  font-weight: 700;
+}
+
+.web-search-progress__step.is-done {
+  color: #9ca3af;
+}
+
+.web-search-progress__step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3a3a3a;
+  box-shadow: 0 0 0 1px #1677ff33;
+}
+
+.web-search-progress__step.is-active .web-search-progress__step-dot {
+  background: #60a5fa;
+  box-shadow: 0 0 0 4px #1677ff22;
+  animation: web-search-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.web-search-progress__step.is-done .web-search-progress__step-dot {
+  background: #1677ff;
+}
+
+.web-search-progress__previews {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.web-search-progress__preview {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid #3a3a3a;
+  border-radius: 10px;
+  background: #111;
+}
+
+.web-search-progress__preview strong {
+  color: #e5e7eb;
+  font-size: 0.72rem;
+}
+
+.web-search-progress__preview small {
+  color: #6b7280;
+  font-size: 0.6rem;
+}
+
+.web-search-progress__preview-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, #1677ff14 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: web-search-shimmer 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.web-search-progress--error,
+.web-search-progress--empty {
+  color: #9ca3af;
+  font-size: 0.78rem;
+}
+
+.web-search-progress__retry {
+  margin-top: 8px;
+  padding: 6px 12px;
+  border: 1px solid #1677ff55;
+  border-radius: 999px;
+  background: #1677ff22;
+  color: #60a5fa;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.web-search-progress__retry:hover {
+  border-color: #1677ff;
+}
+
+@keyframes web-search-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes globe-spin-pulse {
+  0%, 100% { transform: rotate(0deg) scale(1); opacity: 1; }
+  50% { transform: rotate(18deg) scale(1.08); opacity: 0.82; }
+}
+
+@keyframes web-search-dot-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.75; }
+}
+
+@keyframes web-search-shimmer {
+  to { transform: translateX(100%); }
+}
+
+@media (max-width: 620px) {
+  .web-search-progress {
+    padding: 10px 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .web-search-progress__orb.is-active .web-search-progress__orbit,
+  .web-search-progress__orb.is-active .web-search-progress__globe,
+  .web-search-progress__step.is-active .web-search-progress__step-dot,
+  .web-search-progress__preview-shimmer {
+    animation: none;
+  }
+}

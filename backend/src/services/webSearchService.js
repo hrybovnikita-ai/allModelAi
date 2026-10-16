@@ -218,10 +218,19 @@ const rankSources = (userQuestion, sources, limit = 6) => {
     return finalizeRankedSources(userQuestion, enriched, limit);
 };
 
-const searchBing = async (searchQuery) => {
+const resolveSearchSignal = (signal, timeoutMs = 12000) => {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    if (!signal) return timeout;
+    if (typeof AbortSignal.any === 'function') {
+        return AbortSignal.any([signal, timeout]);
+    }
+    return signal;
+};
+
+const searchBing = async (searchQuery, { signal = null } = {}) => {
     const response = await fetch(`https://www.bing.com/search?format=rss&q=${encodeURIComponent(searchQuery)}`, {
         headers: { 'User-Agent': USER_AGENT },
-        signal: AbortSignal.timeout(12000),
+        signal: resolveSearchSignal(signal),
     });
     if (!response.ok) return [];
     const xml = await response.text();
@@ -229,16 +238,19 @@ const searchBing = async (searchQuery) => {
         const item = match[1];
         const value = (tag) => decodeHtml(item.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i'))?.[1]?.replace(/<!\[CDATA\[|\]\]>/g, '') || '');
         const url = value('link');
+        const publishedRaw = value('pubDate') || value('published') || '';
+        const publishedMs = publishedRaw ? Date.parse(publishedRaw) : NaN;
         return {
             title: value('title'),
             url,
             excerpt: value('description').slice(0, 700),
             domain: extractDomain(url),
+            publishedDate: Number.isFinite(publishedMs) ? new Date(publishedMs).toISOString().slice(0, 10) : (publishedRaw || null),
         };
     }).filter((source) => source.title && /^https?:\/\//.test(source.url));
 };
 
-const searchDuckDuckGo = async (searchQuery) => {
+const searchDuckDuckGo = async (searchQuery, { signal = null } = {}) => {
     const response = await fetch('https://html.duckduckgo.com/html/', {
         method: 'POST',
         headers: {
@@ -246,7 +258,7 @@ const searchDuckDuckGo = async (searchQuery) => {
             'User-Agent': USER_AGENT,
         },
         body: new URLSearchParams({ q: searchQuery }).toString(),
-        signal: AbortSignal.timeout(12000),
+        signal: resolveSearchSignal(signal),
     });
     if (!response.ok) return [];
     const html = await response.text();
@@ -267,7 +279,7 @@ const searchDuckDuckGo = async (searchQuery) => {
     }).filter((source) => /^https?:\/\//.test(source.url));
 };
 
-const searchWikipedia = async (searchQuery) => {
+const searchWikipedia = async (searchQuery, { signal = null } = {}) => {
     const { resolveResponseLanguage } = require('./responseLanguage');
     const resolved = resolveResponseLanguage({ latestUserText: searchQuery, preference: 'auto' });
     const wikiLangMap = { ru: 'ru', uk: 'uk', en: 'en', de: 'de', fr: 'fr', es: 'es', pl: 'pl', it: 'it', pt: 'pt', ja: 'ja', zh: 'zh' };
@@ -275,7 +287,7 @@ const searchWikipedia = async (searchQuery) => {
     const wikiUrl = `https://${language}.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(searchQuery)}&gsrlimit=6&prop=extracts|info&exintro=1&explaintext=1&inprop=url&format=json&origin=*`;
     const wikiResponse = await fetch(wikiUrl, {
         headers: { 'User-Agent': USER_AGENT },
-        signal: AbortSignal.timeout(12000),
+        signal: resolveSearchSignal(signal),
     });
     if (!wikiResponse.ok) return [];
     const data = await wikiResponse.json();
@@ -302,14 +314,23 @@ const logWebSearch = (message, details = {}) => {
     console.log(`[WEB_SEARCH] ${message}${Object.keys(safe).length ? ` ${JSON.stringify(safe)}` : ''}`);
 };
 
-const runSearchProviders = async (userQuestion, searchQueries) => {
+const runSearchProviders = async (userQuestion, searchQueries, { days = null, topic = 'general', onPartial = null, signal = null } = {}) => {
     let rawSources = [];
     let provider = 'public';
     const intent = extractSearchIntent(userQuestion);
+    const preferNews = topic === 'news' || intent.isNews === true;
 
     if (isTavilyConfigured()) {
         for (const candidateQuery of searchQueries) {
-            rawSources.push(...await searchTavilySafe(candidateQuery));
+            const batch = await searchTavilySafe(candidateQuery, {
+                days: days ?? (preferNews ? 7 : null),
+                topic: preferNews ? 'news' : 'general',
+                signal,
+            });
+            rawSources.push(...batch);
+            if (batch.length) {
+                onPartial?.(mapSourcesForClient(rankSources(userQuestion, rawSources, 4)));
+            }
             if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
         }
         if (rawSources.length) provider = 'tavily';
@@ -317,8 +338,12 @@ const runSearchProviders = async (userQuestion, searchQueries) => {
 
     if (rankSources(userQuestion, rawSources, 3).length < 2) {
         for (const candidateQuery of searchQueries) {
-            const bingResults = await searchBing(candidateQuery);
+            if (signal?.aborted) break;
+            const bingResults = await searchBing(candidateQuery, { signal });
             rawSources.push(...bingResults);
+            if (bingResults.length) {
+                onPartial?.(mapSourcesForClient(rankSources(userQuestion, rawSources, 4)));
+            }
             if (provider === 'public' && bingResults.length) provider = 'bing';
             if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
         }
@@ -326,8 +351,12 @@ const runSearchProviders = async (userQuestion, searchQueries) => {
 
     if (rankSources(userQuestion, rawSources, 3).length < 2) {
         for (const candidateQuery of searchQueries) {
-            const ddgResults = await searchDuckDuckGo(candidateQuery);
+            if (signal?.aborted) break;
+            const ddgResults = await searchDuckDuckGo(candidateQuery, { signal });
             rawSources.push(...ddgResults);
+            if (ddgResults.length) {
+                onPartial?.(mapSourcesForClient(rankSources(userQuestion, rawSources, 4)));
+            }
             if (ddgResults.length && provider === 'public') provider = 'duckduckgo';
             if (rankSources(userQuestion, rawSources, 6).length >= 3) break;
         }
@@ -336,10 +365,12 @@ const runSearchProviders = async (userQuestion, searchQueries) => {
     const allowWikipedia = intent.isGeneralKnowledge || (!intent.isOperationalCurrent && !intent.isTravelRail);
     if (allowWikipedia && rankSources(userQuestion, rawSources, 2).length < 1) {
         try {
-            const wikiQuery = searchQueries[0];
-            const wikiResults = await searchWikipedia(wikiQuery);
-            rawSources.push(...wikiResults);
-            if (wikiResults.length && provider === 'public') provider = 'wikipedia';
+            if (!signal?.aborted) {
+                const wikiQuery = searchQueries[0];
+                const wikiResults = await searchWikipedia(wikiQuery, { signal });
+                rawSources.push(...wikiResults);
+                if (wikiResults.length && provider === 'public') provider = 'wikipedia';
+            }
         } catch (wikiError) {
             logWebSearch('wikipedia skipped', { reason: wikiError.message });
         }
@@ -352,11 +383,18 @@ const isPublicWebSearchAvailable = () => true;
 
 const isWebSearchConfigured = () => isTavilyConfigured() || isPublicWebSearchAvailable();
 
-const searchTavilySafe = async (searchQuery) => {
+const searchTavilySafe = async (searchQuery, { days = null, topic = 'general', signal = null } = {}) => {
     if (!isTavilyConfigured()) return [];
     try {
-        const results = await searchTavily({ query: searchQuery, maxResults: 8, searchDepth: 'basic' });
-        logWebSearch('provider=tavily configured=true', { query: searchQuery, results: results.length });
+        const results = await searchTavily({
+            query: searchQuery,
+            maxResults: 8,
+            searchDepth: 'basic',
+            days,
+            topic,
+            signal,
+        });
+        logWebSearch('provider=tavily configured=true', { query: searchQuery, results: results.length, topic });
         return results;
     } catch (error) {
         logWebSearch('provider=tavily configured=true fallback=public', { reason: error.code || error.name || 'error' });
@@ -364,15 +402,69 @@ const searchTavilySafe = async (searchQuery) => {
     }
 };
 
-const collectWebSources = async (userQuestion, onStatus) => {
+/**
+ * @param {string} userQuestion
+ * @param {(stage: string, extra?: object) => void} [onStatus]
+ * @param {{ days?: number|null, topic?: string, language?: string, region?: string, signal?: AbortSignal, skipCache?: boolean }} [options]
+ */
+const collectWebSources = async (userQuestion, onStatus, options = {}) => {
+    const {
+        days = null,
+        topic = 'general',
+        language = null,
+        region = null,
+        signal = null,
+        skipCache = false,
+    } = options;
+    const { cacheKey, getCached, setCached } = require('./webSearchCache');
     const bundle = buildIntentAwareSearchQueries(userQuestion);
     let searchQueries = bundle.queries.filter((q) => !isQueryDegenerate(q, bundle.intent));
     if (!searchQueries.length) searchQueries = [bundle.primary];
+    if (language) {
+        searchQueries = searchQueries.map((q) => `${q} ${String(language).slice(0, 16)}`.trim());
+    }
+    if (region) {
+        searchQueries = searchQueries.map((q) => `${q} ${String(region).slice(0, 32)}`.trim());
+    }
     const searchQuery = searchQueries[0];
+    const retrievedAt = new Date().toISOString();
+    const key = cacheKey({
+        q: String(userQuestion || '').trim().slice(0, 400),
+        days,
+        topic,
+        language,
+        region,
+    });
+
+    if (!skipCache) {
+        const cached = getCached(key);
+        if (cached?.sources) {
+            onStatus?.('searching', { query: searchQuery, cached: true });
+            onStatus?.('found', {
+                count: cached.sources.length,
+                query: searchQuery,
+                sources: mapSourcesForClient(cached.sources).slice(0, 4),
+                cached: true,
+            });
+            if (cached.sources.length) {
+                onStatus?.('checking', { count: cached.sources.length });
+                onStatus?.('reading', { count: cached.sources.length });
+            } else {
+                onStatus?.('no_sources', { query: searchQuery });
+            }
+            return {
+                ...cached,
+                retrievedAt,
+                fromCache: true,
+            };
+        }
+    }
 
     logWebSearch('start', {
         original_question: userQuestion,
         generated_query: searchQuery,
+        topic,
+        days,
     });
     onStatus?.('searching', { query: searchQuery });
 
@@ -382,13 +474,29 @@ const collectWebSources = async (userQuestion, onStatus) => {
     let ranked = [];
 
     try {
-        ({ rawSources, provider } = await runSearchProviders(userQuestion, searchQueries));
+        onStatus?.('finding_sources', { query: searchQuery });
+        ({ rawSources, provider } = await runSearchProviders(userQuestion, searchQueries, {
+            days,
+            topic,
+            signal,
+            onPartial: (preview) => {
+                onStatus?.('finding_sources', {
+                    query: searchQuery,
+                    count: preview.length,
+                    sources: preview,
+                });
+            },
+        }));
         ranked = rankSources(userQuestion, rawSources, 8);
 
         if (needsSearchRetry(ranked, bundle.intent) && bundle.retryQueries.length) {
             retried = true;
             logWebSearch('retry', { retry: true, generated_query: bundle.retryQueries[0] });
-            const retryResult = await runSearchProviders(userQuestion, bundle.retryQueries);
+            const retryResult = await runSearchProviders(userQuestion, bundle.retryQueries, {
+                days,
+                topic,
+                signal,
+            });
             rawSources.push(...retryResult.rawSources);
             if (retryResult.provider !== 'public') provider = retryResult.provider;
             ranked = rankSources(userQuestion, rawSources, 8);
@@ -407,22 +515,31 @@ const collectWebSources = async (userQuestion, onStatus) => {
         throw error;
     }
 
-    onStatus?.('found', { count: ranked.length, query: searchQuery });
+    onStatus?.('found', {
+        count: ranked.length,
+        query: searchQuery,
+        sources: mapSourcesForClient(ranked).slice(0, 6),
+    });
 
     if (ranked.length) {
+        onStatus?.('checking', { count: ranked.length });
         onStatus?.('reading', { count: ranked.length });
     } else {
         onStatus?.('no_sources', { query: searchQuery });
     }
 
-    return {
+    const payload = {
         searchQuery,
         sources: ranked,
         provider,
         webSearchAvailable: isWebSearchConfigured(),
         webSearchPerformed: true,
         webSearchComplete: ranked.length > 0,
+        retrievedAt,
+        fromCache: false,
     };
+    setCached(key, payload);
+    return payload;
 };
 
 const assignCitationIdsFromRanked = (sources) => sources.map((source, index) => ({

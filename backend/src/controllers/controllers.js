@@ -186,6 +186,14 @@ const createConversationTitle = (messages) => {
 };
 
 async function getConversationPayload(connection, email, conversation) {
+    const {
+        isTemporaryConversation,
+        toTemporaryMeta,
+        isTemporaryExpired,
+    } = require('../services/temporaryChat');
+    if (isTemporaryExpired(conversation)) {
+        return null;
+    }
     const normalized = normalizeMessages(conversation.messages);
     const messages = connection && email
         ? await hydrateConversationMessages(connection, email, normalized, {
@@ -201,11 +209,196 @@ async function getConversationPayload(connection, email, conversation) {
             });
         });
     }
+    const tempMeta = toTemporaryMeta(conversation);
     return {
         ...conversation,
         title: conversation.title || createConversationTitle(messages),
         messages,
+        isTemporary: Boolean(tempMeta?.isTemporary || isTemporaryConversation(conversation)),
+        expiresAt: tempMeta?.expiresAt || conversation.expiresAt || conversation.expires_at || null,
+        remainingMs: tempMeta?.remainingMs ?? null,
     };
+}
+
+function sqliteListChatHistoryRows(database, normalizedEmail, { temporaryOnly = false } = {}) {
+    const {
+        nowIso,
+        isTemporaryExpired,
+        isTemporaryConversation,
+    } = require('../services/temporaryChat');
+    const cutoff = nowIso();
+    let rows;
+    try {
+        rows = temporaryOnly
+            ? database.prepare(`
+                SELECT
+                    id,
+                    email,
+                    model,
+                    title,
+                    messages,
+                    created_at AS createdAt,
+                    updated_at AS updatedAt,
+                    COALESCE(is_temporary, 0) AS isTemporary,
+                    expires_at AS expiresAt
+                FROM conversations
+                WHERE lower(trim(email)) = ?
+                  AND COALESCE(is_temporary, 0) = 1
+                  AND expires_at IS NOT NULL
+                  AND expires_at > ?
+                ORDER BY updated_at DESC
+            `).all(normalizedEmail, cutoff)
+            : database.prepare(`
+                SELECT
+                    id,
+                    email,
+                    model,
+                    title,
+                    messages,
+                    created_at AS createdAt,
+                    updated_at AS updatedAt,
+                    COALESCE(is_temporary, 0) AS isTemporary,
+                    expires_at AS expiresAt
+                FROM conversations
+                WHERE lower(trim(email)) = ?
+                  AND COALESCE(is_temporary, 0) = 0
+                ORDER BY updated_at DESC
+            `).all(normalizedEmail);
+    } catch (error) {
+        if (!/no such column/i.test(String(error.message || ''))) throw error;
+        rows = database.prepare(`
+            SELECT
+                id,
+                email,
+                model,
+                title,
+                messages,
+                created_at AS createdAt,
+                updated_at AS updatedAt
+            FROM conversations
+            WHERE lower(trim(email)) = ?
+            ORDER BY updated_at DESC
+        `).all(normalizedEmail);
+        if (temporaryOnly) return [];
+    }
+    return rows.filter((row) => {
+        if (temporaryOnly) return !isTemporaryExpired(row);
+        return !isTemporaryConversation(row);
+    });
+}
+
+function persistSqliteChatTurn(database, {
+    userEmail,
+    conversationId,
+    temporary,
+    model,
+    savedMessages,
+    title,
+    bumpUsage,
+}) {
+    const {
+        computeExpiresAt,
+        assertTemporaryAccessible,
+        nowIso,
+        isTemporaryFlag,
+    } = require('../services/temporaryChat');
+    const { mergePersistedMessages } = require('../services/chatMessageMerge');
+    const normalizedEmail = String(userEmail).trim().toLowerCase();
+    const now = nowIso();
+    if (bumpUsage) {
+        try {
+            database.prepare(`
+                INSERT INTO usage (email, used) VALUES (?, 1)
+                ON CONFLICT(email) DO UPDATE SET used = usage.used + 1
+            `).run(normalizedEmail);
+        } catch {
+            // usage bump is best-effort for local/sqlite paths
+        }
+    }
+
+    if (conversationId) {
+        let existing = null;
+        try {
+            existing = database.prepare(`
+                SELECT id, email, model, title, messages, created_at AS createdAt, updated_at AS updatedAt,
+                       COALESCE(is_temporary, 0) AS isTemporary, expires_at AS expiresAt
+                FROM conversations WHERE id = ? AND lower(trim(email)) = ?
+            `).get(conversationId, normalizedEmail);
+        } catch {
+            existing = database.prepare(`
+                SELECT id, email, model, title, messages, created_at AS createdAt, updated_at AS updatedAt
+                FROM conversations WHERE id = ? AND lower(trim(email)) = ?
+            `).get(conversationId, normalizedEmail);
+        }
+        if (existing) {
+            const access = assertTemporaryAccessible(existing);
+            if (!access.ok) return { skipped: true, code: access.code };
+            let messagesToSave = savedMessages;
+            try {
+                const existingMessages = JSON.parse(existing.messages || '[]');
+                messagesToSave = normalizeMessages(
+                    mergePersistedMessages(existingMessages, savedMessages),
+                );
+            } catch {
+                messagesToSave = normalizeMessages(savedMessages);
+            }
+            database.prepare(`
+                UPDATE conversations
+                SET messages = ?, updated_at = ?, model = COALESCE(?, model)
+                WHERE id = ? AND lower(trim(email)) = ?
+            `).run(
+                JSON.stringify(messagesToSave),
+                now,
+                model || null,
+                conversationId,
+                normalizedEmail,
+            );
+            return {
+                id: conversationId,
+                isTemporary: Boolean(temporary || isTemporaryFlag(existing.isTemporary)),
+            };
+        }
+    }
+
+    const id = conversationId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const isTemp = Boolean(temporary);
+    const expiresAt = isTemp ? computeExpiresAt(now) : null;
+    try {
+        database.prepare(`
+            INSERT INTO conversations (
+                id, email, model, title, messages, created_at, updated_at, is_temporary, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            id,
+            normalizedEmail,
+            model,
+            title || 'New chat',
+            JSON.stringify(savedMessages || []),
+            now,
+            now,
+            isTemp ? 1 : 0,
+            expiresAt,
+        );
+    } catch (error) {
+        if (!/no such column/i.test(String(error.message || ''))) throw error;
+        if (isTemp) {
+            // Columns missing: refuse silent permanent persistence of temporary content.
+            return { skipped: true, code: 'TEMPORARY_CHAT_SCHEMA_MISSING' };
+        }
+        database.prepare(`
+            INSERT INTO conversations (id, email, model, title, messages, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            id,
+            normalizedEmail,
+            model,
+            title || 'New chat',
+            JSON.stringify(savedMessages || []),
+            now,
+            now,
+        );
+    }
+    return { id, isTemporary: isTemp, expiresAt };
 }
 
 const saveUsers = (connection) => {
@@ -988,35 +1181,29 @@ const bumpUsageCount = (database, normalizedEmail) => {
 
 const getChatHistory = async (req, res) => {
     const normalizedEmail = String(req.user.email || '').trim().toLowerCase();
+    const temporaryOnly = String(req.query.temporary || '').toLowerCase() === 'true'
+        || String(req.query.scope || '').toLowerCase() === 'temporary';
     try {
         const connection = req.app.locals.db;
         const rows = isPostgresConnection(connection)
-            ? await listChatHistoryRows(connection, normalizedEmail)
-            : connection.database.prepare(`
-                SELECT
-                    id,
-                    email,
-                    model,
-                    title,
-                    messages,
-                    created_at AS createdAt,
-                    updated_at AS updatedAt
-                FROM conversations
-                WHERE lower(trim(email)) = ?
-                ORDER BY updated_at DESC
-            `).all(normalizedEmail);
-        const conversations = await Promise.all(rows.map(async (row) => getConversationPayload(connection, normalizedEmail, {
-            ...row,
-            createdAt: row.createdAt ?? row.createdat,
-            updatedAt: row.updatedAt ?? row.updatedat,
-            messages: (() => {
-                try {
-                    return JSON.parse(row.messages || '[]');
-                } catch {
-                    return [];
-                }
-            })(),
-        })));
+            ? await listChatHistoryRows(connection, normalizedEmail, { temporaryOnly })
+            : sqliteListChatHistoryRows(connection.database, normalizedEmail, { temporaryOnly });
+        const conversations = (
+            await Promise.all(rows.map(async (row) => getConversationPayload(connection, normalizedEmail, {
+                ...row,
+                createdAt: row.createdAt ?? row.createdat,
+                updatedAt: row.updatedAt ?? row.updatedat,
+                isTemporary: row.isTemporary ?? row.is_temporary,
+                expiresAt: row.expiresAt ?? row.expires_at,
+                messages: (() => {
+                    try {
+                        return JSON.parse(row.messages || '[]');
+                    } catch {
+                        return [];
+                    }
+                })(),
+            })))
+        ).filter(Boolean);
         return res.status(200).json(conversations);
     } catch (error) {
         if (process.env.NODE_ENV !== 'test') {
@@ -1030,11 +1217,18 @@ const getChatHistory = async (req, res) => {
 };
 
 const createChatHistory = async (req, res) => {
-    const email = req.user.email;
+    const email = String(req.user.email || '').trim().toLowerCase();
     const model = String(req.body.model || 'gpt');
     const messages = normalizeMessages(req.body.messages);
-
-    const now = new Date().toISOString();
+    const {
+        isTemporaryFlag,
+        computeExpiresAt,
+        nowIso,
+        toTemporaryMeta,
+    } = require('../services/temporaryChat');
+    const temporary = isTemporaryFlag(req.body.temporary) || isTemporaryFlag(req.body.isTemporary);
+    const now = nowIso();
+    const expiresAt = temporary ? computeExpiresAt(now) : null;
     const conversation = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         email,
@@ -1043,30 +1237,52 @@ const createChatHistory = async (req, res) => {
         messages,
         createdAt: now,
         updatedAt: now,
+        isTemporary: temporary,
+        expiresAt,
     };
     const connection = req.app.locals.db;
     if (isPostgresConnection(connection)) {
         await insertConversationRowAsync(connection, conversation);
     } else {
-        const data = connection.read();
-        data.conversations ||= [];
-        data.conversations.push(conversation);
-        connection.write(data);
+        const result = persistSqliteChatTurn(connection.database, {
+            userEmail: email,
+            conversationId: conversation.id,
+            temporary,
+            model,
+            savedMessages: messages,
+            title: conversation.title,
+            bumpUsage: false,
+        });
+        if (result?.skipped) {
+            return res.status(503).json({
+                code: result.code || 'TEMPORARY_CHAT_UNAVAILABLE',
+                message: 'Temporary chat storage is unavailable.',
+            });
+        }
     }
-    return res.status(201).json(conversation);
+    const meta = toTemporaryMeta(conversation);
+    return res.status(201).json({
+        ...conversation,
+        remainingMs: meta?.remainingMs ?? null,
+    });
 };
 
 const renameChat = async (req, res) => {
-    const email = req.user.email;
+    const email = String(req.user.email || '').trim().toLowerCase();
     const title = req.body.title === undefined ? undefined : String(req.body.title).trim().slice(0, 60);
     const messages = Array.isArray(req.body.messages) ? normalizeMessages(req.body.messages) : undefined;
     if (!title && !messages) return res.status(400).json({ message: 'Title or messages are required' });
 
+    const { assertTemporaryAccessible, nowIso } = require('../services/temporaryChat');
     const connection = req.app.locals.db;
-    const now = new Date().toISOString();
+    const now = nowIso();
     if (isPostgresConnection(connection)) {
         const existing = await getConversationRowAsync(connection, req.params.id, email);
         if (!existing) return res.status(404).json({ message: 'Conversation not found' });
+        const access = assertTemporaryAccessible(existing);
+        if (!access.ok) {
+            return res.status(access.status).json({ code: access.code, message: access.message });
+        }
         const patch = { updatedAt: now };
         if (title) patch.title = title;
         if (messages) {
@@ -1080,40 +1296,73 @@ const renameChat = async (req, res) => {
         }
         await updateConversationRowAsync(connection, req.params.id, email, patch);
         const updated = await getConversationRowAsync(connection, req.params.id, email);
-        return res.status(200).json(await getConversationPayload(connection, email, {
+        const payload = await getConversationPayload(connection, email, {
             ...updated,
             messages: JSON.parse(updated.messages || '[]'),
-        }));
+        });
+        if (!payload) {
+            return res.status(410).json({
+                code: 'TEMPORARY_CHAT_EXPIRED',
+                message: 'This temporary chat has expired and is no longer available.',
+            });
+        }
+        return res.status(200).json(payload);
     }
-    const data = connection.read();
-    const conversation = (data.conversations || []).find((item) => item.id === req.params.id && item.email === email);
-    if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
-
-    if (title) conversation.title = title;
-    if (messages) {
-        conversation.messages = normalizeMessages(
-            mergePersistedMessages(conversation.messages || [], messages),
-        );
+    const existing = connection.database.prepare(`
+        SELECT id, email, model, title, messages, created_at AS createdAt, updated_at AS updatedAt,
+               COALESCE(is_temporary, 0) AS isTemporary, expires_at AS expiresAt
+        FROM conversations WHERE id = ? AND lower(trim(email)) = ?
+    `).get(req.params.id, email);
+    if (!existing) return res.status(404).json({ message: 'Conversation not found' });
+    const access = assertTemporaryAccessible(existing);
+    if (!access.ok) {
+        return res.status(access.status).json({ code: access.code, message: access.message });
     }
-    conversation.updatedAt = now;
-    connection.write(data);
-    return res.status(200).json(await getConversationPayload(connection, email, conversation));
+    let nextMessages;
+    try {
+        nextMessages = messages
+            ? normalizeMessages(mergePersistedMessages(JSON.parse(existing.messages || '[]'), messages))
+            : undefined;
+    } catch {
+        nextMessages = messages;
+    }
+    connection.database.prepare(`
+        UPDATE conversations
+        SET title = COALESCE(?, title),
+            messages = COALESCE(?, messages),
+            updated_at = ?
+        WHERE id = ? AND lower(trim(email)) = ?
+    `).run(
+        title || null,
+        nextMessages ? JSON.stringify(nextMessages) : null,
+        now,
+        req.params.id,
+        email,
+    );
+    const updated = connection.database.prepare(`
+        SELECT id, email, model, title, messages, created_at AS createdAt, updated_at AS updatedAt,
+               COALESCE(is_temporary, 0) AS isTemporary, expires_at AS expiresAt
+        FROM conversations WHERE id = ? AND lower(trim(email)) = ?
+    `).get(req.params.id, email);
+    const payload = await getConversationPayload(connection, email, {
+        ...updated,
+        messages: JSON.parse(updated.messages || '[]'),
+    });
+    return res.status(200).json(payload);
 };
 
 const deleteChat = async (req, res) => {
-    const email = req.user.email;
+    const email = String(req.user.email || '').trim().toLowerCase();
     const connection = req.app.locals.db;
     if (isPostgresConnection(connection)) {
         const changes = await deleteConversationRowAsync(connection, req.params.id, email);
         if (!changes) return res.status(404).json({ message: 'Conversation not found' });
         return res.status(200).json({ message: 'Conversation deleted successfully' });
     }
-    const data = connection.read();
-    const index = (data.conversations || []).findIndex((item) => item.id === req.params.id && item.email === email);
-    if (index === -1) return res.status(404).json({ message: 'Conversation not found' });
-
-    data.conversations.splice(index, 1);
-    connection.write(data);
+    const result = connection.database.prepare(
+        'DELETE FROM conversations WHERE id = ? AND lower(trim(email)) = ?',
+    ).run(req.params.id, email);
+    if (!result.changes) return res.status(404).json({ message: 'Conversation not found' });
     return res.status(200).json({ message: 'Conversation deleted successfully' });
 };
 
@@ -1737,8 +1986,47 @@ async function createChatResponseImpl(req, res) {
     const resolvedVariantId = requestedModel === 'deepseek' && variant != null ? resolveDeepSeekVariantId(variant) : variant;
     const selectedVariant = resolvedVariantId == null ? null : modelVariants[requestedModel]?.find((item) => item.id === resolvedVariantId);
     if (variant != null && !selectedVariant) return res.status(400).json({ message: 'Unknown version for the selected model.' });
-    const allowFallback = !selectedVariant && fallbackEnabled !== false;
+    const {
+        isFallbackFeatureEnabled,
+        classifyFailure,
+        mayAttemptFallback,
+        selectFallbackCandidates,
+        createFallbackTracker,
+        computeBackoffMs,
+        sleep: sleepFallback,
+        buildFallbackNotice,
+        maxFallbackAttempts,
+    } = require('../services/automaticFallback');
+    const allowFallback = isFallbackFeatureEnabled()
+        && !selectedVariant
+        && fallbackEnabled !== false;
     const userEmail = req.user.email;
+    if (conversationId) {
+        const { assertTemporaryAccessible } = require('../services/temporaryChat');
+        const connection = req.app.locals.db;
+        const ownerEmail = String(userEmail || '').trim().toLowerCase();
+        let existingConversation = null;
+        if (isPostgresConnection(connection)) {
+            existingConversation = await getConversationRowAsync(connection, conversationId, ownerEmail);
+        } else if (connection?.database) {
+            try {
+                existingConversation = connection.database.prepare(`
+                    SELECT id, email, COALESCE(is_temporary, 0) AS isTemporary, expires_at AS expiresAt
+                    FROM conversations WHERE id = ? AND lower(trim(email)) = ?
+                `).get(conversationId, ownerEmail);
+            } catch {
+                existingConversation = connection.database.prepare(
+                    'SELECT id, email FROM conversations WHERE id = ? AND lower(trim(email)) = ?',
+                ).get(conversationId, ownerEmail);
+            }
+        }
+        if (existingConversation) {
+            const access = assertTemporaryAccessible(existingConversation);
+            if (!access.ok) {
+                return res.status(access.status).json({ code: access.code, message: access.message });
+            }
+        }
+    }
     const providerModels = {
         gpt: DEFAULT_OPENROUTER_GPT(),
         claude: 'anthropic/claude-haiku-4.5',
@@ -1757,6 +2045,7 @@ async function createChatResponseImpl(req, res) {
         'gpt-oss': '@cf/openai/gpt-oss-20b',
         nemotron: 'nvidia/nemotron-3-ultra-550b-a55b:free',
         'deepseek-r1': 'deepseek/deepseek-r1-0528:free',
+        ollama: require('../services/ollama/ollamaCloudConfig').DEFAULT_OLLAMA_CLOUD_MODEL,
     };
     for (const slug of Object.keys(providerModels)) {
         providerModels[slug] = normalizeOpenRouterGatewayModel(providerModels[slug], slug);
@@ -1980,32 +2269,15 @@ async function createChatResponseImpl(req, res) {
                             return;
                         }
                         connection.database.prepare('INSERT INTO usage_events (email,model,input_tokens,output_tokens,latency_ms,fallback_used,estimated_cost,created_at) VALUES (?,?,?,?,?,?,?,?)').run(userEmail, 'ai_python', Math.ceil(latestPrompt.length / 4), Math.ceil(assistantText.length / 4), Date.now() - requestStartedAt, 0, 0, createdAt);
-                        if (temporary) return;
-                        const data = connection.read();
-                        data.conversations ||= [];
-                        const now = createdAt;
-                        const normalizedEmail = String(userEmail).trim().toLowerCase();
-                        const conversation = conversationId
-                            ? data.conversations.find((item) => item.id === conversationId && item.email === normalizedEmail)
-                            : null;
-                        const mergedMessages = conversation
-                            ? normalizeMessages(mergePersistedMessages(conversation.messages || [], savedMessages))
-                            : savedMessages;
-                        if (conversation) {
-                            conversation.messages = mergedMessages;
-                            conversation.updatedAt = now;
-                        } else {
-                            data.conversations.push({
-                                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                                email: normalizedEmail,
-                                model,
-                                title: createConversationTitle(mergedMessages),
-                                messages: mergedMessages,
-                                createdAt: now,
-                                updatedAt: now,
-                            });
-                        }
-                        connection.write(data);
+                        persistSqliteChatTurn(connection.database, {
+                            userEmail,
+                            conversationId,
+                            temporary,
+                            model,
+                            savedMessages,
+                            title: createConversationTitle(savedMessages),
+                            bumpUsage: false,
+                        });
                     } catch (e) {
                         console.error('Error recording conversation:', e);
                     }
@@ -2051,6 +2323,16 @@ async function createChatResponseImpl(req, res) {
         mapGroqHttpError,
         logGroqHttpError,
     } = require('../services/groqChat');
+    const {
+        isOllamaCloudConfigured,
+        getOllamaApiKey,
+        resolveOllamaCloudModel,
+        ollamaCloudChatCompletionsUrl,
+        mapOllamaCloudHttpError,
+        logOllamaCloudHttpError,
+        isAllowedOllamaCloudModel,
+        VERIFIED_OLLAMA_CLOUD_MODELS,
+    } = require('../services/ollama/ollamaCloudConfig');
     const directPerplexityKey = getPerplexityApiKey();
     const directGroqKey = getGroqApiKey();
     const preferGemini = process.env.PREFER_GEMINI === 'true' && Boolean(process.env.GEMINI_API_KEY?.trim());
@@ -2067,6 +2349,7 @@ async function createChatResponseImpl(req, res) {
     let isMistral = routedModel === 'mistral' && Boolean(directMistralKey);
     let isPerplexity = routedModel === 'perplexity' && Boolean(directPerplexityKey);
     let isGroq = routedModel === 'groq' && Boolean(directGroqKey) && process.env.GROQ_PROVIDER !== 'openrouter';
+    let isOllamaCloud = routedModel === 'ollama' && isOllamaCloudConfigured();
     const hasCloudflareDirect = isCloudflareWorkersAiConfigured();
     let isGptOssCf = routedModel === 'gpt-oss' && hasCloudflareDirect;
     let isCloudflare = routedModel === 'cloudflare' && hasCloudflareDirect;
@@ -2074,6 +2357,13 @@ async function createChatResponseImpl(req, res) {
         return res.status(503).json({
             message: 'GPT-OSS (Cloudflare) is not configured on the server. Set CLOUDFLARE_ACCOUNT_ID and ChatGPT_API_KEY (Cloudflare API token).',
             code: 'CLOUDFLARE_GPT_OSS_NOT_CONFIGURED',
+            configuredProviders: listConfiguredChatProviderIds(),
+        });
+    }
+    if (model === 'ollama' && !isOllamaCloudConfigured()) {
+        return res.status(503).json({
+            message: 'Ollama Cloud is not configured on this backend process. Set OLLAMA_API_KEY in backend/.env (optional OLLAMA_BASE_URL=https://ollama.com/v1), then restart the Node server so it reloads the key.',
+            code: 'OLLAMA_CLOUD_NOT_CONFIGURED',
             configuredProviders: listConfiguredChatProviderIds(),
         });
     }
@@ -2102,8 +2392,20 @@ async function createChatResponseImpl(req, res) {
         }
     }
     const cloudflareKey = getCloudflareWorkersAiToken();
-    let apiKey = isOpenRouterFree ? openRouterFreeRoute.apiKey : isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isDeepSeek ? process.env.DEEPSEEK_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isPerplexity ? directPerplexityKey : isGroq ? directGroqKey : (isGptOssCf || isCloudflare) ? cloudflareKey : gatewayKey;
-    const usesDirectProvider = Boolean(isOpenAI || isXAI || isClaude || isGemini || isDeepSeek || (isKimi && directKimiKey) || isMistral || isPerplexity || isGroq || isCloudflare || isGptOssCf);
+    let apiKey = isOpenRouterFree ? openRouterFreeRoute.apiKey : isOllamaCloud ? getOllamaApiKey() : isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isDeepSeek ? process.env.DEEPSEEK_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isPerplexity ? directPerplexityKey : isGroq ? directGroqKey : (isGptOssCf || isCloudflare) ? cloudflareKey : gatewayKey;
+    const usesDirectProvider = Boolean(isOpenAI || isXAI || isClaude || isGemini || isDeepSeek || (isKimi && directKimiKey) || isMistral || isPerplexity || isGroq || isCloudflare || isGptOssCf || isOllamaCloud);
+    let ollamaCloudModelId = isOllamaCloud
+        ? resolveOllamaCloudModel(selectedVariant)
+        : null;
+    if (isOllamaCloud && !isAllowedOllamaCloudModel(ollamaCloudModelId, VERIFIED_OLLAMA_CLOUD_MODELS)) {
+        return res.status(400).json({
+            message: 'Unknown Ollama Cloud model. Choose a verified model from the Ollama selector.',
+            code: 'OLLAMA_CLOUD_MODEL_NOT_ALLOWED',
+        });
+    }
+    if (isOllamaCloud) {
+        providerModels.ollama = ollamaCloudModelId;
+    }
     const noCrossProviderFallback = routedModel === 'gpt-oss' || isOpenRouterFreeSlug(routedModel) || geminiDirectOnly;
     if (model === 'gemini' && !isGeminiConfigured()) {
         return res.status(503).json({
@@ -2190,27 +2492,87 @@ async function createChatResponseImpl(req, res) {
     const providerInputMessages = augmentMessagesForProvider(normalizedInputMessages, languageContext.policy);
     const languageCorrelationId = String(req.headers['x-request-id'] || req.headers['x-correlation-id'] || `chat-${Date.now()}`);
     let webSourcesForResponse = [];
-    let webSearchMeta = { webSearchComplete: false, webSearchPerformed: false };
+    let webSearchMeta = { webSearchComplete: false, webSearchPerformed: false, retrievedAt: null };
     const webSearchFlag = req.body.webSearch;
     const shouldAugmentWithWeb = (webSearchFlag === true || (webSearchFlag === 'auto' && webSearchService.needsCurrentInformation(latestPrompt)))
         && !hasAttachedImage
         && req.body.responseMode !== 'file';
     let webContextBlock = '';
+    let chatSseStarted = false;
+    const ensureChatSse = () => {
+        if (chatSseStarted || res.headersSent) return chatSseStarted;
+        res.status(200);
+        res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders?.();
+        chatSseStarted = true;
+        return true;
+    };
+    const emitWebSearchProgress = (stage, extra = {}) => {
+        if (!ensureChatSse()) return;
+        webSearchService.writeSse(res, { webSearchStatus: stage, ...extra });
+    };
     if (shouldAugmentWithWeb) {
+        const webSearchAbort = new AbortController();
+        const onClientGone = () => {
+            try { webSearchAbort.abort(); } catch { /* ignore */ }
+        };
+        req.once('close', onClientGone);
         try {
-            const collected = await webSearchService.collectWebSources(latestPrompt);
+            ensureChatSse();
+            const filters = req.body.webSearchFilters && typeof req.body.webSearchFilters === 'object'
+                ? req.body.webSearchFilters
+                : {};
+            const days = Number(filters.days) > 0 ? Math.min(Number(filters.days), 365) : null;
+            const topic = String(filters.topic || '').toLowerCase() === 'news' ? 'news' : 'general';
+            const language = filters.language ? String(filters.language).slice(0, 16) : null;
+            const region = filters.region ? String(filters.region).slice(0, 32) : null;
+            const searchTimeoutMs = Math.min(Math.max(Number(process.env.WEB_SEARCH_TIMEOUT_MS) || 45000, 8000), 90000);
+            const collected = await webSearchService.collectWebSources(
+                latestPrompt,
+                (stage, extra) => emitWebSearchProgress(stage, extra),
+                {
+                    days,
+                    topic,
+                    language,
+                    region,
+                    signal: AbortSignal.any([
+                        webSearchAbort.signal,
+                        AbortSignal.timeout(searchTimeoutMs),
+                    ]),
+                },
+            );
             webSourcesForResponse = collected.sources;
             webSearchMeta = {
                 webSearchComplete: collected.webSearchComplete === true,
                 webSearchPerformed: collected.webSearchPerformed === true,
+                retrievedAt: collected.retrievedAt || new Date().toISOString(),
+                provider: collected.provider || null,
+                fromCache: Boolean(collected.fromCache),
             };
             if (webSourcesForResponse.length) {
                 const { formatSourceContextForModel, buildCitationInstructions } = require('../services/webSourceCitations');
-                webContextBlock = `\n\n${buildCitationInstructions(webSourcesForResponse.length, languageContext.resolved)}\n\nLive web search results:\n${formatSourceContextForModel(webSourcesForResponse)}\nAnswer using ONLY these citation IDs when stating facts. If unconfirmed, say so. ${languageContext.instructionBlock}`;
+                const newsHint = topic === 'news' || webSearchService.needsCurrentInformation(latestPrompt)
+                    ? '\nWhen summarizing news: distinguish confirmed facts vs uncertain claims, cite sources with [n], never invent headlines or URLs, and note when publication dates are missing.'
+                    : '';
+                webContextBlock = `\n\n${buildCitationInstructions(webSourcesForResponse.length, languageContext.resolved)}${newsHint}\n\nLive web search results (retrievedAt=${webSearchMeta.retrievedAt}):\n${formatSourceContextForModel(webSourcesForResponse)}\nAnswer using ONLY these citation IDs when stating facts. If unconfirmed, say so. ${languageContext.instructionBlock}`;
             }
+            emitWebSearchProgress('generating', {
+                count: webSourcesForResponse.length,
+                retrievedAt: webSearchMeta.retrievedAt,
+            });
         } catch (webError) {
             console.error('[CHAT WEB SEARCH]', webError.message);
-            webSearchMeta = { webSearchComplete: false, webSearchPerformed: false };
+            webSearchMeta = { webSearchComplete: false, webSearchPerformed: false, retrievedAt: null };
+            if (chatSseStarted && !webSearchAbort.signal.aborted) {
+                emitWebSearchProgress('search_unavailable', {
+                    message: 'Live web search failed. Answering without fresh web results.',
+                });
+            }
+        } finally {
+            req.off('close', onClientGone);
         }
     }
     const { classifyChatIntent } = require('../services/chatIntent');
@@ -2385,13 +2747,14 @@ async function createChatResponseImpl(req, res) {
         };
         let openRouterAttempted = false;
         const initialUsesOpenRouter = !isOpenRouterFree && !isGptOssCf && !isOpenAI && !isXAI && !isClaude && !isGemini && !isDeepSeek
-            && !(isKimi && directKimiKey) && !isMistral && !isPerplexity && !isGroq && !isCloudflare;
+            && !(isKimi && directKimiKey) && !isMistral && !isPerplexity && !isGroq && !isCloudflare && !isOllamaCloud;
         if (initialUsesOpenRouter) openRouterAttempted = true;
         const grokDirectModelId = isXAI ? resolveGrokDirectModel(selectedVariant) : null;
-        let apiResponse = await fetchProvider(isOpenRouterFree ? OPENROUTER_CHAT_COMPLETIONS_URL : isGptOssCf ? gptOssCompletionsUrl : isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? XAI_CHAT_COMPLETIONS_URL : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isDeepSeek ? 'https://api.deepseek.com/chat/completions' : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isGroq ? GROQ_CHAT_COMPLETIONS_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
+        const ollamaCloudUrl = isOllamaCloud ? ollamaCloudChatCompletionsUrl() : null;
+        let apiResponse = await fetchProvider(isOpenRouterFree ? OPENROUTER_CHAT_COMPLETIONS_URL : isOllamaCloud ? ollamaCloudUrl : isGptOssCf ? gptOssCompletionsUrl : isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? XAI_CHAT_COMPLETIONS_URL : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isDeepSeek ? 'https://api.deepseek.com/chat/completions' : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isGroq ? GROQ_CHAT_COMPLETIONS_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             signal: requestSignal(),
-            headers: isOpenRouterFree || isGptOssCf || isOpenAI || isXAI || isGroq ? {
+            headers: isOpenRouterFree || isOllamaCloud || isGptOssCf || isOpenAI || isXAI || isGroq ? {
                 Authorization: `Bearer ${apiKey.trim()}`,
                 'Content-Type': 'application/json',
             } : isDeepSeek ? {
@@ -2427,6 +2790,11 @@ async function createChatResponseImpl(req, res) {
                     routedModel,
                     selectedVariant?.gateway || selectedVariant?.direct || providerModels[routedModel],
                 ),
+                stream: true,
+                max_tokens: outputTokenLimit,
+                messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
+            } : isOllamaCloud ? {
+                model: ollamaCloudModelId,
                 stream: true,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
@@ -2658,87 +3026,214 @@ async function createChatResponseImpl(req, res) {
             }
         }
 
-        // Prefer independently configured Gemini connection for failed non-Gemini provider
-        if (!apiResponse.ok && allowFallback && !noCrossProviderFallback && !isGemini && process.env.GEMINI_API_KEY?.trim()) {
-            upstreamError = await apiResponse.json().catch(() => ({}));
-            apiKey = process.env.GEMINI_API_KEY.trim();
-            isOpenAI = false;
-            isXAI = false;
-            isClaude = false;
-            isKimi = false;
-            isMistral = false;
-            isPerplexity = false;
-            isGroq = false;
-            isCloudflare = false;
-            isGptOssCf = false;
-            isOpenRouterFree = false;
-            isGemini = true;
-            apiResponse = await fetchProvider(getGeminiUrl(apiKey), {
-                method: 'POST',
-                signal: requestSignal(),
-                headers: { 'Content-Type': 'application/json' },
-                body: geminiBody(),
+        const fallbackTracker = createFallbackTracker({ requestedSlug: routedModel });
+        let fallbackFailureCategory = null;
+        if (!apiResponse.ok) {
+            const failPeek = upstreamError || {};
+            fallbackFailureCategory = classifyFailure({
+                status: apiResponse.status,
+                detail: upstreamErrorMessage(failPeek),
             });
-            fallbackUsed = apiResponse.ok;
-            fallbackModel = 'gemini';
-            if (apiResponse.ok) {
-                logSmartRouter('fallback provider', { from: routedModel, to: 'gemini', via: 'direct' });
-            }
-            if (!apiResponse.ok) upstreamError = null;
         }
-        // Gateway fallback through OpenRouter
-        if (!apiResponse.ok && allowFallback && !noCrossProviderFallback && gatewayKey?.trim()) {
+
+        // Prefer independently configured Gemini connection for failed non-Gemini provider
+        if (
+            !apiResponse.ok
+            && allowFallback
+            && !noCrossProviderFallback
+            && !isGemini
+            && process.env.GEMINI_API_KEY?.trim()
+            && mayAttemptFallback(fallbackFailureCategory)
+            && fallbackTracker.canAttempt()
+        ) {
             upstreamError = await apiResponse.json().catch(() => ({}));
-            const configuredFallbacks = String(process.env.OPENROUTER_FALLBACK_MODELS || '')
-                .split(',')
-                .map((item) => item.trim())
-                .filter(Boolean);
-            const defaultGatewayFallbacks = hasAttachedImage
-                ? ['gpt', 'gemini', 'claude']
-                : ['gpt', 'gemini', 'mistral', 'deepseek', 'llama'];
-            const gatewayFallbacks = (configuredFallbacks.length
-                ? configuredFallbacks
-                : defaultGatewayFallbacks)
-                .filter((candidate) => providerModels[candidate] && candidate !== routedModel && modelAllowed(candidate))
-                .filter((candidate) => !hasAttachedImage || isVisionCapableSlug(candidate));
-            for (const candidate of gatewayFallbacks) {
-                openRouterAttempted = true;
-                apiResponse = await fetchProvider('https://openrouter.ai/api/v1/chat/completions', {
+            fallbackFailureCategory = classifyFailure({
+                status: apiResponse.status,
+                detail: upstreamErrorMessage(upstreamError),
+            });
+            if (mayAttemptFallback(fallbackFailureCategory)) {
+                await sleepFallback(computeBackoffMs(fallbackTracker.attempts));
+                apiKey = process.env.GEMINI_API_KEY.trim();
+                isOpenAI = false;
+                isXAI = false;
+                isClaude = false;
+                isKimi = false;
+                isMistral = false;
+                isPerplexity = false;
+                isGroq = false;
+                isCloudflare = false;
+                isGptOssCf = false;
+                isOpenRouterFree = false;
+                isGemini = true;
+                apiResponse = await fetchProvider(getGeminiUrl(apiKey), {
                     method: 'POST',
                     signal: requestSignal(),
-                    headers: { Authorization: `Bearer ${gatewayKey.trim()}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: resolveOpenRouterModelId({
-                            access: creditStatus,
-                            requestedModel: model,
-                            routedModel: candidate,
-                            gatewayModel: providerModels[candidate],
-                            usesDirectProvider: false,
-                        }),
-                        stream: true,
-                        max_tokens: outputTokenLimit,
-                        messages: [{ role: 'system', content: `${systemPrompt} The requested ${routedModel} provider is temporarily unavailable; provide the best equivalent answer without mentioning the outage.` }, ...standardInput],
-                    }),
+                    headers: { 'Content-Type': 'application/json' },
+                    body: geminiBody(),
+                });
+                fallbackUsed = apiResponse.ok;
+                fallbackModel = 'gemini';
+                fallbackTracker.record({
+                    from: routedModel,
+                    to: 'gemini',
+                    category: fallbackFailureCategory,
+                    success: apiResponse.ok,
                 });
                 if (apiResponse.ok) {
-                    logSmartRouter('fallback provider', { from: routedModel, to: candidate, via: 'openrouter' });
-                    fallbackUsed = true;
-                    fallbackModel = candidate;
-                    isOpenAI = false;
-                    isXAI = false;
-                    isClaude = false;
-                    isGemini = false;
-                    isKimi = false;
-                    isMistral = false;
-                    isPerplexity = false;
-                    isGroq = false;
-                    isCloudflare = false;
-                    isGptOssCf = false;
-                    isOpenRouterFree = false;
-                    upstreamError = null;
-                    break;
+                    logSmartRouter('fallback provider', { from: routedModel, to: 'gemini', via: 'direct' });
                 }
-                upstreamError = await apiResponse.json().catch(() => ({}));
+                if (!apiResponse.ok) upstreamError = null;
+            }
+        }
+        // Cross-provider fallback (OpenRouter gateway and/or Ollama Cloud). Bounded; no auth/invalid loops.
+        if (
+            !apiResponse.ok
+            && allowFallback
+            && !noCrossProviderFallback
+            && (gatewayKey?.trim() || isOllamaCloudConfigured())
+            && mayAttemptFallback(fallbackFailureCategory || classifyFailure({
+                status: apiResponse.status,
+                detail: upstreamErrorMessage(upstreamError || {}),
+            }))
+        ) {
+            upstreamError = await apiResponse.json().catch(() => ({}));
+            fallbackFailureCategory = classifyFailure({
+                status: apiResponse.status,
+                detail: upstreamErrorMessage(upstreamError),
+            });
+            if (mayAttemptFallback(fallbackFailureCategory)) {
+                const configuredFallbacks = String(process.env.OPENROUTER_FALLBACK_MODELS || '')
+                    .split(',')
+                    .map((item) => item.trim())
+                    .filter(Boolean);
+                const defaultGatewayFallbacks = hasAttachedImage
+                    ? ['gpt', 'gemini', 'claude']
+                    : ['gpt', 'gemini', 'mistral', 'deepseek', 'llama', 'ollama'];
+                const preferredChain = (configuredFallbacks.length
+                    ? configuredFallbacks
+                    : defaultGatewayFallbacks)
+                    .filter((candidate) => {
+                        if (candidate === 'ollama') return isOllamaCloudConfigured();
+                        return providerModels[candidate] && gatewayKey?.trim();
+                    })
+                    .filter((candidate) => !hasAttachedImage || isVisionCapableSlug(candidate));
+                const routeChain = Array.isArray(routeDecision?.fallbackSlugs)
+                    ? routeDecision.fallbackSlugs
+                    : [];
+                const gatewayFallbacks = selectFallbackCandidates({
+                    requestedSlug: routedModel,
+                    preferredChain: [...routeChain, ...preferredChain],
+                    modelAllowed,
+                    visited: fallbackTracker.visited,
+                    maxAttempts: maxFallbackAttempts(),
+                });
+                for (const candidate of gatewayFallbacks) {
+                    if (!fallbackTracker.canAttempt()) break;
+                    await sleepFallback(computeBackoffMs(fallbackTracker.attempts));
+                    if (candidate === 'ollama') {
+                        const ollamaKey = getOllamaApiKey();
+                        const ollamaModel = resolveOllamaCloudModel(null);
+                        apiResponse = await fetchProvider(ollamaCloudChatCompletionsUrl(), {
+                            method: 'POST',
+                            signal: requestSignal(),
+                            headers: {
+                                Authorization: `Bearer ${ollamaKey}`,
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                model: ollamaModel,
+                                stream: true,
+                                max_tokens: outputTokenLimit,
+                                messages: [{ role: 'system', content: `${systemPrompt} The requested ${routedModel} provider is temporarily unavailable; provide the best equivalent answer without mentioning the outage. You are answering via Ollama Cloud model ${ollamaModel}.` }, ...standardInput],
+                            }),
+                        });
+                        fallbackTracker.record({
+                            from: routedModel,
+                            to: candidate,
+                            category: fallbackFailureCategory,
+                            success: apiResponse.ok,
+                        });
+                        if (apiResponse.ok) {
+                            logSmartRouter('fallback provider', {
+                                from: routedModel,
+                                to: 'ollama',
+                                via: 'ollama_cloud',
+                                actualModel: ollamaModel,
+                            });
+                            fallbackUsed = true;
+                            fallbackModel = 'ollama';
+                            providerModels.ollama = ollamaModel;
+                            ollamaCloudModelId = ollamaModel;
+                            isOllamaCloud = true;
+                            isOpenAI = false;
+                            isXAI = false;
+                            isClaude = false;
+                            isGemini = false;
+                            isKimi = false;
+                            isMistral = false;
+                            isPerplexity = false;
+                            isGroq = false;
+                            isCloudflare = false;
+                            isGptOssCf = false;
+                            isOpenRouterFree = false;
+                            upstreamError = null;
+                            break;
+                        }
+                    } else if (gatewayKey?.trim()) {
+                        openRouterAttempted = true;
+                        apiResponse = await fetchProvider('https://openrouter.ai/api/v1/chat/completions', {
+                            method: 'POST',
+                            signal: requestSignal(),
+                            headers: { Authorization: `Bearer ${gatewayKey.trim()}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                model: resolveOpenRouterModelId({
+                                    access: creditStatus,
+                                    requestedModel: model,
+                                    routedModel: candidate,
+                                    gatewayModel: providerModels[candidate],
+                                    usesDirectProvider: false,
+                                }),
+                                stream: true,
+                                max_tokens: outputTokenLimit,
+                                messages: [{ role: 'system', content: `${systemPrompt} The requested ${routedModel} provider is temporarily unavailable; provide the best equivalent answer without mentioning the outage.` }, ...standardInput],
+                            }),
+                        });
+                        fallbackTracker.record({
+                            from: routedModel,
+                            to: candidate,
+                            category: fallbackFailureCategory,
+                            success: apiResponse.ok,
+                        });
+                        if (apiResponse.ok) {
+                            logSmartRouter('fallback provider', { from: routedModel, to: candidate, via: 'openrouter' });
+                            fallbackUsed = true;
+                            fallbackModel = candidate;
+                            isOllamaCloud = false;
+                            isOpenAI = false;
+                            isXAI = false;
+                            isClaude = false;
+                            isGemini = false;
+                            isKimi = false;
+                            isMistral = false;
+                            isPerplexity = false;
+                            isGroq = false;
+                            isCloudflare = false;
+                            isGptOssCf = false;
+                            isOpenRouterFree = false;
+                            upstreamError = null;
+                            break;
+                        }
+                    } else {
+                        continue;
+                    }
+                    upstreamError = await apiResponse.json().catch(() => ({}));
+                    const nextCategory = classifyFailure({
+                        status: apiResponse.status,
+                        detail: upstreamErrorMessage(upstreamError),
+                    });
+                    if (!mayAttemptFallback(nextCategory)) break;
+                    fallbackFailureCategory = nextCategory;
+                }
             }
         }
         const onOpenRouterPath = equivalenceViaOpenRouter || openRouterAttempted || initialUsesOpenRouter;
@@ -2759,6 +3254,7 @@ async function createChatResponseImpl(req, res) {
                         equivalenceViaOpenRouter = true;
                         fallbackUsed = true;
                         fallbackModel = routedModel;
+                        isOllamaCloud = false;
                         isOpenAI = false;
                         isXAI = false;
                         isClaude = false;
@@ -2810,6 +3306,15 @@ async function createChatResponseImpl(req, res) {
                     model: resolveGroqDirectModel(selectedVariant),
                 });
             }
+            const ollamaMapped = (routedModel === 'ollama' || isOllamaCloud)
+                ? mapOllamaCloudHttpError(apiResponse.status, detail)
+                : null;
+            if (ollamaMapped) {
+                logOllamaCloudHttpError(apiResponse.status, data, {
+                    model: ollamaCloudModelId,
+                    correlationId: chatCorrelationId,
+                });
+            }
             const grokMapped = routedModel === 'grok' ? mapGrokHttpError(apiResponse.status, detail) : null;
             if (grokMapped) {
                 logGrokHttpError(apiResponse.status, data, {
@@ -2818,7 +3323,7 @@ async function createChatResponseImpl(req, res) {
                     model: grokDirectModelId || grokModel,
                 });
             }
-            const message = groqMapped?.message || grokMapped?.message || geminiMapped?.message || openRouterBillingMapped?.message || openRouterFreeMapped?.message || cloudflareMapped?.message || (billingError || (!geminiDirectOnly && apiResponse.status === 402)
+            const message = ollamaMapped?.message || groqMapped?.message || grokMapped?.message || geminiMapped?.message || openRouterBillingMapped?.message || openRouterFreeMapped?.message || cloudflareMapped?.message || (billingError || (!geminiDirectOnly && apiResponse.status === 402)
                 ? `${providerLabel} could not complete this request because the provider account has insufficient balance or quota. Add credits in the provider billing console or configure another connection for this model.`
                 : visionUpstream
                     ? 'The selected model could not analyze this image. Try Smart Router or switch to Gemini or GPT.'
@@ -2828,7 +3333,7 @@ async function createChatResponseImpl(req, res) {
                 : hasAttachedImage
                     ? 'Image analysis failed. Retry or use Smart Router with Gemini or GPT configured.'
                 : 'The selected AI service could not answer. Retry or check the model configuration.');
-            const errorCode = groqMapped?.code || grokMapped?.code || (geminiMapped ? `GEMINI_${geminiMapped.errorClass.toUpperCase()}` : (openRouterBillingMapped?.code || openRouterFreeMapped?.code || cloudflareMapped?.code || (billingError ? 'AI_BILLING'
+            const errorCode = ollamaMapped?.code || groqMapped?.code || grokMapped?.code || (geminiMapped ? `GEMINI_${geminiMapped.errorClass.toUpperCase()}` : (openRouterBillingMapped?.code || openRouterFreeMapped?.code || cloudflareMapped?.code || (billingError ? 'AI_BILLING'
                 : visionUpstream ? 'VISION_UPSTREAM'
                 : hasAttachedImage && apiResponse.status >= 500 ? 'VISION_PROVIDER_ERROR'
                 : 'AI_UPSTREAM')));
@@ -2864,7 +3369,7 @@ async function createChatResponseImpl(req, res) {
                     console.warn('[PROVIDER_HEALTH]', telemetryError.message);
                 }
             });
-            const clientStatus = groqMapped?.clientStatus || grokMapped?.clientStatus || geminiMapped?.clientStatus || openRouterBillingMapped?.clientStatus || openRouterFreeMapped?.clientStatus || cloudflareMapped?.clientStatus || mapUpstreamStatusForClient(apiResponse.status);
+            const clientStatus = ollamaMapped?.clientStatus || groqMapped?.clientStatus || grokMapped?.clientStatus || geminiMapped?.clientStatus || openRouterBillingMapped?.clientStatus || openRouterFreeMapped?.clientStatus || cloudflareMapped?.clientStatus || mapUpstreamStatusForClient(apiResponse.status);
             if (shouldReserveCredits && creditReservation) {
                 try {
                     const { releaseReservationAsync } = require('../billing/aiCreditLedger');
@@ -2876,6 +3381,16 @@ async function createChatResponseImpl(req, res) {
                 } catch (releaseError) {
                     console.warn('[AI_CREDITS] release on upstream error skipped:', releaseError.message);
                 }
+            }
+            if (chatSseStarted) {
+                webSearchService.writeSse(res, {
+                    error: message,
+                    code: errorCode,
+                    correlationId: chatCorrelationId,
+                    upstreamStatus: apiResponse.status,
+                });
+                res.write('data: [DONE]\n\n');
+                return res.end();
             }
             return res.status(clientStatus).json({
                 message,
@@ -2900,14 +3415,19 @@ async function createChatResponseImpl(req, res) {
             systemLanguageApplied: true,
             languageInstructionIncluded: providerPayloadIncludesLanguage(systemPrompt, languageContext.policy),
         });
-        res.status(200);
-        res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-        res.setHeader('Cache-Control', 'no-cache, no-transform');
-        res.setHeader('X-Accel-Buffering', 'no');
-        res.setHeader('Connection', 'keep-alive');
-        res.flushHeaders?.();
+        if (!chatSseStarted) {
+            res.status(200);
+            res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-cache, no-transform');
+            res.setHeader('X-Accel-Buffering', 'no');
+            res.setHeader('Connection', 'keep-alive');
+            res.flushHeaders?.();
+            chatSseStarted = true;
+        }
         const freeTierModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1']);
-        const resolvedActualModelId = selectedVariant
+        const resolvedActualModelId = isOllamaCloud
+            ? (ollamaCloudModelId || providerModels.ollama || resolveOllamaCloudModel(selectedVariant))
+            : selectedVariant
             ? ((isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isPerplexity || isGroq || isCloudflare || isGptOssCf)
                 ? (isPerplexity ? resolvePerplexityDirectModel(selectedVariant) : isGroq ? resolveGroqDirectModel(selectedVariant) : (isGptOssCf ? resolveGptOssModelId(selectedVariant.direct) : selectedVariant.direct))
                 : selectedVariant.gateway)
@@ -2923,10 +3443,13 @@ async function createChatResponseImpl(req, res) {
             routedModel,
             actualModelId: resolvedActualModelId,
             actualProviderModel: fallbackUsed ? fallbackModel : routedModel,
+            providerLabel: isOllamaCloud ? 'Ollama Cloud' : undefined,
             routeReason: requestedModel === 'smart' ? routeDecision.reason : requestedModel === 'anonin' ? 'Anonin Model is answering with a hidden backend provider.' : 'Exact model selected manually.',
             routeCategory: routeDecision.category,
             routeTaskType: routeDecision.taskType || routeDecision.category,
-            routeDisplayName: isOpenRouterFree ? openRouterFreeRoute.displayName : routedModel === 'gpt-oss' ? 'GPT-OSS (Cloudflare)' : routeDecision.displayName,
+            routeDisplayName: isOllamaCloud
+                ? `Ollama Cloud (${resolvedActualModelId})`
+                : isOpenRouterFree ? openRouterFreeRoute.displayName : routedModel === 'gpt-oss' ? 'GPT-OSS (Cloudflare)' : routeDecision.displayName,
             routeFallbacks: routeDecision.fallbacks || routeDecision.fallbackSlugs,
             router: routerMetaFromDecision(routeDecision, fallbackUsed),
             responseLanguage: languageContext.policy?.language,
@@ -2949,21 +3472,32 @@ async function createChatResponseImpl(req, res) {
                 autoRecovery: true,
                 requestedModel: routedModel,
                 actualModel: fallbackModel,
-                notice: `Answered with ${fallbackModel} after the preferred model was unavailable.`,
+                notice: buildFallbackNotice({
+                    requestedModel: routedModel,
+                    actualModel: fallbackModel,
+                    category: fallbackFailureCategory,
+                }),
+                fallbackEvents: typeof fallbackTracker !== 'undefined' ? fallbackTracker.events : undefined,
             })}\n\n`);
         }
         if (shouldAugmentWithWeb) {
             if (webSourcesForResponse.length) {
                 res.write(`data: ${JSON.stringify({
-                    webSources: webSearchService.mapSourcesForClient(webSourcesForResponse).map(({ citationId, rank, title, url, domain, excerpt }) => ({
+                    webSources: webSearchService.mapSourcesForClient(webSourcesForResponse, {
+                        retrievedAt: webSearchMeta.retrievedAt,
+                    }).map(({ citationId, rank, title, url, domain, excerpt, publishedDate, retrievedAt }) => ({
                         citationId,
                         rank,
                         title,
                         url,
                         domain,
                         excerpt: String(excerpt || '').slice(0, 200),
+                        publishedDate: publishedDate || null,
+                        retrievedAt: retrievedAt || webSearchMeta.retrievedAt || null,
                     })),
                     webSearchComplete: true,
+                    webSearchStatus: 'generating',
+                    retrievedAt: webSearchMeta.retrievedAt || null,
                 })}\n\n`);
             } else if (webSearchMeta.webSearchPerformed) {
                 res.write(`data: ${JSON.stringify({
@@ -3116,8 +3650,12 @@ async function createChatResponseImpl(req, res) {
                     recordRouterMetric(chatConnection, {
                         email: userEmail,
                         taskType: routeDecision.taskType || routeDecision.category,
-                        provider: routeDecision.selectedProvider || actualUsageModel,
-                        model: actualUsageModel,
+                        provider: isOllamaCloud
+                            ? 'ollama'
+                            : (routeDecision.selectedProvider || actualUsageModel),
+                        model: isOllamaCloud
+                            ? (ollamaCloudModelId || actualUsageModel)
+                            : actualUsageModel,
                         latencyMs: Date.now() - requestStartedAt,
                         success: true,
                         fallbackUsed,
@@ -3145,33 +3683,17 @@ async function createChatResponseImpl(req, res) {
                         return;
                     }
                     chatConnection.database.prepare('INSERT INTO usage_events (email,model,input_tokens,output_tokens,latency_ms,fallback_used,estimated_cost,created_at) VALUES (?,?,?,?,?,?,?,?)').run(userEmail, actualUsageModel, inputTokens, outputTokens, Date.now() - requestStartedAt, fallbackUsed ? 1 : 0, estimatedCost, createdAt);
-                    if (temporary || require('../billing/accessControl').ownerPlusActive(creditStatus)) return;
-                    const normalizedEmail = String(userEmail).trim().toLowerCase();
-                    bumpUsageCount(chatConnection.database, normalizedEmail);
-                    const data = chatConnection.read();
-                    data.conversations ||= [];
-                    const now = createdAt;
-                    const conversation = conversationId
-                        ? data.conversations.find((item) => item.id === conversationId && item.email === normalizedEmail)
-                        : null;
-                    const mergedMessages = conversation
-                        ? normalizeMessages(mergePersistedMessages(conversation.messages || [], savedMessages))
-                        : savedMessages;
-                    if (conversation) {
-                        conversation.messages = mergedMessages;
-                        conversation.updatedAt = now;
-                    } else {
-                        data.conversations.push({
-                            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                            email: normalizedEmail,
-                            model: requestedModel,
-                            title: createConversationTitle(mergedMessages),
-                            messages: mergedMessages,
-                            createdAt: now,
-                            updatedAt: now,
-                        });
-                    }
-                    chatConnection.write(data);
+                    const skipUsageBump = temporary
+                        || require('../billing/accessControl').ownerPlusActive(creditStatus);
+                    persistSqliteChatTurn(chatConnection.database, {
+                        userEmail,
+                        conversationId,
+                        temporary,
+                        model: requestedModel,
+                        savedMessages,
+                        title: createConversationTitle(savedMessages),
+                        bumpUsage: !skipUsageBump,
+                    });
                 } catch (error) {
                     console.error('[CHAT PERSISTENCE]', error.message);
                 }
@@ -3449,7 +3971,17 @@ const getUsageAnalytics = async (req, res) => {
     const connection = req.app.locals.db;
     const conversations = isPostgresConnection(connection)
         ? await listAnalyticsConversationRows(connection, email)
-        : connection.database.prepare('SELECT model, messages, created_at AS createdAt FROM conversations WHERE email = ?').all(email);
+        : (() => {
+            try {
+                return connection.database.prepare(
+                    'SELECT model, messages, created_at AS createdAt FROM conversations WHERE email = ? AND COALESCE(is_temporary, 0) = 0',
+                ).all(email);
+            } catch {
+                return connection.database.prepare(
+                    'SELECT model, messages, created_at AS createdAt FROM conversations WHERE email = ?',
+                ).all(email);
+            }
+        })();
     const byModel = {}; let messages = 0; let characters = 0; let freeConversations = 0;
     const freeModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1']);
     conversations.forEach((conversation) => { const list = JSON.parse(conversation.messages || '[]'); const model=conversation.model||'gpt'; byModel[model] = (byModel[model] || 0) + 1; if(freeModels.has(model))freeConversations+=1; messages += list.length; characters += list.reduce((sum, item) => sum + String(item.content || item.text || '').length, 0); });
@@ -3460,15 +3992,30 @@ const getUsageAnalytics = async (req, res) => {
 };
 
 const branchConversation = async (req, res) => {
-    const email = req.user.email;
+    const email = String(req.user.email || '').trim().toLowerCase();
     const connection = req.app.locals.db;
+    const { assertTemporaryAccessible, isTemporaryConversation, nowIso } = require('../services/temporaryChat');
     const source = isPostgresConnection(connection)
         ? await getConversationRowAsync(connection, req.params.id, email)
-        : connection.database.prepare('SELECT * FROM conversations WHERE id = ? AND email = ?').get(req.params.id, email);
+        : connection.database.prepare(`
+            SELECT id, email, model, title, messages, created_at AS createdAt, updated_at AS updatedAt,
+                   COALESCE(is_temporary, 0) AS isTemporary, expires_at AS expiresAt
+            FROM conversations WHERE id = ? AND lower(trim(email)) = ?
+        `).get(req.params.id, email);
     if (!source) return res.status(404).json({ message: 'Conversation not found' });
+    const access = assertTemporaryAccessible(source);
+    if (!access.ok) {
+        return res.status(access.status).json({ code: access.code, message: access.message });
+    }
+    if (isTemporaryConversation(source)) {
+        return res.status(400).json({
+            code: 'TEMPORARY_CHAT_NO_BRANCH',
+            message: 'Temporary chats cannot be branched into permanent history.',
+        });
+    }
     const messages = JSON.parse(source.messages || '[]').slice(0, Math.max(1, Number(req.body.messageCount) || 1));
     const id = `branch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const now = new Date().toISOString();
+    const now = nowIso();
     const branch = {
         id,
         email,
@@ -3477,13 +4024,15 @@ const branchConversation = async (req, res) => {
         messages,
         createdAt: now,
         updatedAt: now,
+        isTemporary: false,
+        expiresAt: null,
     };
     if (isPostgresConnection(connection)) {
         await insertConversationRowAsync(connection, branch);
     } else {
-        connection.database.prepare('INSERT INTO conversations (id, email, model, title, messages, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, email, branch.model, branch.title, JSON.stringify(messages), now, now);
+        connection.database.prepare('INSERT INTO conversations (id, email, model, title, messages, created_at, updated_at, is_temporary, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, NULL)').run(id, email, branch.model, branch.title, JSON.stringify(messages), now, now);
     }
-    return res.status(201).json({ id, email, model: branch.model, title: branch.title, messages, createdAt: now, updatedAt: now });
+    return res.status(201).json({ id, email, model: branch.model, title: branch.title, messages, createdAt: now, updatedAt: now, isTemporary: false });
 };
 
 const webResearch = async (req, res) => {
@@ -3634,14 +4183,41 @@ const webResearchAnswer = async (req, res) => {
 };
 
 const getOllamaModels = async (_req, res) => {
-    try {
-        const response = await fetch(`${process.env.OLLAMA_URL || 'http://127.0.0.1:11434'}/api/tags`);
-        if (!response.ok) throw new Error(`Ollama returned ${response.status}`);
-        const data = await response.json();
-        return res.json({ online:true, models:(data.models||[]).map((model)=>({ name:model.name, size:model.size, modifiedAt:model.modified_at })) });
-    } catch {
-        return res.status(503).json({ online:false, models:[], message:'Ollama is not running. Start Ollama on this computer to use free local models.' });
-    }
+    const ollamaCloud = require('../services/ollama/ollamaCloudConfig');
+    const cloud = await ollamaCloud.listOllamaCloudModels();
+    const ollamaAdapter = require('../services/ollama/ollamaAdapter');
+    const local = await ollamaAdapter.checkConnection();
+    const payload = {
+        cloud: {
+            online: Boolean(cloud.online),
+            configured: Boolean(cloud.configured),
+            mode: 'cloud',
+            baseUrl: ollamaCloud.getOllamaCloudBaseUrl(),
+            models: (cloud.models || []).map((model) => ({
+                name: model.id || model.name,
+                id: model.id || model.name,
+                source: model.source || 'ollama_cloud',
+                local: false,
+            })),
+            message: cloud.message || undefined,
+        },
+        local,
+        // Back-compat: prefer cloud catalog when the API key is configured.
+        online: Boolean(cloud.configured ? cloud.online : local.online),
+        models: cloud.configured
+            ? (cloud.models || []).map((model) => ({
+                name: model.id || model.name,
+                id: model.id || model.name,
+                source: 'ollama_cloud',
+                local: false,
+            }))
+            : (local.models || []),
+        message: cloud.configured
+            ? (cloud.message || undefined)
+            : (local.message || 'Set OLLAMA_API_KEY for Ollama Cloud, or run local Ollama.'),
+    };
+    const httpStatus = payload.online || cloud.configured ? 200 : (local.code === 'OLLAMA_HOST_DENIED' ? 403 : 503);
+    return res.status(httpStatus).json(payload);
 };
 
 const checkAnswerQuality = (req, res) => {
@@ -3923,36 +4499,71 @@ const removeTeamMember = async (req, res) => {
 
 const shareConversation = async (req, res) => {
     const connection = req.app.locals.db;
+    const email = String(req.user.email || '').trim().toLowerCase();
+    const {
+        assertTemporaryAccessible,
+        isTemporaryConversation,
+    } = require('../services/temporaryChat');
     const conversation = isPostgresConnection(connection)
-        ? await getConversationIdForOwnerAsync(connection, req.params.id, req.user.email)
-        : connection.database.prepare('SELECT id FROM conversations WHERE id=? AND email=?').get(req.params.id, req.user.email);
+        ? await getConversationRowAsync(connection, req.params.id, email)
+        : connection.database.prepare(`
+            SELECT id, email, COALESCE(is_temporary, 0) AS isTemporary, expires_at AS expiresAt
+            FROM conversations WHERE id=? AND lower(trim(email))=?
+        `).get(req.params.id, email);
     if (!conversation) return res.status(404).json({ message: 'Conversation not found' });
-    const conversationId = conversation.id || conversation;
+    const access = assertTemporaryAccessible(conversation);
+    if (!access.ok) {
+        return res.status(access.status).json({ code: access.code, message: access.message });
+    }
+    if (isTemporaryConversation(conversation)) {
+        return res.status(400).json({
+            code: 'TEMPORARY_CHAT_NO_SHARE',
+            message: 'Temporary chats cannot be shared.',
+        });
+    }
+    const conversationId = conversation.id;
     if (isPostgresConnection(connection)) {
         const token = await getOrCreateShareTokenAsync(
             connection,
             conversationId,
-            req.user.email,
+            email,
             crypto.randomBytes(24).toString('base64url'),
             new Date().toISOString(),
         );
         return res.json({ token, url: `${frontendOrigin(req)}/shared/${token}` });
     }
     const database = connection.database;
-    let share = database.prepare('SELECT token FROM shared_conversations WHERE conversation_id=? AND owner_email=?').get(conversationId, req.user.email);
+    let share = database.prepare('SELECT token FROM shared_conversations WHERE conversation_id=? AND owner_email=?').get(conversationId, email);
     if (!share) {
         share = { token: crypto.randomBytes(24).toString('base64url') };
-        database.prepare('INSERT INTO shared_conversations (token,conversation_id,owner_email,created_at) VALUES (?,?,?,?)').run(share.token, conversationId, req.user.email, new Date().toISOString());
+        database.prepare('INSERT INTO shared_conversations (token,conversation_id,owner_email,created_at) VALUES (?,?,?,?)').run(share.token, conversationId, email, new Date().toISOString());
     }
     return res.json({ token: share.token, url: `${frontendOrigin(req)}/shared/${share.token}` });
 };
 
 const getSharedConversation = async (req, res) => {
     const connection = req.app.locals.db;
+    const { isTemporaryConversation, isTemporaryExpired } = require('../services/temporaryChat');
     const row = isPostgresConnection(connection)
         ? await getSharedConversationByTokenAsync(connection, req.params.token)
-        : connection.database.prepare('SELECT conversations.title,conversations.model,conversations.messages,shared_conversations.created_at AS sharedAt FROM shared_conversations JOIN conversations ON conversations.id=shared_conversations.conversation_id WHERE shared_conversations.token=?').get(req.params.token);
+        : connection.database.prepare(`
+            SELECT conversations.title,
+                   conversations.model,
+                   conversations.messages,
+                   COALESCE(conversations.is_temporary, 0) AS isTemporary,
+                   conversations.expires_at AS expiresAt,
+                   shared_conversations.created_at AS sharedAt
+            FROM shared_conversations
+            JOIN conversations ON conversations.id=shared_conversations.conversation_id
+            WHERE shared_conversations.token=?
+        `).get(req.params.token);
     if (!row) return res.status(404).json({ message: 'Shared conversation not found' });
+    if (isTemporaryConversation(row) || isTemporaryExpired(row)) {
+        return res.status(410).json({
+            code: 'TEMPORARY_CHAT_EXPIRED',
+            message: 'This temporary chat has expired and is no longer available.',
+        });
+    }
     return res.json({ ...row, messages: normalizeMessages(JSON.parse(row.messages)) });
 };
 

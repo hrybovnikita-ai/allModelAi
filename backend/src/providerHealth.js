@@ -72,6 +72,12 @@ function providerCatalog() {
             keys: ['CLOUDFLARE_API_KEY', 'CLAUDEFLARE_API_KEY', 'CLOUDFLARE_API_TOKEN', 'ChatGPT_API_KEY'],
             also: ['CLOUDFLARE_ACCOUNT_ID'],
         },
+        ollama: {
+            keys: ['OLLAMA_API_KEY'],
+            modelEnv: 'OLLAMA_CLOUD_MODEL',
+            defaultModel: 'gemma4:31b',
+            also: ['OLLAMA_BASE_URL'],
+        },
         tavily: {
             keys: ['TAVILY_API_KEY'],
         },
@@ -316,7 +322,7 @@ function providerAvailabilityForRouter() {
 const { isCloudflareWorkersAiConfigured } = require('./services/cloudflareWorkersAiConfig');
 const { isOpenRouterFreeConfigured } = require('./services/openRouterFreeModels');
 
-const SMART_ROUTE_FALLBACK_ORDER = ['gemini', 'gpt-oss', 'gpt', 'deepseek', 'claude', 'mistral', 'groq', 'llama', 'perplexity', 'grok', 'cloudflare'];
+const SMART_ROUTE_FALLBACK_ORDER = ['gemini', 'gpt-oss', 'gpt', 'deepseek', 'claude', 'mistral', 'groq', 'llama', 'perplexity', 'grok', 'cloudflare', 'ollama'];
 
 function isRoutedModelAvailable(modelSlug, availability) {
     if (modelSlug === 'gpt-oss') {
@@ -330,6 +336,13 @@ function isRoutedModelAvailable(modelSlug, availability) {
     }
     if (modelSlug === 'cloudflare') {
         return Boolean(isCloudflareWorkersAiConfigured() || availability.others);
+    }
+    if (modelSlug === 'ollama') {
+        try {
+            return require('./services/ollama/ollamaCloudConfig').isOllamaCloudConfigured();
+        } catch {
+            return false;
+        }
     }
     const key = {
         gpt: 'gpt',

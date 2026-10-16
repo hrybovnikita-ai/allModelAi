@@ -117,3 +117,40 @@ test('Test 1 exact reproduction string', () => {
     const resolved = resolveResponseLanguage({ latestUserText: msg, preference: 'auto', profileLanguage: 'ukrainian' });
     assert.equal(resolved.code, 'ru');
 });
+
+test('English Fibonacci coding prompt resolves to English, not Portuguese', () => {
+    const sample = 'Write a Python function to calculate Fibonacci numbers.';
+    const resolved = resolveResponseLanguage({
+        latestUserText: sample,
+        preference: 'auto',
+        priorMessages: [{ role: 'user', content: 'Olá, como você está?' }],
+    });
+    assert.equal(resolved.code, 'en');
+    assert.notEqual(resolved.code, 'pt');
+});
+
+test('Russian and Ukrainian Fibonacci prompts keep Cyrillic languages', () => {
+    assert.equal(
+        resolveResponseLanguage({
+            latestUserText: 'Напиши функцию Python для вычисления чисел Фибоначчи.',
+            preference: 'auto',
+        }).code,
+        'ru',
+    );
+    assert.equal(
+        resolveResponseLanguage({
+            latestUserText: 'Напиши функцію Python для обчислення чисел Фібоначчі.',
+            preference: 'auto',
+        }).code,
+        'uk',
+    );
+});
+
+test('explicit Answer in Portuguese override works with Python mention', () => {
+    const resolved = resolveResponseLanguage({
+        latestUserText: 'Answer in Portuguese: Explain what Python is.',
+        preference: 'english',
+    });
+    assert.equal(resolved.code, 'pt');
+    assert.equal(resolved.source, 'explicit');
+});

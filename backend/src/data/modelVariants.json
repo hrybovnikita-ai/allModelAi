@@ -70,5 +70,14 @@
   ],
   "deepseek-r1": [
     {"id":"r1","name":"DeepSeek R1","speed":"High","description":"OpenRouter free reasoning model","gateway":"deepseek/deepseek-r1-0528:free","direct":"deepseek/deepseek-r1-0528:free"}
+  ],
+  "ollama": [
+    {"id":"gemma4-31b","name":"Gemma 4 31B","speed":"Medium","description":"Ollama Cloud — verified id gemma4:31b","gateway":"gemma4:31b","direct":"gemma4:31b"},
+    {"id":"gpt-oss-20b","name":"GPT-OSS 20B (Ollama Cloud)","speed":"Fast","description":"Ollama Cloud open-weight model — not OpenAI GPT-4.1","gateway":"gpt-oss:20b","direct":"gpt-oss:20b"},
+    {"id":"gpt-oss-120b","name":"GPT-OSS 120B (Ollama Cloud)","speed":"High","description":"Ollama Cloud open-weight model — not OpenAI GPT-4.1","gateway":"gpt-oss:120b","direct":"gpt-oss:120b"},
+    {"id":"deepseek-v4.1-flash","name":"DeepSeek V4.1 Flash","speed":"Fast","description":"Ollama Cloud — verified id deepseek-v4.1-flash","gateway":"deepseek-v4.1-flash","direct":"deepseek-v4.1-flash"},
+    {"id":"nemotron-3-nano-30b","name":"Nemotron 3 Nano 30B","speed":"Fast","description":"Ollama Cloud — verified id nemotron-3-nano:30b","gateway":"nemotron-3-nano:30b","direct":"nemotron-3-nano:30b"},
+    {"id":"glm-5.3-flash","name":"GLM 5.3 Flash","speed":"Fast","description":"Ollama Cloud — verified id glm-5.3-flash","gateway":"glm-5.3-flash","direct":"glm-5.3-flash"},
+    {"id":"mistral-large-4","name":"Mistral Large 4","speed":"High","description":"Ollama Cloud — verified id mistral-large-4","gateway":"mistral-large-4","direct":"mistral-large-4"}
   ]
 }

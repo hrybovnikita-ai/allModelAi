@@ -4,21 +4,21 @@ const subscriptionPlans = {
         amount: 0,
         interval: 'month',
         limit: 5000,
-        models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'mistral', 'groq', 'qwen', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1'],
+        models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'mistral', 'groq', 'qwen', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'ollama'],
     },
     week: {
         name: 'Weekly',
         amount: 599,
         interval: 'week',
         limit: 500,
-        models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'groq', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1'],
+        models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'groq', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'ollama'],
     },
     starter: {
         name: 'Starter Monthly',
         amount: 500,
         interval: 'month',
         limit: 800,
-        models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'mistral', 'groq', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1'],
+        models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'mistral', 'groq', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'ollama'],
     },
     common: {
         name: 'Pro Monthly',
@@ -27,7 +27,7 @@ const subscriptionPlans = {
         limit: 3000,
         models: [
             'smart', 'gemini', 'gpt', 'claude', 'llama', 'grok', 'groq', 'copilot', 'perplexity', 'kimi',
-            'deepseek', 'mistral', 'qwen', 'cohere', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1',
+            'deepseek', 'mistral', 'qwen', 'cohere', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'ollama',
         ],
     },
     plus: {

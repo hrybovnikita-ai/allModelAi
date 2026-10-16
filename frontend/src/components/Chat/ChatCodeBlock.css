@@ -68,6 +68,14 @@
   overflow-x: auto;
   font-size: 0.82rem;
   line-height: 1.55;
+  white-space: pre;
+  tab-size: 4;
+}
+
+.chat-code-block-body code {
+  display: block;
+  white-space: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Courier New', monospace;
 }
 
 .chat-code-block.code-wrapped .chat-code-block-body pre {
@@ -80,6 +88,7 @@
   display: flex;
   gap: 12px;
   padding: 0 14px 0 8px;
+  white-space: inherit;
 }
 
 .chat-code-block .code-line-number {
@@ -88,11 +97,14 @@
   user-select: none;
   color: rgba(148, 163, 184, 0.55);
   font-size: 0.75rem;
+  white-space: pre;
 }
 
 .chat-code-block .code-line-content {
   flex: 1;
   min-width: 0;
+  white-space: inherit;
+  tab-size: 4;
 }
 
 .chat-code-block.is-collapsed .chat-code-block-body {

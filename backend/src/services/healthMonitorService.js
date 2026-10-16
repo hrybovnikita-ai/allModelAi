@@ -29,7 +29,7 @@ const PUBLIC_STATUS_LABELS = {
     authentication_failed: 'Authentication Error',
     unavailable: 'Unavailable',
     not_configured: 'Not Configured',
-    configured: 'Unknown',
+    configured: 'Configured',
     unknown: 'Unknown',
 };
 
@@ -43,7 +43,10 @@ function statusExplanation(status, stale) {
     if (status === 'not_configured') {
         return 'This provider is not configured on the server.';
     }
-    if (status === 'unknown' || status === 'configured') {
+    if (status === 'configured') {
+        return 'Provider credentials are present. Waiting for recent successful traffic to confirm availability.';
+    }
+    if (status === 'unknown') {
         return 'Not enough recent activity to determine provider health.';
     }
     if (stale) {
@@ -153,10 +156,12 @@ async function buildModelHealthRows(connection, { windowMs = WINDOW_MS['1h'] } =
         const passive = passiveStatusForProvider(providerId, configured);
         let status = 'unknown';
         if (!configured) status = 'not_configured';
-        else if (routerRow?.total >= 3) {
-            const failRate = routerRow.failures / routerRow.total;
-            if (failRate > 0.5) status = 'unavailable';
-            else if (failRate > 0.15) status = 'degraded';
+        else if (routerRow?.total >= 1) {
+            const failRate = routerRow.failures / Math.max(1, routerRow.total);
+            if (failRate > 0.5 && routerRow.total >= 3) status = 'unavailable';
+            else if (failRate > 0.15 && routerRow.total >= 3) status = 'degraded';
+            else if ((routerRow.failures || 0) === 0) status = 'operational';
+            else if (failRate > 0.5) status = 'degraded';
             else status = 'operational';
         } else if (passive.operationalStatus && passive.operationalStatus !== 'unknown') {
             status = passive.operationalStatus === 'available' ? 'operational' : passive.operationalStatus;

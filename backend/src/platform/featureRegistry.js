@@ -67,6 +67,56 @@ const PLATFORM_FEATURES = Object.freeze([
         defaultEnabled: false,
         ownerPreviewOnly: true,
     },
+    {
+        id: 'ai_fallback',
+        name: 'Automatic AI Fallback',
+        phase: 2,
+        description: 'Opt-in provider/model fallback on timeout, rate limit, or outage.',
+        envFlag: 'FEATURE_AI_FALLBACK',
+        defaultEnabled: true,
+        existingImplementation: 'partial',
+    },
+    {
+        id: 'ai_file_manager',
+        name: 'AI File Manager',
+        phase: 3,
+        description: 'Secure document upload, extraction, and grounded Q&A.',
+        envFlag: 'FEATURE_AI_FILE_MANAGER',
+        defaultEnabled: false,
+    },
+    {
+        id: 'ai_workflows',
+        name: 'AI Workflow Builder',
+        phase: 4,
+        description: 'Multi-step visual AI workflows with budgets and cancellation.',
+        envFlag: 'FEATURE_AI_WORKFLOWS',
+        defaultEnabled: false,
+    },
+    {
+        id: 'ai_evaluation_lab',
+        name: 'AI Evaluation Lab',
+        phase: 5,
+        description: 'Comparable model evaluation datasets and result export.',
+        envFlag: 'FEATURE_AI_EVALUATION_LAB',
+        defaultEnabled: false,
+        ownerPreviewOnly: true,
+    },
+    {
+        id: 'ollama_local',
+        name: 'Local Ollama Models',
+        phase: 6,
+        description: 'Allowlisted local/desktop Ollama models via secure adapter.',
+        envFlag: 'FEATURE_OLLAMA_LOCAL',
+        defaultEnabled: false,
+    },
+    {
+        id: 'billing_live_checkout',
+        name: 'Live Subscription Checkout',
+        phase: 7,
+        description: 'Enable live payment checkout when provider credentials are verified.',
+        envFlag: 'FEATURE_BILLING_LIVE_CHECKOUT',
+        defaultEnabled: false,
+    },
 ]);
 
 const JOB_TYPES = Object.freeze({
@@ -77,6 +127,9 @@ const JOB_TYPES = Object.freeze({
     video_stitch: { featureId: 'video_studio', label: 'Video stitch (FFmpeg)' },
     code_run: { featureId: 'code_executor', label: 'Python sandbox run' },
     agent_task: { featureId: 'agent_tasks', label: 'Agent task run' },
+    file_index: { featureId: 'ai_file_manager', label: 'AI file indexing' },
+    workflow_run: { featureId: 'ai_workflows', label: 'AI workflow run' },
+    evaluation_run: { featureId: 'ai_evaluation_lab', label: 'AI evaluation run' },
 });
 
 function parseEnvBoolean(name, defaultValue) {

@@ -109,6 +109,8 @@ const {
 } = require('../controllers/wayforpayController');
 const { createPaddleCheckout, getPaddlePublicConfig } = require('../controllers/paddleController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { createUserRateLimitMiddleware } = require('../security/apiRateLimit');
+const expensiveUserRateLimit = createUserRateLimitMiddleware({ scope: 'expensive' });
 const { authAttemptRateLimit } = require('../authRateLimit');
 const { prepareAppGeneration } = require('../appGeneration');
 const { health, healthDetailed, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
@@ -123,6 +125,32 @@ const {
     reindexKnowledgeDocument,
     queryKnowledgeBase,
 } = require('../controllers/knowledgeBaseController');
+const {
+    listAiFiles,
+    uploadAiFile,
+    renameAiFile,
+    deleteAiFile,
+    askAiFiles,
+} = require('../controllers/aiFilesController');
+const {
+    listWorkflowTemplates,
+    listWorkflows,
+    saveWorkflow,
+    getWorkflow,
+    deleteWorkflow,
+    startWorkflowRun,
+    getWorkflowRun,
+    cancelWorkflowRun,
+} = require('../controllers/aiWorkflowsController');
+const {
+    listEvaluationSuites,
+    listEvaluationRuns,
+    startEvaluationRun,
+    getEvaluationRun,
+    exportEvaluationRun,
+    cancelEvaluationRun,
+} = require('../controllers/evaluationLabController');
+const { getOllamaStatus, postOllamaChat } = require('../controllers/ollamaController');
 const { postMultiAgentResearch } = require('../controllers/multiAgentResearchController');
 const {
     revealAnoninMessage,
@@ -266,18 +294,18 @@ router.get('/share/:token', getSharedConversation);
 
 router.delete('/auth/account', requireAuth, deleteAccount);
 router.post('/chat/deepseek', requireAuth, postDeepSeekChat);
-router.post('/chat', requireAuth, createChatResponse);
+router.post('/chat', requireAuth, expensiveUserRateLimit, createChatResponse);
 router.post('/apps/generate', requireAuth, prepareAppGeneration, createChatResponse);
 router.post('/chat/improve-prompt', requireAuth, improvePrompt);
-router.post('/vision/analyze', requireAuth, analyzeVision);
+router.post('/vision/analyze', requireAuth, expensiveUserRateLimit, analyzeVision);
 router.post('/router/preview', requireAuth, previewRouter);
 const { getImageGenerationStatus, getImageGenerationJob, upscaleGeneratedImage } = require('../images');
 router.get('/images/status', requireAuth, getImageGenerationStatus);
 router.get('/images/jobs/:jobId', requireAuth, getImageGenerationJob);
 router.get('/images/status/:jobId', requireAuth, getImageGenerationJob);
-router.post('/images/upscale', requireAuth, upscaleGeneratedImage);
-router.post('/images', requireAuth, generateImage);
-router.post('/images/generate', requireAuth, generateImage);
+router.post('/images/upscale', requireAuth, expensiveUserRateLimit, upscaleGeneratedImage);
+router.post('/images', requireAuth, expensiveUserRateLimit, generateImage);
+router.post('/images/generate', requireAuth, expensiveUserRateLimit, generateImage);
 const { generateVideo, getVideoGenerationStatus } = require('../videos');
 const {
     postVideoGenerate,
@@ -364,11 +392,35 @@ router.post('/knowledge/query', requireAuth, queryKnowledgeBase);
 router.post('/agents/research', requireAuth, postMultiAgentResearch);
 router.get('/analytics', requireAuth, getUsageAnalytics);
 const { postResearchClarify, getResearchConfig } = require('../controllers/deepResearchController');
-router.post('/research', requireAuth, webResearch);
-router.post('/research/clarify', requireAuth, postResearchClarify);
+router.post('/research', requireAuth, expensiveUserRateLimit, webResearch);
+router.post('/research/clarify', requireAuth, expensiveUserRateLimit, postResearchClarify);
 router.get('/research/config', requireAuth, getResearchConfig);
-router.post('/research/answer', requireAuth, webResearchAnswer);
+router.post('/research/answer', requireAuth, expensiveUserRateLimit, webResearchAnswer);
 router.get('/ollama/models', requireAuth, getOllamaModels);
+router.get('/ollama/status', requireAuth, getOllamaStatus);
+router.post('/ollama/chat', requireAuth, expensiveUserRateLimit, postOllamaChat);
+
+router.get('/ai-files', requireAuth, listAiFiles);
+router.post('/ai-files', requireAuth, expensiveUserRateLimit, uploadAiFile);
+router.patch('/ai-files/:id', requireAuth, renameAiFile);
+router.delete('/ai-files/:id', requireAuth, deleteAiFile);
+router.post('/ai-files/ask', requireAuth, expensiveUserRateLimit, askAiFiles);
+
+router.get('/workflows/templates', requireAuth, listWorkflowTemplates);
+router.get('/workflows/runs/:runId', requireAuth, getWorkflowRun);
+router.post('/workflows/runs/:runId/cancel', requireAuth, cancelWorkflowRun);
+router.get('/workflows', requireAuth, listWorkflows);
+router.post('/workflows', requireAuth, saveWorkflow);
+router.get('/workflows/:id', requireAuth, getWorkflow);
+router.delete('/workflows/:id', requireAuth, deleteWorkflow);
+router.post('/workflows/:id/run', requireAuth, expensiveUserRateLimit, startWorkflowRun);
+
+router.get('/evaluation/suites', requireAuth, listEvaluationSuites);
+router.get('/evaluation/runs', requireAuth, listEvaluationRuns);
+router.post('/evaluation/runs', requireAuth, expensiveUserRateLimit, startEvaluationRun);
+router.get('/evaluation/runs/:id', requireAuth, getEvaluationRun);
+router.get('/evaluation/runs/:id/export', requireAuth, exportEvaluationRun);
+router.post('/evaluation/runs/:id/cancel', requireAuth, cancelEvaluationRun);
 router.post('/quality/check', requireAuth, checkAnswerQuality);
 router.get('/teams', requireAuth, getTeams);
 router.post('/teams', requireAuth, createTeam);

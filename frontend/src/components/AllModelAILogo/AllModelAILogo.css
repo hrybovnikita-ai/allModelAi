@@ -18,6 +18,9 @@
 
 .allmodelai-logo-text {
   font: inherit;
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: -0.03em;
   color: inherit;
 }
 

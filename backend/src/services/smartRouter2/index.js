@@ -49,7 +49,7 @@ function scoreSlugForTask(slug, taskType, preferSpeed) {
 
 function pickBestSlug(taskType, preferSpeed, modelAllowed, performanceMap = {}) {
     const preferred = TASK_PICKS[taskType]?.slug || 'gemini';
-    if (modelAllowed(preferred) && findRoutedModelWithApiKey(preferred, modelAllowed)) {
+    if (modelAllowed(preferred) && findRoutedModelWithApiKey(preferred, modelAllowed) === preferred) {
         return preferred;
     }
     const candidates = Object.keys(require('./capabilities').MODEL_CAPABILITIES);
@@ -62,7 +62,7 @@ function pickBestSlug(taskType, preferSpeed, modelAllowed, performanceMap = {}) 
         let score = scoreSlugForTask(slug, taskType, preferSpeed);
         score += performanceBoost(slug, performanceMap);
         score += healthPenaltyForSlug(slug);
-        if (score > bestScore && findRoutedModelWithApiKey(slug, modelAllowed)) {
+        if (score > bestScore && findRoutedModelWithApiKey(slug, modelAllowed) === slug) {
             bestScore = score;
             best = slug;
         }
@@ -122,7 +122,7 @@ function selectSmartRoute(prompt, options = {}) {
     } else {
         const available = findRoutedModelWithApiKey(slug, modelAllowed);
         fallbacks = defaultFallbackChain(slug)
-            .filter((candidate) => modelAllowed(candidate) && findRoutedModelWithApiKey(candidate, modelAllowed))
+            .filter((candidate) => modelAllowed(candidate) && findRoutedModelWithApiKey(candidate, modelAllowed) === candidate)
             .slice(0, 4);
 
         if (available && available !== slug) {
@@ -133,6 +133,9 @@ function selectSmartRoute(prompt, options = {}) {
             reason = `${reason} (switched to ${displayModelName(slug)}.)`;
         }
     }
+
+    // Resolution can promote an alternative to the primary route.
+    fallbacks = fallbacks.filter((candidate) => candidate !== slug);
 
     const cap = getCapabilities(slug);
     const responseLanguage = resolveResponseLanguage({

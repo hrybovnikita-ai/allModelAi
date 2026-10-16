@@ -39,29 +39,31 @@ function recordRouterMetric(connection, row) {
             ).catch((err) => {
                 console.warn('[ROUTER_METRICS]', err.message);
             });
-            return;
+        } else {
+            connection.database.prepare(
+                `INSERT INTO router_metrics
+                 (email, task_type, provider, model, latency_ms, success, fallback_used, error_category, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ).run(
+                payload.email,
+                payload.taskType,
+                payload.provider,
+                payload.model,
+                payload.latencyMs,
+                payload.success,
+                payload.fallbackUsed,
+                payload.errorCategory,
+                payload.createdAt,
+            );
         }
-        connection.database.prepare(
-            `INSERT INTO router_metrics
-             (email, task_type, provider, model, latency_ms, success, fallback_used, error_category, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
-            payload.email,
-            payload.taskType,
-            payload.provider,
-            payload.model,
-            payload.latencyMs,
-            payload.success,
-            payload.fallbackUsed,
-            payload.errorCategory,
-            payload.createdAt,
-        );
     } catch (error) {
         console.warn('[ROUTER_METRICS]', error.message);
     }
 
+    // Always update in-memory provider telemetry (including Postgres), so health
+    // status moves from "configured" → "operational" after successful traffic.
     const telemetryResult = recordProviderRequest({
-        provider: row.provider,
+        provider: slugToProviderId(row.provider) || row.provider,
         success: row.success !== false,
         latencyMs: row.latencyMs,
         errorCategory: row.errorCategory,

@@ -63,6 +63,12 @@ async function startServer() {
             databaseConnected,
         });
         try {
+            const { startTemporaryChatCleanupJob } = require('./src/services/temporaryChat');
+            app.locals.temporaryChatCleanup = startTemporaryChatCleanupJob(database);
+        } catch (error) {
+            console.warn('[TEMPORARY_CHAT] cleanup job unavailable:', error.message);
+        }
+        try {
             const providerHealth = require('./src/providerHealth');
             providerHealth.logStartupConfig();
             const { warmFirebaseAdmin, isFirebaseAdminConfigured } = require('./src/firebaseAdmin');

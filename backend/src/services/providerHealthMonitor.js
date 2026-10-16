@@ -32,6 +32,7 @@ function mergeOperationalStatus({
     passive,
     probeOperational,
     routerRow,
+    telemetryRow = null,
 }) {
     if (!configured) return { status: 'not_configured', source: 'config' };
 
@@ -66,11 +67,29 @@ function mergeOperationalStatus({
         return { status: probeOperational, source: 'probe' };
     }
 
-    if (routerRow?.total >= 3) {
-        const failRate = routerRow.failures / routerRow.total;
-        if (failRate > 0.5) return { status: 'unavailable', source: 'router_metrics' };
-        if (failRate > 0.15) return { status: 'degraded', source: 'router_metrics' };
-        return { status: 'operational', source: 'router_metrics' };
+    if (routerRow?.total >= 1) {
+        const failRate = routerRow.failures / Math.max(1, routerRow.total);
+        if (failRate > 0.5 && routerRow.total >= 3) {
+            return { status: 'unavailable', source: 'router_metrics' };
+        }
+        if (failRate > 0.15 && routerRow.total >= 3) {
+            return { status: 'degraded', source: 'router_metrics' };
+        }
+        if ((routerRow.failures || 0) === 0) {
+            return { status: 'operational', source: 'router_metrics' };
+        }
+        return { status: 'degraded', source: 'router_metrics' };
+    }
+
+    // Prefer live in-memory telemetry when DB router metrics are still empty.
+    if (telemetryRow && (telemetryRow.successes || 0) > 0 && (telemetryRow.failures || 0) === 0) {
+        return { status: 'operational', source: 'telemetry' };
+    }
+    if (telemetryRow && (telemetryRow.successes || 0) > 0) {
+        const attempts = (telemetryRow.successes || 0) + (telemetryRow.failures || 0);
+        const failRate = (telemetryRow.failures || 0) / Math.max(1, attempts);
+        if (failRate > 0.5) return { status: 'degraded', source: 'telemetry' };
+        return { status: 'operational', source: 'telemetry' };
     }
 
     return { status: 'configured', source: 'config' };
@@ -84,6 +103,7 @@ function buildProviderHealthRow(id, context) {
         passive,
         probeOperational,
         routerRow,
+        telemetryRow,
     });
 
     const attempts = telemetryRow

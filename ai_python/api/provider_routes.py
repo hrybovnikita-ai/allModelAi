@@ -60,7 +60,13 @@ def register_provider_routes(app) -> None:
                     max_tokens=req.max_tokens,
                     stream=req.stream,
                 )
-            return {"ok": True, **result.to_dict()}
+            payload = {"ok": True, **result.to_dict()}
+            if getattr(result, "fallback_used", False):
+                payload["fallback_used"] = True
+                payload["requested_provider"] = getattr(result, "requested_provider", None)
+                payload["actual_provider"] = getattr(result, "actual_provider", None)
+                payload["fallback_notice"] = getattr(result, "fallback_notice", None)
+            return payload
         except ProviderError as exc:
             return {"ok": False, **exc.to_dict()}
         except Exception as exc:

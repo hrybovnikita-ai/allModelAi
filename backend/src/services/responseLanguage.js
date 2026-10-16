@@ -64,13 +64,21 @@ const PREFERENCE_TO_CODE = {
 };
 
 const LATIN_STOPWORDS = {
-    en: new Set(['the', 'and', 'you', 'your', 'me', 'my', 'need', 'teach', 'explain', 'what', 'how', 'why', 'when', 'this', 'that', 'with', 'for', 'from', 'please', 'help', 'understand', 'syntax', 'about', 'story', 'scary', 'tell']),
-    es: new Set(['el', 'la', 'los', 'las', 'de', 'que', 'por', 'para', 'como', 'necesito', 'explica', 'enseñ', 'ayuda', 'este', 'esta', 'con', 'por favor']),
-    fr: new Set(['le', 'la', 'les', 'de', 'des', 'que', 'pour', 'avec', 'comment', 'explique', 'aide', 'moi', 'ce', 'cette']),
-    de: new Set(['der', 'die', 'das', 'und', 'ich', 'du', 'mit', 'für', 'wie', 'erkläre', 'hilf', 'mir', 'bitte', 'diese', 'dieser']),
-    pl: new Set(['i', 'w', 'na', 'do', 'jak', 'proszę', 'pomóż', 'wyjaśnij', 'tego', 'tej', 'moje', 'potrzebuję', 'opowiedz', 'historię', 'straszną']),
-    it: new Set(['il', 'lo', 'la', 'gli', 'le', 'che', 'per', 'come', 'spiega', 'aiuto', 'questo', 'questa', 'con']),
-    pt: new Set(['o', 'a', 'os', 'as', 'de', 'que', 'para', 'como', 'explique', 'ajuda', 'meu', 'minha', 'preciso']),
+    // Keep tokens length >= 3 in scoring (see scoreLatinLanguage) so articles like
+    // Portuguese/Spanish "a"/"o"/"el" never flip English coding prompts to PT/ES.
+    en: new Set([
+        'the', 'and', 'you', 'your', 'need', 'teach', 'explain', 'what', 'how', 'why', 'when',
+        'this', 'that', 'with', 'for', 'from', 'please', 'help', 'understand', 'syntax', 'about',
+        'story', 'scary', 'tell', 'write', 'create', 'make', 'build', 'generate', 'implement',
+        'function', 'calculate', 'numbers', 'number', 'using', 'into', 'should', 'would', 'could',
+        'want', 'show', 'give', 'return', 'simple', 'example', 'code', 'script',
+    ]),
+    es: new Set(['los', 'las', 'que', 'por', 'para', 'como', 'necesito', 'explica', 'ayuda', 'este', 'esta', 'con', 'favor', 'escribe', 'función', 'calcular']),
+    fr: new Set(['les', 'des', 'que', 'pour', 'avec', 'comment', 'explique', 'aide', 'moi', 'cette', 'écrire', 'fonction']),
+    de: new Set(['der', 'die', 'das', 'und', 'ich', 'mit', 'für', 'wie', 'erkläre', 'hilf', 'mir', 'bitte', 'diese', 'dieser', 'schreibe', 'funktion']),
+    pl: new Set(['jak', 'proszę', 'pomóż', 'wyjaśnij', 'tego', 'tej', 'moje', 'potrzebuję', 'opowiedz', 'historię', 'straszną', 'napisz', 'funkcję', 'obliczania']),
+    it: new Set(['gli', 'che', 'per', 'come', 'spiega', 'aiuto', 'questo', 'questa', 'con', 'scrivi', 'funzione', 'calcolare']),
+    pt: new Set(['que', 'para', 'como', 'explique', 'ajuda', 'meu', 'minha', 'preciso', 'escreva', 'função', 'calcular', 'números', 'número', 'favor']),
 };
 
 const RU_TOKENS = new Set([
@@ -158,6 +166,10 @@ function scoreLatinLanguage(text) {
     const tokens = String(text || '').toLowerCase().match(/[\p{L}\p{M}']+/gu) || [];
     const scores = Object.fromEntries(Object.keys(LATIN_STOPWORDS).map((code) => [code, 0]));
     for (const token of tokens) {
+        // Ignore 1–2 letter tokens: articles/prepositions collide across Romance languages
+        // (pt "a", es "el"/"la", it "lo") and mis-route English prompts like
+        // "Write a Python function…".
+        if (token.length < 3) continue;
         for (const [code, words] of Object.entries(LATIN_STOPWORDS)) {
             if (words.has(token)) scores[code] += 1;
         }
@@ -168,6 +180,18 @@ function scoreLatinLanguage(text) {
         if (score > bestScore) {
             best = code;
             bestScore = score;
+        }
+    }
+    // English coding / imperative prompts often have few stopwords after stripping
+    // language names ("Python"). Boost clear English anchors.
+    const englishAnchors = (String(text || '').toLowerCase().match(
+        /\b(write|create|explain|calculate|function|numbers|please|help|tell|show|implement|generate|build|using|should|would|could|what|how|why|when)\b/g,
+    ) || []).length;
+    if (englishAnchors > 0) {
+        scores.en += englishAnchors;
+        if (scores.en > bestScore || (scores.en === bestScore && best !== 'en')) {
+            best = 'en';
+            bestScore = scores.en;
         }
     }
     return { code: bestScore > 0 ? best : 'en', score: bestScore };
@@ -257,10 +281,16 @@ function resolveResponseLanguage(options = {}) {
         if (isConfidentDetection(detected)) {
             return { ...detected, source: detected.source === 'explicit' ? 'explicit' : 'auto' };
         }
-        const fromContext = detectFromPriorUserMessages(priorMessages);
-        if (fromContext) return { ...fromContext, source: 'auto' };
+        // Low-confidence latest turns: prefer saved preference, then prior messages
+        // only when they share the same language code as the weak detection.
         const pref = preferenceResolution(preference) || preferenceResolution(profileLanguage);
         if (pref) return pref;
+        const fromContext = detectFromPriorUserMessages(priorMessages);
+        if (fromContext && fromContext.code === detected.code) {
+            return { ...fromContext, source: 'auto' };
+        }
+        // Keep the latest-message guess (usually English after Latin scoring)
+        // instead of silently switching to an older Portuguese/Spanish turn.
         return { ...detected, source: 'auto' };
     }
 
