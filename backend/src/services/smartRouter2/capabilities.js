@@ -10,7 +10,7 @@ const { SMART_ROUTE_FALLBACK_ORDER } = require('../../providerHealth');
 const MODEL_CAPABILITIES = {
     gpt: {
         provider: 'openai',
-        model: 'gpt-4o-mini',
+        model: 'gpt-4.1-mini',
         coding: true,
         reasoning: true,
         vision: true,
@@ -79,8 +79,8 @@ const MODEL_CAPABILITIES = {
         translation: false,
     },
     llama: {
-        provider: 'meta',
-        model: 'llama-3.3-70b-instruct',
+        provider: 'openrouter',
+        model: 'meta-llama/llama-3.3-70b-instruct',
         coding: true,
         reasoning: true,
         vision: false,
@@ -219,8 +219,8 @@ const MODEL_CAPABILITIES = {
         translation: true,
     },
     qwen: {
-        provider: 'qwen',
-        model: 'qwen-2.5-72b-instruct',
+        provider: 'openrouter',
+        model: 'qwen/qwen3-235b-a22b',
         coding: true,
         reasoning: true,
         vision: false,
@@ -233,8 +233,8 @@ const MODEL_CAPABILITIES = {
         translation: true,
     },
     cohere: {
-        provider: 'cohere',
-        model: 'command-a',
+        provider: 'openrouter',
+        model: 'cohere/command-a',
         coding: false,
         reasoning: true,
         vision: false,
@@ -270,13 +270,14 @@ function displayModelName(slug) {
     const cap = getCapabilities(slug);
     if (!cap) return slug;
     const names = {
-        gpt: 'GPT-4o mini',
+        gpt: 'GPT-4.1 Mini',
         claude: 'Claude Haiku',
         gemini: 'Gemini Flash',
         perplexity: 'Perplexity Sonar',
         deepseek: 'DeepSeek Chat',
         llama: 'Llama 3.3',
         mistral: 'Mistral Small',
+        qwen: 'Qwen3 235B',
         kimi: 'Kimi K2.5',
         grok: 'Grok',
         groq: 'Groq Llama',
@@ -285,7 +286,6 @@ function displayModelName(slug) {
         ollama: 'Ollama Cloud',
         nemotron: 'NVIDIA Nemotron 3 Ultra (Free)',
         'deepseek-r1': 'DeepSeek R1 (Free)',
-        qwen: 'Qwen 2.5',
         cohere: 'Cohere Command',
     };
     return names[slug] || cap.model;

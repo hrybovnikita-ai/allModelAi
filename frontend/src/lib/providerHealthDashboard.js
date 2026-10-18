@@ -1,9 +1,12 @@
 export const STATUS_FILTERS = [
   { id: 'all', label: 'All providers' },
-  { id: 'operational', label: 'Operational' },
-  { id: 'degraded', label: 'Degraded' },
-  { id: 'unavailable', label: 'Unavailable' },
+  { id: 'operational', label: 'Available' },
+  { id: 'degraded', label: 'Temporarily unavailable' },
+  { id: 'unavailable', label: 'Temporarily unavailable' },
   { id: 'rate limited', label: 'Rate limited' },
+  { id: 'insufficient credits', label: 'Insufficient credits' },
+  { id: 'invalid api key', label: 'Invalid API key' },
+  { id: 'unsupported model', label: 'Unsupported model' },
   { id: 'not configured', label: 'Not configured' },
 ];
 
@@ -21,8 +24,11 @@ export function filterProvidersClient(providers, { statusFilter = 'all', search 
     const map = {
       operational: ['operational'],
       degraded: ['degraded'],
-      unavailable: ['unavailable'],
-      'rate limited': ['rate_limited', 'quota_exhausted'],
+      unavailable: ['unavailable', 'degraded'],
+      'rate limited': ['rate_limited'],
+      'insufficient credits': ['quota_exhausted'],
+      'invalid api key': ['authentication_failed'],
+      'unsupported model': ['unsupported_model'],
       'not configured': ['not_configured'],
     };
     const keys = map[sf] || [sf.replace(/\s+/g, '_')];
@@ -54,8 +60,10 @@ export function statusBadgeClass(statusKey) {
   const k = String(statusKey || '').toLowerCase();
   if (k === 'operational') return 'ph-status--ok';
   if (k === 'degraded') return 'ph-status--warn';
-  if (k === 'rate_limited' || k === 'quota_exhausted') return 'ph-status--rate';
+  if (k === 'rate_limited') return 'ph-status--rate';
+  if (k === 'quota_exhausted') return 'ph-status--rate';
   if (k === 'authentication_failed') return 'ph-status--auth';
+  if (k === 'unsupported_model') return 'ph-status--warn';
   if (k === 'unavailable') return 'ph-status--bad';
   if (k === 'not_configured') return 'ph-status--muted';
   return 'ph-status--unknown';

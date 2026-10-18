@@ -31,7 +31,7 @@ test('sanitizeProviderRow hides diagnostic secrets and maps labels', () => {
         recentErrorTypes: { authentication_failed: 1 },
         staleObservation: false,
     });
-    assert.equal(row.status, 'Operational');
+    assert.equal(row.status, 'Available');
     assert.equal(row.statusKey, 'operational');
     assert.deepEqual(row.recentErrorCategories, ['authentication_failed']);
     assert.doesNotMatch(JSON.stringify(row), /sk-/);

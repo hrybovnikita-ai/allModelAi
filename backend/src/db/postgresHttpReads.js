@@ -4,13 +4,65 @@ function isPostgresConnection(connection) {
     return (connection?.engine || 'sqlite') === 'postgres';
 }
 
+function isMissingTemporaryColumnError(error) {
+    const code = String(error?.code || '');
+    const message = String(error?.message || '');
+    return code === '42703'
+        || /is_temporary|expires_at/i.test(message)
+        || /column .* does not exist/i.test(message);
+}
+
 async function listChatHistoryRows(connection, normalizedEmail, { temporaryOnly = false } = {}) {
     const pool = resolvePostgresAsyncPool(connection);
     const nowIso = new Date().toISOString();
     // Regular history never includes temporary chats.
     // Temporary list returns only unexpired temporary conversations.
-    const result = temporaryOnly
-        ? await queryPgPool(
+    try {
+        const result = temporaryOnly
+            ? await queryPgPool(
+                pool,
+                `SELECT
+                    id,
+                    email,
+                    model,
+                    title,
+                    messages,
+                    created_at AS "createdAt",
+                    updated_at AS "updatedAt",
+                    COALESCE(is_temporary, FALSE) AS "isTemporary",
+                    expires_at AS "expiresAt"
+                FROM conversations
+                WHERE lower(trim(email)) = $1
+                  AND COALESCE(is_temporary, FALSE) = TRUE
+                  AND expires_at IS NOT NULL
+                  AND expires_at > $2::timestamptz
+                ORDER BY updated_at DESC`,
+                [normalizedEmail, nowIso],
+            )
+            : await queryPgPool(
+                pool,
+                `SELECT
+                    id,
+                    email,
+                    model,
+                    title,
+                    messages,
+                    created_at AS "createdAt",
+                    updated_at AS "updatedAt",
+                    COALESCE(is_temporary, FALSE) AS "isTemporary",
+                    expires_at AS "expiresAt"
+                FROM conversations
+                WHERE lower(trim(email)) = $1
+                  AND COALESCE(is_temporary, FALSE) = FALSE
+                ORDER BY updated_at DESC`,
+                [normalizedEmail],
+            );
+        return result.rows;
+    } catch (error) {
+        if (!isMissingTemporaryColumnError(error)) throw error;
+        // Production DBs that missed migration 015 still need history/analytics to work.
+        if (temporaryOnly) return [];
+        const fallback = await queryPgPool(
             pool,
             `SELECT
                 id,
@@ -20,49 +72,42 @@ async function listChatHistoryRows(connection, normalizedEmail, { temporaryOnly 
                 messages,
                 created_at AS "createdAt",
                 updated_at AS "updatedAt",
-                COALESCE(is_temporary, FALSE) AS "isTemporary",
-                expires_at AS "expiresAt"
+                FALSE AS "isTemporary",
+                NULL AS "expiresAt"
             FROM conversations
             WHERE lower(trim(email)) = $1
-              AND COALESCE(is_temporary, FALSE) = TRUE
-              AND expires_at IS NOT NULL
-              AND expires_at > $2::timestamptz
-            ORDER BY updated_at DESC`,
-            [normalizedEmail, nowIso],
-        )
-        : await queryPgPool(
-            pool,
-            `SELECT
-                id,
-                email,
-                model,
-                title,
-                messages,
-                created_at AS "createdAt",
-                updated_at AS "updatedAt",
-                COALESCE(is_temporary, FALSE) AS "isTemporary",
-                expires_at AS "expiresAt"
-            FROM conversations
-            WHERE lower(trim(email)) = $1
-              AND COALESCE(is_temporary, FALSE) = FALSE
             ORDER BY updated_at DESC`,
             [normalizedEmail],
         );
-    return result.rows;
+        return fallback.rows;
+    }
 }
 
 async function listAnalyticsConversationRows(connection, email) {
     const pool = resolvePostgresAsyncPool(connection);
+    const normalizedEmail = String(email || '').trim().toLowerCase();
     // Exclude temporary chat content from analytics aggregates.
-    const result = await queryPgPool(
-        pool,
-        `SELECT model, messages, created_at AS "createdAt"
-         FROM conversations
-         WHERE email = $1
-           AND COALESCE(is_temporary, FALSE) = FALSE`,
-        [email],
-    );
-    return result.rows;
+    try {
+        const result = await queryPgPool(
+            pool,
+            `SELECT model, messages, created_at AS "createdAt"
+             FROM conversations
+             WHERE lower(trim(email)) = $1
+               AND COALESCE(is_temporary, FALSE) = FALSE`,
+            [normalizedEmail],
+        );
+        return result.rows;
+    } catch (error) {
+        if (!isMissingTemporaryColumnError(error)) throw error;
+        const fallback = await queryPgPool(
+            pool,
+            `SELECT model, messages, created_at AS "createdAt"
+             FROM conversations
+             WHERE lower(trim(email)) = $1`,
+            [normalizedEmail],
+        );
+        return fallback.rows;
+    }
 }
 
 async function lookupDeveloperApiKeyAsync(connection, keyHash, nowIso) {

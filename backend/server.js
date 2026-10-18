@@ -24,6 +24,7 @@ async function bootstrapPostgresSchema() {
         ensurePostgresVideoJobsAsync,
         ensurePostgresProviderHealthAsync,
         ensurePostgresAnoninRoutingAsync,
+        ensurePostgresTemporaryChatsAsync,
     } = require('./src/db/postgresSchemaBootstrap');
     try {
         const result = await ensurePostgresAiImprovementAsync(database);
@@ -49,6 +50,13 @@ async function bootstrapPostgresSchema() {
         console.log('[PG_BOOTSTRAP] anonin_routing tables', anonin.applied ? 'ready' : anonin.reason || 'skipped');
     } catch (error) {
         console.error('[PG_BOOTSTRAP] anonin routing failed:', error.code || error.name, error.message);
+    }
+    try {
+        const temporary = await ensurePostgresTemporaryChatsAsync(database);
+        console.log('[PG_BOOTSTRAP] temporary_chats columns', temporary.applied ? 'ready' : temporary.reason || 'skipped');
+    } catch (error) {
+        console.error('[PG_BOOTSTRAP] temporary chats failed:', error.code || error.name, error.message);
+        console.error('[PG_BOOTSTRAP] Run: npm run db:migrate (015_temporary_chats.sql)');
     }
 }
 

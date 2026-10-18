@@ -22,23 +22,30 @@ function parseWindow(raw) {
 }
 
 const PUBLIC_STATUS_LABELS = {
-    operational: 'Operational',
-    degraded: 'Degraded',
-    rate_limited: 'Rate Limited',
-    quota_exhausted: 'Rate Limited',
-    authentication_failed: 'Authentication Error',
-    unavailable: 'Unavailable',
-    not_configured: 'Not Configured',
+    operational: 'Available',
+    degraded: 'Temporarily unavailable',
+    rate_limited: 'Rate limited',
+    quota_exhausted: 'Insufficient credits',
+    authentication_failed: 'Invalid API key',
+    unsupported_model: 'Unsupported model',
+    unavailable: 'Temporarily unavailable',
+    not_configured: 'Not configured',
     configured: 'Configured',
     unknown: 'Unknown',
 };
 
 function statusExplanation(status, stale) {
-    if (status === 'rate_limited' || status === 'quota_exhausted') {
-        return 'Rate limit or quota reached. Requests may succeed after the provider resets your allowance.';
+    if (status === 'quota_exhausted') {
+        return 'Provider account has insufficient credits or quota. Add credits or configure a direct API key.';
+    }
+    if (status === 'rate_limited') {
+        return 'Rate limit reached. Requests may succeed after the provider resets your allowance.';
     }
     if (status === 'authentication_failed') {
-        return 'Authentication failed. Administrator configuration requires attention.';
+        return 'API key was rejected. Administrator configuration requires attention.';
+    }
+    if (status === 'unsupported_model') {
+        return 'The selected model id is not available for this provider account.';
     }
     if (status === 'not_configured') {
         return 'This provider is not configured on the server.';
@@ -247,9 +254,13 @@ function filterProviders(providers, { statusFilter, search }) {
     if (sf !== 'all') {
         const map = {
             operational: ['operational'],
+            available: ['operational'],
             degraded: ['degraded'],
-            unavailable: ['unavailable'],
-            'rate limited': ['rate_limited', 'quota_exhausted'],
+            unavailable: ['unavailable', 'degraded'],
+            'rate limited': ['rate_limited'],
+            'insufficient credits': ['quota_exhausted'],
+            'invalid api key': ['authentication_failed'],
+            'unsupported model': ['unsupported_model'],
             'not configured': ['not_configured'],
         };
         const keys = map[sf] || [sf.replace(/\s+/g, '_')];

@@ -6,8 +6,17 @@ const {
     normalizeOpenRouterGatewayModel,
 } = require('../src/services/openRouterModelMapping');
 
-test('normalizeOpenRouterGatewayModel maps GPT-4.1 mini to gpt-4o-mini on OpenRouter', () => {
-    assert.equal(normalizeOpenRouterGatewayModel('openai/gpt-4.1-mini', 'gpt'), 'openai/gpt-4o-mini');
+test('normalizeOpenRouterGatewayModel preserves GPT-4.1 mini catalog id on OpenRouter', () => {
+    assert.equal(normalizeOpenRouterGatewayModel('openai/gpt-4.1-mini', 'gpt'), 'openai/gpt-4.1-mini');
+});
+
+test('recovery candidates include gpt-4o-mini alias after GPT-4.1 mini failure', () => {
+    const list = getOpenRouterRecoveryModelCandidates({
+        primary: 'openai/gpt-4.1-mini',
+        failedModel: 'openai/gpt-4.1-mini',
+        routedModel: 'gpt',
+    });
+    assert.ok(list.includes('openai/gpt-4o-mini'));
 });
 
 test('isOpenRouterRecoverableFailure detects auth and model access errors', () => {

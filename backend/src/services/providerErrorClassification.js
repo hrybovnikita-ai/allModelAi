@@ -14,8 +14,8 @@ function slugToProviderId(slug) {
         kimi: 'kimi',
         perplexity: 'perplexity',
         deepseek: 'deepseek',
-        qwen: 'qwen',
-        cohere: 'cohere',
+        qwen: 'openrouter',
+        cohere: 'openrouter',
         cloudflare: 'cloudflare',
         'gpt-oss': 'cloudflare',
         ollama: 'ollama',
@@ -23,6 +23,7 @@ function slugToProviderId(slug) {
         nemotron: 'openrouter',
         'deepseek-r1': 'openrouter',
         llama: 'openrouter',
+        deepseek: 'deepseek',
     };
     return map[key] || key || 'unknown';
 }
@@ -74,6 +75,13 @@ function classifyProviderError({
     }
     if (status === 429) {
         return { errorClass: 'rate_limited', operationalStatus: 'rate_limited', retryable: true };
+    }
+    if (
+        status === 404
+        || ((status === 400 || status === 422)
+            && /model.*not.*found|no endpoints found|unsupported.*model|invalid model/i.test(detail))
+    ) {
+        return { errorClass: 'unsupported_model', operationalStatus: 'unsupported_model', retryable: false };
     }
     if (status === 400 || status === 422) {
         return { errorClass: 'invalid_request', operationalStatus: 'degraded', retryable: false };

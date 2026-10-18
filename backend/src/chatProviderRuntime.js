@@ -179,6 +179,7 @@ function routedModelHasApiKey(routedModel) {
         case 'perplexity':
             return Boolean(perplexityKey()) || Boolean(gateway);
         case 'deepseek':
+            return Boolean(envTrim('DEEPSEEK_API_KEY')) || Boolean(gateway);
         case 'llama':
         case 'qwen':
         case 'cohere':
@@ -187,6 +188,48 @@ function routedModelHasApiKey(routedModel) {
             return Boolean(envTrim('OLLAMA_API_KEY'));
         default:
             return Boolean(gateway);
+    }
+}
+
+/**
+ * True when this slug has no usable direct provider key and must bill OpenRouter credits.
+ * Free OpenRouter :free routes (nemotron / deepseek-r1) are treated separately.
+ */
+function slugDependsOnOpenRouterPaidCredits(routedModel) {
+    const slug = String(routedModel || '').trim().toLowerCase();
+    switch (slug) {
+        case 'llama':
+        case 'qwen':
+        case 'cohere':
+            return true;
+        case 'deepseek':
+            return !envTrim('DEEPSEEK_API_KEY');
+        case 'gpt':
+        case 'copilot':
+            return !openAiKey();
+        case 'claude':
+            return !claudeKey();
+        case 'gemini':
+            return !geminiKey();
+        case 'grok':
+            return grokProviderMode() === 'openrouter' || !xaiKey();
+        case 'groq':
+            return envTrim('GROQ_PROVIDER') === 'openrouter' || !envTrim('GROQ_API_KEY');
+        case 'mistral':
+            return !mistralKey();
+        case 'kimi':
+            return !kimiDirectKey();
+        case 'perplexity':
+            return !perplexityKey();
+        case 'cloudflare':
+            return !cloudflareDirectReady();
+        case 'gpt-oss':
+        case 'nemotron':
+        case 'deepseek-r1':
+        case 'ollama':
+            return false;
+        default:
+            return true;
     }
 }
 
@@ -256,4 +299,5 @@ module.exports = {
     openAiKey,
     openRouterKey,
     routedModelHasApiKey,
+    slugDependsOnOpenRouterPaidCredits,
 };

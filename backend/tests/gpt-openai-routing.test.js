@@ -80,10 +80,10 @@ describe('OpenRouter insufficient credits messaging', () => {
 });
 
 describe('GPT-4.1 Mini gateway mapping', () => {
-    test('maps OpenRouter gateway id for GPT-4.1 Mini', () => {
+    test('preserves OpenRouter gateway id for GPT-4.1 Mini (no silent swap)', () => {
         assert.equal(
             normalizeOpenRouterGatewayModel('openai/gpt-4.1-mini', 'gpt'),
-            'openai/gpt-4o-mini',
+            'openai/gpt-4.1-mini',
         );
     });
 });
@@ -152,7 +152,7 @@ describe('GPT chat provider selection HTTP', () => {
         assert.equal(response.body.code, 'OPENROUTER_INSUFFICIENT_CREDITS');
         assert.equal(response.body.provider, 'openrouter');
         assert.equal(response.body.requestedModel, 'gpt');
-        assert.match(String(response.body.model || ''), /openai\/gpt-4o-mini|openai\/gpt-4\.1-mini/);
+        assert.match(String(response.body.model || ''), /openai\/gpt-4\.1-mini/);
         assert.match(response.body.message, /insufficient credits/i);
         assert.match(response.body.message, /OPENAI_API_KEY|OpenAI/i);
         assert.doesNotMatch(response.body.message, /GEMINI_API_KEY/);

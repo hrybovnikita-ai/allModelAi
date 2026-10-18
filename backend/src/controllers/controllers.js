@@ -2026,7 +2026,7 @@ async function createChatResponseImpl(req, res) {
         deepseek: 'deepseek/deepseek-flash',
         llama: 'meta-llama/llama-3.3-70b-instruct',
         mistral: process.env.MISTRAL_MODEL || 'mistral-small-latest',
-        qwen: 'qwen/qwen-2.5-72b-instruct',
+        qwen: 'qwen/qwen3-235b-a22b',
         cohere: 'cohere/command-a',
         cloudflare: process.env.CLOUDFLARE_MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
         'gpt-oss': '@cf/openai/gpt-oss-20b',
@@ -3368,6 +3368,22 @@ async function createChatResponseImpl(req, res) {
                         httpStatus: apiResponse.status,
                         errorMessage: detail,
                     });
+                    if (
+                        openRouterBillingMapped
+                        || classified.errorClass === 'quota_exhausted'
+                        || classified.errorClass === 'authentication_failed'
+                        || classified.errorClass === 'unsupported_model'
+                    ) {
+                        const { markGatewayModelBlocked } = require('../services/gatewayModelHealth');
+                        markGatewayModelBlocked({
+                            gatewayModel: normalizeOpenRouterGatewayModel(
+                                providerModels[routedModel],
+                                routedModel,
+                            ),
+                            slug: routedModel,
+                            reason: classified.errorClass,
+                        });
+                    }
                 } catch (telemetryError) {
                     console.warn('[PROVIDER_HEALTH]', telemetryError.message);
                 }
@@ -3990,28 +4006,65 @@ const deleteWorkspaceItem = async (req, res) => {
 };
 
 const getUsageAnalytics = async (req, res) => {
-    const email = req.user.email;
+    const email = String(req.user?.email || '').trim().toLowerCase();
     const connection = req.app.locals.db;
-    const conversations = isPostgresConnection(connection)
-        ? await listAnalyticsConversationRows(connection, email)
-        : (() => {
+    try {
+        const conversations = isPostgresConnection(connection)
+            ? await listAnalyticsConversationRows(connection, email)
+            : (() => {
+                try {
+                    return connection.database.prepare(
+                        'SELECT model, messages, created_at AS createdAt FROM conversations WHERE lower(trim(email)) = ? AND COALESCE(is_temporary, 0) = 0',
+                    ).all(email);
+                } catch {
+                    return connection.database.prepare(
+                        'SELECT model, messages, created_at AS createdAt FROM conversations WHERE lower(trim(email)) = ?',
+                    ).all(email);
+                }
+            })();
+        const byModel = {};
+        let messages = 0;
+        let characters = 0;
+        let freeConversations = 0;
+        const freeModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1']);
+        conversations.forEach((conversation) => {
+            let list = [];
             try {
-                return connection.database.prepare(
-                    'SELECT model, messages, created_at AS createdAt FROM conversations WHERE email = ? AND COALESCE(is_temporary, 0) = 0',
-                ).all(email);
+                list = JSON.parse(conversation.messages || '[]');
             } catch {
-                return connection.database.prepare(
-                    'SELECT model, messages, created_at AS createdAt FROM conversations WHERE email = ?',
-                ).all(email);
+                list = [];
             }
-        })();
-    const byModel = {}; let messages = 0; let characters = 0; let freeConversations = 0;
-    const freeModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1']);
-    conversations.forEach((conversation) => { const list = JSON.parse(conversation.messages || '[]'); const model=conversation.model||'gpt'; byModel[model] = (byModel[model] || 0) + 1; if(freeModels.has(model))freeConversations+=1; messages += list.length; characters += list.reduce((sum, item) => sum + String(item.content || item.text || '').length, 0); });
-    const estimatedTokens = Math.ceil(characters / 4);
-    const paidRatio=conversations.length?(conversations.length-freeConversations)/conversations.length:0;
-    const estimatedCost=Number((estimatedTokens/1000000*2.4*paidRatio).toFixed(4));
-    return res.json({ conversations: conversations.length, messages, estimatedTokens, estimatedCost, estimatedSavings:Number((estimatedTokens/1000000*2.4-estimatedCost).toFixed(4)), freeConversations, paidConversations:conversations.length-freeConversations, byModel });
+            if (!Array.isArray(list)) list = [];
+            const model = conversation.model || 'gpt';
+            byModel[model] = (byModel[model] || 0) + 1;
+            if (freeModels.has(model)) freeConversations += 1;
+            messages += list.length;
+            characters += list.reduce((sum, item) => sum + String(item.content || item.text || '').length, 0);
+        });
+        const estimatedTokens = Math.ceil(characters / 4);
+        const paidRatio = conversations.length
+            ? (conversations.length - freeConversations) / conversations.length
+            : 0;
+        const estimatedCost = Number((estimatedTokens / 1000000 * 2.4 * paidRatio).toFixed(4));
+        return res.json({
+            conversations: conversations.length,
+            messages,
+            estimatedTokens,
+            estimatedCost,
+            estimatedSavings: Number((estimatedTokens / 1000000 * 2.4 - estimatedCost).toFixed(4)),
+            freeConversations,
+            paidConversations: conversations.length - freeConversations,
+            byModel,
+        });
+    } catch (error) {
+        if (process.env.NODE_ENV !== 'test') {
+            console.error('[ANALYTICS]', error.code || error.name, error.message);
+        }
+        return res.status(500).json({
+            code: 'ANALYTICS_UNAVAILABLE',
+            message: 'Could not load usage analytics. Please try again.',
+        });
+    }
 };
 
 const branchConversation = async (req, res) => {

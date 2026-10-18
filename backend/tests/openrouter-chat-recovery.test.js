@@ -62,8 +62,14 @@ test('recovers from OpenRouter model access failure via free fallback model', as
     assert.equal(response.status, 200, response.text?.slice?.(0, 300));
     assert.match(response.text, /Recovered answer/);
     assert.equal(bodies.length, 2);
-    assert.equal(bodies[0].model, 'openai/gpt-4o-mini');
+    assert.equal(bodies[0].model, 'openai/gpt-4.1-mini');
     assert.notEqual(bodies[1].model, bodies[0].model);
+    assert.ok(
+        bodies[1].model === 'openai/gpt-4o-mini'
+            || String(bodies[1].model).includes('free')
+            || bodies[1].model === 'openrouter/free',
+        `expected recovery model, got ${bodies[1].model}`,
+    );
 
     global.fetch = originalFetch;
     app.locals.db.close();

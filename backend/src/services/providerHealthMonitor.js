@@ -53,6 +53,7 @@ function mergeOperationalStatus({
             rate_limited: 'rate_limited',
             quota_exhausted: 'quota_exhausted',
             authentication_failed: 'authentication_failed',
+            unsupported_model: 'unsupported_model',
             unavailable: 'unavailable',
             unknown: 'unknown',
             configured: 'configured',

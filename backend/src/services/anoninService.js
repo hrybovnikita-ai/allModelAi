@@ -1,12 +1,23 @@
 const crypto = require('node:crypto');
 const { MODEL_CAPABILITIES, getCapabilities, displayModelName } = require('./smartRouter2/capabilities');
-const { findRoutedModelWithApiKey } = require('../chatProviderRuntime');
+const {
+    findRoutedModelWithApiKey,
+    slugDependsOnOpenRouterPaidCredits,
+} = require('../chatProviderRuntime');
 const { passiveStatusForProvider } = require('./providerRequestTelemetry');
 const { slugToProviderId } = require('./providerErrorClassification');
+const { isSlugBlockedByGatewayHealth } = require('./gatewayModelHealth');
 const {
     getConversationAssignmentAsync,
     setConversationAssignmentAsync,
 } = require('./anoninPersistence');
+
+const BAD_HEALTH = new Set([
+    'unavailable',
+    'authentication_failed',
+    'rate_limited',
+    'quota_exhausted',
+]);
 
 const ANONIN_SLUG = 'anonin';
 const DISPLAY_NAME = 'Anonin Model';
@@ -51,7 +62,28 @@ const PROVIDER_DISPLAY = {
     nvidia: 'NVIDIA',
 };
 
+const SLUG_PROVIDER_DISPLAY = {
+    qwen: 'Alibaba Cloud',
+    llama: 'Meta',
+    cohere: 'Cohere',
+    gpt: 'OpenAI',
+    copilot: 'OpenAI',
+    claude: 'Anthropic',
+    gemini: 'Google',
+    grok: 'xAI',
+    deepseek: 'DeepSeek',
+    mistral: 'Mistral AI',
+    kimi: 'Moonshot AI',
+    perplexity: 'Perplexity',
+    cloudflare: 'Cloudflare',
+    'gpt-oss': 'Cloudflare',
+    nemotron: 'NVIDIA',
+    'deepseek-r1': 'DeepSeek',
+    ollama: 'Ollama Cloud',
+};
+
 function providerLabelForSlug(slug) {
+    if (SLUG_PROVIDER_DISPLAY[slug]) return SLUG_PROVIDER_DISPLAY[slug];
     const cap = getCapabilities(slug);
     if (!cap) return 'Unknown provider';
     const pid = slugToProviderId(cap.provider) || cap.provider;
@@ -67,12 +99,21 @@ function buildIdentityLabels(slug, gatewayModelId) {
 }
 
 function isHealthExcluded(slug) {
+    if (isSlugBlockedByGatewayHealth(slug)) return true;
     const cap = getCapabilities(slug);
     if (!cap) return true;
     const providerId = slugToProviderId(cap.provider) || cap.provider;
     const passive = passiveStatusForProvider(providerId, true);
-    const status = passive?.operationalStatus;
-    return ['unavailable', 'authentication_failed', 'rate_limited', 'quota_exhausted'].includes(status);
+    if (BAD_HEALTH.has(passive?.operationalStatus)) return true;
+
+    // Gateway-only / OpenRouter-billed slugs must also respect OpenRouter health.
+    // Without this, qwen stays eligible after OpenRouter returns insufficient credits
+    // because telemetry is recorded against provider id "openrouter", not "qwen".
+    if (slugDependsOnOpenRouterPaidCredits(slug)) {
+        const openRouter = passiveStatusForProvider('openrouter', true);
+        if (BAD_HEALTH.has(openRouter?.operationalStatus)) return true;
+    }
+    return false;
 }
 
 function listEligibleAnoninSlugs(modelAllowed, { hasVision = false, skipHealth = false } = {}) {
@@ -90,19 +131,20 @@ function listEligibleAnoninSlugs(modelAllowed, { hasVision = false, skipHealth =
 /** Last-resort backend when health filters leave no eligible Anonin targets. */
 const ANONIN_EMERGENCY_SLUG_ORDER = [
     'gemini',
-    'gpt',
-    'llama',
-    'deepseek',
-    'claude',
-    'mistral',
+    'cloudflare',
+    'gpt-oss',
     'nemotron',
     'deepseek-r1',
+    'gpt',
+    'claude',
+    'mistral',
     'kimi',
     'grok',
-    'cloudflare',
+    'deepseek',
+    'perplexity',
+    'llama',
     'qwen',
     'cohere',
-    'perplexity',
 ];
 
 function pickEmergencyAnoninSlug(modelAllowed, { hasVision = false } = {}) {

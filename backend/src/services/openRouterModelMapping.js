@@ -1,14 +1,22 @@
 const { upstreamErrorMessage } = require('../modelProviderEquivalence');
 
-/** Known-good OpenRouter ids when catalog slugs are unavailable on the account. */
-const OPENROUTER_GATEWAY_ALIASES = {
+/**
+ * Compatibility aliases used ONLY after a recoverable OpenRouter failure (404 / no endpoints).
+ * Do not silently rewrite the user's selected GPT-4.1 / catalog id on the first attempt.
+ */
+const OPENROUTER_GATEWAY_RECOVERY_ALIASES = {
     'openai/gpt-4.1-mini': 'openai/gpt-4o-mini',
     'openai/gpt-4.1-nano': 'openai/gpt-4o-mini',
     'openai/gpt-4.1': 'openai/gpt-4o',
     'mistral-small-latest': 'mistralai/mistral-small-3.1-24b-instruct',
 };
 
-const DEFAULT_OPENROUTER_GPT = () => String(process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini').trim();
+/** @deprecated Use OPENROUTER_GATEWAY_RECOVERY_ALIASES — kept for test imports. */
+const OPENROUTER_GATEWAY_ALIASES = OPENROUTER_GATEWAY_RECOVERY_ALIASES;
+
+const DEFAULT_OPENROUTER_GPT = () => String(
+    process.env.OPENROUTER_MODEL || 'openai/gpt-4.1-mini',
+).trim();
 
 function normalizeOpenRouterGatewayModel(gatewayModel, routedModel = '') {
     const raw = String(gatewayModel || '').trim();
@@ -16,12 +24,21 @@ function normalizeOpenRouterGatewayModel(gatewayModel, routedModel = '') {
         if (routedModel === 'gpt' || routedModel === 'copilot') return DEFAULT_OPENROUTER_GPT();
         return raw;
     }
-    const alias = OPENROUTER_GATEWAY_ALIASES[raw.toLowerCase()] || OPENROUTER_GATEWAY_ALIASES[raw];
-    if (alias) return alias;
+    // Preserve explicit OpenAI GPT-4.1* catalog ids (no silent paid-model swap).
+    if (/^openai\/gpt-4\.1/i.test(raw)) return raw;
+    // Legacy bare Mistral ids still need a namespaced OpenRouter path.
     if (/^mistral-/i.test(raw) && !raw.includes('/')) {
-        return OPENROUTER_GATEWAY_ALIASES['mistral-small-latest'];
+        return OPENROUTER_GATEWAY_RECOVERY_ALIASES['mistral-small-latest'];
     }
     return raw;
+}
+
+function recoveryAliasForGatewayModel(gatewayModel) {
+    const raw = String(gatewayModel || '').trim();
+    if (!raw) return null;
+    return OPENROUTER_GATEWAY_RECOVERY_ALIASES[raw.toLowerCase()]
+        || OPENROUTER_GATEWAY_RECOVERY_ALIASES[raw]
+        || null;
 }
 
 function isOpenRouterRecoverableFailure(status, detail = '') {
@@ -63,6 +80,10 @@ function getOpenRouterRecoveryModelCandidates({
         ];
     const configured = parseRecoveryModelList(process.env.OPENROUTER_RECOVERY_MODELS, freeDefaults);
     const ordered = [...configured];
+    const recoveryAlias = recoveryAliasForGatewayModel(failed) || recoveryAliasForGatewayModel(normalizedPrimary);
+    if (recoveryAlias && recoveryAlias !== failed && !ordered.includes(recoveryAlias)) {
+        ordered.unshift(recoveryAlias);
+    }
     if (normalizedPrimary && normalizedPrimary !== failed && !ordered.includes(normalizedPrimary)) {
         ordered.unshift(normalizedPrimary);
     }
@@ -84,8 +105,10 @@ function logOpenRouterHttpError(status, responseData, context = {}) {
 module.exports = {
     DEFAULT_OPENROUTER_GPT,
     OPENROUTER_GATEWAY_ALIASES,
+    OPENROUTER_GATEWAY_RECOVERY_ALIASES,
     getOpenRouterRecoveryModelCandidates,
     isOpenRouterRecoverableFailure,
     logOpenRouterHttpError,
     normalizeOpenRouterGatewayModel,
+    recoveryAliasForGatewayModel,
 };
