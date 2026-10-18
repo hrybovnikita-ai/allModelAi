@@ -4,10 +4,14 @@ import { test } from 'node:test';
 import { detectTextLanguage } from '../src/lib/tts/voicePreferences.js';
 import { cleanTextForSpeech, getCuratedVoices, matchBrowserVoice } from '../src/lib/tts/ttsClient.js';
 
-test('curated voices include four male and four female profiles', () => {
+test('curated voices include male and female profiles including Kokoro', () => {
   const voices = getCuratedVoices();
-  assert.equal(voices.filter((v) => v.gender === 'male').length, 4);
-  assert.equal(voices.filter((v) => v.gender === 'female').length, 4);
+  const male = voices.filter((v) => v.gender === 'male');
+  const female = voices.filter((v) => v.gender === 'female');
+  assert.ok(male.length >= 4, `expected >= 4 male voices, got ${male.length}`);
+  assert.ok(female.length >= 4, `expected >= 4 female voices, got ${female.length}`);
+  assert.ok(voices.some((v) => v.id === 'am_michael' && v.engine === 'kokoro'));
+  assert.ok(voices.some((v) => v.id === 'af_heart' && v.engine === 'kokoro'));
 });
 
 test('frontend language detection matches EN/RU/UK heuristics', () => {
