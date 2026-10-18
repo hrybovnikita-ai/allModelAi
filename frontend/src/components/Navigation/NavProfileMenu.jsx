@@ -2,27 +2,14 @@ import { useEffect, useId, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { performLogout } from '../../lib/session';
 import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
-
-function IconSettings() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
-      <path
-        d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
+import NavSettingsIcon from './NavSettingsIcon';
 
 export default function NavProfileMenu({
   user,
   creditStatus,
   open,
   onOpenChange,
-  showSettingsShortcut = true,
+  showSettingsShortcut = false,
   renderTrigger = true,
 }) {
   const menuId = useId();
@@ -80,7 +67,7 @@ export default function NavProfileMenu({
     <div className="fg-nav-profile-wrap" ref={rootRef}>
       {showSettingsShortcut && renderTrigger ? (
         <Link to="/settings" className="fg-nav-settings-link" aria-label="Settings">
-          <IconSettings />
+          <NavSettingsIcon size={18} />
         </Link>
       ) : null}
       {renderTrigger ? (
@@ -121,7 +108,7 @@ export default function NavProfileMenu({
             </div>
           </div>
           <Link to="/settings" role="menuitem" className="fg-nav-profile-item" onClick={() => onOpenChange(false)}>
-            Profile
+            Settings
           </Link>
           <Link
             to="/settings#settings-security"
@@ -129,10 +116,10 @@ export default function NavProfileMenu({
             className="fg-nav-profile-item"
             onClick={() => onOpenChange(false)}
           >
-            Settings
+            Security
           </Link>
-          <Link to="/dashboard" role="menuitem" className="fg-nav-profile-item" onClick={() => onOpenChange(false)}>
-            Manage subscription
+          <Link to="/credits" role="menuitem" className="fg-nav-profile-item" onClick={() => onOpenChange(false)}>
+            Subscription & credits
           </Link>
           <button type="button" role="menuitem" className="fg-nav-profile-item fg-nav-profile-signout" onClick={() => { void signOut(); }}>
             Sign out

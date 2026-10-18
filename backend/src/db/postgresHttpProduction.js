@@ -266,18 +266,35 @@ async function findUserByEmailInsensitiveAsync(connection, email) {
 
 async function updateUserPasswordAsync(connection, passwordHash, { userId, email, revokeSessions = true } = {}) {
     const pool = resolvePostgresAsyncPool(connection);
+    const numericId = userId != null && Number.isFinite(Number(userId)) ? Number(userId) : null;
     let updated;
-    if (userId != null) {
+    if (numericId != null) {
         updated = await queryPgPool(
             pool,
-            'UPDATE users SET password_hash = $1 WHERE id = $2',
-            [passwordHash, userId],
+            'UPDATE users SET password_hash = $1, email_verified = 1 WHERE id = $2',
+            [passwordHash, numericId],
         );
+        // Fallback if id type/coercion missed the row — same email, never another account.
+        if (!updated.rowCount && email) {
+            const normalized = String(email).trim().toLowerCase();
+            updated = await queryPgPool(
+                pool,
+                'UPDATE users SET password_hash = $1, email_verified = 1 WHERE id = $2 AND lower(trim(email)) = $3',
+                [passwordHash, numericId, normalized],
+            );
+            if (!updated.rowCount) {
+                updated = await queryPgPool(
+                    pool,
+                    'UPDATE users SET password_hash = $1, email_verified = 1 WHERE lower(trim(email)) = $2',
+                    [passwordHash, normalized],
+                );
+            }
+        }
     } else if (email) {
         const normalized = String(email).trim().toLowerCase();
         updated = await queryPgPool(
             pool,
-            'UPDATE users SET password_hash = $1 WHERE lower(trim(email)) = $2',
+            'UPDATE users SET password_hash = $1, email_verified = 1 WHERE lower(trim(email)) = $2',
             [passwordHash, normalized],
         );
     } else {
@@ -291,7 +308,7 @@ async function updateUserPasswordAsync(connection, passwordHash, { userId, email
         throw error;
     }
     if (revokeSessions) {
-        const targetUserId = userId ?? (await findUserIdByNormalizedEmailAsync(pool, email));
+        const targetUserId = numericId ?? (await findUserIdByNormalizedEmailAsync(pool, email));
         if (targetUserId != null) {
             await queryPgPool(pool, 'DELETE FROM auth_sessions WHERE user_id = $1', [targetUserId]);
         }

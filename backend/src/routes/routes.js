@@ -115,7 +115,7 @@ const { authAttemptRateLimit } = require('../authRateLimit');
 const { prepareAppGeneration } = require('../appGeneration');
 const { health, healthDetailed, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
 const { getReady, getOpsDashboard, getOpsProviders } = require('../controllers/opsCenter');
-const { getAccountSecurity, setAccountPassword } = require('../accountPassword');
+const { getAccountSecurity, setAccountPassword, updateAccountProfile } = require('../accountPassword');
 const { getStorageOverview, listStorageIdea, createStorageIdea, deleteStorageIdea } = require('../controllers/storageIdeasController');
 const { getSubscriptionSummary, cancelTestSubscriptionHandler } = require('../controllers/subscriptionController');
 const {
@@ -241,6 +241,7 @@ router.post('/auth/register', authAttemptRateLimit('register'), registerUser);
 router.post('/auth/login', authAttemptRateLimit('login', { emailScoped: true }), logAuthStage('AUTH_ROUTE_ENTERED'), loginUser);
 router.get('/auth/account/security', requireAuth, getAccountSecurity);
 router.post('/auth/account/password', requireAuth, authAttemptRateLimit('password-enroll'), setAccountPassword);
+router.patch('/auth/account/profile', requireAuth, authAttemptRateLimit('profile-update', { limit: 30 }), updateAccountProfile);
 router.post('/auth/quick-social', quickSocialLogin);
 router.get('/auth/:provider/accounts', getSocialAccounts);
 router.post('/auth/social', socialLogin);
@@ -251,6 +252,7 @@ router.get('/auth/me', logAuthStage('SESSION_ROUTE_ENTERED'), getSession);
 router.post('/auth/logout', logout);
 router.post('/auth/password-reset/request', authAttemptRateLimit('password-reset-request', { emailScoped: true, limit: 20 }), requestPasswordReset);
 router.post('/auth/password-reset/confirm', authAttemptRateLimit('password-reset-confirm', { limit: 30 }), confirmPasswordReset);
+router.post('/auth/verify/confirm', authAttemptRateLimit('email-verify-confirm', { limit: 30 }), confirmEmailVerification);
 router.get('/status/models', logAuthStage('MODELS_STATUS_ROUTE_ENTERED'), getModelStatus);
 router.get('/health/providers', cachePublicResponse('allmodelai:public:provider-health:v2'), getHealthProviders);
 router.get('/health/summary', cachePublicResponse('allmodelai:public:health-summary:v1'), getHealthSummary);
@@ -264,6 +266,12 @@ router.get('/ready', getReady);
 router.get('/health/detailed', healthDetailed);
 router.get('/admin/ops/dashboard', requireAdmin, getOpsDashboard);
 router.get('/admin/ops/providers', requireAdmin, getOpsProviders);
+const {
+    getLiveActivationReadiness,
+    getMerchantRevenue,
+} = require('../controllers/merchantBillingController');
+router.get('/admin/payments/activation-readiness', requireAdmin, getLiveActivationReadiness);
+router.get('/admin/payments/revenue', requireAdmin, getMerchantRevenue);
 const {
     getMemorySettings,
     patchMemorySettings,
@@ -391,6 +399,8 @@ router.post('/knowledge/documents/:id/reindex', requireAuth, reindexKnowledgeDoc
 router.post('/knowledge/query', requireAuth, queryKnowledgeBase);
 router.post('/agents/research', requireAuth, postMultiAgentResearch);
 router.get('/analytics', requireAuth, getUsageAnalytics);
+
+// TTS routes live in src/routes/api/tts.js and are mounted from localApp.js at /api/tts.
 const { postResearchClarify, getResearchConfig } = require('../controllers/deepResearchController');
 router.post('/research', requireAuth, expensiveUserRateLimit, webResearch);
 router.post('/research/clarify', requireAuth, expensiveUserRateLimit, postResearchClarify);
@@ -485,8 +495,7 @@ router.get('/webhooks', requireAuth, listWebhooks);
 router.post('/webhooks', requireAuth, createWebhook);
 router.delete('/webhooks/:id', requireAuth, deleteWebhook);
 router.get('/privacy/export', requireAuth, privacyExport);
-router.post('/auth/verify/request', requireAuth, requestEmailVerification);
-router.post('/auth/verify/confirm', requireAuth, confirmEmailVerification);
+router.post('/auth/verify/request', requireAuth, authAttemptRateLimit('email-verify-request', { limit: 10 }), requestEmailVerification);
 router.get('/admin/users', requireAuth, requireAdmin, getUsers);
 router.get('/admin/users/:id', requireAuth, requireAdmin, getUserById);
 router.post('/admin/users', requireAuth, requireAdmin, createUser);

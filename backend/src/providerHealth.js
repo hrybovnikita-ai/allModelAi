@@ -326,11 +326,14 @@ function providerAvailabilityForRouter() {
 const { isCloudflareWorkersAiConfigured } = require('./services/cloudflareWorkersAiConfig');
 const { isOpenRouterFreeConfigured } = require('./services/openRouterFreeModels');
 
-const SMART_ROUTE_FALLBACK_ORDER = ['gemini', 'gpt-oss', 'nemotron', 'gpt', 'deepseek', 'claude', 'mistral', 'groq', 'llama', 'perplexity', 'grok', 'cloudflare', 'ollama'];
+const SMART_ROUTE_FALLBACK_ORDER = ['gemini', 'gpt-oss', 'gpt-oss-groq', 'nemotron', 'gpt', 'deepseek', 'claude', 'mistral', 'groq', 'llama', 'perplexity', 'grok', 'cloudflare', 'ollama'];
 
 function isRoutedModelAvailable(modelSlug, availability) {
     if (modelSlug === 'gpt-oss') {
         return isCloudflareWorkersAiConfigured();
+    }
+    if (modelSlug === 'gpt-oss-groq') {
+        return Boolean(String(process.env.GROQ_API_KEY || '').trim());
     }
     if (modelSlug === 'nemotron') {
         return isOpenRouterFreeConfigured('nemotron');
@@ -355,6 +358,7 @@ function isRoutedModelAvailable(modelSlug, availability) {
         claude: 'claude',
         grok: 'grok',
         groq: 'groq',
+        'gpt-oss-groq': 'groq',
         mistral: 'mistral',
         kimi: 'kimi',
         deepseek: 'others',

@@ -3664,7 +3664,13 @@ export default function Chat() {
                       </button>
                     </div>
                   </div>
-                  <p className="voice-panel__desc">Send speech automatically and read every AI response aloud.</p>
+                  <p className="voice-panel__desc">
+                    Send speech automatically and read every AI response aloud.
+                    {' '}
+                    <Link to="/voice-studio">Open Voice Studio</Link>
+                    {' '}
+                    for male/female voices, speed, and previews.
+                  </p>
                   <label>
                     Language
                     <select

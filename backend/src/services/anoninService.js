@@ -77,6 +77,7 @@ const SLUG_PROVIDER_DISPLAY = {
     perplexity: 'Perplexity',
     cloudflare: 'Cloudflare',
     'gpt-oss': 'Cloudflare',
+    'gpt-oss-groq': 'GroqCloud',
     nemotron: 'NVIDIA',
     'deepseek-r1': 'DeepSeek',
     ollama: 'Ollama Cloud',
@@ -91,10 +92,13 @@ function providerLabelForSlug(slug) {
 }
 
 function buildIdentityLabels(slug, gatewayModelId) {
+    // Prefer human-readable catalog names (e.g. "GPT-OSS 120B — Groq") for Reveal UI.
+    const display = displayModelName(slug);
     return {
         providerLabel: providerLabelForSlug(slug),
-        modelLabel: gatewayModelId || displayModelName(slug) || slug,
+        modelLabel: display || gatewayModelId || slug,
         actualSlug: slug,
+        gatewayModelId: gatewayModelId || null,
     };
 }
 
@@ -133,8 +137,10 @@ const ANONIN_EMERGENCY_SLUG_ORDER = [
     'gemini',
     'cloudflare',
     'gpt-oss',
+    'gpt-oss-groq',
     'nemotron',
     'deepseek-r1',
+    'groq',
     'gpt',
     'claude',
     'mistral',

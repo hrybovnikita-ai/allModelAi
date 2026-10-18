@@ -10,3 +10,8 @@ openai>=1.60.0,<2
 anthropic>=0.49.0,<1
 google-genai>=1.0.0,<2
 python-dotenv>=1.0.0,<2
+# Optional local TTS (Kokoro-82M) — free, no API keys
+kokoro>=0.9.4,<1
+soundfile>=0.12.0,<1
+misaki[en]>=0.9.4,<1
+espeakng-loader>=0.2.4,<1

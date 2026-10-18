@@ -1,4 +1,4 @@
--- Temporary chats: 72-hour server-side expiry (fixed from creation; messages do not extend).
+-- Temporary chats: 72-hour server-side expiry (fixed from creation — messages do not extend).
 
 ALTER TABLE conversations
     ADD COLUMN IF NOT EXISTS is_temporary BOOLEAN NOT NULL DEFAULT FALSE;

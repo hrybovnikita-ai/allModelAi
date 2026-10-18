@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../Navbar/Navbar';
 import HeroProviderOrbit from './HeroProviderOrbit';
 import WindowsDownloadButton from '../Download/WindowsDownloadButton';
+import { IconSendUp } from '../Chat/ComposerIcons';
 import './Header.css';
 
 export default function Header() {
@@ -49,9 +50,14 @@ export default function Header() {
           />
           <div className="hero-prompt-footer">
             <span className="hero-prompt-hint">✦ Smart Router will choose the best model</span>
-            <button type="button" className="hero-prompt-send" onClick={launch} disabled={!prompt.trim()} aria-label="Send prompt">
-              Send
-              <span className="hero-prompt-send-icon" aria-hidden="true">↑</span>
+            <button
+              type="button"
+              className="hero-prompt-send"
+              onClick={launch}
+              disabled={!prompt.trim()}
+              aria-label="Send message"
+            >
+              <IconSendUp />
             </button>
           </div>
         </div>

@@ -55,12 +55,19 @@ function mapAuthUserRow(row) {
         return null;
     }
     const passwordHash = extractPasswordHash(row);
+    const verifiedRaw = row.email_verified ?? row.emailVerified;
+    const emailVerified = verifiedRaw === true
+        || verifiedRaw === 1
+        || verifiedRaw === '1'
+        || verifiedRaw === 't'
+        || verifiedRaw === 'true';
     return {
         id: row.id,
         name: row.name,
         email: row.email,
         avatar: row.avatar ?? row.avatar_url ?? null,
         passwordHash,
+        emailVerified,
     };
 }
 

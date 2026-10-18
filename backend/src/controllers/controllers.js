@@ -27,7 +27,6 @@ const {
     safeSessionErrorCode,
 } = require('../authSessionStore');
 const { extractPasswordHash, isValidPasswordHashFormat } = require('../authPasswordHash');
-const { listSocialProvidersForUserAsync } = require('../db/postgresHttpSocial');
 const Stripe = require('stripe');
 const users = require('../data/data');
 const webSearchService = require('../services/webSearchService');
@@ -50,32 +49,23 @@ const {
 
 const sessionDuration = 1000 * 60 * 60 * 24 * 30;
 
-async function linkedAuthProviders(connection, userId) {
-    if (isPostgresConnection(connection)) {
-        return listSocialProvidersForUserAsync(connection, userId);
-    }
-    return connection.database
-        .prepare('SELECT provider FROM social_identities WHERE user_id = ?')
-        .all(userId)
-        .map((row) => row.provider);
+function authLoginDiagnosticsEnabled() {
+    return process.env.AUTH_LOGIN_DIAGNOSTICS === 'true'
+        || process.env.EXPOSE_AUTH_DIAGNOSTICS === 'true';
 }
 
 async function respondPasswordSetupRequired(req, res, user, { reason = 'PASSWORD_HASH_MISSING' } = {}) {
-    authLog('Login rejected', { reason });
-    const connection = req.app.locals.db;
-    const providers = await linkedAuthProviders(connection, user.id);
-    const linkedSocial = providers.length > 0;
-    const message = linkedSocial
-        ? 'No AllModelAI password is set for this email yet. Sign in with Google, open Settings → Security → Set password, then you can use email and password here.'
-        : 'No password is set for this account yet. Use Forgot password to create one, or continue with Google if you registered that way.';
-    return res.status(401).json({
-        code: 'PASSWORD_SETUP_REQUIRED',
-        message,
-        passwordEnabled: false,
-        enrollmentPath: '/settings#settings-security',
-        passwordResetPath: '/forgot-password',
-        providers,
-    });
+    // Same generic response as wrong password / unknown email — do not reveal
+    // whether the account exists or has an AllModelAI password hash.
+    authLog('Login rejected', { reason, userId: user?.id || null });
+    const body = {
+        code: 'INVALID_CREDENTIALS',
+        message: 'Incorrect email or password',
+    };
+    if (authLoginDiagnosticsEnabled()) {
+        body.debugReason = reason;
+    }
+    return res.status(401).json(body);
 }
 
 function nativeSessionFields(req, token) {
@@ -422,6 +412,17 @@ const saveUsers = (connection) => {
     connection.write(data);
 };
 
+function shouldRequireEmailVerificationOnRegister() {
+    // Opt-in only. Auto-enabling from Resend alone locked out legacy accounts
+    // whose email_verified defaulted to 0 after schema migration.
+    if (process.env.NODE_ENV === 'test') return false;
+    return process.env.REQUIRE_EMAIL_VERIFICATION === 'true';
+}
+
+function shouldEnforceEmailVerifiedOnLogin() {
+    return process.env.REQUIRE_EMAIL_VERIFICATION === 'true';
+}
+
 const registerUser = async (req, res) => {
     const validation = validateRegistrationInput(req.body || {});
     if (!validation.ok) {
@@ -430,10 +431,16 @@ const registerUser = async (req, res) => {
     const { name: safeName, email: normalizedEmail, password } = validation;
     const passwordHash = await hashPassword(password);
     const connection = req.app.locals.db;
+    const requireVerification = shouldRequireEmailVerificationOnRegister();
     let newUser;
     try {
         if (isPostgresConnection(connection)) {
-            newUser = await registerUserPostgresAsync(connection, { safeName, normalizedEmail, passwordHash });
+            newUser = await registerUserPostgresAsync(connection, {
+                safeName,
+                normalizedEmail,
+                passwordHash,
+                emailVerified: !requireVerification,
+            });
         } else {
             const db = connection.database;
             newUser = db.transaction(() => {
@@ -441,8 +448,9 @@ const registerUser = async (req, res) => {
                     'SELECT id, password_hash AS passwordHash FROM users WHERE lower(trim(email)) = ?',
                 ).get(normalizedEmail);
                 if (existing) return { conflict: true, existing };
-                const id = Number(db.prepare('INSERT INTO users (name, email, password_hash, email_verified) VALUES (?, ?, ?, 1)').run(safeName, normalizedEmail, passwordHash).lastInsertRowid);
-                return { id, name: safeName, email: normalizedEmail, passwordHash };
+                const verifiedFlag = requireVerification ? 0 : 1;
+                const id = Number(db.prepare('INSERT INTO users (name, email, password_hash, email_verified) VALUES (?, ?, ?, ?)').run(safeName, normalizedEmail, passwordHash, verifiedFlag).lastInsertRowid);
+                return { id, name: safeName, email: normalizedEmail, passwordHash, emailVerified: !requireVerification };
             }).immediate();
         }
     } catch (error) {
@@ -496,6 +504,63 @@ const registerUser = async (req, res) => {
             message: 'Your account could not be saved. Please try again.',
         });
     }
+
+    if (requireVerification) {
+        const secret = crypto.randomBytes(32).toString('base64url');
+        const expiresAt = Date.now() + 30 * 60 * 1000;
+        const createdAt = new Date().toISOString();
+        const { hashValue } = require('../db/postgresHttpProduction');
+        if (isPostgresConnection(connection)) {
+            const { insertAccountTokenAsync } = require('../db/postgresHttpProduction');
+            await insertAccountTokenAsync(connection, {
+                tokenHash: hashValue(secret),
+                email: normalizedEmail,
+                purpose: 'verify_email',
+                expiresAt,
+                createdAt,
+            });
+        } else {
+            connection.database.prepare(
+                'INSERT INTO account_tokens (token_hash,email,purpose,expires_at,created_at) VALUES (?,?,?,?,?)',
+            ).run(hashValue(secret), normalizedEmail, 'verify_email', expiresAt, createdAt);
+        }
+        let verificationEmail = { sent: false, reason: 'not_configured' };
+        try {
+            const { sendEmailVerificationEmail } = require('../transactionalEmail');
+            verificationEmail = await sendEmailVerificationEmail({ email: normalizedEmail, token: secret });
+        } catch {
+            verificationEmail = { sent: false, reason: 'delivery_failed' };
+        }
+        return res.status(201).json({
+            message: 'Account created. Check your email to verify ownership before signing in.',
+            needsEmailVerification: true,
+            user: publicUser({ ...newUser, emailVerified: false }),
+            verificationEmail,
+            ...(process.env.EXPOSE_ACCOUNT_TOKENS === 'true' ? { token: secret } : {}),
+        });
+    }
+
+    try {
+        if (isPostgresConnection(connection)) {
+            const { activateSubscriptionAsync } = require('../billing/subscriptionsAsync');
+            await activateSubscriptionAsync(connection, {
+                email: normalizedEmail,
+                name: safeName,
+                planKey: 'free',
+                paymentStatus: 'complimentary',
+            });
+        } else {
+            activateSubscription(connection, {
+                email: normalizedEmail,
+                name: safeName,
+                planKey: 'free',
+                paymentStatus: 'complimentary',
+            });
+        }
+    } catch (error) {
+        authLog('REGISTER_FREE_PLAN_INIT_SKIPPED', { code: error.code || 'unknown' });
+    }
+
     const sessionToken = await setSession(req, res, newUser, parseRememberMe(req.body?.rememberMe));
     let welcomeEmail = { sent: false, reason: 'not_configured' };
     try {
@@ -580,7 +645,9 @@ const loginUser = async (req, res) => {
     authLog(`LOGIN user found ${Boolean(user)}`, user ? { userId: user.id } : undefined);
     if (!user) {
         authLog('Login rejected', { reason: 'USER_NOT_FOUND' });
-        return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password' });
+        const body = { code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password' };
+        if (authLoginDiagnosticsEnabled()) body.debugReason = 'USER_NOT_FOUND';
+        return res.status(401).json(body);
     }
 
     authLog(`LOGIN passwordHash exists ${Boolean(user.passwordHash)}`);
@@ -595,12 +662,24 @@ const loginUser = async (req, res) => {
         passwordMatches = await verifyPassword(password, user.passwordHash);
     } catch (error) {
         authLog('Login rejected', { reason: 'PASSWORD_VERIFY_ERROR', code: error.code || 'unknown' });
-        return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password' });
+        const body = { code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password' };
+        if (authLoginDiagnosticsEnabled()) body.debugReason = 'PASSWORD_VERIFY_ERROR';
+        return res.status(401).json(body);
     }
     authLog(`LOGIN password verified ${passwordMatches}`);
     if (!passwordMatches) {
         authLog('Login rejected', { reason: 'PASSWORD_MISMATCH' });
-        return res.status(401).json({ code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password' });
+        const body = { code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password' };
+        if (authLoginDiagnosticsEnabled()) body.debugReason = 'PASSWORD_MISMATCH';
+        return res.status(401).json(body);
+    }
+
+    if (user.emailVerified === false && shouldEnforceEmailVerifiedOnLogin()) {
+        authLog('Login rejected', { reason: 'EMAIL_NOT_VERIFIED', userId: user.id });
+        return res.status(403).json({
+            code: 'EMAIL_NOT_VERIFIED',
+            message: 'Verify your email before signing in. Check your inbox for the verification link.',
+        });
     }
 
     try {
@@ -771,11 +850,33 @@ const getUsers = (req, res) => {
     res.status(200).json(users.map(publicUser));
 };
 
+const INTERNAL_COMMUNITY_NAME_PATTERNS = [
+    /^tester$/i,
+    /^video\s*tester$/i,
+    /^claude\s*repro$/i,
+    /^route\s*check$/i,
+    /^probe\s*check$/i,
+    /^mh\s*(auth|video)$/i,
+    /^test(er|ing|user)?\b/i,
+    /^automation\b/i,
+    /^e2e\b/i,
+    /^ci\b/i,
+];
+
+function isPublicCommunityDisplayName(name) {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return false;
+    return !INTERNAL_COMMUNITY_NAME_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
 function mapPublicCommunityUser(row) {
     if (!row || row.id == null) {
         return null;
     }
     const name = String(row.name || '').trim();
+    if (!isPublicCommunityDisplayName(name)) {
+        return null;
+    }
     return {
         id: row.id,
         name: name || 'AllModelAI member',
@@ -1736,13 +1837,48 @@ const stripeWebhook = async (req, res) => {
             } else {
                 connection.database.prepare("UPDATE subscription_details SET status = 'canceled', updated_at = ? WHERE stripe_subscription_id = ?").run(updatedAt, String(event.data.object.id));
             }
+        } else if (event.type === 'invoice.paid') {
+            const invoice = event.data.object;
+            const subId = invoice.subscription;
+            const email = String(invoice.customer_email || invoice.metadata?.email || '').toLowerCase();
+            const planKey = normalizePlanKey(invoice.subscription_details?.metadata?.plan
+                || invoice.lines?.data?.[0]?.metadata?.plan
+                || invoice.metadata?.plan);
+            if (email && subscriptionPlans[planKey] && subId) {
+                const payload = {
+                    email,
+                    name: invoice.customer_name || 'Subscriber',
+                    planKey,
+                    stripeCustomerId: invoice.customer,
+                    stripeSubscriptionId: String(subId),
+                    paymentProvider: 'stripe',
+                    orderReference: String(invoice.id || subId),
+                    paymentStatus: isStripeTestMode() ? 'test_paid' : 'paid',
+                    isTestPayment: isStripeTestMode(),
+                };
+                if (isPostgresConnection(connection)) {
+                    await activateSubscriptionAsync(connection, payload);
+                } else {
+                    activateSubscription(connection, payload);
+                }
+            }
         } else if (event.type === 'invoice.payment_failed') {
             const updatedAt = new Date().toISOString();
             const subId = event.data.object.subscription;
-            if (subId && isPostgresConnection(connection)) {
-                await updateSubscriptionCanceledByStripeIdAsync(connection, String(subId), updatedAt);
-            } else if (subId) {
-                connection.database.prepare("UPDATE subscription_details SET status = 'past_due', updated_at = ? WHERE stripe_subscription_id = ?").run(updatedAt, String(subId));
+            if (subId) {
+                if (isPostgresConnection(connection)) {
+                    const { queryPgPool, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
+                    await queryPgPool(
+                        resolvePostgresAsyncPool(connection),
+                        `UPDATE subscription_details SET status = 'past_due', updated_at = $1
+                         WHERE stripe_subscription_id = $2`,
+                        [updatedAt, String(subId)],
+                    );
+                } else {
+                    connection.database.prepare(
+                        "UPDATE subscription_details SET status = 'past_due', updated_at = ? WHERE stripe_subscription_id = ?",
+                    ).run(updatedAt, String(subId));
+                }
             }
         } else if (
             event.type === 'charge.refunded'
@@ -2020,6 +2156,7 @@ async function createChatResponseImpl(req, res) {
         gemini: 'google/gemini-2.5-flash',
         grok: DEFAULT_GROK_OPENROUTER_GATEWAY,
         groq: 'groq/llama-3.3-70b-versatile',
+        'gpt-oss-groq': require('../services/groqChat').GPT_OSS_GROQ_MODEL_ID,
         copilot: DEFAULT_OPENROUTER_GPT(),
         perplexity: 'perplexity/sonar',
         kimi: process.env.KIMI_MODEL || 'moonshotai/kimi-k2.5',
@@ -2305,6 +2442,11 @@ async function createChatResponseImpl(req, res) {
     const {
         getGroqApiKey,
         resolveGroqDirectModel,
+        shouldUseGroqDirect,
+        isGptOssGroqSlug,
+        GPT_OSS_GROQ_MODEL_ID,
+        GPT_OSS_GROQ_DISPLAY_NAME,
+        GPT_OSS_GROQ_PROVIDER_LABEL,
         GROQ_CHAT_COMPLETIONS_URL,
         mapGroqHttpError,
         logGroqHttpError,
@@ -2334,11 +2476,18 @@ async function createChatResponseImpl(req, res) {
     let isKimi = routedModel === 'kimi' && Boolean(directKimiKey || gatewayKey);
     let isMistral = routedModel === 'mistral' && Boolean(directMistralKey);
     let isPerplexity = routedModel === 'perplexity' && Boolean(directPerplexityKey);
-    let isGroq = routedModel === 'groq' && Boolean(directGroqKey) && process.env.GROQ_PROVIDER !== 'openrouter';
+    let isGroq = shouldUseGroqDirect(routedModel);
     let isOllamaCloud = routedModel === 'ollama' && isOllamaCloudConfigured();
     const hasCloudflareDirect = isCloudflareWorkersAiConfigured();
     let isGptOssCf = routedModel === 'gpt-oss' && hasCloudflareDirect;
     let isCloudflare = routedModel === 'cloudflare' && hasCloudflareDirect;
+    if (isGptOssGroqSlug(model) && !directGroqKey) {
+        return res.status(503).json({
+            message: 'GPT-OSS 120B (GroqCloud) is not configured on the server. Set GROQ_API_KEY in backend environment variables and redeploy.',
+            code: 'GROQ_GPT_OSS_NOT_CONFIGURED',
+            configuredProviders: listConfiguredChatProviderIds(),
+        });
+    }
     if (model === 'gpt-oss' && !hasCloudflareDirect) {
         return res.status(503).json({
             message: 'GPT-OSS (Cloudflare) is not configured on the server. Set CLOUDFLARE_ACCOUNT_ID and ChatGPT_API_KEY (Cloudflare API token).',
@@ -2392,7 +2541,10 @@ async function createChatResponseImpl(req, res) {
     if (isOllamaCloud) {
         providerModels.ollama = ollamaCloudModelId;
     }
-    const noCrossProviderFallback = routedModel === 'gpt-oss' || isOpenRouterFreeSlug(routedModel) || geminiDirectOnly;
+    const noCrossProviderFallback = routedModel === 'gpt-oss'
+        || isGptOssGroqSlug(routedModel)
+        || isOpenRouterFreeSlug(routedModel)
+        || geminiDirectOnly;
     if (model === 'gemini' && !isGeminiConfigured()) {
         return res.status(503).json({
             message: 'Google Gemini is not configured on the server. Set GEMINI_API_KEY in backend environment variables to use Gemini directly (recommended).',
@@ -2825,7 +2977,7 @@ async function createChatResponseImpl(req, res) {
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
             } : isGroq ? {
-                model: resolveGroqDirectModel(selectedVariant),
+                model: resolveGroqDirectModel(selectedVariant, routedModel),
                 stream: true,
                 max_tokens: outputTokenLimit,
                 messages: [{ role: 'system', content: systemPrompt }, ...standardInput],
@@ -2943,7 +3095,12 @@ async function createChatResponseImpl(req, res) {
                     } else {
                         upstreamError = await apiResponse.json().catch(() => ({}));
                     }
-                } else if (routedModel === 'groq' && isGroq && (billingOrQuota || apiResponse.status === 401 || apiResponse.status === 403 || apiResponse.status === 429)) {
+                } else if (
+                    routedModel === 'groq'
+                    && !isGptOssGroqSlug(routedModel)
+                    && isGroq
+                    && (billingOrQuota || apiResponse.status === 401 || apiResponse.status === 403 || apiResponse.status === 429)
+                ) {
                     apiResponse = await fetchOpenRouterChat(gatewayModel);
                     if (apiResponse.ok) {
                         equivalenceViaOpenRouter = true;
@@ -3301,12 +3458,14 @@ async function createChatResponseImpl(req, res) {
                 : ((routedModel === 'gemini' && isGemini)
                     ? mapGeminiHttpError(apiResponse.status, detail)
                     : null);
-            const groqMapped = routedModel === 'groq' ? mapGroqHttpError(apiResponse.status, detail) : null;
+            const groqMapped = (routedModel === 'groq' || isGptOssGroqSlug(routedModel))
+                ? mapGroqHttpError(apiResponse.status, detail)
+                : null;
             if (groqMapped) {
                 logGroqHttpError(apiResponse.status, data, {
                     routedModel,
                     correlationId: chatCorrelationId,
-                    model: resolveGroqDirectModel(selectedVariant),
+                    model: resolveGroqDirectModel(selectedVariant, routedModel),
                 });
             }
             const ollamaMapped = (routedModel === 'ollama' || isOllamaCloud)
@@ -3370,18 +3529,24 @@ async function createChatResponseImpl(req, res) {
                     });
                     if (
                         openRouterBillingMapped
+                        || groqMapped?.code === 'GROQ_QUOTA_EXHAUSTED'
                         || classified.errorClass === 'quota_exhausted'
                         || classified.errorClass === 'authentication_failed'
                         || classified.errorClass === 'unsupported_model'
                     ) {
                         const { markGatewayModelBlocked } = require('../services/gatewayModelHealth');
-                        markGatewayModelBlocked({
-                            gatewayModel: normalizeOpenRouterGatewayModel(
+                        const blockedModelId = (routedModel === 'groq' || isGptOssGroqSlug(routedModel))
+                            ? resolveGroqDirectModel(selectedVariant, routedModel)
+                            : normalizeOpenRouterGatewayModel(
                                 providerModels[routedModel],
                                 routedModel,
-                            ),
+                            );
+                        markGatewayModelBlocked({
+                            gatewayModel: blockedModelId,
                             slug: routedModel,
-                            reason: classified.errorClass,
+                            reason: groqMapped?.code === 'GROQ_QUOTA_EXHAUSTED'
+                                ? 'quota_exhausted'
+                                : classified.errorClass,
                         });
                     }
                 } catch (telemetryError) {
@@ -3459,18 +3624,22 @@ async function createChatResponseImpl(req, res) {
             res.flushHeaders?.();
             chatSseStarted = true;
         }
-        const freeTierModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1']);
+        const freeTierModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'gpt-oss-groq', 'nemotron', 'deepseek-r1']);
         const resolvedActualModelId = isOllamaCloud
             ? (ollamaCloudModelId || providerModels.ollama || resolveOllamaCloudModel(selectedVariant))
+            : isGptOssGroqSlug(routedModel) && isGroq
+                ? resolveGroqDirectModel(selectedVariant, routedModel)
             : selectedVariant
             ? ((isOpenAI || isXAI || isClaude || isGemini || (isKimi && directKimiKey) || isMistral || isPerplexity || isGroq || isCloudflare || isGptOssCf)
-                ? (isPerplexity ? resolvePerplexityDirectModel(selectedVariant) : isGroq ? resolveGroqDirectModel(selectedVariant) : (isGptOssCf ? resolveGptOssModelId(selectedVariant.direct) : selectedVariant.direct))
+                ? (isPerplexity ? resolvePerplexityDirectModel(selectedVariant) : isGroq ? resolveGroqDirectModel(selectedVariant, routedModel) : (isGptOssCf ? resolveGptOssModelId(selectedVariant.direct) : selectedVariant.direct))
                 : selectedVariant.gateway)
             : fallbackUsed
                 ? providerModels[fallbackModel]
                 : (isOpenRouterFree
                     ? openRouterFreeRoute.modelId
-                    : routedModel === 'gpt-oss' ? resolveGptOssModelId() : providerModels[routedModel]);
+                    : routedModel === 'gpt-oss' ? resolveGptOssModelId()
+                        : isGptOssGroqSlug(routedModel) ? GPT_OSS_GROQ_MODEL_ID
+                            : providerModels[routedModel]);
         const streamMeta = {
             unlimited: creditStatus.unlimited,
             plan: creditStatus.plan,
@@ -3478,13 +3647,18 @@ async function createChatResponseImpl(req, res) {
             routedModel,
             actualModelId: resolvedActualModelId,
             actualProviderModel: fallbackUsed ? fallbackModel : routedModel,
-            providerLabel: isOllamaCloud ? 'Ollama Cloud' : undefined,
+            providerLabel: isOllamaCloud
+                ? 'Ollama Cloud'
+                : (isGptOssGroqSlug(routedModel) && isGroq ? GPT_OSS_GROQ_PROVIDER_LABEL : undefined),
             routeReason: requestedModel === 'smart' ? routeDecision.reason : requestedModel === 'anonin' ? 'Anonin Model is answering with a hidden backend provider.' : 'Exact model selected manually.',
             routeCategory: routeDecision.category,
             routeTaskType: routeDecision.taskType || routeDecision.category,
             routeDisplayName: isOllamaCloud
                 ? `Ollama Cloud (${resolvedActualModelId})`
-                : isOpenRouterFree ? openRouterFreeRoute.displayName : routedModel === 'gpt-oss' ? 'GPT-OSS (Cloudflare)' : routeDecision.displayName,
+                : isOpenRouterFree ? openRouterFreeRoute.displayName
+                    : routedModel === 'gpt-oss' ? 'GPT-OSS (Cloudflare)'
+                        : isGptOssGroqSlug(routedModel) ? GPT_OSS_GROQ_DISPLAY_NAME
+                            : routeDecision.displayName,
             routeFallbacks: routeDecision.fallbacks || routeDecision.fallbackSlugs,
             router: routerMetaFromDecision(routeDecision, fallbackUsed),
             responseLanguage: languageContext.policy?.language,
@@ -4026,7 +4200,7 @@ const getUsageAnalytics = async (req, res) => {
         let messages = 0;
         let characters = 0;
         let freeConversations = 0;
-        const freeModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1']);
+        const freeModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'gpt-oss-groq', 'nemotron', 'deepseek-r1']);
         conversations.forEach((conversation) => {
             let list = [];
             try {
@@ -4677,7 +4851,7 @@ const getArenaLeaderboard = async (req, res) => {
             ? await listArenaVotesAsync(connection)
             : connection.database.prepare('SELECT model_a, model_b, winner FROM arena_votes').all();
 
-        const candidateModels = ['gpt', 'claude', 'gemini', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'deepseek', 'llama', 'grok', 'groq', 'copilot', 'perplexity', 'kimi', 'mistral', 'qwen', 'cohere'];
+        const candidateModels = ['gpt', 'claude', 'gemini', 'cloudflare', 'gpt-oss', 'gpt-oss-groq', 'nemotron', 'deepseek-r1', 'deepseek', 'llama', 'grok', 'groq', 'copilot', 'perplexity', 'kimi', 'mistral', 'qwen', 'cohere'];
         const stats = {};
         candidateModels.forEach(model => {
             stats[model] = {

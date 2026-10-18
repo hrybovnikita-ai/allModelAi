@@ -13,7 +13,6 @@ import WayforpayPaymentModal from './WayforpayPaymentModal';
 import { useSession } from '../Session/SessionProvider';
 import { isAuthInitializing } from '../../lib/authSessionStatus';
 import ProductionStripeCheckoutForm from './ProductionStripeCheckoutForm';
-import MockCheckoutForm from './MockCheckoutForm';
 import CheckoutSummaryCard from './CheckoutSummaryCard';
 import PaymentFormCard from './PaymentFormCard';
 import PaymentButton from './PaymentButton';
@@ -433,44 +432,44 @@ export default function Checkout() {
                   payLabel={`Subscribe — ${payAmountLabel}/month`}
                   processingLabel="Processing payment…"
                   showStripeTestCardHint={Boolean(checkoutInfo?.showStripeTestCardHint)}
-                  showTestModeBanner={false}
+                  showTestModeBanner={Boolean(checkoutInfo?.showTestModeBanner)}
                   secureCheckoutLabel={checkoutInfo?.secureCheckoutLabel || 'Secure payment'}
                   appearance="light"
                 />
-              ) : !usePaddlePrimary ? (
-                <>
-                  <MockCheckoutForm
-                    planName={summary?.name || (planSlug === 'unlimited' ? 'Unlimited' : planSlug === 'starter' ? 'Starter' : 'Pro')}
-                    planSlug={planSlug}
-                    priceLabel={priceLabel}
-                    interval={summary?.interval || 'month'}
-                    disabled={!sessionReady}
-                    defaultEmail={sessionUser?.email || ''}
-                    demoPreview={!paymentsAvailable}
-                    testModeLabel={
-                      showTestBanner
-                        ? testBannerText
-                        : 'Demo Preview — layout only, no payment processing'
-                    }
-                  />
-
-                  {paymentProvider === 'wayforpay' && paymentsAvailable && !useStripeProduction && (
-                    <div className="checkout-wayforpay-alt checkout-wayforpay-alt--primary">
-                      {wayforpayTestFlow && (
-                        <p className="checkout-owner-test-note" role="status">
-                          Test mode — use mock card 4242… or complete a simulated payment with no real charge.
-                        </p>
-                      )}
-                      <PaymentButton
-                        type="button"
-                        disabled={!sessionReady || (checkoutInfo?.wayforpayTestMode && !canUseWayforpayTestCheckout && !ownerTestCheckout)}
-                        onClick={openWayforpayModal}
-                      >
-                        {wayforpayTestFlow ? 'Open test checkout' : 'Continue with WayForPay'}
-                      </PaymentButton>
-                    </div>
+              ) : !usePaddlePrimary && paymentsAvailable && paymentProvider === 'wayforpay' ? (
+                <div className="checkout-wayforpay-alt checkout-wayforpay-alt--primary">
+                  {wayforpayTestFlow && (
+                    <p className="checkout-owner-test-note" role="status">
+                      Test mode — use mock card 4242… or complete a simulated payment with no real charge.
+                    </p>
                   )}
-                </>
+                  <p className="checkout-renewal-note">
+                    Secure checkout opens on WayForPay. Premium access is granted only after the server verifies payment.
+                  </p>
+                  <PaymentButton
+                    type="button"
+                    disabled={!sessionReady || (checkoutInfo?.wayforpayTestMode && !canUseWayforpayTestCheckout && !ownerTestCheckout)}
+                    onClick={openWayforpayModal}
+                  >
+                    {wayforpayTestFlow ? 'Open test checkout' : 'Continue with WayForPay'}
+                  </PaymentButton>
+                </div>
+              ) : !usePaddlePrimary && !paymentsAvailable ? (
+                <div className="checkout-state checkout-state--unavailable" role="alert">
+                  <p>Secure payment form is not available yet.</p>
+                  <p className="checkout-state-sub">
+                    {checkoutInfo?.checkoutUnavailableMessage
+                      || checkoutInfo?.liveActivation?.liveChargesBlockedReason
+                      || 'The server has not finished configuring a payment provider. Card fields are intentionally hidden so this page cannot look like a real charge.'}
+                  </p>
+                  {checkoutInfo?.liveActivation?.manualVerificationRequired?.length > 0 && (
+                    <ul className="checkout-activation-checklist">
+                      {checkoutInfo.liveActivation.manualVerificationRequired.map((item) => (
+                        <li key={item.id}>{item.label}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               ) : null}
 
               {showPaddleAlternate && (
@@ -498,7 +497,7 @@ export default function Checkout() {
 
               {!paymentsAvailable && (
                 <small className="checkout-disclaimer checkout-disclaimer--left checkout-disclaimer--premium">
-                  Demo Preview mode — card fields are visual only and never activate a subscription.
+                  No demo card form is shown while payments are unconfigured. Real Stripe or WayForPay checkout appears only when the backend is ready.
                 </small>
               )}
             </>

@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { copyToClipboard } from '../../lib/clipboard';
+import {
+  getPlaybackState,
+  pausePlayback,
+  playText,
+  resumePlayback,
+  stopPlayback,
+  subscribePlayback,
+} from '../../lib/tts/playbackController.js';
+import { readLocalVoicePreferences } from '../../lib/tts/voicePreferences.js';
 import ActionButton from './ActionButton';
 import FeedbackPopover from './FeedbackPopover';
 import MoreActionsMenu from './MoreActionsMenu';
@@ -51,15 +60,6 @@ if (import.meta.env.DEV) {
   }
 }
 
-function cleanTextForSpeech(text) {
-  return String(text || '')
-    .replace(/```[\s\S]*?```/g, ' Code block omitted. ')
-    .replace(/https?:\/\/\S+/g, ' link ')
-    .replace(/[#*_`>~-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 export default function MessageActions({
   role,
   text,
@@ -87,30 +87,41 @@ export default function MessageActions({
   onViewModelInfo,
   translate = (value) => value,
 }) {
+  void speechLanguage;
+  void selectedVoiceName;
+  void availableVoices;
+  void activeSpeechIndex;
   const [copied, setCopied] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [speechState, setSpeechState] = useState('idle');
-  const utteranceRef = useRef(null);
   const badButtonRef = useRef(null);
   const moreButtonRef = useRef(null);
   const copyPayload = copyText ?? text;
+  const sourceId = `chat-message-${messageIndex}`;
 
-  const isThisSpeaking = activeSpeechIndex === messageIndex && speechState !== 'idle';
+  const isThisSpeaking = speechState !== 'idle';
 
-  useEffect(() => {
-    if (activeSpeechIndex !== null && activeSpeechIndex !== messageIndex && speechState !== 'idle') {
-      globalThis.speechSynthesis?.cancel?.();
-      setSpeechState('idle');
-      utteranceRef.current = null;
+  useEffect(() => subscribePlayback((snapshot) => {
+    if (snapshot.sourceId === sourceId) {
+      setSpeechState(snapshot.status === 'idle' ? 'idle' : snapshot.status);
+      if (snapshot.status === 'playing' || snapshot.status === 'loading' || snapshot.status === 'paused') {
+        onSpeechIndexChange?.(messageIndex);
+      }
+      if (snapshot.status === 'idle') {
+        onSpeechIndexChange?.(null);
+      }
+      return;
     }
-  }, [activeSpeechIndex, messageIndex, speechState]);
+    if (snapshot.sourceId && snapshot.sourceId !== sourceId && speechState !== 'idle') {
+      setSpeechState('idle');
+    }
+  }), [messageIndex, onSpeechIndexChange, sourceId, speechState]);
 
   useEffect(() => () => {
-    if (activeSpeechIndex === messageIndex) {
-      globalThis.speechSynthesis?.cancel?.();
-    }
-  }, [activeSpeechIndex, messageIndex]);
+    const current = getPlaybackState();
+    if (current.sourceId === sourceId) stopPlayback();
+  }, [sourceId]);
 
   const handleCopy = async () => {
     if (!copyPayload || !await copyToClipboard(copyPayload)) return;
@@ -147,69 +158,24 @@ export default function MessageActions({
     onShare?.(shareText);
   };
 
-  const startSpeech = useCallback(() => {
-    const synth = globalThis.speechSynthesis;
-    if (!synth?.speak || !globalThis.SpeechSynthesisUtterance) return;
-    const clean = cleanTextForSpeech(text);
-    if (!clean) return;
-    synth.cancel?.();
-    const utterance = new globalThis.SpeechSynthesisUtterance(clean);
-    utterance.lang = speechLanguage;
-    const voice = availableVoices.find((item) => item.name === selectedVoiceName)
-      || availableVoices.find((item) => item.lang?.toLowerCase().startsWith(String(speechLanguage).split('-')[0].toLowerCase()));
-    if (voice) utterance.voice = voice;
-    utterance.onstart = () => {
-      setSpeechState('playing');
-      onSpeechIndexChange?.(messageIndex);
-    };
-    utterance.onend = () => {
-      setSpeechState('idle');
-      utteranceRef.current = null;
-      onSpeechIndexChange?.(null);
-    };
-    utterance.onerror = () => {
-      setSpeechState('idle');
-      utteranceRef.current = null;
-      onSpeechIndexChange?.(null);
-    };
-    utteranceRef.current = utterance;
-    synth.speak(utterance);
-  }, [availableVoices, messageIndex, onSpeechIndexChange, selectedVoiceName, speechLanguage, text]);
-
   const toggleSpeech = () => {
-    const synth = globalThis.speechSynthesis;
-    if (!synth) return;
-
     if (isThisSpeaking && speechState === 'playing') {
-      if (typeof synth.pause === 'function') {
-        synth.pause();
-        setSpeechState('paused');
-        return;
-      }
-      synth.cancel?.();
-      setSpeechState('idle');
-      onSpeechIndexChange?.(null);
+      pausePlayback();
       return;
     }
-
     if (isThisSpeaking && speechState === 'paused') {
-      if (typeof synth.resume === 'function') {
-        synth.resume();
-        setSpeechState('playing');
-        return;
-      }
+      resumePlayback();
+      return;
     }
-
-    if (activeSpeechIndex !== null && activeSpeechIndex !== messageIndex) {
-      synth.cancel?.();
-    }
-    startSpeech();
+    void playText(text, {
+      sourceId,
+      prefs: readLocalVoicePreferences(),
+    });
   };
 
   const stopSpeech = () => {
-    globalThis.speechSynthesis?.cancel?.();
+    stopPlayback();
     setSpeechState('idle');
-    utteranceRef.current = null;
     onSpeechIndexChange?.(null);
   };
 

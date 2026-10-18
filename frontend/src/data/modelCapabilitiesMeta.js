@@ -14,6 +14,7 @@ export const MODEL_TECH_SPECS = {
   kimi: { modelId: 'kimi-k2.5', contextWindow: '256K', toolUse: false },
   grok: { modelId: 'grok-latest', contextWindow: null, toolUse: false },
   groq: { modelId: 'llama-3.3-70b-versatile', contextWindow: '128K', toolUse: false },
+  'gpt-oss-groq': { modelId: 'openai/gpt-oss-120b', contextWindow: '128K', toolUse: false },
   cloudflare: { modelId: 'llama-3.3-70b-instruct-fp8-fast', contextWindow: null, toolUse: false },
   'gpt-oss': { modelId: '@cf/openai/gpt-oss-20b', contextWindow: null, toolUse: false },
   nemotron: { modelId: 'nvidia/nemotron-3-ultra-550b-a55b:free', contextWindow: '1M', toolUse: false },
@@ -63,6 +64,10 @@ export const MODEL_CAPABILITY_FLAGS = {
     research: false, streaming: true, writing: true, summarization: false, translation: false,
   },
   groq: {
+    coding: true, reasoning: true, vision: false, longContext: true, fast: true,
+    research: false, streaming: true, writing: true, summarization: true, translation: true,
+  },
+  'gpt-oss-groq': {
     coding: true, reasoning: true, vision: false, longContext: true, fast: true,
     research: false, streaming: true, writing: true, summarization: true, translation: true,
   },
@@ -132,7 +137,7 @@ export function modalitiesForSlug(slug) {
 export function statusKeyForSlug(slug) {
   if (slug === 'smart') return null;
   // Ollama Cloud uses OLLAMA_API_KEY — never map it to OpenRouter "others".
-  if (['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'grok', 'groq', 'perplexity', 'ollama'].includes(slug)) return slug;
+  if (['gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'gpt-oss-groq', 'nemotron', 'deepseek-r1', 'grok', 'groq', 'perplexity', 'ollama'].includes(slug)) return slug;
   return 'others';
 }
 

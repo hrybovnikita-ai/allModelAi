@@ -52,7 +52,7 @@ after(() => {
     fs.rmSync(process.env.DB_FILE, { force: true });
 });
 
-test('Google-only account returns PASSWORD_SETUP_REQUIRED with provider hints', async () => {
+test('Google-only account login returns generic INVALID_CREDENTIALS', async () => {
     const email = 'google-only@example.com';
     const agent = request.agent(app);
     const google = await googleLogin(agent, email);
@@ -63,11 +63,10 @@ test('Google-only account returns PASSWORD_SETUP_REQUIRED with provider hints', 
         password: 'any-password-123',
     });
     assert.equal(blocked.status, 401);
-    assert.equal(blocked.body.code, 'PASSWORD_SETUP_REQUIRED');
-    assert.equal(blocked.body.passwordEnabled, false);
-    assert.ok(Array.isArray(blocked.body.providers));
-    assert.ok(blocked.body.providers.includes('google.com'));
-    assert.equal(blocked.body.enrollmentPath, '/settings#settings-security');
+    assert.equal(blocked.body.code, 'INVALID_CREDENTIALS');
+    assert.match(blocked.body.message, /incorrect email or password/i);
+    assert.equal(blocked.body.passwordEnabled, undefined);
+    assert.equal(blocked.body.providers, undefined);
 });
 
 test('invalid password stays 401 without revealing account details', async () => {
@@ -82,8 +81,16 @@ test('invalid password stays 401 without revealing account details', async () =>
         password: 'wrong-password-1',
     });
     assert.equal(bad.status, 401);
-    assert.notEqual(bad.body.code, 'PASSWORD_SETUP_REQUIRED');
+    assert.equal(bad.body.code, 'INVALID_CREDENTIALS');
     assert.match(bad.body.message, /incorrect email or password/i);
+
+    const missing = await request(app).post('/api/auth/login').send({
+        email: 'nobody-here@example.com',
+        password: 'wrong-password-1',
+    });
+    assert.equal(missing.status, 401);
+    assert.equal(missing.body.code, bad.body.code);
+    assert.equal(missing.body.message, bad.body.message);
 });
 
 test('Google user can set password in Settings and sign in with email or Google', async () => {
@@ -93,12 +100,29 @@ test('Google user can set password in Settings and sign in with email or Google'
     assert.equal(google.status, 200);
     const userId = google.body.user.id;
 
+    const securityBefore = await agent.get('/api/auth/account/security');
+    assert.equal(securityBefore.status, 200);
+    assert.equal(securityBefore.body.passwordEnabled, false);
+
+    const blocked = await request(app).post('/api/auth/login').send({
+        email,
+        password: 'settings-password-1',
+    });
+    assert.equal(blocked.status, 401);
+    assert.equal(blocked.body.code, 'INVALID_CREDENTIALS');
+
     const enrolled = await agent.post('/api/auth/account/password').send({
         newPassword: 'settings-password-1',
         confirmPassword: 'settings-password-1',
     });
     assert.equal(enrolled.status, 200);
     assert.equal(enrolled.body.passwordEnabled, true);
+
+    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
+    assert.ok(row?.password_hash, 'password hash must persist on the same user row');
+
+    const securityAfter = await agent.get('/api/auth/account/security');
+    assert.equal(securityAfter.body.passwordEnabled, true);
 
     await agent.post('/api/auth/logout');
 
@@ -109,13 +133,32 @@ test('Google user can set password in Settings and sign in with email or Google'
     assert.equal(passwordLogin.status, 200);
     assert.equal(passwordLogin.body.user.id, userId);
 
-    const session = await request.agent(app)
-        .post('/api/auth/login')
-        .send({ email, password: 'settings-password-1' })
-        .then((res) => res.headers['set-cookie'])
-        .then((cookies) => request(app).get('/api/auth/session').set('Cookie', cookies));
+    const loginAgent = request.agent(app);
+    const sessionLogin = await loginAgent.post('/api/auth/login').send({
+        email,
+        password: 'settings-password-1',
+    });
+    assert.equal(sessionLogin.status, 200);
+    const session = await loginAgent.get('/api/auth/session');
     assert.equal(session.status, 200);
     assert.equal(session.body.user.id, userId);
+
+    const analytics = await loginAgent.get('/api/analytics');
+    assert.equal(analytics.status, 200);
+    assert.equal(typeof analytics.body.conversations, 'number');
+    assert.equal(typeof analytics.body.messages, 'number');
+    assert.ok(analytics.body.byModel && typeof analytics.body.byModel === 'object');
+
+    const otherAgent = request.agent(app);
+    await otherAgent.post('/api/auth/register').send({
+        name: 'Other User',
+        email: 'other-analytics@example.com',
+        password: 'other-password-1',
+    });
+    const otherAnalytics = await otherAgent.get('/api/analytics');
+    assert.equal(otherAnalytics.status, 200);
+    // New account has no chats — must not inherit the enrolled user's aggregates by accident.
+    assert.equal(otherAnalytics.body.conversations, 0);
 
     const googleAgain = await googleLogin(request.agent(app), email);
     assert.equal(googleAgain.status, 200);

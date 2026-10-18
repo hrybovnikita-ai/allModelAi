@@ -51,17 +51,24 @@ export async function purgeClientAuthState() {
 export async function forceClientSignOut(options = {}) {
   const { redirectTo = '/', reason = '' } = options;
   await purgeClientAuthState();
-  if (reason && typeof sessionStorage !== 'undefined') {
+  const storage = typeof globalThis.sessionStorage !== 'undefined'
+    ? globalThis.sessionStorage
+    : null;
+  if (reason && storage) {
     try {
-      sessionStorage.setItem('allmodelai_auth_notice', reason);
+      storage.setItem('allmodelai_auth_notice', reason);
     } catch {
       /* private mode */
     }
   }
-  if (redirectTo && typeof window !== 'undefined') {
+  if (redirectTo && typeof globalThis !== 'undefined') {
     const target = redirectTo.startsWith('/') ? redirectTo : `/${redirectTo}`;
-    if (window.location.pathname + window.location.search !== target) {
-      window.location.assign(target);
+    const loc = globalThis.location || globalThis.window?.location;
+    if (loc && typeof loc.assign === 'function') {
+      const current = `${loc.pathname || ''}${loc.search || ''}`;
+      if (current !== target) {
+        loc.assign(target);
+      }
     }
   }
 }
@@ -73,6 +80,34 @@ export async function handleUnauthorizedApiResponse(url, { skipRedirect = false 
   if (unauthorizedRedirectInFlight) {
     return true;
   }
+
+  // Re-verify before destroying UI state. Unrelated 401s (race after Google login,
+  // analytics/subscription blips) must not force-logout a still-valid session.
+  try {
+    const {
+      isLogoutInProgress,
+      isFreshLoginGraceActive,
+      restoreSession,
+    } = await import('./session.js');
+    if (isLogoutInProgress()) {
+      return false;
+    }
+    // Capture before restore — a guest probe can clear the fresh-login marker.
+    const inFreshLoginGrace = isFreshLoginGraceActive();
+    const stillSignedIn = await restoreSession({ force: true, supersede: true });
+    if (stillSignedIn?.email) {
+      resetUnauthorizedRedirectGuard();
+      return false;
+    }
+    // Cookie may still be propagating right after Google OAuth / password login.
+    if (inFreshLoginGrace) {
+      return false;
+    }
+  } catch {
+    // Network/timeout while verifying — do not treat as definitive expiry.
+    return false;
+  }
+
   unauthorizedRedirectInFlight = true;
   await forceClientSignOut({
     redirectTo: '/',

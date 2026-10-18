@@ -27,6 +27,8 @@ export default function Admin() {
   const [probing, setProbing] = useState(false);
   const [tab, setTab] = useState('overview');
   const [aiImprovement, setAiImprovement] = useState(null);
+  const [paymentReadiness, setPaymentReadiness] = useState(null);
+  const [merchantRevenue, setMerchantRevenue] = useState(null);
 
   const adminHeaders = useCallback(
     () => ({ headers: { 'x-admin-key': key } }),
@@ -38,18 +40,22 @@ export default function Admin() {
     setLoading(true);
     setError('');
     try {
-      const [healthRes, statsRes, opsRes, providersRes, improvementRes] = await Promise.all([
+      const [healthRes, statsRes, opsRes, providersRes, improvementRes, readinessRes, revenueRes] = await Promise.all([
         apiFetch('/api/health'),
         apiFetch('/api/admin/stats', adminHeaders()),
         apiFetch('/api/admin/ops/dashboard', adminHeaders()),
         apiFetch('/api/admin/ops/providers', adminHeaders()),
         apiFetch('/api/admin/ai-improvement', adminHeaders()),
+        apiFetch('/api/admin/payments/activation-readiness', adminHeaders()),
+        apiFetch('/api/admin/payments/revenue', adminHeaders()),
       ]);
       const healthData = await healthRes.json().catch(() => ({}));
       const statsData = await statsRes.json().catch(() => ({}));
       const opsData = await opsRes.json().catch(() => ({}));
       const providersData = await providersRes.json().catch(() => ({}));
       const improvementData = await improvementRes.json().catch(() => ({}));
+      const readinessData = await readinessRes.json().catch(() => ({}));
+      const revenueData = await revenueRes.json().catch(() => ({}));
 
       if (!statsRes.ok) {
         setError(statsData.message || 'Could not load admin statistics.');
@@ -63,6 +69,8 @@ export default function Admin() {
       setOps(opsRes.ok ? opsData : null);
       setProviders(providersRes.ok ? providersData : null);
       setAiImprovement(improvementRes.ok ? improvementData : null);
+      setPaymentReadiness(readinessRes.ok ? readinessData : null);
+      setMerchantRevenue(revenueRes.ok ? revenueData : revenueData);
       if (!opsRes.ok && opsData.message) {
         setError((prev) => prev || opsData.message);
       }
@@ -129,7 +137,7 @@ export default function Admin() {
         {(stats || ops) && (
           <>
             <div className="admin-tabs" role="tablist">
-              {['overview', 'providers', 'improvement', 'alerts'].map((id) => (
+              {['overview', 'payments', 'providers', 'improvement', 'alerts'].map((id) => (
                 <button
                   key={id}
                   type="button"
@@ -138,10 +146,129 @@ export default function Admin() {
                   className={tab === id ? 'active' : ''}
                   onClick={() => setTab(id)}
                 >
-                  {id === 'overview' ? 'Overview' : id === 'providers' ? 'Providers' : id === 'improvement' ? 'AI improvement' : 'Alerts'}
+                  {id === 'overview' ? 'Overview'
+                    : id === 'payments' ? 'Payments'
+                      : id === 'providers' ? 'Providers'
+                        : id === 'improvement' ? 'AI improvement' : 'Alerts'}
                 </button>
               ))}
             </div>
+
+            {tab === 'payments' && (
+              <div className="admin-dashboard">
+                <section className="admin-panel">
+                  <h2>Live activation readiness</h2>
+                  {!paymentReadiness ? (
+                    <p>Could not load activation readiness.</p>
+                  ) : (
+                    <>
+                      <div className="admin-metrics-row">
+                        <div>
+                          <small>Stripe mode</small>
+                          <strong>{paymentReadiness.stripeMode}</strong>
+                        </div>
+                        <div>
+                          <small>Test checkout ready</small>
+                          <strong>{paymentReadiness.softwareReadyForTestCheckout ? 'Yes' : 'No'}</strong>
+                        </div>
+                        <div>
+                          <small>Live charges allowed</small>
+                          <strong>{paymentReadiness.liveChargesAllowed ? 'Yes' : 'No'}</strong>
+                        </div>
+                      </div>
+                      {!paymentReadiness.liveChargesAllowed && (
+                        <p className="admin-error" role="status">
+                          {paymentReadiness.liveChargesBlockedReason || 'Live charges remain blocked until requirements are met and you approve activation.'}
+                        </p>
+                      )}
+                      <ul>
+                        {(paymentReadiness.activationChecklist || []).map((step) => (
+                          <li key={step}>{step}</li>
+                        ))}
+                      </ul>
+                      {paymentReadiness.manualVerificationRequired?.length > 0 && (
+                        <p>
+                          Manual Stripe Dashboard steps still required:
+                          {' '}
+                          {paymentReadiness.manualVerificationRequired.map((item) => item.label).join('; ')}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </section>
+
+                <section className="admin-panel">
+                  <h2>Merchant revenue (Stripe API)</h2>
+                  {!merchantRevenue?.ok ? (
+                    <p role="status">
+                      {merchantRevenue?.message
+                        || 'Revenue data unavailable. Configure Stripe and ensure the account can read balance/payouts.'}
+                    </p>
+                  ) : (
+                    <>
+                      <p>
+                        {merchantRevenue.testMode ? 'Test mode balances — not real bank money.' : 'Live Stripe balances.'}
+                        {' '}
+                        {merchantRevenue.settlementNote}
+                      </p>
+                      <div className="admin-metrics-row">
+                        {(merchantRevenue.balance?.available || []).map((row) => (
+                          <div key={`avail-${row.currency}`}>
+                            <small>Available ({row.currency})</small>
+                            <strong>{row.amountDisplay}</strong>
+                          </div>
+                        ))}
+                        {(merchantRevenue.balance?.pending || []).map((row) => (
+                          <div key={`pend-${row.currency}`}>
+                            <small>Pending ({row.currency})</small>
+                            <strong>{row.amountDisplay}</strong>
+                          </div>
+                        ))}
+                        <div>
+                          <small>Sample gross (recent charges)</small>
+                          <strong>{merchantRevenue.recentChargesSummary?.grossSuccessfulDisplay || '—'}</strong>
+                        </div>
+                        <div>
+                          <small>Sample refunds</small>
+                          <strong>{merchantRevenue.recentChargesSummary?.refundedDisplay || '—'}</strong>
+                        </div>
+                        <div>
+                          <small>Estimated net (sample)</small>
+                          <strong>{merchantRevenue.recentChargesSummary?.netEstimatedDisplay || '—'}</strong>
+                        </div>
+                      </div>
+                      {merchantRevenue.payouts?.length > 0 && (
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Payout</th>
+                              <th>Amount</th>
+                              <th>Status</th>
+                              <th>Arrival</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {merchantRevenue.payouts.map((payout) => (
+                              <tr key={payout.id}>
+                                <td>{payout.id}</td>
+                                <td>{payout.amountDisplay}</td>
+                                <td>{payout.status}</td>
+                                <td>{payout.arrivalDate || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                      <p>
+                        <a href={merchantRevenue.dashboardUrls?.payouts} target="_blank" rel="noreferrer">Open Stripe payouts</a>
+                        {' · '}
+                        <a href={merchantRevenue.dashboardUrls?.balance} target="_blank" rel="noreferrer">Open Stripe balance</a>
+                      </p>
+                    </>
+                  )}
+                </section>
+              </div>
+            )}
 
             {tab === 'overview' && (
               <div className="admin-dashboard">

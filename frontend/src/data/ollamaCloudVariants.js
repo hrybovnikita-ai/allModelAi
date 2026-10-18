@@ -107,7 +107,7 @@ export function resolveModelOnlineStatus(slug, modelStatus = {}) {
     return modelStatus[slug] !== false;
   }
   const directKeys = [
-    'gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss',
+    'gpt', 'gemini', 'claude', 'kimi', 'cloudflare', 'gpt-oss', 'gpt-oss-groq',
     'nemotron', 'deepseek-r1', 'grok', 'groq', 'perplexity', 'ollama',
   ];
   const statusKey = directKeys.includes(slug) ? slug : 'others';

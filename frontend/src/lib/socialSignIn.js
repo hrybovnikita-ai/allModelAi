@@ -494,10 +494,12 @@ export async function navigateAfterSocialLogin(user, { navigate, replaceDashboar
   }
 
   rememberSession(sessionUser, { serverVerified: true });
+
+  const navState = { user: sessionUser };
   const useSpaNav = prefersSameOriginApi() && typeof navigate === 'function';
   if (useSpaNav) {
     socialAuthDebug('DASHBOARD_REDIRECT', { mode: 'spa', pathname: '/dashboard' });
-    navigate('/dashboard', { replace: true, state: { user: sessionUser } });
+    navigate('/dashboard', { replace: true, state: navState });
     return;
   }
 
@@ -507,6 +509,6 @@ export async function navigateAfterSocialLogin(user, { navigate, replaceDashboar
     window.location.replace('/dashboard');
     return;
   }
-  navigate?.('/dashboard', { replace: true, state: { user: sessionUser } });
+  navigate?.('/dashboard', { replace: true, state: navState });
 }
 

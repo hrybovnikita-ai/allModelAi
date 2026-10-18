@@ -1,0 +1,465 @@
+/**
+ * AllModelAI homepage — premium dark polish, violet accents, scroll reveal.
+ * Visual only; does not change routes, prices, or payment behavior.
+ */
+
+:root {
+  --ama-deep-black: #080910;
+  --ama-dark-blue: #11182c;
+  --ama-dark-navy: #0e1224;
+  --ama-purple: #6548c9;
+  --ama-violet: #9c76f5;
+  --ama-lavender: #b49aff;
+  --ama-white: #f6f5ff;
+  --ama-card-surface: linear-gradient(165deg, rgba(17, 24, 44, 0.96), rgba(14, 18, 36, 0.94));
+  --ama-violet-border: rgba(156, 118, 245, 0.28);
+  --ama-violet-glow: rgba(156, 118, 245, 0.18);
+  --ama-violet-glow-strong: rgba(101, 72, 201, 0.28);
+}
+
+/* —— Scroll reveal system —— */
+.home-reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 0.55s var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)),
+    transform 0.55s var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1));
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+.home-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+    will-change: auto;
+  }
+}
+
+/* —— Atmosphere —— */
+.home-surface {
+  background-color: var(--ama-deep-black, var(--bg-primary));
+  background-image:
+    radial-gradient(ellipse 70% 45% at 50% -8%, rgba(101, 72, 201, 0.16), transparent 58%),
+    radial-gradient(ellipse 40% 30% at 95% 12%, rgba(156, 118, 245, 0.07), transparent 55%),
+    radial-gradient(ellipse 35% 28% at 5% 40%, rgba(17, 24, 44, 0.9), transparent 60%);
+}
+
+.home-surface .home-layout {
+  gap: clamp(48px, 6vw, 88px);
+}
+
+/* —— Hero polish —— */
+.home-surface .header {
+  background:
+    radial-gradient(ellipse 78% 52% at 50% -12%, rgba(101, 72, 201, 0.22), transparent 56%),
+    radial-gradient(circle at 88% 36%, rgba(156, 118, 245, 0.1), transparent 40%),
+    radial-gradient(circle at 10% 90%, rgba(17, 24, 44, 0.85), transparent 36%),
+    var(--ama-deep-black, #080910);
+}
+
+.home-surface .header-content h1 {
+  font-weight: 680;
+  letter-spacing: -0.055em;
+}
+
+.home-surface .header-content h1 span {
+  background: linear-gradient(115deg, #b49aff 0%, #9c76f5 38%, #69a9ff 72%, #60e0d0 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.home-surface .hero-prompt {
+  border-color: var(--ama-violet-border);
+  background:
+    linear-gradient(155deg, rgba(17, 24, 44, 0.92), rgba(8, 9, 16, 0.88));
+  box-shadow:
+    var(--shadow-md),
+    0 0 40px rgba(101, 72, 201, 0.12),
+    inset 0 1px 0 rgba(246, 245, 255, 0.05);
+}
+
+.home-surface .hero-prompt:focus-within {
+  border-color: rgba(180, 154, 255, 0.5);
+  box-shadow:
+    0 0 0 3px rgba(156, 118, 245, 0.18),
+    0 18px 44px rgba(101, 72, 201, 0.2),
+    var(--shadow-md);
+}
+
+.home-surface .hero-prompt-send {
+  background: linear-gradient(135deg, #6548c9, #9c76f5);
+  box-shadow: 0 8px 22px rgba(101, 72, 201, 0.38);
+}
+
+.home-surface .hero-actions button {
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    border-color var(--duration-normal),
+    box-shadow var(--duration-normal),
+    background var(--duration-normal);
+}
+
+.home-surface .hero-actions button:hover {
+  transform: translateY(-2px);
+  border-color: rgba(180, 154, 255, 0.45);
+  box-shadow: 0 10px 28px rgba(101, 72, 201, 0.18);
+}
+
+/* —— Smart Router orbit —— */
+.home-surface .hero-orbit-glow {
+  background: radial-gradient(circle, rgba(156, 118, 245, 0.28), transparent 70%);
+  filter: blur(10px);
+}
+
+.home-surface .hero-orbit-ring--guide {
+  border-color: rgba(156, 118, 245, 0.18);
+  box-shadow: 0 0 40px rgba(101, 72, 201, 0.08);
+}
+
+.home-surface .hero-orbit-core {
+  border-color: rgba(180, 154, 255, 0.5);
+  background: radial-gradient(circle at 35% 28%, rgba(180, 154, 255, 0.38), rgba(14, 18, 36, 0.96) 62%);
+  box-shadow:
+    0 0 70px rgba(156, 118, 245, 0.32),
+    0 0 0 1px rgba(246, 245, 255, 0.06) inset;
+}
+
+.home-surface .hero-orbit-badge {
+  border-color: rgba(156, 118, 245, 0.32);
+  background: rgba(14, 18, 36, 0.88);
+}
+
+.home-surface .hero-orbit-badge-btn:not(.hero-orbit-badge-btn--static):hover .hero-orbit-badge {
+  border-color: rgba(180, 154, 255, 0.6);
+  box-shadow: 0 0 24px rgba(156, 118, 245, 0.35), var(--shadow-sm);
+}
+
+/* —— Model picker —— */
+.home-surface .model-card {
+  background: var(--ama-card-surface);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: var(--radius-lg, 18px);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.home-surface .model-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--ama-violet-border);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35), 0 0 28px var(--ama-violet-glow);
+}
+
+.home-surface .model-card.active {
+  border-color: rgba(180, 154, 255, 0.55);
+  background: linear-gradient(145deg, rgba(101, 72, 201, 0.22), rgba(14, 18, 36, 0.95));
+  box-shadow: 0 0 0 1px rgba(156, 118, 245, 0.25), 0 20px 44px rgba(101, 72, 201, 0.22);
+}
+
+.home-surface .model-details {
+  border-color: var(--ama-violet-border);
+  background: linear-gradient(160deg, rgba(17, 24, 44, 0.98), rgba(8, 9, 16, 0.96));
+  transition: opacity 0.35s var(--ease-out), transform 0.35s var(--ease-out);
+}
+
+.home-surface .version-card {
+  border-radius: var(--radius-md, 14px);
+  background: linear-gradient(165deg, rgba(14, 18, 36, 0.96), rgba(8, 9, 16, 0.9));
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  transition:
+    transform var(--duration-normal) var(--ease-out),
+    border-color var(--duration-normal),
+    box-shadow var(--duration-normal);
+}
+
+.home-surface .version-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--ama-violet-border);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3), 0 0 20px var(--ama-violet-glow);
+}
+
+.home-surface .tier-badge[data-tier='premium'],
+.home-surface .tier-badge[data-tier='Premium'] {
+  border-color: rgba(156, 118, 245, 0.45);
+  background: rgba(101, 72, 201, 0.22);
+  color: var(--ama-lavender);
+}
+
+.home-surface .use-btn {
+  border-radius: 999px;
+  font-weight: 700;
+  transition:
+    transform var(--duration-fast),
+    filter var(--duration-normal),
+    box-shadow var(--duration-normal);
+}
+
+.home-surface .use-btn:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 10px 24px rgba(101, 72, 201, 0.28);
+}
+
+/* —— Rainbow / spectrum —— */
+.home-surface .rainbow-card {
+  border-radius: 22px;
+  background:
+    linear-gradient(155deg, rgba(17, 24, 44, 0.96), rgba(14, 18, 36, 0.92)) padding-box,
+    linear-gradient(120deg, rgba(156, 118, 245, 0.55), rgba(101, 72, 201, 0.35), rgba(96, 224, 208, 0.25)) border-box;
+  border: 1px solid transparent;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.home-surface .rainbow-card.spectrum,
+.home-surface .rainbow-card.glow,
+.home-surface .rainbow-card.prism {
+  background-image:
+    linear-gradient(145deg, #11182c, #0e1224 55%, #080910),
+    linear-gradient(120deg, #9c76f5, #6548c9, #60e0d0, #b49aff);
+}
+
+.home-surface .rainbow-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 18px 40px rgba(101, 72, 201, 0.22);
+}
+
+.home-surface .rainbow-heading h2 span {
+  color: var(--ama-lavender);
+}
+
+/* —— Everyday toolkit (homepage shell only) —— */
+.home-surface .everyday-cards {
+  background: linear-gradient(165deg, rgba(17, 24, 44, 0.9), rgba(8, 9, 16, 0.92));
+  border: 1px solid var(--ama-violet-border);
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.home-surface .everyday-card-grid > a {
+  background: linear-gradient(165deg, rgba(14, 18, 36, 0.96), rgba(17, 24, 44, 0.88));
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: var(--radius-md, 14px);
+  transition:
+    transform var(--duration-normal) var(--ease-out),
+    border-color var(--duration-normal),
+    box-shadow var(--duration-normal);
+}
+
+.home-surface .everyday-card-grid > a:hover {
+  transform: translateY(-4px);
+  border-color: rgba(180, 154, 255, 0.45);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.32), 0 0 24px var(--ama-violet-glow);
+}
+
+.home-surface .everyday-card-grid > a > span {
+  color: var(--ama-lavender);
+}
+
+/* —— About / workflow —— */
+.home-surface .about-card {
+  background: var(--ama-card-surface);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.home-surface .about-card:hover {
+  border-color: var(--ama-violet-border);
+  box-shadow: 0 16px 34px rgba(101, 72, 201, 0.16);
+}
+
+.home-surface .workflow-section {
+  background: linear-gradient(160deg, rgba(17, 24, 44, 0.94), rgba(8, 9, 16, 0.92));
+  border: 1px solid var(--ama-violet-border);
+}
+
+/* —— Community —— */
+.home-surface .user-card {
+  background: var(--ama-card-surface);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.home-surface .user-card:hover {
+  border-color: rgba(180, 154, 255, 0.4);
+  box-shadow: 0 12px 28px rgba(101, 72, 201, 0.14);
+}
+
+.home-surface .user-avatar {
+  background: linear-gradient(135deg, #6548c9, #9c76f5);
+}
+
+.home-surface .comment-card {
+  background: linear-gradient(155deg, rgba(17, 24, 44, 0.96), rgba(14, 18, 36, 0.9));
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.home-surface .comment-card:hover {
+  border-color: var(--ama-violet-border);
+  transform: translateY(-3px);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.3);
+}
+
+.home-surface .sample-feedback-badge {
+  display: inline-block;
+  margin-bottom: 10px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(180, 154, 255, 0.35);
+  background: rgba(101, 72, 201, 0.18);
+  color: var(--ama-lavender);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.home-surface .comments-heading .sample-note {
+  margin: 8px auto 0;
+  max-width: 42ch;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+/* —— Pricing —— */
+.home-surface .pricing-section .section-header h2 {
+  letter-spacing: -0.03em;
+}
+
+.home-surface .pricing-card {
+  background: var(--ama-card-surface);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 20px;
+  overflow: visible;
+}
+
+.home-surface .pricing-card:nth-child(1),
+.home-surface .pricing-card:nth-child(2),
+.home-surface .pricing-card:nth-child(3),
+.home-surface .pricing-card:nth-child(4),
+.home-surface .pricing-card.credits-card {
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.home-surface .pricing-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  border-radius: 20px 20px 0 0;
+  background: linear-gradient(90deg, transparent, rgba(156, 118, 245, 0.45), transparent);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.home-surface .pricing-card:not(.featured):hover {
+  transform: translateY(-6px);
+  border-color: var(--ama-violet-border);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35), 0 0 28px var(--ama-violet-glow);
+}
+
+.home-surface .pricing-card.featured {
+  background: linear-gradient(160deg, rgba(101, 72, 201, 0.28), rgba(14, 18, 36, 0.96) 48%, rgba(8, 9, 16, 0.98));
+  border: 1px solid rgba(180, 154, 255, 0.45);
+  box-shadow: 0 22px 48px rgba(101, 72, 201, 0.22), 0 0 40px rgba(156, 118, 245, 0.12);
+  transform: translateY(-10px);
+}
+
+.home-surface .pricing-card.featured::before {
+  height: 3px;
+  background: linear-gradient(90deg, #6548c9, #9c76f5, #b49aff);
+  opacity: 1;
+}
+
+.home-surface .pricing-card.featured:hover {
+  transform: translateY(-14px);
+  box-shadow: 0 28px 56px rgba(101, 72, 201, 0.3);
+}
+
+.home-surface .featured-badge {
+  background: linear-gradient(135deg, #6548c9, #9c76f5);
+  box-shadow: 0 6px 16px rgba(101, 72, 201, 0.4);
+}
+
+.home-surface .pricing-card.featured .pricing-tier {
+  color: var(--ama-lavender);
+}
+
+.home-surface .pricing-btn,
+.home-surface .pricing-btn-pill {
+  border-radius: 9999px;
+}
+
+.home-surface .pricing-btn.featured-btn {
+  background: linear-gradient(135deg, #6548c9, #7c5cff, #9c76f5);
+  box-shadow: 0 8px 22px rgba(101, 72, 201, 0.38);
+}
+
+.home-surface .pricing-btn.credits-btn {
+  background: linear-gradient(120deg, rgba(101, 72, 201, 0.35), rgba(156, 118, 245, 0.22));
+  border-color: rgba(156, 118, 245, 0.45);
+}
+
+/* —— Footer —— */
+.home-surface + .footer,
+.home-surface .footer,
+.app.home-surface ~ .footer,
+.footer {
+  background: linear-gradient(180deg, #0e1224 0%, #080910 100%);
+  border-top: 1px solid rgba(156, 118, 245, 0.16);
+}
+
+.footer .link-group a:hover {
+  color: var(--ama-lavender, #b49aff);
+}
+
+.footer-brand {
+  background: linear-gradient(115deg, #f6f5ff, #b49aff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* —— Mobile / tablet —— */
+@media (max-width: 900px) {
+  .home-surface .pricing-card.featured {
+    transform: none;
+  }
+
+  .home-surface .pricing-card.featured:hover {
+    transform: translateY(-4px);
+  }
+}
+
+@media (max-width: 600px) {
+  .home-surface .home-layout {
+    gap: clamp(36px, 8vw, 56px);
+  }
+
+  .home-surface .model-card:hover,
+  .home-surface .version-card:hover,
+  .home-surface .everyday-card-grid > a:hover,
+  .home-surface .rainbow-card:hover {
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-surface .model-card:hover,
+  .home-surface .version-card:hover,
+  .home-surface .everyday-card-grid > a:hover,
+  .home-surface .rainbow-card:hover,
+  .home-surface .pricing-card:hover,
+  .home-surface .pricing-card.featured,
+  .home-surface .comment-card:hover,
+  .home-surface .hero-actions button:hover {
+    transform: none;
+  }
+}
+
+@media (update: slow) {
+  .home-surface .rainbow-card,
+  .home-surface .rainbow-orb {
+    animation: none !important;
+  }
+}

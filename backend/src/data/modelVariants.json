@@ -29,6 +29,9 @@
     {"id":"8b","name":"Llama 3.1 8B Instant","speed":"Fast","gateway":"groq/llama-3.1-8b-instant","direct":"llama-3.1-8b-instant"},
     {"id":"70b-31","name":"Llama 3.1 70B","speed":"Medium","gateway":"groq/llama-3.1-70b-versatile","direct":"llama-3.1-70b-versatile"}
   ],
+  "gpt-oss-groq": [
+    {"id":"120b","name":"GPT-OSS 120B — Groq","label":"GroqCloud","speed":"Fast","description":"OpenAI GPT-OSS 120B via GroqCloud direct API (openai/gpt-oss-120b). Not GPT-4.1 and not Cloudflare GPT-OSS.","gateway":"openai/gpt-oss-120b","direct":"openai/gpt-oss-120b"}
+  ],
   "copilot": [
     {"id":"mini","name":"GPT-4.1 Mini (OpenAI)","speed":"Fast","gateway":"openai/gpt-4.1-mini","direct":"gpt-4.1-mini"},
     {"id":"full","name":"GPT-4.1 (OpenAI)","speed":"High","gateway":"openai/gpt-4.1","direct":"gpt-4.1"}

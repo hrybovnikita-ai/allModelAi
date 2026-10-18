@@ -34,6 +34,7 @@ function buildModelStatusPayload() {
             smart: true,
             cloudflare: Boolean(isCloudflareWorkersAiConfigured() || availability.others),
             'gpt-oss': isCloudflareWorkersAiConfigured(),
+            'gpt-oss-groq': Boolean(String(process.env.GROQ_API_KEY || '').trim()),
             nemotron: isOpenRouterFreeConfigured('nemotron'),
             'deepseek-r1': isOpenRouterFreeConfigured('deepseek-r1'),
             // Always emit a boolean so the UI never falls back to OpenRouter "others".

@@ -391,11 +391,23 @@ const confirmEmailVerification = async (req, res) => {
 
 const requestPasswordReset = async (req, res) => {
     const email = String(req.body.email || '').trim().toLowerCase();
+    const { isTransactionalEmailConfigured, sendPasswordResetEmail } = require('../transactionalEmail');
+    const emailConfigured = isTransactionalEmailConfigured();
+    const genericMessage = emailConfigured
+        ? 'If the account exists, a password reset email will be sent when delivery is available.'
+        : 'If the account exists, a password reset request was recorded. Email delivery is not configured on this server.';
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.json({ message: genericMessage, emailDeliveryConfigured: emailConfigured });
+    }
+
     const connection = req.app.locals.db;
     const user = isPostgresConnection(connection)
         ? await findUserByEmailInsensitiveAsync(connection, email)
         : connection.database.prepare('SELECT id,email FROM users WHERE lower(email)=lower(?)').get(email);
-    if (!user) return res.json({ message: 'If the account exists, a password reset request was created.' });
+    if (!user) {
+        return res.json({ message: genericMessage, emailDeliveryConfigured: emailConfigured });
+    }
+
     const secret = crypto.randomBytes(32).toString('base64url');
     const expiresAt = Date.now() + 30 * 60 * 1000;
     if (isPostgresConnection(connection)) {
@@ -409,18 +421,51 @@ const requestPasswordReset = async (req, res) => {
     } else {
         connection.database.prepare('INSERT INTO account_tokens (token_hash,email,purpose,expires_at,created_at) VALUES (?,?,?,?,?)').run(hashValue(secret), user.email, 'password_reset', expiresAt, now());
     }
-    return res.json({ message: 'If the account exists, a password reset request was created.', ...(process.env.NODE_ENV === 'test' || process.env.EXPOSE_ACCOUNT_TOKENS === 'true' ? { token: secret } : {}) });
+
+    let delivery = { sent: false, reason: 'not_configured' };
+    if (emailConfigured) {
+        try {
+            delivery = await sendPasswordResetEmail({ email: user.email, token: secret });
+        } catch {
+            delivery = { sent: false, reason: 'delivery_failed' };
+        }
+    }
+
+    const message = delivery.sent
+        ? 'If the account exists, check your email for a password reset link.'
+        : genericMessage;
+
+    return res.json({
+        message,
+        emailDeliveryConfigured: emailConfigured,
+        ...(process.env.NODE_ENV === 'test' || process.env.EXPOSE_ACCOUNT_TOKENS === 'true' ? { token: secret } : {}),
+    });
 };
 
 const confirmPasswordReset = async (req, res) => {
     const token = String(req.body.token || '');
     const password = String(req.body.password || '');
+    const confirmPassword = req.body.confirmPassword != null
+        ? String(req.body.confirmPassword)
+        : password;
+    const { validatePasswordEnrollmentInput } = require('../authHelpers');
+    const validation = validatePasswordEnrollmentInput(
+        { newPassword: password, confirmPassword },
+        { passwordEnabled: false },
+    );
+    if (!validation.ok) {
+        return res.status(validation.status).json({ message: validation.message });
+    }
+
     const connection = req.app.locals.db;
     const row = isPostgresConnection(connection)
         ? await findAccountTokenAsync(connection, hashValue(token), 'password_reset', Date.now())
         : connection.database.prepare("SELECT * FROM account_tokens WHERE token_hash=? AND purpose='password_reset' AND expires_at>?").get(hashValue(token), Date.now());
-    if (!row || password.length < 8) return res.status(400).json({ message: 'Valid token and password of at least 8 characters required' });
-    const passwordHash = await hashPassword(password);
+    if (!row) {
+        return res.status(400).json({ message: 'This reset link is invalid or has expired. Request a new one.' });
+    }
+
+    const passwordHash = await hashPassword(validation.newPassword);
     if (isPostgresConnection(connection)) {
         await updateUserPasswordAsync(connection, passwordHash, {
             email: row.email,
@@ -429,7 +474,7 @@ const confirmPasswordReset = async (req, res) => {
         await deleteAccountTokenAsync(connection, hashValue(token));
     } else {
         connection.database.transaction(() => {
-            connection.database.prepare('UPDATE users SET password_hash=? WHERE lower(email)=lower(?)').run(passwordHash, row.email);
+            connection.database.prepare('UPDATE users SET password_hash=?, email_verified=1 WHERE lower(email)=lower(?)').run(passwordHash, row.email);
             connection.database.prepare('DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE lower(email)=lower(?))').run(row.email);
             connection.database.prepare('DELETE FROM account_tokens WHERE token_hash=?').run(hashValue(token));
         })();

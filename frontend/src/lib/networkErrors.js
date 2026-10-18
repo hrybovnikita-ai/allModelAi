@@ -39,7 +39,9 @@ export function classifyNetworkError(error, context = {}) {
   if (context.phase === 'auth' && (status === 401 || status === 403)) {
     return {
       code: 'AUTH_REJECTED',
-      message: status === 401 ? 'Invalid email or password.' : 'Sign-in was rejected. Please try again.',
+      message: status === 401
+        ? 'Unable to sign in. Check your details or reset your password.'
+        : 'Sign-in was rejected. Please try again.',
     };
   }
   if (context.phase === 'auth' && (msg.includes('Failed to fetch') || msg.includes('Network request failed'))) {

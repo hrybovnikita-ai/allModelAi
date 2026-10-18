@@ -75,7 +75,7 @@ export async function postJson(path, body, options = {}) {
   let response;
   try {
     response = await fetch(url, {
-      method: 'POST',
+      method: options.method || 'POST',
       credentials: 'include',
       headers: {
         Accept: 'application/json',

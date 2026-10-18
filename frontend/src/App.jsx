@@ -13,6 +13,7 @@ import llamaLogo from "./assets/llama.png";
  
 // Import Components
 import Header from "./components/Header/Header";
+import HomeReveal from "./components/HomeReveal/HomeReveal";
 import ModelsSection from "./components/ModelsSection/ModelsSection";
 import About from "./components/About/About";
 import Stickers from "./components/Stickers/Stickers";
@@ -33,6 +34,7 @@ import Workflow from "./components/Workflow/Workflow";
 import Settings from "./components/Settings/Settings";
 import Admin from "./components/Admin/Admin";
 import ForgotPassword from "./components/ForgotPassword/ForgotPassword";
+import VerifyEmail from "./components/VerifyEmail/VerifyEmail";
 import { ApiDocs, InfoPage } from "./components/InfoPage/InfoPage";
 import Studio from "./components/Studio/Studio";
 import CommandPalette from "./components/CommandPalette/CommandPalette";
@@ -83,6 +85,7 @@ import ProviderHealthDashboard from "./components/ProviderHealth/ProviderHealthD
 import CodeWorkspacePage from "./components/CodeWorkspace/CodeWorkspacePage";
 import AILearningDashboard from "./components/Developer/AILearningDashboard";
 import StorageHub from "./components/StorageHub/StorageHub";
+import VoiceStudio from "./components/VoiceStudio/VoiceStudio";
 
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");
@@ -142,18 +145,32 @@ function HomePage() {
     <div className="app home-surface">
       <Header />
       <main className="container home-layout">
-        <ModelsSection 
-          models={models}
-          selectedModel={selectedModel}
-          setSelectedModel={setSelectedModel}
-        />
-        <RainbowExperience />
-        <EverydayCards />
-        <About />
-        <Workflow />
+        <HomeReveal>
+          <ModelsSection
+            models={models}
+            selectedModel={selectedModel}
+            setSelectedModel={setSelectedModel}
+          />
+        </HomeReveal>
+        <HomeReveal delay={40}>
+          <RainbowExperience />
+        </HomeReveal>
+        <HomeReveal delay={60}>
+          <EverydayCards />
+        </HomeReveal>
+        <HomeReveal delay={40}>
+          <About />
+        </HomeReveal>
+        <HomeReveal delay={40}>
+          <Workflow />
+        </HomeReveal>
         <Users />
-        <Stickers />
-        <Pricing />
+        <HomeReveal delay={40}>
+          <Stickers />
+        </HomeReveal>
+        <HomeReveal delay={60}>
+          <Pricing />
+        </HomeReveal>
       </main>
       <Footer />
     </div>
@@ -172,6 +189,7 @@ export default function App() {
       <Route path="/auth/callback" element={<SocialAuthCallback />} />
       <Route path="/auth/:provider" element={<SocialAuthCallback />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/api-docs" element={<ApiDocs />} />
       <Route path="/privacy" element={<InfoPage type="privacy" />} />
       <Route path="/terms" element={<InfoPage type="terms" />} />
@@ -219,6 +237,7 @@ export default function App() {
       <Route path="/usage-analytics" element={<UsageAnalytics />} />
       <Route path="/storage" element={<StorageHub />} />
       <Route path="/studio" element={<Studio />} />
+      <Route path="/voice-studio" element={<VoiceStudio />} />
       <Route path="/code-workspace" element={<CodeWorkspacePage />} />
       <Route path="/arena" element={<Arena />} />
       <Route path="/control-center" element={<ControlCenter />} />

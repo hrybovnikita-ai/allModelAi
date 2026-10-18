@@ -56,6 +56,11 @@ export async function authPost(path, body, options) {
   return postJson(url, body, { phase: 'auth', ...options });
 }
 
+export async function authPatch(path, body, options) {
+  const url = resolveAuthApiUrl(path);
+  return postJson(url, body, { phase: 'auth', method: 'PATCH', ...options });
+}
+
 export async function authGet(path, options = {}) {
   const url = resolveAuthApiUrl(path);
   const response = await fetch(url, {

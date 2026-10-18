@@ -7,7 +7,8 @@ const AUTH_USER_BY_EMAIL_SQLITE = `
             name,
             email,
             password_hash,
-            avatar_url
+            avatar_url,
+            email_verified
         FROM users
         WHERE lower(trim(email)) = ?`;
 
@@ -17,7 +18,8 @@ const AUTH_USER_BY_EMAIL_PG = `
             name,
             email,
             password_hash,
-            avatar_url
+            avatar_url,
+            email_verified
         FROM users
         WHERE lower(trim(email)) = $1`;
 

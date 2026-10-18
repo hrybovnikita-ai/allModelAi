@@ -10,6 +10,7 @@ function slugToProviderId(slug) {
         claude: 'claude',
         grok: 'grok',
         groq: 'groq',
+        'gpt-oss-groq': 'groq',
         mistral: 'mistral',
         kimi: 'kimi',
         perplexity: 'perplexity',

@@ -67,11 +67,15 @@ export function apiFetch(url, options = {}) {
       return response;
     })
     .catch((error) => {
+      const aborted = error?.name === 'AbortError' || error?.name === 'TimeoutError';
       const durationMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - started);
-      logger.apiError(`${method} ${path}`, {
-        message: error?.message || 'Network request failed',
-        durationMs,
-      });
+      if (!aborted) {
+        logger.apiError(`${method} ${path}`, {
+          message: error?.message || 'Network request failed',
+          durationMs,
+        });
+      }
+      // Aborts/timeouts are not auth failures — never trigger logout.
       throw error;
     });
 }

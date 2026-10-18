@@ -35,6 +35,12 @@ function sessionSigningConfigured() {
 
 function essentialConfigChecks() {
     const { isFirebaseAdminConfigured } = require('../firebaseAdmin');
+    let liveActivation = null;
+    try {
+        liveActivation = require('../payments/liveActivationReadiness').buildLiveActivationReadiness();
+    } catch {
+        liveActivation = null;
+    }
     return {
         sessionSigning: sessionSigningConfigured(),
         firebaseAdmin: isFirebaseAdminConfigured(),
@@ -43,6 +49,8 @@ function essentialConfigChecks() {
         payments: Boolean(process.env.STRIPE_SECRET_KEY) || Boolean(
             process.env.WAYFORPAY_SECRET_KEY?.trim() && process.env.WAYFORPAY_MERCHANT_ACCOUNT?.trim(),
         ),
+        stripeTestCheckoutReady: Boolean(liveActivation?.softwareReadyForTestCheckout),
+        stripeLiveChargesAllowed: Boolean(liveActivation?.liveChargesAllowed),
         monitoring: Boolean(process.env.SENTRY_DSN),
     };
 }

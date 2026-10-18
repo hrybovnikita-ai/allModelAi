@@ -12,7 +12,6 @@ import './DashboardFeatureCards.css';
 import './DashboardDarkViolet.css';
 import './DashboardLayout.css';
 import './DashboardResponsive.css';
-import '../SocialAuth/SocialAuth.css';
 import AccountDeleteModal from '../AccountDeleteModal';
 import DashboardResources from './DashboardResources';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
@@ -20,7 +19,6 @@ import EverydayCards from '../EverydayAI/EverydayCards';
 import ManageSubscriptionModal from './ManageSubscriptionModal';
 import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
 import { isCompleteCreditStatus, normalizeCreditStatus } from '../../lib/creditStatus';
-import { fetchAccountSecurity } from '../../lib/accountSecurity.js';
 import { normalizeModelStatusMap, resolveModelOnlineStatus } from '../../data/ollamaCloudVariants';
 
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
@@ -68,7 +66,6 @@ export default function Dashboard() {
   const [recentProjects, setRecentProjects] = useState([]);
   const [manageSubOpen, setManageSubOpen] = useState(false);
   const [modelStatus, setModelStatus] = useState({});
-  const [showPasswordSetupHint, setShowPasswordSetupHint] = useState(false);
 
   const loadSubscription = useCallback(async () => {
     if (!user?.email) {
@@ -91,12 +88,12 @@ export default function Dashboard() {
     setSubscriptionError('');
     try {
       let data = null;
-      const subscriptionResponse = await apiFetch('/api/subscription');
+      const subscriptionResponse = await apiFetch('/api/subscription', { skipAuthRedirect: true });
       if (subscriptionResponse.ok) {
         data = await subscriptionResponse.json();
       } else {
         console.warn('[Dashboard] GET /api/subscription failed', subscriptionResponse.status);
-        const creditsResponse = await apiFetch('/api/credits');
+        const creditsResponse = await apiFetch('/api/credits', { skipAuthRedirect: true });
         if (creditsResponse.ok) {
           data = await creditsResponse.json();
         } else {
@@ -123,18 +120,32 @@ export default function Dashboard() {
   }, [user?.email, backendReady, location.state?.subscriptionActivated, loadSubscription]);
   useEffect(() => {
     if (!user?.email || !backendReady) return;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
     Promise.all([
-      apiFetch(`/api/analytics?email=${encodeURIComponent(user.email)}`).then((r) => (r.ok ? r.json() : null)),
-      apiFetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`).then((r) => (r.ok ? r.json() : [])),
+      apiFetch(`/api/analytics?email=${encodeURIComponent(user.email)}`, {
+        skipAuthRedirect: true,
+        signal: controller.signal,
+      }).then((r) => (r.ok ? r.json() : null)),
+      apiFetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`, {
+        skipAuthRedirect: true,
+        signal: controller.signal,
+      }).then((r) => (r.ok ? r.json() : [])),
     ]).then(([stats, projects]) => {
       setAnalytics(stats);
-      setRecentProjects(projects.slice(0, 3));
-    }).catch(() => {});
+      setRecentProjects(Array.isArray(projects) ? projects.slice(0, 3) : []);
+    }).catch(() => {
+      /* analytics/workspace are non-critical; never force logout from these */
+    }).finally(() => clearTimeout(timeout));
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [user?.email, backendReady]);
 
   useEffect(() => {
     if (!backendReady) return;
-    apiFetch('/api/status/models')
+    apiFetch('/api/status/models', { skipAuthRedirect: true })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (data?.models || data?.providers) {
@@ -143,19 +154,6 @@ export default function Dashboard() {
       })
       .catch(() => {});
   }, [backendReady]);
-
-  useEffect(() => {
-    if (!user?.email || !backendReady) {
-      setShowPasswordSetupHint(false);
-      return;
-    }
-    void fetchAccountSecurity()
-      .then((data) => {
-        const socialOnly = !data?.passwordEnabled && Array.isArray(data?.providers) && data.providers.length > 0;
-        setShowPasswordSetupHint(socialOnly);
-      })
-      .catch(() => setShowPasswordSetupHint(false));
-  }, [user?.email, backendReady]);
 
   if (!user?.email) {
     return (
@@ -199,13 +197,6 @@ export default function Dashboard() {
       )}
       {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user?.email}</div>}
       {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}
-      {showPasswordSetupHint && (
-        <div className="dashboard-email-notice" role="status">
-          You signed in with Google. Add an AllModelAI password in{' '}
-          <Link to="/settings#settings-security">Settings → Security</Link>
-          {' '}to sign in with email and password too (optional).
-        </div>
-      )}
       {deleteError && !deleteModalOpen && <p role="alert">{deleteError}</p>}
       <section className="dashboard-hero">
         <div>

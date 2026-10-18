@@ -46,6 +46,10 @@ function scoreSlugForTask(slug, taskType, preferSpeed) {
     if (taskType === 'document_analysis' && cap.longContext) score += 3;
     // Prefer free OpenRouter reasoning when the primary pick is unavailable.
     if (taskType === 'reasoning' && (slug === 'nemotron' || slug === 'deepseek-r1')) score += 2;
+    // Prefer Groq GPT-OSS 120B for fast coding/reasoning when configured (not GPT-4.1).
+    if ((taskType === 'coding' || taskType === 'reasoning' || taskType === 'general') && slug === 'gpt-oss-groq') {
+        score += 2;
+    }
     return score;
 }
 

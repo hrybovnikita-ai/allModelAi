@@ -68,12 +68,27 @@ const buildCheckoutInfo = () => {
         checkoutUnavailableMessage = stripeConfig.message || checkoutUnavailableMessage;
     }
 
+    let liveActivationSummary = null;
+    try {
+        const readiness = require('./liveActivationReadiness').buildLiveActivationReadiness();
+        liveActivationSummary = {
+            testMode: readiness.testMode,
+            liveChargesAllowed: readiness.liveChargesAllowed,
+            liveChargesBlockedReason: readiness.liveChargesBlockedReason,
+            softwareReadyForTestCheckout: readiness.softwareReadyForTestCheckout,
+            manualVerificationRequired: readiness.manualVerificationRequired,
+        };
+    } catch {
+        liveActivationSummary = null;
+    }
+
     return {
         paymentMode,
         primaryProvider,
         paymentProvider: primaryProvider,
         providerDisplayName,
         checkoutAvailable: paymentsCheckoutAvailable() && !checkoutUnavailableMessage,
+        liveActivation: liveActivationSummary,
         checkoutUnavailableMessage,
         stripeConfigured: stripeKeyPresent,
         stripeCheckoutEnabled: stripeCheckoutEnabledForDeployment(),

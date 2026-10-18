@@ -3,6 +3,16 @@
 .settings-password-form { display: grid; gap: 14px; width: 100%; max-width: 440px; margin-top: 12px; }
 .settings-password-form label { display: grid; gap: 7px; color: #cbd5e1; font-size: .75rem; font-weight: 700; }
 .settings-password-form input { width: 100%; min-height: 44px; padding: 12px 14px; border: 1px solid #334155; border-radius: 11px; background: #0f172a; color: #e2e8f0; font: inherit; font-size: 16px; }
+.settings-password-form .password-field { position: relative; display: block; }
+.settings-password-form .password-field input { padding-right: 48px; }
+.settings-password-form .password-toggle {
+  position: absolute; top: 50%; right: 7px; display: grid; place-items: center;
+  width: 36px; height: 36px; padding: 0; transform: translateY(-50%);
+  border: 0; border-radius: 8px; background: transparent; color: #a5b4fc;
+  font-size: 1.25rem; line-height: 1; cursor: pointer;
+}
+.settings-password-form .password-toggle:hover { background: rgba(129,140,248,.12); color: #fff; }
+.settings-password-form--compact { max-width: 520px; }
 .settings-card-profile { scroll-margin-top: 88px; }
 .settings-security { scroll-margin-top: 88px; }
 .settings-save { min-height: 44px; border-radius: 11px; }
@@ -138,3 +148,16 @@
   .developer-mode-segment,
   .developer-mode-segment__btn { transition: none; }
 }
+
+.settings-section-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.settings-section-nav a { padding: 8px 12px; border: 1px solid rgba(148,163,184,.2); border-radius: 999px; color: #c7d2fe; text-decoration: none; font-size: .78rem; font-weight: 700; background: rgba(15,23,42,.55); }
+.settings-section-nav a:hover, .settings-section-nav a:focus-visible { border-color: rgba(129,140,248,.55); color: #fff; background: rgba(99,102,241,.22); }
+.settings-card-kicker { color: #a5b4fc; font-size: .7rem; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; }
+.settings-card h2 { margin: 4px 0 8px; color: #fff; font-size: 1.15rem; }
+.settings-checkbox-row { display: flex !important; align-items: center; gap: 10px; grid-template-columns: none !important; }
+.settings-checkbox-row input { width: auto !important; }
+.settings-billing-summary { display: grid; gap: 10px; width: 100%; }
+.settings-billing-summary p { margin: 0; color: #cbd5e1; }
+.settings-ai-group { display: contents; }
+#settings-general, #settings-billing, #settings-privacy, #settings-ai { scroll-margin-top: 88px; }
+.settings-password-actions .settings-save { display: inline-flex; align-items: center; text-decoration: none; }

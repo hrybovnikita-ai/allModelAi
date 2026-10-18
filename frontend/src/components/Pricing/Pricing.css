@@ -3,17 +3,18 @@
   margin-bottom: 80px;
 }
 
+/* Marketing pricing no longer shows the oversized Stripe test banner.
+   Test mode remains disclosed on checkout and AI Credits purchase actions. */
 .pricing-test-mode-banner {
-  display: inline-block;
-  margin: 18px auto 0;
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(250, 204, 21, 0.45);
-  background: rgba(234, 179, 8, 0.12);
-  color: #fde68a;
-  font-size: 0.72rem;
+  display: none;
+}
+
+.ai-credits-modal-test-mode {
+  border-color: rgba(250, 204, 21, 0.45) !important;
+  background: rgba(234, 179, 8, 0.12) !important;
+  color: #fde68a !important;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 }
 
 .pricing-card[role='button'] {
@@ -56,10 +57,10 @@
 .pricing-card.credits-card { border-top: 3px solid var(--primary, #6366f1); }
 
 .pricing-card.featured {
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%);
-  border: 2px solid var(--primary);
+  background: linear-gradient(160deg, rgba(101, 72, 201, 0.28), rgba(14, 18, 36, 0.96) 48%, rgba(8, 9, 16, 0.98));
+  border: 1px solid rgba(180, 154, 255, 0.45);
   transform: translateY(-8px);
-  box-shadow: 0 20px 40px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 22px 48px rgba(101, 72, 201, 0.22);
 }
 
 .pricing-card:not(.featured):hover {
@@ -147,44 +148,114 @@
   font-size: 1.1rem;
 }
 
-.pricing-btn {
+/* Shared pill CTA — all four pricing actions use the same proportions */
+.pricing-btn,
+.pricing-btn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  min-height: var(--touch-target, 44px);
-  padding: 14px;
-  border-radius: var(--nav-radius, 11px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
-  color: white;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  margin-top: auto;
+  min-height: 48px;
+  padding: 12px 22px;
+  border-radius: 9999px;
+  border: 1px solid rgba(156, 118, 245, 0.35);
+  background: linear-gradient(165deg, #11182c 0%, #080910 100%);
+  color: #f6f5ff;
   font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  transition:
+    transform 250ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)),
+    box-shadow 250ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)),
+    border-color 250ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)),
+    background 250ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)),
+    filter 250ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1));
 }
 
-.pricing-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
+.pricing-btn.starter-btn {
+  background: linear-gradient(165deg, #11182c 0%, #0a0d16 100%);
+  border-color: rgba(156, 118, 245, 0.38);
+  color: #f6f5ff;
+}
+
+.pricing-btn.unlimited-btn {
+  background: linear-gradient(165deg, #11182c 0%, #0e1224 100%);
+  border-color: rgba(124, 92, 255, 0.42);
+  color: #f6f5ff;
 }
 
 .pricing-btn.featured-btn {
-  background: linear-gradient(100deg, var(--blue-violet), var(--blue), var(--sky-blue));
-  border: none;
-  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
-}
-
-.pricing-card:nth-child(1) .pricing-btn:hover { background: var(--lime); color: var(--black); }
-.pricing-card:nth-child(3) .pricing-btn:hover { background: var(--orangered); }
-
-.pricing-btn.featured-btn:hover {
-  opacity: 0.95;
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
-  transform: translateY(-2px);
+  border: 1px solid transparent;
+  background: linear-gradient(135deg, #6548c9 0%, #7c5cff 48%, #9c76f5 100%);
+  box-shadow: 0 8px 22px rgba(101, 72, 201, 0.38);
+  color: #fff;
 }
 
 .pricing-btn.credits-btn {
-  background: linear-gradient(100deg, rgba(99, 102, 241, 0.35), rgba(139, 92, 246, 0.25));
-  border-color: rgba(99, 102, 241, 0.45);
+  background: linear-gradient(120deg, rgba(101, 72, 201, 0.35), rgba(156, 118, 245, 0.22));
+  border-color: rgba(156, 118, 245, 0.45);
+  color: #f6f5ff;
+}
+
+.pricing-btn:hover {
+  transform: translateY(-2px);
+  border-color: rgba(180, 154, 255, 0.55);
+  box-shadow: 0 12px 28px rgba(101, 72, 201, 0.28);
+}
+
+.pricing-btn.starter-btn:hover {
+  background: linear-gradient(165deg, #151d34 0%, #0c101c 100%);
+}
+
+.pricing-btn.unlimited-btn:hover {
+  background: linear-gradient(165deg, #161f38 0%, #10162a 100%);
+  box-shadow: 0 12px 28px rgba(124, 92, 255, 0.32);
+}
+
+.pricing-btn.featured-btn:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 14px 32px rgba(101, 72, 201, 0.48);
+}
+
+.pricing-btn.credits-btn:hover {
+  background: linear-gradient(120deg, rgba(101, 72, 201, 0.45), rgba(156, 118, 245, 0.3));
+  border-color: rgba(180, 154, 255, 0.55);
+}
+
+.pricing-btn:active {
+  transform: scale(0.97);
+  box-shadow: 0 4px 14px rgba(101, 72, 201, 0.22);
+}
+
+.pricing-btn:focus-visible {
+  outline: 2px solid rgba(180, 154, 255, 0.9);
+  outline-offset: 3px;
+}
+
+@media (max-width: 600px) {
+  .pricing-btn,
+  .pricing-btn-pill {
+    min-height: 46px;
+    padding: 11px 18px;
+    font-size: 0.9rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pricing-btn,
+  .pricing-btn-pill {
+    transition: none;
+  }
+
+  .pricing-btn:hover,
+  .pricing-btn:active {
+    transform: none;
+  }
 }
 
 .ai-credits-modal-backdrop {

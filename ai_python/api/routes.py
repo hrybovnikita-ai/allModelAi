@@ -225,20 +225,25 @@ def create_app(trainer: "TrainingManager") -> Optional[Any]:
             snapshot_every=validated["snapshot_every"],
         )
 
-    from api.ai_learning_routes import register_ai_learning_routes
-    from api.training_lab_routes import register_training_lab_routes
+    # Kokoro TTS first — must stay available even if optional lab deps are missing.
+    try:
+        from api.tts_routes import register_tts_routes
 
-    register_ai_learning_routes(app)
-    register_training_lab_routes(app)
+        register_tts_routes(app)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai_python] TTS routes not loaded: {exc}")
 
-    from api.improvement_routes import register_improvement_routes
-    from api.engine_routes import register_engine_routes
-
-    register_improvement_routes(app)
-    register_engine_routes(app)
-
-    from api.provider_routes import register_provider_routes
-
-    register_provider_routes(app)
+    for register_name, import_path in (
+        ("register_ai_learning_routes", "api.ai_learning_routes"),
+        ("register_training_lab_routes", "api.training_lab_routes"),
+        ("register_improvement_routes", "api.improvement_routes"),
+        ("register_engine_routes", "api.engine_routes"),
+        ("register_provider_routes", "api.provider_routes"),
+    ):
+        try:
+            module = __import__(import_path, fromlist=[register_name])
+            getattr(module, register_name)(app)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[ai_python] Optional routes skipped ({import_path}): {exc}")
 
     return app

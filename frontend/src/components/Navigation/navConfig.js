@@ -1,4 +1,4 @@
-/** Primary top-nav destinations (single row). */
+/** Primary top-nav destinations (single row). Settings sits after More in the shell. */
 export const NAV_PRIMARY_LINKS = [
   {
     to: '/dashboard',
@@ -16,6 +16,13 @@ export const NAV_PRIMARY_LINKS = [
     isActive: (pathname) => pathname === '/explore' || pathname.startsWith('/models/'),
   },
 ];
+
+/** Settings link placed after More, before theme toggle / avatar. */
+export const NAV_SETTINGS_LINK = {
+  to: '/settings',
+  label: 'Settings',
+  isActive: (pathname) => pathname === '/settings' || pathname.startsWith('/settings/'),
+};
 
 export const NAV_MORE_GROUPS = [
   {
@@ -38,6 +45,7 @@ export const NAV_MORE_GROUPS = [
       { to: '/ai-workflows', label: 'AI Workflows', description: 'Multi-step AI task pipelines' },
       { to: '/next-20', label: 'Workspace Tools', description: 'Productivity and builder utilities' },
       { to: '/studio', label: 'Studio', description: 'Creative and production workflows' },
+      { to: '/voice-studio', label: 'Voice Studio', description: 'Natural male and female AI voices' },
       { to: '/website-builder', label: 'Website Builder', description: 'Generate sites from prompts' },
     ],
   },
@@ -101,5 +109,6 @@ export const NAV_MOBILE_DOCK = [
   { to: '/chat', label: 'Chat', match: (p) => p.startsWith('/chat') },
   { to: '/explore', label: 'Models', match: (p) => p === '/explore' || p.startsWith('/models/') },
   { id: 'more', label: 'More', isMore: true },
+  { to: '/settings', label: 'Settings', match: (p) => p === '/settings' || p.startsWith('/settings/') },
   { id: 'profile', label: 'Profile', isProfile: true },
 ];

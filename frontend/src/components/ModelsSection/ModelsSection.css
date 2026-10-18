@@ -113,6 +113,24 @@
   border: 1px solid var(--border-strong, rgba(124, 92, 255, 0.18));
   box-shadow: var(--shadow-md, 0 12px 32px rgba(0, 0, 0, 0.35));
   min-width: 0;
+  animation: model-details-in 0.4s var(--ease-out, ease) both;
+}
+
+@keyframes model-details-in {
+  from {
+    opacity: 0.55;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-details {
+    animation: none;
+  }
 }
 
 .details-header {
@@ -176,10 +194,29 @@
 
 .version-card {
   border: none;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 24px;
   background: rgba(30, 41, 59, 0.8);
-  transition: all 0.3s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+  animation: version-card-in 0.4s var(--ease-out, ease) both;
+  animation-delay: calc(var(--version-i, 0) * 50ms);
+}
+
+@keyframes version-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .version-card {
+    animation: none;
+  }
 }
 
 .version-card:hover {

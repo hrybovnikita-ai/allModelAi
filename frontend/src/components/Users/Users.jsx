@@ -1,18 +1,27 @@
 import { useEffect, useState } from 'react';
 import { resolveApiUrl } from '../../lib/apiBase';
 import { parseCommunityUsersPayload } from '../../lib/communityUsers';
+import HomeReveal from '../HomeReveal/HomeReveal';
 import './Users.css';
 
-const userComments = {
-  1: 'AllModelAI makes it easy to compare different models and find the right answer quickly.',
-  2: 'The unified workspace is simple, fast, and genuinely useful for my everyday projects.',
-  3: 'I love having so many AI tools in one place without switching between different apps.',
-  4: 'The model library helps me move from an idea to a finished result much faster.',
-  5: 'A clean experience with powerful models and a great community behind it.',
-  6: 'It is my favorite way to explore new AI models and learn what each one does best.',
-  7: 'The chat experience feels focused and the model choice gives me much more flexibility.',
-  8: 'AllModelAI saves me time every day. Everything I need is right where I expect it.',
-};
+/** Illustrative quotes only — not attributed to live community members. */
+const SAMPLE_FEEDBACK = [
+  {
+    id: 'sample-1',
+    quote: 'Comparing models in one workspace helps me choose the right answer faster.',
+    persona: 'Product designer',
+  },
+  {
+    id: 'sample-2',
+    quote: 'Smart Router and a single chat experience keep my daily AI work focused.',
+    persona: 'Software engineer',
+  },
+  {
+    id: 'sample-3',
+    quote: 'I like exploring new models without jumping between different apps.',
+    persona: 'Researcher',
+  },
+];
 
 export default function Users() {
   const [users, setUsers] = useState([]);
@@ -69,18 +78,18 @@ export default function Users() {
   }, []);
 
   return (
-    <section className="users-section" id="users">
+    <HomeReveal as="section" className="users-section" id="users">
       <div className="users-heading">
         <span>Connected through the API</span>
         <h2>AllModelAI community</h2>
-        <p>These users are loaded from the Express backend with Axios.</p>
+        <p>Members shown here come from the public directory — names only, no private account details.</p>
       </div>
 
       {loading && <div className="users-status" role="status">Loading users...</div>}
       {error && <div className="users-status users-error" role="alert">{error}</div>}
 
       {!loading && !error && users.length === 0 && (
-        <div className="users-status">No users found.</div>
+        <div className="users-status">No public community members to show yet.</div>
       )}
 
       {!loading && !error && users.length > 0 && (
@@ -88,7 +97,7 @@ export default function Users() {
           {users.map((user) => (
             <article className="user-card" key={user.id}>
               <div className="user-avatar" aria-hidden="true">
-                {user.name.split(' ').map((part) => part[0]).slice(0, 2).join('')}
+                {String(user.name).split(' ').map((part) => part[0]).slice(0, 2).join('')}
               </div>
               <div>
                 <h3>{user.name}</h3>
@@ -100,27 +109,29 @@ export default function Users() {
         </div>
       )}
 
-      {!loading && !error && users.length > 0 && (
-        <div className="comments-heading">
-          <span>What the community says</span>
-          <h3>Built for curious minds</h3>
-        </div>
-      )}
+      <div className="comments-heading">
+        <span>What people look for</span>
+        <h3>Built for curious minds</h3>
+        <p className="sample-note">
+          Sample feedback for illustration — not verified reviews from the members listed above.
+        </p>
+      </div>
 
-      {!loading && !error && users.length > 0 && (
-        <div className="comments-grid">
-          {users.map((user) => (
-            <article className="comment-card" key={`comment-${user.id}`}>
-              <div className="comment-stars" aria-label="5 out of 5 stars">★★★★★</div>
-              <blockquote>“{userComments[user.id] || 'AllModelAI is a powerful and welcoming place to explore what AI can do.'}”</blockquote>
-              <footer>
-                <span className="comment-avatar">{user.name.split(' ').map((part) => part[0]).slice(0, 2).join('')}</span>
-                <span><strong>{user.name}</strong><small>AllModelAI member</small></span>
-              </footer>
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
+      <div className="comments-grid">
+        {SAMPLE_FEEDBACK.map((item) => (
+          <article className="comment-card" key={item.id}>
+            <span className="sample-feedback-badge">Sample feedback</span>
+            <blockquote>“{item.quote}”</blockquote>
+            <footer>
+              <span className="comment-avatar" aria-hidden="true">✦</span>
+              <span>
+                <strong>{item.persona}</strong>
+                <small>Illustrative persona</small>
+              </span>
+            </footer>
+          </article>
+        ))}
+      </div>
+    </HomeReveal>
   );
 }

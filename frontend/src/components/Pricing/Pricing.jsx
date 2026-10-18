@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchCheckoutInfo, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
 import AiCreditsPurchaseModal from './AiCreditsPurchaseModal';
 import './Pricing.css';
 
@@ -111,7 +110,14 @@ function PricingCard({ plan, onSelect, onCreditsOpen }) {
         ))}
       </ul>
       <button
-        className={`pricing-btn${plan.featured ? ' featured-btn' : ''}${plan.creditsCard ? ' credits-btn' : ''}`}
+        className={[
+          'pricing-btn',
+          'pricing-btn-pill',
+          plan.featured ? 'featured-btn' : '',
+          plan.creditsCard ? 'credits-btn' : '',
+          !plan.featured && !plan.creditsCard && plan.slug === 'starter' ? 'starter-btn' : '',
+          !plan.featured && !plan.creditsCard && plan.slug === 'unlimited' ? 'unlimited-btn' : '',
+        ].filter(Boolean).join(' ')}
         type="button"
         onClick={handleActivate}
       >
@@ -123,37 +129,13 @@ function PricingCard({ plan, onSelect, onCreditsOpen }) {
 
 export default function Pricing() {
   const navigate = useNavigate();
-  const [banner, setBanner] = useState({ showTestBanner: false, testBannerText: TEST_MODE_BANNER });
-  const [paddleNote, setPaddleNote] = useState('');
   const [creditsModalOpen, setCreditsModalOpen] = useState(false);
-
-  useEffect(() => {
-    fetchCheckoutInfo().then((info) => {
-      setBanner({
-        showTestBanner: Boolean(info?.showTestModeBanner),
-        testBannerText: info?.testModeBannerText || TEST_MODE_BANNER,
-      });
-      if (info?.paddleCheckoutEnabled) {
-        setPaddleNote(info?.paddleSandbox
-          ? 'Paddle Sandbox checkout is available on the checkout page (no real charges).'
-          : 'Paddle checkout is available on the checkout page.');
-      } else if (info?.paddleMissingEnvVars?.length) {
-        setPaddleNote('');
-      }
-    });
-  }, []);
 
   return (
     <section id="pricing" className="pricing-section">
       <div className="section-header">
         <h2>Simple, Transparent Pricing</h2>
         <p>Choose the plan that fits your integration needs</p>
-        {banner.showTestBanner && (
-          <p className="pricing-test-mode-banner" role="status">{banner.testBannerText}</p>
-        )}
-        {paddleNote && (
-          <p className="pricing-test-mode-banner" role="status">{paddleNote}</p>
-        )}
       </div>
       <div className="pricing-grid">
         {PLANS.map((plan) => (

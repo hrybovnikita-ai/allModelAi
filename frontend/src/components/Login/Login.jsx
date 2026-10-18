@@ -20,7 +20,6 @@ import { canUseGoogleRedirectSignIn } from '../../lib/storageAvailability';
 import { markFreshLogin } from '../../lib/session';
 import { useSession } from '../Session/SessionProvider';
 import { isBenignGoogleSignInCancellation, isRetryableSocialSignInError, socialError } from '../../lib/socialSession';
-import { classifyNetworkError } from '../../lib/networkErrors';
 import AuthDebugPanel from '../SocialAuth/AuthDebugPanel';
 import GoogleSignInIcon from './GoogleSignInIcon';
 import './Login.css';
@@ -47,9 +46,7 @@ function LoginForm({
   const [submitting, setSubmitting] = useState(false);
   const [socialBusy, setSocialBusy] = useState(null);
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [successNotice, setSuccessNotice] = useState('');
-  const [needsPasswordSetup, setNeedsPasswordSetup] = useState(false);
   const [firebaseSocialReady, setFirebaseSocialReady] = useState(() => isFirebaseSocialConfigured());
   const [firebaseConfigChecked, setFirebaseConfigChecked] = useState(() => isFirebaseSocialConfigured());
   const [authReadyForGoogle, setAuthReadyForGoogle] = useState(false);
@@ -172,7 +169,6 @@ function LoginForm({
     event.preventDefault();
     setError('');
     setSuccessNotice('');
-    setNeedsPasswordSetup(false);
 
     const formData = new FormData(event.currentTarget);
     const raw = Object.fromEntries(formData.entries());
@@ -183,7 +179,6 @@ function LoginForm({
         name: raw.name,
         email: raw.email,
         password: raw.password,
-        confirmPassword: raw.confirmPassword,
       });
       if (!validation.ok) {
         setError(validation.message);
@@ -199,10 +194,12 @@ function LoginForm({
         setError('Please enter a password.');
         return;
       }
+      const optionalName = String(raw.name || '').trim();
       payload = {
         email: String(raw.email).trim().toLowerCase(),
         password: raw.password,
         rememberMe,
+        ...(optionalName ? { name: optionalName } : {}),
       };
     }
 
@@ -216,6 +213,16 @@ function LoginForm({
         payload,
       );
 
+      if (signingUp && data?.needsEmailVerification) {
+        setSuccessNotice(
+          data.message ||
+            'Account created. Check your email to verify ownership, then sign in.',
+        );
+        setSubmitting(false);
+        onModeChange?.('signin');
+        return;
+      }
+
       applyAuthResponsePayload(data);
       const user = await confirmSession(data.user);
       markFreshLogin();
@@ -224,9 +231,7 @@ function LoginForm({
       document.activeElement?.blur();
       onClose?.();
 
-      if (signingUp) {
-        setSuccessNotice('Welcome to AllModelAI');
-      }
+      setSuccessNotice(signingUp ? 'Welcome to AllModelAI!' : 'Welcome back!');
 
       navigate(destination, {
         replace: true,
@@ -237,11 +242,10 @@ function LoginForm({
         },
       });
     } catch (requestError) {
-      if (requestError.code === 'PASSWORD_SETUP_REQUIRED' && !signingUp) {
-        setNeedsPasswordSetup(true);
+      if (requestError.code === 'EMAIL_NOT_VERIFIED') {
         setError(
           requestError.message ||
-            'No password is set for this email. Sign in with Google, then set a password under Settings → Security.',
+            'Verify your email before signing in. Check your inbox for the verification link.',
         );
       } else if (requestError.code === 'SOCIAL_ACCOUNT_EXISTS') {
         setError(requestError.message);
@@ -254,31 +258,30 @@ function LoginForm({
         !signingUp
         && requestError.message?.toLowerCase().includes('could not be verified')
       ) {
-        setError(
-          'Sign-in reached the server but your session could not be verified. Check that VITE_API_BASE_URL points to your Render backend and that Render allows cross-site cookies (COOKIE_SAME_SITE=none, COOKIE_SECURE=true, FRONTEND_ORIGIN).',
-        );
+        setError('Could not complete sign-in. Please try again.');
       } else if (
         !signingUp
         && (requestError.status === 401 || requestError.code === 'INVALID_CREDENTIALS')
-        && requestError.code !== 'PASSWORD_SETUP_REQUIRED'
       ) {
-        setError('Invalid email or password.');
+        setError('Unable to sign in. Check your details or reset your password.');
       } else if (
         requestError.code === 'DATABASE_UNAVAILABLE'
         || requestError.status === 503
       ) {
-        setError(requestError.message || 'Sign-in is temporarily unavailable. Please try again in a moment.');
+        setError('Sign-in is temporarily unavailable. Please try again.');
       } else if (
-        requestError.message?.includes('Failed to fetch')
+        requestError.code === 'API_PROXY_UPSTREAM_DOWN'
+        || requestError.message?.includes('Local API unreachable')
+        || requestError.message?.includes('Failed to fetch')
         || requestError.code === 'AUTH_NETWORK_ERROR'
         || requestError.code === 'BACKEND_UNREACHABLE'
       ) {
-        const { message } = classifyNetworkError(requestError, { phase: 'auth' });
-        setError(message);
+        setError('Connection problem. Please try again.');
       } else {
         setError(
-          requestError.message ||
-            (signingUp ? 'Could not create your account. Please try again.' : 'Could not sign in. Please try again.'),
+          signingUp
+            ? 'Could not create your account. Please try again.'
+            : 'Unable to sign in. Check your details or reset your password.',
         );
       }
     } finally {
@@ -334,25 +337,18 @@ function LoginForm({
           {signingUp ? 'Create your account' : 'Welcome to AllModelAI'}
         </h2>
 
-        <p className="login-intro">
-          {signingUp
-            ? 'Join one workspace for every leading AI model.'
-            : 'Sign in to access your AI workspace.'}
-        </p>
-
-        <form className="login-form" onSubmit={handleSubmit}>
-          {signingUp && (
-            <label>
-              <span>Name</span>
-              <input
-                name="name"
-                type="text"
-                placeholder="Your name"
-                autoComplete="name"
-                required
-              />
-            </label>
-          )}
+        <form className="login-form" onSubmit={handleSubmit} noValidate>
+          <label>
+            <span>Name{signingUp ? '' : ' (optional)'}</span>
+            <input
+              name="name"
+              type="text"
+              placeholder="Your name"
+              autoComplete="name"
+              required={signingUp}
+              aria-required={signingUp}
+            />
+          </label>
 
           <label>
             <span>Email</span>
@@ -362,6 +358,8 @@ function LoginForm({
               placeholder="you@example.com"
               autoComplete="email"
               required
+              inputMode="email"
+              aria-required="true"
             />
           </label>
 
@@ -371,9 +369,11 @@ function LoginForm({
               <input
                 name="password"
                 type={passwordVisible ? 'text' : 'password'}
-                placeholder={signingUp ? 'Choose a password' : 'Your password'}
+                placeholder={signingUp ? 'At least 8 characters' : 'Your password'}
                 autoComplete={signingUp ? 'new-password' : 'current-password'}
                 required
+                minLength={signingUp ? 8 : undefined}
+                aria-required="true"
               />
               <button
                 type="button"
@@ -382,54 +382,38 @@ function LoginForm({
                 aria-label={passwordVisible ? 'Hide password' : 'Show password'}
                 aria-pressed={passwordVisible}
               >
-                {passwordVisible ? '◉' : '◎'}
+                <span className="password-toggle-icon" aria-hidden="true">
+                  {passwordVisible ? (
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8M9.9 5.1A9.8 9.8 0 0121 12c-.6 1.1-1.4 2.1-2.4 2.9M6.1 6.1C4.6 7.4 3.5 9.1 3 12c1.5 4.5 5.4 7 9 7 1.4 0 2.8-.3 4.1-.9" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </span>
               </button>
             </span>
           </label>
 
-          {signingUp && (
-            <label>
-              <span>Confirm password</span>
-              <span className="password-field">
-                <input
-                  name="confirmPassword"
-                  type={confirmPasswordVisible ? 'text' : 'password'}
-                  placeholder="Repeat your password"
-                  autoComplete="new-password"
-                  required
-                />
-                <button
-                  type="button"
-                  className="password-toggle"
-                  onClick={() =>
-                    setConfirmPasswordVisible((visible) => !visible)
-                  }
-                  aria-label={
-                    confirmPasswordVisible ? 'Hide password' : 'Show password'
-                  }
-                  aria-pressed={confirmPasswordVisible}
-                >
-                  {confirmPasswordVisible ? '◉' : '◎'}
-                </button>
-              </span>
+          <div className="login-form-meta">
+            <label className="login-remember">
+              <input
+                name="rememberMe"
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(event) => setRememberMe(event.target.checked)}
+              />
+              Remember me
             </label>
-          )}
-
-          <label className="login-remember">
-            <input
-              name="rememberMe"
-              type="checkbox"
-              checked={rememberMe}
-              onChange={(event) => setRememberMe(event.target.checked)}
-            />
-            Remember me
-          </label>
-
-          {!signingUp && (
-            <a className="login-forgot" href="/forgot-password">
-              Forgot password?
-            </a>
-          )}
+            {!signingUp && (
+              <Link className="login-forgot" to="/forgot-password" onClick={onClose}>
+                Forgot password?
+              </Link>
+            )}
+          </div>
 
           {successNotice && (
             <p className="login-success" role="status">
@@ -451,20 +435,6 @@ function LoginForm({
                 </button>
               )}
             </div>
-          )}
-
-          {needsPasswordSetup && !signingUp && (
-            <p className="login-password-setup-hint" role="status">
-              Use <strong>Continue with Google</strong> above, then open{' '}
-              <Link to="/settings#settings-security" onClick={onClose}>
-                Settings → Security
-              </Link>{' '}
-              to set an AllModelAI password for this email. You can also use{' '}
-              <Link to="/forgot-password" onClick={onClose}>
-                Forgot password
-              </Link>{' '}
-              to create a password from your email (we never use your Google password).
-            </p>
           )}
 
           <button

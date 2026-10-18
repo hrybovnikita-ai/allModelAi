@@ -24,6 +24,7 @@ const DEFAULT_MODEL_WEIGHTS = {
     kimi: 1.1,
     perplexity: 1.5,
     groq: 0.7,
+    'gpt-oss-groq': 0.55,
     cloudflare: 0.5,
     'gpt-oss': 0.5,
     nemotron: 0.4,

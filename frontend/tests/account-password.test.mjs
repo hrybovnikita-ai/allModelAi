@@ -38,23 +38,29 @@ test('password enrollment validation requires confirm match and current password
 test('settings security UI exposes password enrollment for signed-in users', async () => {
   const settings = await readFile(new URL('../src/components/Settings/Settings.jsx', import.meta.url), 'utf8');
   const security = await readFile(new URL('../src/components/Settings/AccountSecurity.jsx', import.meta.url), 'utf8');
+  const form = await readFile(new URL('../src/components/Settings/SetAllModelAiPasswordForm.jsx', import.meta.url), 'utf8');
   assert.match(settings, /AccountSecurity/);
   assert.match(security, /fetchAccountSecurity/);
-  assert.match(security, /setAccountPassword/);
-  assert.match(security, /validatePasswordEnrollmentForm/);
+  assert.match(security, /SetAllModelAiPasswordForm/);
+  assert.match(form, /setAccountPassword/);
+  assert.match(form, /validatePasswordEnrollmentForm/);
 });
 
-test('login surfaces PASSWORD_SETUP_REQUIRED guidance', async () => {
+test('login uses generic credential errors without password-setup enumeration', async () => {
   const login = await readFile(new URL('../src/components/Login/Login.jsx', import.meta.url), 'utf8');
-  assert.match(login, /PASSWORD_SETUP_REQUIRED/);
-  assert.match(login, /needsPasswordSetup/);
-  assert.match(login, /settings#settings-security/);
+  assert.doesNotMatch(login, /PASSWORD_SETUP_REQUIRED/);
+  assert.doesNotMatch(login, /needsPasswordSetup/);
+  assert.doesNotMatch(login, /PASSWORD_HASH_MISSING/);
+  assert.match(login, /Unable to sign in\. Check your details or reset your password\./);
+  assert.doesNotMatch(login, /Invalid email or password/);
+  assert.match(login, /forgot-password/);
+  assert.doesNotMatch(login, /Used Google before\?/);
 });
 
-test('login hints forgot-password path for Google-only accounts', async () => {
+test('login hints forgot-password and Google for password recovery', async () => {
   const login = await readFile(new URL('../src/components/Login/Login.jsx', import.meta.url), 'utf8');
   assert.match(login, /forgot-password/);
-  assert.match(login, /never use your Google password/i);
+  assert.match(login, /Continue with Google/);
 });
 
 test('account security API client uses authenticated routes', async () => {

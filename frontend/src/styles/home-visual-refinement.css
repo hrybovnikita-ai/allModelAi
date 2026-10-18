@@ -250,29 +250,11 @@
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .home-surface .home-layout > .home-model-section,
-  .home-surface .home-layout > section {
-    animation: home-refine-in 0.55s var(--ease-out, ease) both;
-  }
-
-  .home-surface .home-layout > section:nth-of-type(2) { animation-delay: 0.04s; }
-  .home-surface .home-layout > section:nth-of-type(3) { animation-delay: 0.08s; }
-  .home-surface .home-layout > section:nth-of-type(4) { animation-delay: 0.1s; }
-  .home-surface .home-layout > section:nth-of-type(5) { animation-delay: 0.12s; }
-  .home-surface .home-layout > section:nth-of-type(6) { animation-delay: 0.14s; }
-  .home-surface .home-layout > section:nth-of-type(7) { animation-delay: 0.16s; }
-  .home-surface .home-layout > section:nth-of-type(8) { animation-delay: 0.18s; }
-}
+/* Section entrance is handled by HomeReveal + Intersection Observer. */
 
 @media (prefers-reduced-motion: reduce) {
   .home-surface .sticker:hover {
     transform: none;
-  }
-
-  .home-surface .home-layout > .home-model-section,
-  .home-surface .home-layout > section {
-    animation: none !important;
   }
 }
 

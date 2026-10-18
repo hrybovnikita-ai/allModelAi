@@ -11,8 +11,9 @@ async function findUserByNormalizedEmailAsync(connection, normalizedEmail) {
     return result.rows[0] || null;
 }
 
-async function registerUserPostgresAsync(connection, { safeName, normalizedEmail, passwordHash }) {
+async function registerUserPostgresAsync(connection, { safeName, normalizedEmail, passwordHash, emailVerified = true }) {
     const pool = resolvePostgresAsyncPool(connection);
+    const verifiedFlag = emailVerified ? 1 : 0;
     return withPgTransaction(pool, async (client) => {
         const existing = await queryPgClient(
             client,
@@ -26,12 +27,12 @@ async function registerUserPostgresAsync(connection, { safeName, normalizedEmail
         const inserted = await queryPgClient(
             client,
             `INSERT INTO users (name, email, password_hash, email_verified)
-             VALUES ($1, $2, $3, 1)
+             VALUES ($1, $2, $3, $4)
              RETURNING id`,
-            [safeName, normalizedEmail, passwordHash],
+            [safeName, normalizedEmail, passwordHash, verifiedFlag],
         );
         const id = inserted.rows[0].id;
-        return { id, name: safeName, email: normalizedEmail, passwordHash };
+        return { id, name: safeName, email: normalizedEmail, passwordHash, emailVerified: Boolean(emailVerified) };
     });
 }
 
@@ -46,13 +47,14 @@ async function userHasSocialIdentityAsync(connection, userId) {
 }
 
 async function getPasswordHashByUserIdAsync(connection, userId) {
+    const { extractPasswordHash } = require('../authPasswordHash');
     const pool = resolvePostgresAsyncPool(connection);
     const result = await queryPgPool(
         pool,
         'SELECT password_hash FROM users WHERE id = $1',
         [userId],
     );
-    return result.rows[0]?.password_hash ?? null;
+    return extractPasswordHash(result.rows[0]);
 }
 
 async function findOrCreateQuickSocialUserAsync(connection, { safeName, normalizedEmail, avatar }) {

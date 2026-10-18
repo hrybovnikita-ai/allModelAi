@@ -55,9 +55,15 @@ export default function ForgotPassword() {
         );
       }
 
-      setMessage(
+      const baseMessage =
         data.message ||
-          'If the account exists, a password reset request was created.'
+        'If the account exists, a password reset request was created.';
+      const needsLocalSetupHint =
+        data.emailDeliveryConfigured === false && !data.token;
+      setMessage(
+        needsLocalSetupHint
+          ? `${baseMessage} Sign in with Google, then set an AllModelAI password in Settings → Security.`
+          : baseMessage,
       );
 
       /*
@@ -120,6 +126,7 @@ export default function ForgotPassword() {
           body: JSON.stringify({
             token: cleanToken,
             password,
+            confirmPassword,
           }),
         }
       );

@@ -31,7 +31,7 @@ export default function ModelsSection({ models, selectedModel, setSelectedModel 
         </div>
       </section>
 
-      <section className="model-details">
+      <section className="model-details" key={selectedModel} aria-live="polite">
         <div className="details-header">
           <div className="details-logo">
             <img src={currentModel.logo} alt={currentModel.name} />
@@ -45,7 +45,7 @@ export default function ModelsSection({ models, selectedModel, setSelectedModel 
           <h3>Available Versions</h3>
           <div className="versions-list">
             {currentModel.versions.map((version, idx) => (
-              <div key={idx} className="version-card">
+              <div key={version.id || idx} className="version-card" style={{ '--version-i': idx }}>
                 <div className="version-header">
                   <h4>{version.name}</h4>
                   <span className="tier-badge" data-tier={version.tier.toLowerCase()}>

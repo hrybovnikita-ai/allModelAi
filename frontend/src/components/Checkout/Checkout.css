@@ -170,8 +170,29 @@
   border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(15, 23, 42, 0.5);
-  color: #94a3b8;
+  color: #e2e8f0;
   font-size: 0.82rem;
+}
+
+.checkout-state--unavailable {
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(127, 29, 29, 0.28);
+  color: #fecaca;
+}
+
+.checkout-state--unavailable .checkout-state-sub {
+  margin: 8px 0 0;
+  color: #f1f5f9;
+  line-height: 1.45;
+}
+
+.checkout-activation-checklist {
+  margin: 14px 0 0;
+  padding-left: 1.2rem;
+  color: #fde68a;
+  line-height: 1.5;
 }
 
 .checkout-stripe-advanced {

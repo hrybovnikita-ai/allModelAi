@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch --watch-path=.env --watch-path=server.js --watch-path=src server.js",
+    "dev": "node --watch --watch-path=.env --watch-path=server.js --watch-path=localApp.js --watch-path=app.js --watch-path=src server.js",
     "dev:stable": "node server.js",
     "test": "node tests/run-all.js",
     "check-password": "node scripts/check-password.js",

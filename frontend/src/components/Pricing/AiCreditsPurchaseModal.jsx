@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { resolveApiUrl } from '../../lib/apiBase';
+import { fetchCheckoutInfo, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
 
 export default function AiCreditsPurchaseModal({ open, onClose }) {
   const [loading, setLoading] = useState(true);
@@ -9,15 +10,20 @@ export default function AiCreditsPurchaseModal({ open, onClose }) {
   const [checkoutAvailable, setCheckoutAvailable] = useState(false);
   const [buying, setBuying] = useState(false);
   const [error, setError] = useState('');
+  const [testModeText, setTestModeText] = useState('');
 
   useEffect(() => {
     if (!open) return undefined;
     let cancelled = false;
     setLoading(true);
     setError('');
-    fetch(resolveApiUrl('/api/credits/packages'), { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
+    setTestModeText('');
+    Promise.all([
+      fetch(resolveApiUrl('/api/credits/packages'), { credentials: 'include' })
+        .then((res) => (res.ok ? res.json() : null)),
+      fetchCheckoutInfo().catch(() => null),
+    ])
+      .then(([data, checkoutInfo]) => {
         if (cancelled) return;
         setPackages(Array.isArray(data?.packages) ? data.packages : []);
         setCheckoutAvailable(Boolean(data?.checkoutAvailable));
@@ -26,6 +32,9 @@ export default function AiCreditsPurchaseModal({ open, onClose }) {
             || data?.creem?.userMessage
             || 'Real checkout is not yet available. Merchant approval is pending.',
         );
+        if (checkoutInfo?.showTestModeBanner) {
+          setTestModeText(checkoutInfo?.testModeBannerText || TEST_MODE_BANNER);
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -101,6 +110,9 @@ export default function AiCreditsPurchaseModal({ open, onClose }) {
             ×
           </button>
         </header>
+        {testModeText ? (
+          <p className="ai-credits-modal-notice ai-credits-modal-test-mode" role="status">{testModeText}</p>
+        ) : null}
         {!checkoutAvailable && (
           <p className="ai-credits-modal-notice" role="status">{notice}</p>
         )}

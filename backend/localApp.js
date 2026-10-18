@@ -95,6 +95,10 @@ app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
     next();
 });
+// TTS must mount independently of the large routes.js surface so /api/tts/health
+// stays available even if other route modules change. Do not also register /tts/*
+// inside routes.js (avoids duplicate handlers).
+app.use('/api/tts', require('./src/routes/api/tts'));
 app.use('/api', routes);
 
 // In production the backend serves the built React app, so Vite/VS Code is not required.

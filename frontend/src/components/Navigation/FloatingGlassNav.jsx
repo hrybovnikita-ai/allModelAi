@@ -4,9 +4,11 @@ import { apiFetch } from '../../lib/api';
 import { normalizeCreditStatus } from '../../lib/creditStatus';
 import { useSession } from '../Session/SessionProvider';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
-import { isMoreMenuActive, NAV_PRIMARY_LINKS } from './navConfig';
+import { isMoreMenuActive, NAV_PRIMARY_LINKS, NAV_SETTINGS_LINK } from './navConfig';
 import NavMoreMenu from './NavMoreMenu';
 import NavProfileMenu from './NavProfileMenu';
+import NavSettingsIcon from './NavSettingsIcon';
+import NavThemeToggle from './NavThemeToggle';
 import { useNavCompact } from './useNavCompact';
 import './FloatingGlassNav.css';
 
@@ -66,6 +68,7 @@ export default function FloatingGlassNav() {
   const canUseDeveloper = Boolean(creditStatus?.canUseDeveloper);
   const isOwner = Boolean(creditStatus?.isOwner);
   const moreActive = isMoreMenuActive(location.pathname, { canUseDeveloper, isOwner });
+  const settingsActive = NAV_SETTINGS_LINK.isActive(location.pathname);
 
   return (
     <div className="fg-nav-shell">
@@ -104,15 +107,25 @@ export default function FloatingGlassNav() {
               moreActive={moreActive}
               renderTrigger
             />
+            <Link
+              to={NAV_SETTINGS_LINK.to}
+              className={`fg-nav-link fg-nav-link--settings${settingsActive ? ' fg-nav-link--active' : ''}`}
+              aria-current={settingsActive ? 'page' : undefined}
+              onClick={() => { setMoreOpen(false); setProfileOpen(false); }}
+            >
+              <NavSettingsIcon size={15} />
+              <span>{NAV_SETTINGS_LINK.label}</span>
+            </Link>
           </nav>
 
           <div className="fg-nav-right">
+            <NavThemeToggle />
             <NavProfileMenu
               user={user}
               creditStatus={creditStatus}
               open={profileOpen}
               onOpenChange={handleProfileOpenChange}
-              showSettingsShortcut
+              showSettingsShortcut={false}
             />
           </div>
         </div>

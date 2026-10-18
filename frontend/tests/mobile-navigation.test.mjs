@@ -59,4 +59,9 @@ test('settings page exposes profile and security anchors', async () => {
   assert.match(security, /id="settings-security"/);
   assert.match(settings, /settings-section-nav/);
   assert.match(settings, /#settings-security/);
+  assert.match(settings, /#settings-general/);
+  assert.match(settings, /#settings-billing/);
+  assert.match(settings, /#settings-privacy/);
+  assert.match(settings, /AccountSecurity/);
+  assert.match(settings, /updateAccountProfile/);
 });

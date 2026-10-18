@@ -190,6 +190,7 @@ export function degradedSessionUserFromFailure(error) {
 
 const SESSION_FETCH_TIMEOUT_MS = 12000;
 
+/** @type {{ generation: number, promise: Promise<{ response: Response, data: unknown }> } | null} */
 let sessionFetchInflight = null;
 
 function shouldRetrySessionAfterResponse(response, attempt, maxAttempts) {
@@ -231,6 +232,12 @@ export function rememberSession(user, { serverVerified = true } = {}) {
   storage.setItem('allmodelai_user', saved);
   if (serverVerified) {
     verifiedSession = { user, saved: storage.getItem('allmodelai_user'), expiresAt: Date.now() + cacheDuration };
+    // A verified session means any stale "session expired" banner is obsolete.
+    try {
+      globalThis.sessionStorage?.removeItem('allmodelai_auth_notice');
+    } catch {
+      /* private mode */
+    }
     void import('./clientAuthReset.js').then(({ resetUnauthorizedRedirectGuard }) => {
       resetUnauthorizedRedirectGuard();
     }).catch(() => {});
@@ -250,34 +257,41 @@ export function isSessionUserVerified(user) {
 /**
  * Single GET /api/auth/session call (credentials + native/Firebase headers).
  * Prefer {@link restoreSession} for app bootstrap; use this for a raw probe or tests.
+ *
+ * In-flight coalescing is generation-scoped: a pre-login guest probe must never be
+ * reused after a newer login bumps {@link sessionGeneration}.
  */
 export async function fetchSessionFromServer() {
-  if (sessionFetchInflight) {
-    return sessionFetchInflight;
+  const generation = sessionGeneration;
+  if (sessionFetchInflight?.generation === generation) {
+    return sessionFetchInflight.promise;
   }
-  const request = (async () => {
-    if (typeof document !== 'undefined' && !readCookieConsent()) {
-      const consentWaitMs = hasSessionRestoreHint() ? 350 : 1200;
-      await waitForCookieConsentChoice(consentWaitMs);
-    }
-    const response = await fetch(resolveAuthApiUrl('session'), {
-      credentials: 'include',
-      cache: 'no-store',
-      signal: AbortSignal.timeout(SESSION_FETCH_TIMEOUT_MS),
-      headers: {
-        Accept: 'application/json',
-        ...nativeClientHeaders(),
-        ...nativeSessionHeaders(),
-        ...firebaseSessionFallbackHeaders(),
-      },
-    });
-    const { data, parseError } = await readJsonBody(response);
-    if (parseError) throw parseError;
-    return { response, data };
-  })();
+  const request = {
+    generation,
+    promise: (async () => {
+      if (typeof document !== 'undefined' && !readCookieConsent()) {
+        const consentWaitMs = hasSessionRestoreHint() ? 350 : 1200;
+        await waitForCookieConsentChoice(consentWaitMs);
+      }
+      const response = await fetch(resolveAuthApiUrl('session'), {
+        credentials: 'include',
+        cache: 'no-store',
+        signal: AbortSignal.timeout(SESSION_FETCH_TIMEOUT_MS),
+        headers: {
+          Accept: 'application/json',
+          ...nativeClientHeaders(),
+          ...nativeSessionHeaders(),
+          ...firebaseSessionFallbackHeaders(),
+        },
+      });
+      const { data, parseError } = await readJsonBody(response);
+      if (parseError) throw parseError;
+      return { response, data };
+    })(),
+  };
   sessionFetchInflight = request;
   try {
-    return await request;
+    return await request.promise;
   } finally {
     if (sessionFetchInflight === request) sessionFetchInflight = null;
   }
@@ -299,6 +313,7 @@ export async function restoreSession({ force = false, supersede = false } = {}) 
     if (supersede) {
       sessionGeneration += 1;
       sessionFetchInflight = null;
+      pendingSession = null;
     } else {
       return pendingSession.promise;
     }
@@ -333,6 +348,24 @@ export async function restoreSession({ force = false, supersede = false } = {}) 
             verifiedSession = null;
             setSessionRestoreMeta({ verified: false, issue: null });
             if (isFreshLoginGraceActive() && attempt < retryDelays.length - 1) continue;
+            // Never wipe a newer login that bumped generation while this probe ran.
+            if (generation !== sessionGeneration) {
+              throw new Error('Session changed. Please try again.');
+            }
+            // During fresh-login grace, keep the client hint — cookie may still be landing.
+            if (isFreshLoginGraceActive()) {
+              const pending = readStoredSessionUser();
+              if (pending?.email) {
+                setSessionRestoreMeta({
+                  verified: false,
+                  issue: {
+                    code: 'SESSION_COOKIE_PENDING',
+                    message: 'Confirming your sign-in…',
+                  },
+                });
+                return pending;
+              }
+            }
             clearAllSessionData();
             return null;
           }
@@ -361,11 +394,17 @@ export async function restoreSession({ force = false, supersede = false } = {}) 
         throw serverError;
       }
 
+      if (generation !== sessionGeneration) {
+        throw new Error('Session changed. Please try again.');
+      }
       verifiedSession = null;
       setSessionRestoreMeta({ verified: false, issue: null });
       clearAllSessionData();
       return null;
     } catch (error) {
+      if (generation !== sessionGeneration) {
+        throw new Error('Session changed. Please try again.');
+      }
       if (isTransientSessionFetchError(error)) {
         const degraded = tryDegradedSessionRestore(error);
         if (degraded) return degraded;
@@ -402,7 +441,7 @@ export async function establishSessionFromAuthExchange(user) {
 
   let verified = null;
   try {
-    verified = await restoreSession({ force: true });
+    verified = await restoreSession({ force: true, supersede: true });
   } catch (error) {
     socialAuthDebug('SESSION_EXCHANGE_VERIFY_ERROR', { message: error?.message });
   }

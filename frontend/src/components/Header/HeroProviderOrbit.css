@@ -24,10 +24,12 @@
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(119, 105, 232, 0.2), transparent 68%);
+  background: radial-gradient(circle, rgba(156, 118, 245, 0.26), transparent 68%);
   pointer-events: none;
-  filter: blur(8px);
+  filter: blur(10px);
   z-index: 0;
+  animation: hero-orbit-glow-pulse 7s ease-in-out infinite;
+  will-change: opacity, transform;
 }
 
 .hero-orbit-stage {
@@ -210,6 +212,17 @@
   }
 }
 
+@keyframes hero-orbit-glow-pulse {
+  0%, 100% {
+    opacity: 0.75;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+}
+
 @media (max-width: 1023px) {
   .hero-orbit-stage {
     --orbit-outer-r: clamp(96px, 22vw, 132px);
@@ -241,7 +254,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .hero-orbit-ring:not(.hero-orbit-ring--guide),
-  .hero-orbit-badge-upright {
+  .hero-orbit-badge-upright,
+  .hero-orbit-glow {
     animation: none;
   }
 

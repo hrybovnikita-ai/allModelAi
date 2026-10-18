@@ -1,4 +1,4 @@
-import { authGet, authPost } from './authApi.js';
+import { authGet, authPatch, authPost } from './authApi.js';
 import { readJsonBody } from './httpJson.js';
 
 export async function fetchAccountSecurity() {
@@ -20,6 +20,18 @@ export async function setAccountPassword(payload) {
     return data;
   } catch (error) {
     throw Object.assign(new Error(error.message || 'Could not save your password.'), {
+      status: error.status,
+      code: error.code,
+    });
+  }
+}
+
+export async function updateAccountProfile(payload) {
+  try {
+    const { data } = await authPatch('account/profile', payload);
+    return data;
+  } catch (error) {
+    throw Object.assign(new Error(error.message || 'Could not save your profile.'), {
       status: error.status,
       code: error.code,
     });

@@ -319,21 +319,37 @@
   gap: 8px;
 }
 
-.fg-nav-settings-link {
+.fg-nav-settings-link,
+.fg-nav-theme-toggle {
   display: grid;
   place-items: center;
   width: 36px;
   height: 36px;
+  border: 0;
   border-radius: 50%;
+  background: transparent;
   color: var(--text-secondary);
   text-decoration: none;
+  cursor: pointer;
+  font: inherit;
   transition: color 160ms ease, background 160ms ease;
 }
 
 .fg-nav-settings-link:hover,
-.fg-nav-settings-link:focus-visible {
+.fg-nav-settings-link:focus-visible,
+.fg-nav-theme-toggle:hover,
+.fg-nav-theme-toggle:focus-visible {
   color: var(--text-primary);
   background: var(--surface-hover);
+}
+
+.fg-nav-theme-toggle:focus-visible {
+  outline: 2px solid var(--purple-soft, #9d7bff);
+  outline-offset: 2px;
+}
+
+.fg-nav-link--settings svg {
+  flex-shrink: 0;
 }
 
 .fg-nav-profile-trigger {
@@ -524,9 +540,9 @@
 
   .fg-mobile-dock-glass {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 4px;
-    padding: 6px 8px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 2px;
+    padding: 6px 6px;
     border-radius: 999px;
     border: 1px solid var(--border-strong);
     background: var(--surface-glass);
@@ -540,14 +556,14 @@
     align-items: center;
     justify-content: center;
     min-height: 44px;
-    padding: 6px 4px;
+    padding: 6px 2px;
     border: 0;
     border-radius: 999px;
     background: transparent;
     color: var(--text-secondary);
     text-decoration: none;
     font: inherit;
-    font-size: 0.62rem;
+    font-size: 0.58rem;
     font-weight: 700;
     text-align: center;
     line-height: 1.15;

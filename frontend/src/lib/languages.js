@@ -474,38 +474,47 @@ const STRINGS = {
   setPassword: {
     en: "Set password",
     ru: "Задать пароль",
+    uk: "Встановити пароль",
   },
   setPasswordHint: {
     en: "Add a password to sign in with email as well as Google. Your chats and subscription stay on this account.",
     ru: "Добавьте пароль, чтобы входить по email и через Google. Чаты и подписка останутся на этом аккаунте.",
+    uk: "Додайте пароль, щоб входити з email і через Google. Чати та підписка залишаться на цьому акаунті.",
   },
   connectedProviders: {
     en: "Connected sign-in",
     ru: "Подключённые способы входа",
+    uk: "Підключені способи входу",
   },
   currentPassword: {
     en: "Current password",
-    ru: "Текущий пароль",
+    ru: "Поточний пароль",
+    uk: "Поточний пароль",
   },
   newPassword: {
     en: "New password",
     ru: "Новый пароль",
+    uk: "Новий пароль",
   },
   confirmPassword: {
     en: "Confirm password",
     ru: "Подтвердите пароль",
+    uk: "Підтвердіть пароль",
   },
   forgotPasswordLink: {
     en: "Forgot password?",
     ru: "Забыли пароль?",
+    uk: "Забули пароль?",
   },
   loadingSecurity: {
     en: "Loading security settings…",
     ru: "Загрузка настроек безопасности…",
+    uk: "Завантаження налаштувань безпеки…",
   },
   passwordSaved: {
     en: "Password saved. You can sign in with email and password or Google.",
     ru: "Пароль сохранён. Можно входить по email или через Google.",
+    uk: "Пароль збережено. Можна входити з email або через Google.",
   },
   changePassword: {
     en: "Change password",
