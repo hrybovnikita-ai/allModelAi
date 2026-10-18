@@ -17,8 +17,8 @@ test('UserMemorySettings provides opt-in UI with ConfirmDialog clear/delete flow
 
   assert.match(settingsPage, /import UserMemorySettings from '\.\/UserMemorySettings'/);
   assert.match(settingsPage, /<UserMemorySettings\s*\/>/);
-  assert.match(settingsPage, /#ai-memory/);
 
+  assert.match(memoryUi, /id="ai-memory"/);
   assert.match(memoryUi, /import ConfirmDialog from '\.\.\/ConfirmDialog\/ConfirmDialog'/);
   assert.match(memoryUi, /Enable AI memory/);
   assert.match(memoryUi, /checked=\{memoryEnabled\}/);

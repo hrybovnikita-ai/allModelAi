@@ -2,13 +2,30 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { fileURLToPath } from 'node:url';
-import { createElement as h } from 'react';
-import { renderToString } from 'react-dom/server';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
-let server, lib, EverydayAI;
+let server;
+let lib;
+let EverydayAI;
+let h;
+let renderToString;
+let MemoryRouter;
+let Routes;
+let Route;
+
 before(async () => {
-  server = await createServer({ root: fileURLToPath(new URL('../', import.meta.url)), server: { middlewareMode: true, watch: null, hmr: false, ws: false }, appType: 'custom' });
+  server = await createServer({
+    root: fileURLToPath(new URL('../', import.meta.url)),
+    server: { middlewareMode: true, watch: null, hmr: false, ws: false },
+    appType: 'custom',
+    resolve: { dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'] },
+  });
+  ({
+    createElement: h,
+    renderToString,
+    MemoryRouter,
+    Routes,
+    Route,
+  } = await server.ssrLoadModule('/tests/ssrReactBridge.mjs'));
   lib = await server.ssrLoadModule('/src/lib/everydayAI.js');
   EverydayAI = (await server.ssrLoadModule('/src/components/EverydayAI/EverydayAI.jsx')).default;
 });

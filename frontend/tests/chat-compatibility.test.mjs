@@ -4,17 +4,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
-import { createElement as h } from 'react';
-import { renderToString } from 'react-dom/server';
-import { MemoryRouter, Routes, Route, Outlet } from 'react-router-dom';
 
 let server;
 let chat;
+let h;
+let renderToString;
+let MemoryRouter;
+let Routes;
+let Route;
+let Outlet;
+
 before(async () => {
   server = await createServer({
     root: fileURLToPath(new URL('../', import.meta.url)),
     server: { middlewareMode: true, watch: null, hmr: false, ws: false },
     appType: 'custom',
+    resolve: { dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'] },
     plugins: [{
       name: 'chat-test-internals',
       enforce: 'pre',
@@ -25,6 +30,14 @@ before(async () => {
       },
     }],
   });
+  ({
+    createElement: h,
+    renderToString,
+    MemoryRouter,
+    Routes,
+    Route,
+    Outlet,
+  } = await server.ssrLoadModule('/tests/ssrReactBridge.mjs'));
   chat = await server.ssrLoadModule('/src/components/Chat/Chat.jsx');
 });
 after(async () => { await server?.close(); });

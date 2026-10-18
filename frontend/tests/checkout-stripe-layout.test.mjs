@@ -69,5 +69,7 @@ test('chat plan cards navigate to AllModelAI checkout page', () => {
 
 test('Stripe checkout never labels WayForPay as the processor', () => {
   assert.match(checkoutSource, /providerLabel = useStripeProduction[\s\S]*\? 'Stripe'/);
-  assert.match(checkoutSource, /paymentProvider === 'wayforpay' && paymentsAvailable && !useStripeProduction/);
+  // WayForPay UI is only mounted when Stripe is not the primary production provider.
+  assert.match(checkoutSource, /!useStripeProduction && paymentsAvailable && paymentProvider === 'wayforpay'/);
+  assert.match(checkoutSource, /!usePaddlePrimary && paymentsAvailable && paymentProvider === 'wayforpay'/);
 });
