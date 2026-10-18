@@ -28,6 +28,7 @@ const { listEligibleAnoninSlugs, buildIdentityLabels } = require('../src/service
 const { hasModelAccess } = require('../src/billing/accessControl');
 const { clearGatewayModelHealthForTests, markGatewayModelBlocked } = require('../src/services/gatewayModelHealth');
 const { resetForTests } = require('../src/services/providerRequestTelemetry');
+const { syntheticOpenAiSk } = require('./syntheticSecrets');
 
 const upstreamStream = (text = 'GPT-OSS Groq answer') => {
     const encoder = new TextEncoder();
@@ -241,7 +242,8 @@ describe('GPT-OSS 120B GroqCloud HTTP routing', () => {
     });
 
     test('explicit GPT-4.1 Mini is unchanged and does not route to gpt-oss-groq', async () => {
-        process.env.OPENAI_API_KEY = 'sk-testvalidopenaiakeyvalue1234567890abcd';
+        // Built at runtime so source never contains a complete sk-… literal for CI scanning.
+        process.env.OPENAI_API_KEY = syntheticOpenAiSk('gpt41miniroutingtest');
         process.env.GROQ_API_KEY = 'gsk-should-not-be-used-for-gpt';
         const urls = [];
         const bodies = [];
