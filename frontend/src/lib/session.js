@@ -403,7 +403,7 @@ export async function restoreSession({ force = false, supersede = false } = {}) 
       return null;
     } catch (error) {
       if (generation !== sessionGeneration) {
-        throw new Error('Session changed. Please try again.');
+        throw new Error('Session changed. Please try again.', { cause: error });
       }
       if (isTransientSessionFetchError(error)) {
         const degraded = tryDegradedSessionRestore(error);

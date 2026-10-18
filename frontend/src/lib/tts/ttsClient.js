@@ -44,7 +44,11 @@ function authHeaders() {
 
 function offlineCatalogFallback(extra = {}) {
   return {
-    voices: CURATED_VOICES.map(({ browserHints, ...rest }) => rest),
+    voices: CURATED_VOICES.map((voice) => {
+      const publicVoice = { ...voice };
+      delete publicVoice.browserHints;
+      return publicVoice;
+    }),
     languages: [
       { code: 'en', locale: 'en-US', label: 'English' },
       { code: 'ru', locale: 'ru-RU', label: 'Русский' },
@@ -117,7 +121,7 @@ export async function fetchTtsCatalog() {
     catalogError = error;
   }
 
-  let health = null;
+  let health;
   try {
     health = await fetchTtsHealth();
   } catch {

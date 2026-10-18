@@ -23,7 +23,6 @@ let audioEl = null;
 let objectUrl = null;
 let lastBlob = null;
 let lastMime = null;
-let utterance = null;
 let abortController = null;
 
 function emit() {
@@ -66,7 +65,6 @@ function cleanupBrowserSpeech() {
   } catch {
     /* ignore */
   }
-  utterance = null;
 }
 
 export function stopPlayback() {
@@ -141,7 +139,6 @@ async function playBrowser({ text, sourceId, prefs, language }) {
     progress: 0,
     canDownload: false,
   });
-  utterance = next;
   synth.speak(next);
 }
 
