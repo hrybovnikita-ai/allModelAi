@@ -73,7 +73,15 @@ test('verified provider email links to existing password account and preserves d
   const id = created.body.user.id;
   const password = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(id).password_hash;
   await owner.post('/api/chat/history').send({ model: 'gemini', messages: [{ role: 'user', content: 'Keep this conversation' }] });
-  db.prepare('INSERT INTO subscriptions (email, plan) VALUES (?, ?)').run(email, 'pro');
+  // Registration already seeds subscriptions/subscription_details (free); upgrade in place.
+  db.prepare(`
+    INSERT INTO subscriptions (email, plan) VALUES (?, ?)
+    ON CONFLICT(email) DO UPDATE SET plan = excluded.plan
+  `).run(email, 'pro');
+  db.prepare(`
+    UPDATE subscription_details SET plan = ?, status = 'active', updated_at = ?
+    WHERE email = ?
+  `).run('pro', new Date().toISOString(), email);
   const beforeHistory = (await owner.get('/api/chat/history')).body;
   const providerToken = token('existing-provider', { email });
   const linked = await login(request.agent(app), providerToken);

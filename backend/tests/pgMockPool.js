@@ -286,22 +286,28 @@ function handleCommonDashboardQueries(text, queryValues, ctx) {
         if (!account) return { rows: [], rowCount: 0 };
         return { rows: [{ password_hash: account.password_hash ?? null }], rowCount: 1 };
     }
-    if (/UPDATE users SET password_hash = \$1 WHERE id = \$2/i.test(text)) {
+    // Matches production updateUserPasswordAsync (password_hash + email_verified).
+    if (/UPDATE users SET password_hash = \$1(?:,\s*email_verified\s*=\s*1)? WHERE id = \$2(?:\s+AND\s+lower\(trim\(email\)\)\s*=\s*\$3)?/i.test(text)) {
         const id = queryValues[1];
         const account = id === userRow.id
             ? userRow
             : [...extraUsers.values()].find((row) => row.id === id);
         if (!account) return { rowCount: 0, rows: [] };
+        if (/AND\s+lower\(trim\(email\)\)/i.test(text) && queryValues[2] && account.email !== queryValues[2]) {
+            return { rowCount: 0, rows: [] };
+        }
         account.password_hash = queryValues[0];
+        account.email_verified = 1;
         return { rowCount: 1, rows: [] };
     }
-    if (/UPDATE users SET password_hash = \$1 WHERE lower\(trim\(email\)\) = \$2/i.test(text)) {
+    if (/UPDATE users SET password_hash = \$1(?:,\s*email_verified\s*=\s*1)? WHERE lower\(trim\(email\)\) = \$2/i.test(text)) {
         const email = queryValues[1];
         const account = email === userRow.email
             ? userRow
             : extraUsers.get(email) || [...extraUsers.values()].find((row) => row.email === email);
         if (!account) return { rowCount: 0, rows: [] };
         account.password_hash = queryValues[0];
+        account.email_verified = 1;
         return { rowCount: 1, rows: [] };
     }
     if (/DELETE FROM auth_sessions WHERE user_id = \$1/i.test(text)) {

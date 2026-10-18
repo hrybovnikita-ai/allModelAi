@@ -111,11 +111,18 @@ test('Subscription & payment lifecycle', async (t) => {
         const email = `sub-common-migrate-${Date.now()}@example.com`;
         const cookie = await registerAndCookie(email);
         const end = new Date(Date.now() + 86400000 * 20).toISOString();
-        app.locals.db.database.prepare(`
-            INSERT INTO subscription_details (
-                email, plan, billing_interval, request_limit, period_end, status, updated_at
-            ) VALUES (?, 'common', 'month', 3000, ?, 'active', ?)
-        `).run(email, end, new Date().toISOString());
+        // Registration already inserts subscription_details; overwrite with legacy common slug.
+        const updated = app.locals.db.database.prepare(`
+            UPDATE subscription_details SET
+                plan = 'common',
+                billing_interval = 'month',
+                request_limit = 3000,
+                period_end = ?,
+                status = 'active',
+                updated_at = ?
+            WHERE email = ?
+        `).run(end, new Date().toISOString(), email);
+        assert.equal(updated.changes, 1);
 
         const credits = await request(app).get('/api/credits').set('Cookie', cookie);
         assert.equal(credits.body.planKey, 'pro');
@@ -128,12 +135,19 @@ test('Subscription & payment lifecycle', async (t) => {
         const email = `sub-legacy-${Date.now()}@example.com`;
         const cookie = await registerAndCookie(email);
         const end = new Date(Date.now() + 86400000 * 20).toISOString();
-        app.locals.db.database.prepare(`
-            INSERT INTO subscription_details (
-                email, plan, billing_interval, request_limit, period_end, status, updated_at,
-                payment_provider, payment_status
-            ) VALUES (?, 'pro', 'month', 3000, ?, 'active', ?, 'wayforpay', 'successful')
-        `).run(email, end, new Date().toISOString());
+        const updated = app.locals.db.database.prepare(`
+            UPDATE subscription_details SET
+                plan = 'pro',
+                billing_interval = 'month',
+                request_limit = 3000,
+                period_end = ?,
+                status = 'active',
+                updated_at = ?,
+                payment_provider = 'wayforpay',
+                payment_status = 'successful'
+            WHERE email = ?
+        `).run(end, new Date().toISOString(), email);
+        assert.equal(updated.changes, 1);
 
         const credits = await request(app).get('/api/credits').set('Cookie', cookie);
         assert.equal(credits.body.plan, 'common');

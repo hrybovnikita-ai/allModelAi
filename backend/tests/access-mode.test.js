@@ -41,7 +41,11 @@ test('Developer can switch to User preview and back, persisted on the server', a
 });
 test('Active subscriptions unlock all models; canceled and expired subscriptions do not', async () => {
   const db = app.locals.db.database;
-  db.prepare("INSERT INTO subscription_details (email,plan,billing_interval,request_limit,period_end,status,updated_at) VALUES (?,?,?,?,?,?,?)").run('user@access.test','week','week',500,'2099-01-01T00:00:00Z','active',new Date().toISOString());
+  // Registration already seeds subscription_details; upgrade the existing free row.
+  const upgraded = db.prepare(
+    "UPDATE subscription_details SET plan=?, billing_interval=?, request_limit=?, period_end=?, status=?, updated_at=? WHERE email=?",
+  ).run('week', 'week', 500, '2099-01-01T00:00:00Z', 'active', new Date().toISOString(), 'user@access.test');
+  assert.equal(upgraded.changes, 1);
   assert.equal((await user.get('/api/credits')).body.unlimited, true);
   db.prepare("UPDATE subscription_details SET status='canceled' WHERE email=?").run('user@access.test');
   assert.equal((await user.get('/api/credits')).body.canUseDeveloper, false);
