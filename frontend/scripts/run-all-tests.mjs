@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const testsDir = join(root, 'tests');
 const renderTests = new Set([
   'auth-transition-render.test.mjs',
+  'session-contract-render.test.mjs',
   'confirm-dialog-render.test.mjs',
   'user-memory-settings-render.test.mjs',
 ]);

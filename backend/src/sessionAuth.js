@@ -12,8 +12,16 @@ function readSessionToken(req) {
     return null;
 }
 
+function readSessionTokens(req) {
+    return [...new Set([
+        String(req.get('x-allmodelai-session') || '').trim(),
+        req.cookies?.[sessionCookie],
+    ].filter((token) => token && validSessionToken(token)))];
+}
+
 module.exports = {
     sessionCookie,
     hashToken,
     readSessionToken,
+    readSessionTokens,
 };

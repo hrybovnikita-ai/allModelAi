@@ -30,10 +30,12 @@ export function getNativeSessionToken() {
 }
 
 export function clearNativeSessionToken() {
-  try {
-    getStorage()?.removeItem(NATIVE_SESSION_KEY);
-  } catch {
-    /* Storage may be blocked on some mobile browsers. */
+  for (const name of ['localStorage', 'sessionStorage']) {
+    try {
+      readStorage(name)?.removeItem(NATIVE_SESSION_KEY);
+    } catch {
+      /* Storage may be blocked on some mobile browsers. */
+    }
   }
 }
 

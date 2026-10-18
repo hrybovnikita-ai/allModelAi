@@ -1,7 +1,7 @@
 const modelVariants = require('../data/modelVariants.json');
 const { resolveDeepSeekApiModel, resolveDeepSeekVariantId } = require('../services/deepseekModelIds');
 const { sessionCookieOptions, shouldIssueNativeSessionToken } = require('../sessionCookie');
-const { sessionCookie, hashToken, readSessionToken } = require('../sessionAuth');
+const { sessionCookie, hashToken, readSessionToken, readSessionTokens } = require('../sessionAuth');
 const { createSessionToken } = require('../sessionToken');
 const { publicAppOrigin } = require('../publicAccess');
 const { stripeCheckoutWalletOptions, ensureStripePaymentMethodDomain } = require('../stripeWallet');
@@ -696,33 +696,11 @@ const { lookupSessionUser } = require('../middleware/auth');
 const guestSessionPayload = () => ({ user: null, authenticated: false });
 
 const getSession = async (req, res) => {
-    let token = readSessionToken(req);
+    res.set('Cache-Control', 'no-store');
+    const token = readSessionToken(req);
     if (!token) {
-        const bearer = String(req.get('authorization') || '').match(/^Bearer\s+(\S+)$/i)?.[1];
-        if (bearer && !/^amai_/i.test(bearer)) {
-            try {
-                const admin = require('../firebaseAdmin');
-                const claims = await admin.verifySocialToken(bearer);
-                const email = normalizeLoginEmail(claims.email);
-                if (email) {
-                    const dbUser = await loadAuthUserByEmailAsync(req.app.locals.db, email);
-                    if (dbUser) {
-                        authLog('SESSION_RESPONSE_SENT', { source: 'firebase-bearer' });
-                        return res.status(200).json({
-                            authenticated: true,
-                            user: {
-                                id: dbUser.id,
-                                name: dbUser.name,
-                                email: dbUser.email,
-                                avatar: dbUser.avatar || null,
-                            },
-                        });
-                    }
-                }
-            } catch (error) {
-                authLog('SESSION_LOOKUP_FAILED', { source: 'firebase-bearer', code: error.code || 'unknown' });
-            }
-        }
+        // Firebase identity must go through the challenge/exchange endpoint to
+        // establish the same durable session required by protected API routes.
         authLog('SESSION_RESPONSE_SENT', { guest: true });
         return res.status(200).json(guestSessionPayload());
     }
@@ -770,14 +748,14 @@ const getSession = async (req, res) => {
 };
 
 const logout = async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.clearCookie(sessionCookie, sessionCookieOptions(req));
     authLog('LOGOUT_START');
     const startedAt = Date.now();
     try {
-        const token = readSessionToken(req);
-        if (token) {
+        for (const token of readSessionTokens(req)) {
             await deleteAuthSessionByToken(req.app.locals.db, hashToken(token));
         }
-        res.clearCookie(sessionCookie, sessionCookieOptions(req));
         authLog('LOGOUT_SUCCESS', { durationMs: Date.now() - startedAt });
         return res.status(204).send();
     } catch (error) {

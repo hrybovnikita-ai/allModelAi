@@ -10,7 +10,8 @@ import { isGoogleRedirectRecoveryInFlight } from '../../lib/googleRedirectRecove
 import {
   degradedSessionUserFromFailure,
   hasSessionRestoreHint,
-  isFreshLoginGraceActive,
+  isSessionUserVerified,
+  isLogoutInProgress,
   readStoredSessionUser,
   restoreSession,
   SESSION_UPDATED_EVENT,
@@ -80,7 +81,7 @@ export function SessionProvider({ children }) {
   const applySessionUser = useCallback((user) => {
     const meta = consumeSessionRestoreMeta();
     if (user?.email) {
-      if (meta.verified === false) {
+      if (meta.verified === false || !isSessionUserVerified(user)) {
         socialAuthDebug('SESSION_PROVIDER_DEGRADED', { email: user.email, code: meta.issue?.code });
         setState({
           status: AUTH_STATUS.CONNECTION_ISSUE,
@@ -117,26 +118,6 @@ export function SessionProvider({ children }) {
           connectionIssue: current.connectionIssue,
         };
       }
-      if (current.status === AUTH_STATUS.AUTHENTICATED && current.user?.email && isFreshLoginGraceActive()) {
-        socialAuthDebug('SESSION_PROVIDER_PRESERVED', { phase: 'fresh-login-grace' });
-        return current;
-      }
-      if (current.user?.email && hasSessionRestoreHint() && isFreshLoginGraceActive()) {
-        socialAuthDebug('SESSION_PROVIDER_PRESERVED', { phase: 'fresh-login-null' });
-        return {
-          status: AUTH_STATUS.CHECKING_SESSION,
-          user: current.user,
-          sessionVerified: false,
-          connectionIssue: current.connectionIssue,
-        };
-      }
-      if (current.user?.email && hasSessionRestoreHint() && current.status === AUTH_STATUS.CONNECTION_ISSUE) {
-        socialAuthDebug('SESSION_PROVIDER_PRESERVED', { phase: 'connection-issue-null' });
-        return {
-          ...current,
-          sessionVerified: false,
-        };
-      }
       socialAuthDebug('SESSION_PROVIDER_ANONYMOUS', {});
       return {
         status: AUTH_STATUS.UNAUTHENTICATED,
@@ -148,11 +129,14 @@ export function SessionProvider({ children }) {
   }, []);
 
   const refreshInFlight = useRef(null);
+  const revision = useRef(0);
 
   const refresh = useCallback(async ({ force = false, silent = false } = {}) => {
+    if (isLogoutInProgress()) return null;
     if (refreshInFlight.current) {
       return refreshInFlight.current;
     }
+    const started = revision.current;
     const run = (async () => {
     if (shouldShowGoogleRedirectRecoveryUI()) {
       setState(() => ({
@@ -173,11 +157,11 @@ export function SessionProvider({ children }) {
       const user = force
         ? await restoreSession({ force: true })
         : await bootstrapAuthenticatedUser();
-      applySessionUser(user);
+      if (started === revision.current && !isLogoutInProgress()) applySessionUser(user);
       return user;
     } catch (error) {
       socialAuthDebug('SESSION_PROVIDER_ERROR', { message: error?.message });
-      setState((current) => connectionIssueState(current, error));
+      if (started === revision.current && !isLogoutInProgress()) setState((current) => connectionIssueState(current, error));
       return null;
     }
     })();
@@ -196,12 +180,13 @@ export function SessionProvider({ children }) {
 
   useEffect(() => {
     let active = true;
+    const started = revision.current;
     void bootstrapAuthenticatedUser()
       .then((user) => {
-        if (active) applySessionUser(user);
+        if (active && started === revision.current && !isLogoutInProgress()) applySessionUser(user);
       })
       .catch((error) => {
-        if (!active) return;
+        if (!active || started !== revision.current || isLogoutInProgress()) return;
         socialAuthDebug('SESSION_PROVIDER_ERROR', { message: error?.message });
         if (shouldShowGoogleRedirectRecoveryUI() || isGoogleRedirectRecoveryInFlight()) {
           setState({
@@ -258,6 +243,8 @@ export function SessionProvider({ children }) {
   }, [state.status]);
 
   useEffect(() => subscribeSessionCleared(() => {
+    revision.current += 1;
+    refreshInFlight.current = null;
     setState({
       status: AUTH_STATUS.UNAUTHENTICATED,
       user: null,
@@ -280,11 +267,37 @@ export function SessionProvider({ children }) {
   useEffect(() => {
     const onUpdated = (event) => {
       const user = event.detail?.user;
-      if (user?.email) applySessionUser(user);
+      if (user?.email && !isLogoutInProgress()) {
+        revision.current += 1;
+        applySessionUser(user);
+      }
     };
     globalThis.addEventListener(SESSION_UPDATED_EVENT, onUpdated);
     return () => globalThis.removeEventListener(SESSION_UPDATED_EVENT, onUpdated);
   }, [applySessionUser]);
+
+  useEffect(() => {
+    const revalidate = () => {
+      if (document.visibilityState === 'hidden' || isLogoutInProgress()
+        || shouldShowGoogleRedirectRecoveryUI() || isGooglePopupSignInActive()) return;
+      void refresh({ force: true });
+    };
+    const onStorage = (event) => {
+      if (event.key === 'allmodelai_user' || event.key === 'allmodelai_native_session' || event.key === 'allmodelai_signed_out' || event.key === null) revalidate();
+    };
+    globalThis.addEventListener('focus', revalidate);
+    globalThis.addEventListener('online', revalidate);
+    globalThis.addEventListener('storage', onStorage);
+    document.addEventListener('visibilitychange', revalidate);
+    const timer = setInterval(revalidate, 60000);
+    return () => {
+      clearInterval(timer);
+      globalThis.removeEventListener('focus', revalidate);
+      globalThis.removeEventListener('online', revalidate);
+      globalThis.removeEventListener('storage', onStorage);
+      document.removeEventListener('visibilitychange', revalidate);
+    };
+  }, [refresh]);
 
   useEffect(() => {
     const onConsent = (event) => {

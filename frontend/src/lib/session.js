@@ -10,6 +10,7 @@ import { setSessionRestoreMeta } from './sessionRestoreMeta.js';
 const SESSION_CLEARED_EVENT = 'allmodelai:session-cleared';
 export const SESSION_UPDATED_EVENT = 'allmodelai:session-updated';
 const FRESH_LOGIN_KEY = 'allmodelai_fresh_login';
+const SIGNED_OUT_KEY = 'allmodelai_signed_out';
 const FRESH_LOGIN_GRACE_MS = 120000;
 
 let verifiedSession = null;
@@ -240,6 +241,12 @@ export function rememberSession(user, { serverVerified = true } = {}) {
   return user;
 }
 
+/** Verification belongs to this exact server result, never to a consumed global hint. */
+export function isSessionUserVerified(user) {
+  return !logoutInProgress && !sessionRevokedLocally
+    && Boolean(user && verifiedSession?.user === user && verifiedSession.expiresAt > Date.now());
+}
+
 /**
  * Single GET /api/auth/session call (credentials + native/Firebase headers).
  * Prefer {@link restoreSession} for app bootstrap; use this for a raw probe or tests.
@@ -248,7 +255,7 @@ export async function fetchSessionFromServer() {
   if (sessionFetchInflight) {
     return sessionFetchInflight;
   }
-  sessionFetchInflight = (async () => {
+  const request = (async () => {
     if (typeof document !== 'undefined' && !readCookieConsent()) {
       const consentWaitMs = hasSessionRestoreHint() ? 350 : 1200;
       await waitForCookieConsentChoice(consentWaitMs);
@@ -268,10 +275,11 @@ export async function fetchSessionFromServer() {
     if (parseError) throw parseError;
     return { response, data };
   })();
+  sessionFetchInflight = request;
   try {
-    return await sessionFetchInflight;
+    return await request;
   } finally {
-    sessionFetchInflight = null;
+    if (sessionFetchInflight === request) sessionFetchInflight = null;
   }
 }
 
@@ -281,6 +289,7 @@ export async function fetchSessionFromServer() {
  * supersede — cancel an in-flight restore (login confirmation); default coalesces concurrent callers.
  */
 export async function restoreSession({ force = false, supersede = false } = {}) {
+  if (logoutInProgress || getStorage().getItem(SIGNED_OUT_KEY)) return null;
   const storage = getStorage();
   const saved = storage.getItem('allmodelai_user');
   if (!force && !sessionRevokedLocally && verifiedSession?.saved === saved && verifiedSession.expiresAt > Date.now()) {
@@ -319,14 +328,12 @@ export async function restoreSession({ force = false, supersede = false } = {}) 
         if (generation !== sessionGeneration) throw new Error('Session changed. Please try again.');
 
         if (response.ok) {
-          if (!data?.user?.email) {
+          if (data?.authenticated === false || !data?.user?.email) {
             socialAuthDebug('SESSION_GUEST', { pathname: '/api/auth/session', attempt });
             verifiedSession = null;
             setSessionRestoreMeta({ verified: false, issue: null });
-            if (!isFreshLoginGraceActive()) {
-              storage.removeItem('allmodelai_user');
-            }
             if (isFreshLoginGraceActive() && attempt < retryDelays.length - 1) continue;
+            clearAllSessionData();
             return null;
           }
           socialAuthDebug('SESSION_RESTORED', { source: 'api', attempt });
@@ -356,14 +363,7 @@ export async function restoreSession({ force = false, supersede = false } = {}) 
 
       verifiedSession = null;
       setSessionRestoreMeta({ verified: false, issue: null });
-      if (!isFreshLoginGraceActive()) {
-        storage.removeItem('allmodelai_user');
-      } else {
-        setSessionRestoreMeta({
-          verified: false,
-          issue: { code: 'SESSION_GUEST', message: 'Session cookie not confirmed yet.' },
-        });
-      }
+      clearAllSessionData();
       return null;
     } catch (error) {
       if (isTransientSessionFetchError(error)) {
@@ -391,6 +391,7 @@ export async function establishSessionFromAuthExchange(user) {
     throw new Error('Your sign-in could not be verified. Please retry.');
   }
   sessionGeneration += 1;
+  getStorage().removeItem(SIGNED_OUT_KEY);
   sessionRevokedLocally = false;
   markFreshLogin();
   rememberSession(user, { serverVerified: false });
@@ -406,15 +407,9 @@ export async function establishSessionFromAuthExchange(user) {
     socialAuthDebug('SESSION_EXCHANGE_VERIFY_ERROR', { message: error?.message });
   }
 
-  if (verified?.email?.toLowerCase() === user.email.toLowerCase()) {
+  if (isSessionUserVerified(verified) && verified.email.toLowerCase() === user.email.toLowerCase()) {
     socialAuthDebug('SESSION_CONFIRM_OK', { email: verified.email, source: 'exchange-verify' });
     return verified;
-  }
-
-  const stored = readStoredSessionUser();
-  if (stored?.email?.toLowerCase() === user.email.toLowerCase()) {
-    socialAuthDebug('SESSION_EXCHANGE_VERIFY_LAG', { email: user.email });
-    return stored;
   }
 
   throw Object.assign(new Error('Your sign-in could not be verified. Please retry.'), {
@@ -428,10 +423,11 @@ export async function confirmSession(user) {
     throw new Error('Your sign-in could not be verified. Please retry.');
   }
 
+  getStorage().removeItem(SIGNED_OUT_KEY);
   markFreshLogin();
 
   const matchesUser = (candidate) =>
-    candidate?.email?.toLowerCase() === user.email.toLowerCase();
+    isSessionUserVerified(candidate) && candidate.email.toLowerCase() === user.email.toLowerCase();
 
   const retryDelays = isFreshLoginGraceActive() ? [0, 200, 500, 1000, 1500] : [0];
   let lastError = null;
@@ -468,11 +464,6 @@ export async function confirmSession(user) {
     } catch (error) {
       lastError = error;
     }
-  }
-
-  if (isFreshLoginGraceActive()) {
-    socialAuthDebug('SESSION_CONFIRM_FALLBACK', { source: 'exchange-user', email: user.email });
-    return rememberSession(user, { serverVerified: false });
   }
 
   clearAllSessionData();
@@ -516,7 +507,7 @@ export function clearAllSessionData() {
 }
 
 /**
- * Invalidates the HttpOnly session on the server, then clears client session hints.
+ * Clears client state immediately and invalidates the HttpOnly session on the server.
  * Treats missing/expired sessions as a successful sign-out.
  */
 export async function performLogout() {
@@ -524,6 +515,9 @@ export async function performLogout() {
     return { ok: true, skipped: true };
   }
   logoutInProgress = true;
+  getStorage().setItem(SIGNED_OUT_KEY, 'true');
+  const headers = { Accept: 'application/json', ...nativeClientHeaders(), ...nativeSessionHeaders() };
+  clearAllSessionData();
   let serverOk = false;
   let warning = null;
   try {
@@ -531,13 +525,10 @@ export async function performLogout() {
       method: 'POST',
       credentials: 'include',
       cache: 'no-store',
-      headers: {
-        Accept: 'application/json',
-        ...nativeClientHeaders(),
-        ...nativeSessionHeaders(),
-      },
+      signal: AbortSignal.timeout(8000),
+      headers,
     });
-    if (response.ok || response.status === 401 || response.status === 404) {
+    if (response.ok || response.status === 401) {
       serverOk = true;
     } else {
       warning = 'Could not confirm sign-out on the server. You were signed out on this device.';
@@ -545,9 +536,20 @@ export async function performLogout() {
   } catch {
     warning = 'Could not reach the server. You were signed out on this device.';
   } finally {
-    const { purgeClientAuthState } = await import('./clientAuthReset.js');
-    await purgeClientAuthState();
-    logoutInProgress = false;
+    let timer;
+    try {
+      await Promise.race([
+        import('./clientAuthReset.js').then(({ signOutFirebaseAuth }) => signOutFirebaseAuth()).catch(() => {}),
+        new Promise((resolve) => { timer = setTimeout(resolve, 3000); }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+      clearAllSessionData();
+      logoutInProgress = false;
+    }
+  }
+  if (warning) {
+    try { globalThis.sessionStorage?.setItem('allmodelai_auth_notice', warning); } catch { /* private mode */ }
   }
   return { ok: true, serverOk, warning };
 }

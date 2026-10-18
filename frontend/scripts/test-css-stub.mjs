@@ -6,5 +6,9 @@ export async function load(url, context, nextLoad) {
       shortCircuit: true,
     };
   }
-  return nextLoad(url, context);
+  const result = await nextLoad(url, context);
+  if (url.includes('/src/') && url.endsWith('.js') && result.source) {
+    return { ...result, source: String(result.source).replaceAll('import.meta.env.', '(import.meta.env || {}).') };
+  }
+  return result;
 }

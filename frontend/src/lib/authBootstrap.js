@@ -73,7 +73,7 @@ async function runBootstrapAuthenticatedUser() {
     method: 'GET',
   });
 
-  const user = await restoreSession();
+  const user = await restoreSession({ force: true });
   if (user?.email) {
     socialAuthDebug('SESSION_CONFIRM_OK', { email: user.email });
     socialAuthDebug('SESSION_PROVIDER_AUTHENTICATED', { source: 'restoreSession' });

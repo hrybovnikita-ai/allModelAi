@@ -15,13 +15,14 @@ test('auth bootstrap dedupes in-flight work but does not cache null forever', as
   assert.match(source, /fresh-login-or-popup/);
 });
 
-test('session provider preserves authenticated user during fresh-login grace', async () => {
+test('session provider requires server proof even during fresh-login grace', async () => {
   const source = await readFile(
     new URL('../src/components/Session/SessionProvider.jsx', import.meta.url),
     'utf8',
   );
   assert.match(source, /SESSION_PROVIDER_PRESERVED/);
-  assert.match(source, /isFreshLoginGraceActive/);
+  assert.match(source, /isSessionUserVerified\(user\)/);
+  assert.doesNotMatch(source, /isFreshLoginGraceActive/);
 });
 
 test('login refreshes session before dashboard navigation', async () => {

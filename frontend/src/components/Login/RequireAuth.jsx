@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLanguage } from '../../lib/useLanguage';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import FloatingGlassNav from '../Navigation/FloatingGlassNav';
@@ -22,11 +22,9 @@ function AuthLoadingSkeleton({ message }) {
   );
 }
 
-function canRenderProtectedShell(status, user) {
+function canRenderProtectedShell(status, user, sessionVerified) {
   if (!user?.email || isLogoutInProgress()) return false;
-  return status === AUTH_STATUS.AUTHENTICATED
-    || status === AUTH_STATUS.CONNECTION_ISSUE
-    || status === AUTH_STATUS.ERROR;
+  return status === AUTH_STATUS.AUTHENTICATED && sessionVerified;
 }
 
 export default function RequireAuth() {
@@ -41,6 +39,14 @@ export default function RequireAuth() {
     refresh,
   } = useSession();
   const [retrying, setRetrying] = useState(false);
+  const [checkedPath, setCheckedPath] = useState(null);
+  useEffect(() => {
+    let active = true;
+    void refresh({ force: true }).finally(() => {
+      if (active) setCheckedPath(location.pathname);
+    });
+    return () => { active = false; };
+  }, [location.pathname, refresh]);
 
   const retryConnection = async () => {
     setRetrying(true);
@@ -51,12 +57,14 @@ export default function RequireAuth() {
     }
   };
 
+  if (isLogoutInProgress()) return <Navigate to="/" replace />;
+
   if (isGoogleRedirectRecoveryPending()) {
     return <AuthLoadingSkeleton message={t('Finishing Google sign-in…')} />;
   }
 
-  const shellReady = canRenderProtectedShell(status, user);
-  const showAuthSkeleton = authLoading && !shellReady;
+  const shellReady = checkedPath === location.pathname && canRenderProtectedShell(status, user, sessionVerified);
+  const showAuthSkeleton = (authLoading || checkedPath !== location.pathname) && !shellReady;
 
   if (showAuthSkeleton) {
     return <AuthLoadingSkeleton message={t('Checking your session...')} />;
@@ -98,7 +106,7 @@ export default function RequireAuth() {
     );
   }
 
-  if (status === AUTH_STATUS.ERROR || status === 'error') {
+  if (status === AUTH_STATUS.CONNECTION_ISSUE || status === AUTH_STATUS.ERROR || status === 'error') {
     return (
       <main className="dashboard-page dashboard-violet require-auth-fallback">
         <ConnectionIssueBanner

@@ -139,7 +139,8 @@ test('login → logout → login cycle clears and restores session hints', async
   assert.equal(await restoreSession({ force: true }), null);
 
   rememberSession({ id: 11, name: 'Cycle', email: 'cycle@example.com' });
-  const again = await restoreSession({ force: true });
+  const { confirmSession } = await import('../src/lib/session.js');
+  const again = await confirmSession({ email: 'cycle@example.com' });
   assert.equal(again.email, 'cycle@example.com');
 
   await performLogout();

@@ -39,9 +39,9 @@ export async function signOutFirebaseAuth() {
 
 /** Clears local session hints, native token, Firebase user; does not call backend logout. */
 export async function purgeClientAuthState() {
-  await signOutFirebaseAuth();
   const { clearAllSessionData } = await import('./session.js');
   clearAllSessionData();
+  void signOutFirebaseAuth();
 }
 
 /**
