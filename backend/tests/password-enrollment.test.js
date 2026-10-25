@@ -62,8 +62,8 @@ test('Google-only user can enroll a password and sign in with email without merg
 
   const blocked = await request(app).post('/api/auth/login').send({ email, password: 'new-password-1' });
   assert.equal(blocked.status, 401);
-  assert.equal(blocked.body.code, 'INVALID_CREDENTIALS');
-  assert.match(blocked.body.message, /incorrect email or password/i);
+  assert.equal(blocked.body.code, 'PASSWORD_SETUP_REQUIRED');
+  assert.match(blocked.body.message, /google|forgot password/i);
 
   const security = await agent.get('/api/auth/account/security');
   assert.equal(security.status, 200);

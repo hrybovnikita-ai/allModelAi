@@ -46,11 +46,12 @@ test('settings security UI exposes password enrollment for signed-in users', asy
   assert.match(form, /validatePasswordEnrollmentForm/);
 });
 
-test('login uses generic credential errors without password-setup enumeration', async () => {
+test('login uses generic credential errors without internal debug codes in UI', async () => {
   const login = await readFile(new URL('../src/components/Login/Login.jsx', import.meta.url), 'utf8');
-  assert.doesNotMatch(login, /PASSWORD_SETUP_REQUIRED/);
+  assert.match(login, /PASSWORD_SETUP_REQUIRED/);
   assert.doesNotMatch(login, /needsPasswordSetup/);
-  assert.doesNotMatch(login, /PASSWORD_HASH_MISSING/);
+  assert.doesNotMatch(login, /\(PASSWORD_HASH_MISSING\)/);
+  assert.match(login, /debugReason === 'PASSWORD_HASH_MISSING'/);
   assert.match(login, /Unable to sign in\. Check your details or reset your password\./);
   assert.doesNotMatch(login, /Invalid email or password/);
   assert.match(login, /forgot-password/);

@@ -1,4 +1,9 @@
-import { applyAuthResponsePayload, confirmSession } from '../../lib/session';
+import {
+  applyAuthResponsePayload,
+  clearNativeSessionToken,
+  confirmSession,
+  rememberSession,
+} from '../../lib/session';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
@@ -179,6 +184,7 @@ function LoginForm({
         name: raw.name,
         email: raw.email,
         password: raw.password,
+        confirmPassword: raw.confirmPassword,
       });
       if (!validation.ok) {
         setError(validation.message);
@@ -224,6 +230,7 @@ function LoginForm({
       }
 
       applyAuthResponsePayload(data);
+      rememberSession(data.user, { serverVerified: false });
       const user = await confirmSession(data.user);
       markFreshLogin();
       await refresh({ force: true });
@@ -242,6 +249,9 @@ function LoginForm({
         },
       });
     } catch (requestError) {
+      if (requestError.status === 401) {
+        clearNativeSessionToken();
+      }
       if (requestError.code === 'EMAIL_NOT_VERIFIED') {
         setError(
           requestError.message ||
@@ -261,12 +271,28 @@ function LoginForm({
         setError('Could not complete sign-in. Please try again.');
       } else if (
         !signingUp
+        && (
+          requestError.code === 'PASSWORD_SETUP_REQUIRED'
+          || requestError.data?.debugReason === 'PASSWORD_HASH_MISSING'
+          || requestError.data?.debugReason === 'PASSWORD_HASH_INVALID'
+        )
+      ) {
+        const fromServer = requestError.message
+          && !/incorrect email or password/i.test(requestError.message)
+          ? requestError.message
+          : '';
+        setError(
+          fromServer
+            || 'This account uses Google or another sign-in provider. Continue with Google below, or use Forgot password to set an AllModelAI password after verifying your email.',
+        );
+      } else if (
+        !signingUp
         && (requestError.status === 401 || requestError.code === 'INVALID_CREDENTIALS')
       ) {
         setError('Unable to sign in. Check your details or reset your password.');
       } else if (
         requestError.code === 'DATABASE_UNAVAILABLE'
-        || requestError.status === 503
+        || requestError.status >= 500
       ) {
         setError('Sign-in is temporarily unavailable. Please try again.');
       } else if (
@@ -281,7 +307,7 @@ function LoginForm({
         setError(
           signingUp
             ? 'Could not create your account. Please try again.'
-            : 'Unable to sign in. Check your details or reset your password.',
+            : 'Could not complete sign-in. Please try again.',
         );
       }
     } finally {
@@ -339,11 +365,11 @@ function LoginForm({
 
         <form className="login-form" onSubmit={handleSubmit} noValidate>
           <label>
-            <span>Name{signingUp ? '' : ' (optional)'}</span>
+            <span>{signingUp ? 'Full name' : 'Name (optional)'}</span>
             <input
               name="name"
               type="text"
-              placeholder="Your name"
+              placeholder={signingUp ? 'Your full name' : 'Your name'}
               autoComplete="name"
               required={signingUp}
               aria-required={signingUp}
@@ -351,7 +377,7 @@ function LoginForm({
           </label>
 
           <label>
-            <span>Email</span>
+            <span>{signingUp ? 'Email address' : 'Email'}</span>
             <input
               name="email"
               type="email"
@@ -397,6 +423,43 @@ function LoginForm({
               </button>
             </span>
           </label>
+
+          {signingUp && (
+            <label>
+              <span>Confirm password</span>
+              <span className="password-field">
+                <input
+                  name="confirmPassword"
+                  type={passwordVisible ? 'text' : 'password'}
+                  placeholder="Re-enter your password"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  aria-required="true"
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setPasswordVisible((visible) => !visible)}
+                  aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+                  aria-pressed={passwordVisible}
+                >
+                  <span className="password-toggle-icon" aria-hidden="true">
+                    {passwordVisible ? (
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8M9.9 5.1A9.8 9.8 0 0121 12c-.6 1.1-1.4 2.1-2.4 2.9M6.1 6.1C4.6 7.4 3.5 9.1 3 12c1.5 4.5 5.4 7 9 7 1.4 0 2.8-.3 4.1-.9" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" strokeLinecap="round" strokeLinejoin="round" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </span>
+                </button>
+              </span>
+            </label>
+          )}
 
           <div className="login-form-meta">
             <label className="login-remember">

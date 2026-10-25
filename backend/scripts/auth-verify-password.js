@@ -2,7 +2,7 @@
 const readline = require('node:readline');
 const { normalizeLoginEmail } = require('../src/authHelpers');
 const { verifyPassword } = require('../src/password');
-const { loadAuthUserByEmail } = require('../src/authUser');
+const { loadAuthUserByEmailAsync } = require('../src/authUser');
 const {
     loadBackendEnv,
     parseAuthCliArgs,
@@ -33,7 +33,7 @@ async function main() {
     const { connection } = connectAuthDatabase();
 
     try {
-        const user = loadAuthUserByEmail(connection.database, normalizedEmail);
+        const user = await loadAuthUserByEmailAsync(connection, normalizedEmail);
         if (!user) {
             console.log('Password verification: failed');
             console.log('Reason: USER_NOT_FOUND');

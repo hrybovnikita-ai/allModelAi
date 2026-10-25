@@ -55,12 +55,32 @@ function authLoginDiagnosticsEnabled() {
 }
 
 async function respondPasswordSetupRequired(req, res, user, { reason = 'PASSWORD_HASH_MISSING' } = {}) {
-    // Same generic response as wrong password / unknown email — do not reveal
-    // whether the account exists or has an AllModelAI password hash.
     authLog('Login rejected', { reason, userId: user?.id || null });
+    const connection = req.app.locals.db;
+    let hasSocialIdentity = false;
+    try {
+        if (user?.id && connection) {
+            if (isPostgresConnection(connection)) {
+                hasSocialIdentity = await userHasSocialIdentityAsync(connection, user.id);
+            } else {
+                hasSocialIdentity = Boolean(
+                    connection.database
+                        .prepare('SELECT 1 AS ok FROM social_identities WHERE user_id = ? LIMIT 1')
+                        .get(user.id),
+                );
+            }
+        }
+    } catch (error) {
+        authLog('LOGIN_SOCIAL_PROBE_FAILED', { code: error.code || 'unknown' });
+    }
+
+    const message = hasSocialIdentity
+        ? 'This account uses Google or another sign-in provider. Continue with Google below, or use Forgot password to set an AllModelAI password after verifying your email.'
+        : 'This account does not have an AllModelAI password yet. Use Forgot password to verify your email and create one.';
+
     const body = {
-        code: 'INVALID_CREDENTIALS',
-        message: 'Incorrect email or password',
+        code: 'PASSWORD_SETUP_REQUIRED',
+        message,
     };
     if (authLoginDiagnosticsEnabled()) {
         body.debugReason = reason;
@@ -654,7 +674,7 @@ const loginUser = async (req, res) => {
 
     if (!user.passwordHash || !isValidPasswordHashFormat(user.passwordHash)) {
         const reason = user.passwordHash ? 'PASSWORD_HASH_INVALID' : 'PASSWORD_HASH_MISSING';
-        return respondPasswordSetupRequired(req, res, user, { reason });
+        return await respondPasswordSetupRequired(req, res, user, { reason });
     }
 
     let passwordMatches = false;

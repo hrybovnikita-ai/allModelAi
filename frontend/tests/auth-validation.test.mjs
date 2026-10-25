@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { validateRegistrationForm } from '../src/lib/authValidation.js';
 
 test('registration validation requires name, email, and password', () => {
-  assert.equal(validateRegistrationForm({ name: '', email: 'a@b.com', password: '12345678' }).message, 'Please enter your name.');
-  assert.equal(validateRegistrationForm({ name: 'Al', email: 'bad', password: '12345678' }).message, 'Please enter a valid email address.');
-  assert.equal(validateRegistrationForm({ name: 'Al', email: 'a@b.com', password: 'short' }).message, 'Password must contain at least 8 characters.');
-  assert.equal(validateRegistrationForm({ name: 'Al', email: 'a@b.com', password: '' }).message, 'Please enter a password.');
+  assert.equal(validateRegistrationForm({ name: '', email: 'a@b.com', password: '12345678', confirmPassword: '12345678' }).message, 'Please enter your name.');
+  assert.equal(validateRegistrationForm({ name: 'Al', email: 'bad', password: '12345678', confirmPassword: '12345678' }).message, 'Please enter a valid email address.');
+  assert.equal(validateRegistrationForm({ name: 'Al', email: 'a@b.com', password: 'short', confirmPassword: 'short' }).message, 'Password must contain at least 8 characters.');
+  assert.equal(validateRegistrationForm({ name: 'Al', email: 'a@b.com', password: '', confirmPassword: '' }).message, 'Please enter a password.');
+  assert.equal(validateRegistrationForm({ name: 'Al', email: 'a@b.com', password: '12345678', confirmPassword: '' }).message, 'Please confirm your password.');
+  assert.equal(validateRegistrationForm({ name: 'Al', email: 'a@b.com', password: '12345678', confirmPassword: '87654321' }).message, 'Passwords do not match.');
 });
 
 test('registration validation normalizes email in payload', () => {
@@ -14,6 +16,7 @@ test('registration validation normalizes email in payload', () => {
     name: '  Nikita  ',
     email: '  User@Example.COM ',
     password: '12345678',
+    confirmPassword: '12345678',
   });
   assert.equal(result.ok, true);
   assert.equal(result.payload.name, 'Nikita');

@@ -52,7 +52,7 @@ after(() => {
     fs.rmSync(process.env.DB_FILE, { force: true });
 });
 
-test('Google-only account login returns generic INVALID_CREDENTIALS', async () => {
+test('Google-only account login returns PASSWORD_SETUP_REQUIRED with provider guidance', async () => {
     const email = 'google-only@example.com';
     const agent = request.agent(app);
     const google = await googleLogin(agent, email);
@@ -63,8 +63,8 @@ test('Google-only account login returns generic INVALID_CREDENTIALS', async () =
         password: 'any-password-123',
     });
     assert.equal(blocked.status, 401);
-    assert.equal(blocked.body.code, 'INVALID_CREDENTIALS');
-    assert.match(blocked.body.message, /incorrect email or password/i);
+    assert.equal(blocked.body.code, 'PASSWORD_SETUP_REQUIRED');
+    assert.match(blocked.body.message, /google/i);
     assert.equal(blocked.body.passwordEnabled, undefined);
     assert.equal(blocked.body.providers, undefined);
 });
@@ -109,7 +109,7 @@ test('Google user can set password in Settings and sign in with email or Google'
         password: 'settings-password-1',
     });
     assert.equal(blocked.status, 401);
-    assert.equal(blocked.body.code, 'INVALID_CREDENTIALS');
+    assert.equal(blocked.body.code, 'PASSWORD_SETUP_REQUIRED');
 
     const enrolled = await agent.post('/api/auth/account/password').send({
         newPassword: 'settings-password-1',

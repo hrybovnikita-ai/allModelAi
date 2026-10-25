@@ -46,4 +46,7 @@ export function nativeSessionHeaders() {
 
 export function applyAuthResponsePayload(data) {
   if (data?.nativeSessionToken) storeNativeSessionToken(data.nativeSessionToken);
+  // The backend prioritizes this header over cookies. A cookie-only login must
+  // discard a previous login's token rather than shadow the newly issued cookie.
+  else if (data?.user?.email) clearNativeSessionToken();
 }

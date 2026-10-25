@@ -52,7 +52,7 @@ export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user: routeUser, sessionVerified, retrySession } = useOutletContext();
-  const { user: sessionUser, status, connectionIssue, authLoading } = useSession();
+  const { user: sessionUser, status, connectionIssue, authLoading, refresh } = useSession();
   const user = routeUser?.email ? routeUser : sessionUser;
   const backendReady = sessionVerified && status === AUTH_STATUS.AUTHENTICATED;
   const sessionStillChecking = authLoading || status === AUTH_STATUS.CHECKING_SESSION;
@@ -93,12 +93,22 @@ export default function Dashboard() {
         data = await subscriptionResponse.json();
       } else {
         console.warn('[Dashboard] GET /api/subscription failed', subscriptionResponse.status);
+        if (subscriptionResponse.status === 401) {
+          await refresh({ force: true, silent: true });
+          throw new Error('Your session could not be verified. Please sign in again or retry.');
+        }
+        if (![404, 405].includes(subscriptionResponse.status)) {
+          throw new Error('Subscription service is temporarily unavailable. Please retry.');
+        }
         const creditsResponse = await apiFetch('/api/credits', { skipAuthRedirect: true });
         if (creditsResponse.ok) {
           data = await creditsResponse.json();
         } else {
           console.warn('[Dashboard] GET /api/credits failed', creditsResponse.status);
-          throw new Error(`Could not load subscription (HTTP ${subscriptionResponse.status}).`);
+          if (creditsResponse.status === 401) await refresh({ force: true, silent: true });
+          throw new Error(creditsResponse.status === 401
+            ? 'Your session could not be verified. Please sign in again or retry.'
+            : 'Could not load your credits. Please retry.');
         }
       }
       const normalized = normalizeCreditStatus(data);
@@ -112,7 +122,7 @@ export default function Dashboard() {
       setSubscriptionError(error.message || 'Could not load subscription.');
       setSubscriptionLoad('error');
     }
-  }, [user?.email, backendReady, sessionStillChecking, status, connectionIssue?.message]);
+  }, [user?.email, backendReady, sessionStillChecking, status, connectionIssue?.message, refresh]);
 
   useEffect(() => {
     if (!user?.email || !backendReady) return;

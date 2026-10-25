@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const { normalizeLoginEmail } = require('../src/authHelpers');
-const { loadAuthUserByEmail } = require('../src/authUser');
+const { loadAuthUserByEmailAsync } = require('../src/authUser');
 const {
     classifyPasswordHashType,
     isValidPasswordHashFormat,
@@ -21,7 +21,7 @@ async function main() {
     const { connection, engine } = connectAuthDatabase();
 
     try {
-        const user = loadAuthUserByEmail(connection.database, normalizedEmail);
+        const user = await loadAuthUserByEmailAsync(connection, normalizedEmail);
         const passwordHash = user?.passwordHash || null;
         const hashType = classifyPasswordHashType(passwordHash);
         console.log(JSON.stringify({

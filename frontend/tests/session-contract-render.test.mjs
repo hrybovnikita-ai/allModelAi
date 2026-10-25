@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { Window } from 'happy-dom';
 import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, Outlet } from 'react-router-dom';
+import Dashboard from '../src/components/Dashboard/Dashboard.jsx';
 import { SessionProvider, SessionContext } from '../src/components/Session/SessionProvider.jsx';
 import RequireAuth from '../src/components/Login/RequireAuth.jsx';
 import NavAuthSection from '../src/components/Navbar/NavAuthSection.jsx';
@@ -19,6 +20,37 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 document.cookie = 'allmodelai_cookie_consent=accepted';
 const user = { email: 'render@example.com', name: 'Render' };
 const settle = () => new Promise(resolve => setTimeout(resolve, 20));
+
+test('Dashboard revalidates a rejected subscription without requesting credits or looping', async () => {
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  const oldFetch = globalThis.fetch;
+  const calls = [];
+  let refreshes = 0;
+  const refresh = async () => { refreshes++; };
+  globalThis.fetch = async url => {
+    calls.push(String(url));
+    return String(url).includes('/subscription')
+      ? Response.json({}, { status: 401 }) : Response.json({});
+  };
+  try {
+    const value = { user, status: 'authenticated', sessionVerified: true, authLoading: false, refresh };
+    await act(async () => {
+      root.render(h(SessionContext.Provider, { value }, h(MemoryRouter, { initialEntries: ['/dashboard'] },
+        h(Routes, null, h(Route, { element: h(Outlet, { context: { user, sessionVerified: true, retrySession: refresh } }) },
+          h(Route, { path: '/dashboard', element: h(Dashboard) }))))));
+      await settle();
+    });
+    await act(async () => { await settle(); });
+    assert.equal(calls.filter(url => url.includes('/subscription')).length, 1);
+    assert.equal(calls.filter(url => url.includes('/credits')).length, 0);
+    assert.equal(refreshes, 1);
+    assert.match(container.textContent, /session could not be verified/);
+  } finally {
+    act(() => root.unmount());
+    globalThis.fetch = oldFetch;
+  }
+});
 
 test('Navbar ignores cached-profile events and logout immediately removes authenticated navigation', async () => {
   clearAllSessionData();

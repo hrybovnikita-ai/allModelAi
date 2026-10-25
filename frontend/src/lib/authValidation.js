@@ -2,7 +2,7 @@ const MIN_NAME_LENGTH = 2;
 const MAX_NAME_LENGTH = 100;
 const MIN_PASSWORD_LENGTH = 8;
 
-export function validateRegistrationForm({ name, email, password }) {
+export function validateRegistrationForm({ name, email, password, confirmPassword }) {
   const trimmedName = String(name || '').trim();
   if (!trimmedName) {
     return { ok: false, message: 'Please enter your name.' };
@@ -30,6 +30,13 @@ export function validateRegistrationForm({ name, email, password }) {
       ok: false,
       message: `Password must contain at least ${MIN_PASSWORD_LENGTH} characters.`,
     };
+  }
+
+  if (!confirmPassword) {
+    return { ok: false, message: 'Please confirm your password.' };
+  }
+  if (password !== confirmPassword) {
+    return { ok: false, message: 'Passwords do not match.' };
   }
 
   return {

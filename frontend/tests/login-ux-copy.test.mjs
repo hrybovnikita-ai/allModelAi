@@ -14,6 +14,7 @@ test('login form uses short UX copy without long Google password essays', async 
   assert.match(source, /Connection problem\. Please try again\./);
   assert.match(source, /Welcome back!/);
   assert.match(source, /Signing in…/);
-  assert.match(source, /Name\{signingUp \? '' : ' \(optional\)'\}/);
-  assert.doesNotMatch(source, /confirmPassword|Confirm password/i);
+  assert.match(source, /Full name/);
+  assert.match(source, /name="confirmPassword"/);
+  assert.match(source, /Confirm password/);
 });

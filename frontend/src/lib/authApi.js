@@ -66,6 +66,7 @@ export async function authGet(path, options = {}) {
   const response = await fetch(url, {
     method: 'GET',
     credentials: 'include',
+    ...options,
     headers: {
       Accept: 'application/json',
       ...nativeClientHeaders(),
@@ -73,7 +74,6 @@ export async function authGet(path, options = {}) {
       ...firebaseSessionFallbackHeaders(),
       ...(options.headers || {}),
     },
-    ...options,
   });
   return response;
 }

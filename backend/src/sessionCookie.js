@@ -12,6 +12,25 @@ const isCapacitorClientRequest = (req) => {
     return isCapacitorClientOrigin(req.get('origin'));
 };
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0', '[::1]', '::1']);
+
+function isLoopbackHostname(hostname) {
+    const host = String(hostname || '').trim().toLowerCase();
+    return LOOPBACK_HOSTS.has(host);
+}
+
+/** Vite dev proxy (5173 → 5050): same machine, different ports — treat as first-party for cookies. */
+function isLocalDevLoopbackAuthPair(origin, requestHost) {
+    if (process.env.NODE_ENV === 'production') return false;
+    try {
+        const originHost = new URL(origin).hostname;
+        const apiHost = String(requestHost || '').split(':')[0].trim();
+        return isLoopbackHostname(originHost) && isLoopbackHostname(apiHost);
+    } catch {
+        return false;
+    }
+}
+
 /** Frontend and API on different origins (Safari, split Vercel/Render deploy). */
 const isCrossSiteAuthRequest = (req) => {
     if (!req?.get) return false;
@@ -20,6 +39,7 @@ const isCrossSiteAuthRequest = (req) => {
     try {
         const requestHost = String(req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
         if (!requestHost) return false;
+        if (isLocalDevLoopbackAuthPair(origin, requestHost)) return false;
         const proto = String(req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
         return new URL(origin).origin !== `${proto}://${requestHost}`.replace(/\/$/, '');
     } catch {
