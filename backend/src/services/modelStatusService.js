@@ -4,6 +4,7 @@ const { providerAvailabilityForRouter, buildProviderSnapshot } = require('../pro
 const { resolveImageProvider } = require('../pollinations');
 const { isCloudflareWorkersAiConfigured } = require('./cloudflareWorkersAiConfig');
 const { isOpenRouterFreeConfigured } = require('./openRouterFreeModels');
+const { isGroqConfigured, resolveGptOssGroqLibraryHealth } = require('./groqChat');
 
 const TTL_MS = Number(process.env.MODEL_STATUS_CACHE_TTL_MS || 30_000);
 
@@ -34,13 +35,16 @@ function buildModelStatusPayload() {
             smart: true,
             cloudflare: Boolean(isCloudflareWorkersAiConfigured() || availability.others),
             'gpt-oss': isCloudflareWorkersAiConfigured(),
-            'gpt-oss-groq': Boolean(String(process.env.GROQ_API_KEY || '').trim()),
+            'gpt-oss-groq': isGroqConfigured(),
             nemotron: isOpenRouterFreeConfigured('nemotron'),
             'deepseek-r1': isOpenRouterFreeConfigured('deepseek-r1'),
             // Always emit a boolean so the UI never falls back to OpenRouter "others".
             ollama: Boolean(ollamaConfigured),
         },
         providers,
+        modelHealth: {
+            'gpt-oss-groq': resolveGptOssGroqLibraryHealth(),
+        },
     };
     return ensureOllamaVariants(payload);
 }

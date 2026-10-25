@@ -1,5 +1,13 @@
 const WAYFORPAY_PAY_URL = 'https://secure.wayforpay.com/pay';
 
+const envTrim = (name) => String(process.env[name] || '').trim();
+
+/** Server-side secret only — never log or expose. */
+const wayforpaySecretKey = () => (
+    envTrim('WAYFORPAY_SECRET_KEY')
+    || envTrim('WAYFORPAY_MERCHANT_SECRET_KEY')
+);
+
 const wayforpayTestModeEnabled = () => process.env.WAYFORPAY_TEST_MODE !== 'false';
 
 const wayforpayMerchantDomain = () => (
@@ -9,8 +17,8 @@ const wayforpayMerchantDomain = () => (
 );
 
 const wayforpayConfigured = () => Boolean(
-    process.env.WAYFORPAY_MERCHANT_ACCOUNT?.trim()
-    && process.env.WAYFORPAY_SECRET_KEY?.trim()
+    envTrim('WAYFORPAY_MERCHANT_ACCOUNT')
+    && wayforpaySecretKey()
     && wayforpayMerchantDomain(),
 );
 
@@ -24,20 +32,28 @@ const wayforpayCheckoutAvailable = () => {
 
 const { SUPPORTED_CURRENCIES, resolveWayforpayCurrency } = require('./currency');
 
-const wayforpayConfig = () => ({
-    merchantAccount: process.env.WAYFORPAY_MERCHANT_ACCOUNT?.trim() || '',
-    secretKey: process.env.WAYFORPAY_SECRET_KEY?.trim() || '',
-    merchantDomainName: wayforpayMerchantDomain(),
-    currency: resolveWayforpayCurrency(process.env.WAYFORPAY_CURRENCY, 'USD'),
-    supportedCurrencies: SUPPORTED_CURRENCIES,
-    payUrl: WAYFORPAY_PAY_URL,
-    testMode: wayforpayTestModeEnabled(),
-    livePaymentsAllowed: !wayforpayTestModeEnabled() && process.env.WAYFORPAY_LIVE_CONFIRM === 'true',
-});
+const wayforpayConfig = () => {
+    const currency = resolveWayforpayCurrency(process.env.WAYFORPAY_CURRENCY, 'USD');
+    return {
+        merchantAccount: envTrim('WAYFORPAY_MERCHANT_ACCOUNT'),
+        secretKey: wayforpaySecretKey(),
+        merchantDomainName: wayforpayMerchantDomain(),
+        currency,
+        supportedCurrencies: SUPPORTED_CURRENCIES,
+        payUrl: WAYFORPAY_PAY_URL,
+        testMode: wayforpayTestModeEnabled(),
+        livePaymentsAllowed: !wayforpayTestModeEnabled() && process.env.WAYFORPAY_LIVE_CONFIRM === 'true',
+        usdCheckoutEnabled: currency === 'USD' && SUPPORTED_CURRENCIES.includes('USD'),
+    };
+};
 
 const backendPublicOrigin = (req) => {
     const explicit = process.env.BACKEND_PUBLIC_URL?.trim() || process.env.BACKEND_ORIGIN?.trim();
     if (explicit) return explicit.replace(/\/$/, '');
+    if (process.env.NODE_ENV !== 'production') {
+        const port = process.env.PORT || '5050';
+        return `http://127.0.0.1:${port}`;
+    }
     if (req) {
         const host = String(req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
         const proto = String(req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim();
@@ -52,5 +68,6 @@ module.exports = {
     wayforpayConfigured,
     wayforpayCheckoutAvailable,
     wayforpayConfig,
+    wayforpaySecretKey,
     backendPublicOrigin,
 };

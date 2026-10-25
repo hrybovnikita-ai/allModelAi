@@ -155,7 +155,8 @@ async function probeGemini() {
 }
 
 async function probeGroq() {
-    const key = String(process.env.GROQ_API_KEY || '').trim();
+    const { getGroqApiKey } = require('./services/groqChat');
+    const key = getGroqApiKey();
     if (!key) return { status: 'missing_configuration' };
     try {
         const response = await fetch('https://api.groq.com/openai/v1/models', {
@@ -333,7 +334,8 @@ function isRoutedModelAvailable(modelSlug, availability) {
         return isCloudflareWorkersAiConfigured();
     }
     if (modelSlug === 'gpt-oss-groq') {
-        return Boolean(String(process.env.GROQ_API_KEY || '').trim());
+        const { isGroqConfigured } = require('./services/groqChat');
+        return isGroqConfigured();
     }
     if (modelSlug === 'nemotron') {
         return isOpenRouterFreeConfigured('nemotron');
@@ -384,6 +386,23 @@ function resolveAvailableSmartModel(preferredModel, modelAllowed) {
 async function warmProviderProbes() {
     try {
         await buildProviderHealth({ probe: true });
+        const { isGroqConfigured, warmGptOssGroqLiveProbe, GPT_OSS_GROQ_MODEL_ID } = require('./services/groqChat');
+        if (isGroqConfigured()) {
+            const probe = await warmGptOssGroqLiveProbe();
+            if (probe?.ok) {
+                console.log(`[CONFIG] gpt-oss-groq (${GPT_OSS_GROQ_MODEL_ID}): live inference ok`);
+            } else if (probe?.status === 'authentication_failed') {
+                console.warn('[CONFIG] gpt-oss-groq: GROQ_API_KEY is set but rejected by Groq (HTTP 401/403).');
+            } else if (probe?.status === 'model_not_found') {
+                console.warn(`[CONFIG] gpt-oss-groq: model ${GPT_OSS_GROQ_MODEL_ID} not found on Groq.`);
+            } else if (probe?.status === 'quota_exhausted') {
+                console.warn('[CONFIG] gpt-oss-groq: Groq quota exhausted for this account.');
+            } else if (probe && probe.status !== 'missing_configuration') {
+                console.warn(`[CONFIG] gpt-oss-groq probe: ${probe.status}`);
+            }
+        } else {
+            console.log('[CONFIG] gpt-oss-groq: missing GROQ_API_KEY (set in backend/.env for GPT-OSS 120B — Groq)');
+        }
     } catch (error) {
         console.warn('[CONFIG] Provider probe warmup failed:', error.message);
     }

@@ -115,6 +115,8 @@ const buildCheckoutInfo = () => {
                 : 'Each successful payment grants one month of access. Automatic card renewal is not enabled yet — renew manually before your period ends unless we enable WayForPay recurring billing.',
         wayforpaySupportedCurrencies: wayforpayOn ? wayforpayConfig().supportedCurrencies : [],
         wayforpayDefaultCurrency: wayforpayOn ? wayforpayConfig().currency : null,
+        wayforpayUsdCheckout: wayforpayOn ? wayforpayConfig().usdCheckoutEnabled : false,
+        wayforpayLivePaymentsAllowed: wayforpayOn ? wayforpayConfig().livePaymentsAllowed : false,
         supportedPaymentMethodsNote: primaryProvider === 'wayforpay'
             ? 'Visa, MasterCard, Google Pay, and Apple Pay through WayForPay secure checkout.'
             : primaryProvider === 'stripe'

@@ -21,6 +21,10 @@ const {
     resolveGroqDirectModel,
     mapGroqHttpError,
     isGptOssGroqSlug,
+    probeGptOssGroqAvailability,
+    resolveGptOssGroqLibraryHealth,
+    resetGptOssGroqProbeCacheForTests,
+    warmGptOssGroqLiveProbe,
 } = require('../src/services/groqChat');
 const { displayModelName, getCapabilities } = require('../src/services/smartRouter2/capabilities');
 const { routedModelHasApiKey, slugDependsOnOpenRouterPaidCredits } = require('../src/chatProviderRuntime');
@@ -73,6 +77,33 @@ describe('GPT-OSS 120B GroqCloud helpers', () => {
         assert.equal(slugDependsOnOpenRouterPaidCredits('gpt-oss-groq'), false);
         if (previous === undefined) delete process.env.GROQ_API_KEY;
         else process.env.GROQ_API_KEY = previous;
+    });
+
+    test('live probe succeeds with mocked Groq chat completion', async () => {
+        resetGptOssGroqProbeCacheForTests();
+        process.env.GROQ_API_KEY = 'gsk-probe-key';
+        const originalFetch = global.fetch;
+        global.fetch = async (url, options = {}) => {
+            assert.match(String(url), /api\.groq\.com\/openai\/v1\/chat\/completions/);
+            const body = JSON.parse(options.body || '{}');
+            assert.equal(body.model, GPT_OSS_GROQ_MODEL_ID);
+            assert.equal(body.stream, false);
+            return new Response(JSON.stringify({
+                choices: [{ message: { content: 'hello' } }],
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        };
+        try {
+            const probe = await probeGptOssGroqAvailability();
+            assert.equal(probe.ok, true);
+            assert.equal(probe.status, 'ok');
+            await warmGptOssGroqLiveProbe();
+            const health = resolveGptOssGroqLibraryHealth();
+            assert.equal(health.status, 'available');
+            assert.equal(health.available, true);
+        } finally {
+            global.fetch = originalFetch;
+            resetGptOssGroqProbeCacheForTests();
+        }
     });
 
     test('mapGroqHttpError distinguishes rate limit from quota exhaustion', () => {

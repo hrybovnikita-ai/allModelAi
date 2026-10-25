@@ -134,6 +134,142 @@ function mapGroqHttpError(status, detail = '') {
     return null;
 }
 
+const GPT_OSS_PROBE_TTL_MS = Number(process.env.GROQ_GPT_OSS_PROBE_TTL_MS) || 120_000;
+
+/** @type {{ value: object | null, expiresAt: number }} */
+let gptOssLiveProbeCache = { value: null, expiresAt: 0 };
+
+/**
+ * Real chat-completions probe for GPT-OSS 120B on GroqCloud (non-streaming, minimal tokens).
+ * Never logs or returns the API key.
+ */
+async function probeGptOssGroqAvailability({ timeoutMs = 12_000 } = {}) {
+    const key = getGroqApiKey();
+    if (!key) {
+        return { ok: false, status: 'missing_configuration' };
+    }
+    try {
+        const response = await fetch(GROQ_CHAT_COMPLETIONS_URL, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${key}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: GPT_OSS_GROQ_MODEL_ID,
+                messages: [{ role: 'user', content: 'Reply with one short word.' }],
+                max_tokens: 12,
+                stream: false,
+            }),
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+        const data = await response.json().catch(() => ({}));
+        const detail = data?.error?.message || data?.message || '';
+
+        if (response.status === 401 || response.status === 403) {
+            return { ok: false, status: 'authentication_failed', httpStatus: response.status };
+        }
+        if (response.status === 404) {
+            return { ok: false, status: 'model_not_found', httpStatus: response.status };
+        }
+        if (response.status === 429) {
+            const mapped = mapGroqHttpError(429, detail);
+            return {
+                ok: false,
+                status: mapped?.code === 'GROQ_QUOTA_EXHAUSTED' ? 'quota_exhausted' : 'rate_limited',
+                httpStatus: 429,
+            };
+        }
+        if (!response.ok) {
+            return {
+                ok: false,
+                status: 'upstream_error',
+                httpStatus: response.status,
+            };
+        }
+        const text = data?.choices?.[0]?.message?.content;
+        if (!String(text || '').trim()) {
+            return { ok: false, status: 'empty_response', httpStatus: response.status };
+        }
+        return { ok: true, status: 'ok', httpStatus: response.status };
+    } catch (error) {
+        return { ok: false, status: 'network_error', message: error.message };
+    }
+}
+
+async function warmGptOssGroqLiveProbe() {
+    const result = await probeGptOssGroqAvailability();
+    const value = { ...result, checkedAt: new Date().toISOString() };
+    gptOssLiveProbeCache = { value, expiresAt: Date.now() + GPT_OSS_PROBE_TTL_MS };
+    return value;
+}
+
+function getCachedGptOssGroqLiveStatus() {
+    if (!isGroqConfigured()) {
+        return { ok: false, status: 'missing_configuration', checkedAt: null };
+    }
+    if (gptOssLiveProbeCache.value && gptOssLiveProbeCache.expiresAt > Date.now()) {
+        return gptOssLiveProbeCache.value;
+    }
+    return { ok: null, status: 'not_checked', checkedAt: null };
+}
+
+/** @internal Tests only */
+function resetGptOssGroqProbeCacheForTests() {
+    gptOssLiveProbeCache = { value: null, expiresAt: 0 };
+}
+
+function resolveGptOssGroqLibraryHealth() {
+    const configured = isGroqConfigured();
+    if (!configured) {
+        return {
+            configured: false,
+            available: false,
+            status: 'setup_needed',
+            probe: 'missing_configuration',
+            modelId: GPT_OSS_GROQ_MODEL_ID,
+            endpoint: GROQ_CHAT_COMPLETIONS_URL,
+            requiredEnv: ['GROQ_API_KEY'],
+            checkedAt: null,
+        };
+    }
+    const live = getCachedGptOssGroqLiveStatus();
+    if (live.ok === true) {
+        return {
+            configured: true,
+            available: true,
+            status: 'available',
+            probe: live.status,
+            modelId: GPT_OSS_GROQ_MODEL_ID,
+            endpoint: GROQ_CHAT_COMPLETIONS_URL,
+            requiredEnv: ['GROQ_API_KEY'],
+            checkedAt: live.checkedAt || null,
+        };
+    }
+    if (live.ok === false && live.status !== 'not_checked') {
+        return {
+            configured: true,
+            available: false,
+            status: 'unavailable',
+            probe: live.status,
+            modelId: GPT_OSS_GROQ_MODEL_ID,
+            endpoint: GROQ_CHAT_COMPLETIONS_URL,
+            requiredEnv: ['GROQ_API_KEY'],
+            checkedAt: live.checkedAt || null,
+        };
+    }
+    return {
+        configured: true,
+        available: false,
+        status: 'configured',
+        probe: live.status || 'not_checked',
+        modelId: GPT_OSS_GROQ_MODEL_ID,
+        endpoint: GROQ_CHAT_COMPLETIONS_URL,
+        requiredEnv: ['GROQ_API_KEY'],
+        checkedAt: live.checkedAt || null,
+    };
+}
+
 function logGroqHttpError(status, responseData, context = {}) {
     const detail = sanitizeProviderHint(
         responseData?.error?.message || responseData?.message || '',
@@ -163,5 +299,10 @@ module.exports = {
     logGroqHttpError,
     mapGroqHttpError,
     resolveGroqDirectModel,
+    resolveGptOssGroqLibraryHealth,
+    getCachedGptOssGroqLiveStatus,
+    probeGptOssGroqAvailability,
+    resetGptOssGroqProbeCacheForTests,
+    warmGptOssGroqLiveProbe,
     shouldUseGroqDirect,
 };

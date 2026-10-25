@@ -22,6 +22,37 @@ test('getPublicModelStatus returns env snapshot without live probes', () => {
     assert.deepEqual(second.body, first.body);
 });
 
+test('modelHealth reports setup_needed for gpt-oss-groq without GROQ_API_KEY', () => {
+    const previous = process.env.GROQ_API_KEY;
+    delete process.env.GROQ_API_KEY;
+    try {
+        const { body } = getPublicModelStatus({ forceRefresh: true });
+        assert.equal(body.models['gpt-oss-groq'], false);
+        assert.equal(body.modelHealth['gpt-oss-groq'].status, 'setup_needed');
+        assert.equal(body.modelHealth['gpt-oss-groq'].configured, false);
+        assert.equal(body.modelHealth['gpt-oss-groq'].modelId, 'openai/gpt-oss-120b');
+    } finally {
+        if (previous === undefined) delete process.env.GROQ_API_KEY;
+        else process.env.GROQ_API_KEY = previous;
+        resetModelStatusCacheForTests();
+    }
+});
+
+test('modelHealth reports configured when GROQ_API_KEY is set', () => {
+    const previous = process.env.GROQ_API_KEY;
+    process.env.GROQ_API_KEY = 'gsk-test-configured';
+    try {
+        const { body } = getPublicModelStatus({ forceRefresh: true });
+        assert.equal(body.models['gpt-oss-groq'], true);
+        assert.equal(body.modelHealth['gpt-oss-groq'].status, 'configured');
+        assert.equal(body.modelHealth['gpt-oss-groq'].configured, true);
+    } finally {
+        if (previous === undefined) delete process.env.GROQ_API_KEY;
+        else process.env.GROQ_API_KEY = previous;
+        resetModelStatusCacheForTests();
+    }
+});
+
 test('GET /api/status/models responds quickly with X-Cache', async () => {
     process.env.NODE_ENV = 'test';
     process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-for-model-status';

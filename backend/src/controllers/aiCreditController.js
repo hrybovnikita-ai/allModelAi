@@ -27,12 +27,22 @@ function frontendOrigin(req) {
     return 'http://localhost:5173';
 }
 
-const { stripeCheckoutEnabledForDeployment } = require('../payments/paymentProvider');
+const {
+    stripeCheckoutEnabledForDeployment,
+    wayforpayCheckoutEnabledForDeployment,
+} = require('../payments/paymentProvider');
+const { wayforpayConfig } = require('../wayforpay/config');
 
 const getAiCreditPackages = (_req, res) => {
     const creem = creemConfigurationReport();
     const creemGuard = assertCreemCheckoutAllowed();
-    const checkoutAvailable = Boolean(creemGuard.ok);
+    const wayforpayOn = wayforpayCheckoutEnabledForDeployment();
+    const stripeOn = stripeCheckoutEnabledForDeployment();
+    const checkoutAvailable = Boolean(creemGuard.ok || wayforpayOn || stripeOn);
+    let checkoutProvider = null;
+    if (wayforpayOn) checkoutProvider = 'wayforpay';
+    else if (creemGuard.ok) checkoutProvider = 'creem';
+    else if (stripeOn) checkoutProvider = 'stripe';
     const { listPublicCreditWeights } = require('../billing/aiCreditUsage');
     const { subscriptionPlans, PLAN_UI_LABELS } = require('../billing/plans');
     return res.json({
@@ -47,6 +57,12 @@ const getAiCreditPackages = (_req, res) => {
             userMessage: creem.userMessage,
         },
         checkoutAvailable,
+        checkoutProvider,
+        wayforpay: wayforpayOn ? {
+            testMode: wayforpayConfig().testMode,
+            currency: wayforpayConfig().currency,
+            supportedCurrencies: wayforpayConfig().supportedCurrencies,
+        } : null,
         checkoutUnavailableMessage: checkoutAvailable
             ? null
             : (creem.userMessage

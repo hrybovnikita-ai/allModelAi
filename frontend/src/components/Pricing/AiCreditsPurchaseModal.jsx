@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { resolveApiUrl } from '../../lib/apiBase';
 import { fetchCheckoutInfo, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
+import { executeWayforpayCreditCheckout } from '../../lib/wayforpayCheckoutFlow';
 
 export default function AiCreditsPurchaseModal({ open, onClose }) {
   const [loading, setLoading] = useState(true);
@@ -11,6 +12,9 @@ export default function AiCreditsPurchaseModal({ open, onClose }) {
   const [buying, setBuying] = useState(false);
   const [error, setError] = useState('');
   const [testModeText, setTestModeText] = useState('');
+  const [checkoutProvider, setCheckoutProvider] = useState(null);
+  const [wayforpayTestMode, setWayforpayTestMode] = useState(false);
+  const [wayforpayCurrency, setWayforpayCurrency] = useState('USD');
 
   useEffect(() => {
     if (!open) return undefined;
@@ -27,6 +31,9 @@ export default function AiCreditsPurchaseModal({ open, onClose }) {
         if (cancelled) return;
         setPackages(Array.isArray(data?.packages) ? data.packages : []);
         setCheckoutAvailable(Boolean(data?.checkoutAvailable));
+        setCheckoutProvider(data?.checkoutProvider || null);
+        setWayforpayTestMode(Boolean(data?.wayforpay?.testMode));
+        if (data?.wayforpay?.currency) setWayforpayCurrency(data.wayforpay.currency);
         setNotice(
           data?.checkoutUnavailableMessage
             || data?.creem?.userMessage
@@ -69,6 +76,27 @@ export default function AiCreditsPurchaseModal({ open, onClose }) {
     setBuying(true);
     setError('');
     try {
+      if (checkoutProvider === 'wayforpay') {
+        const httpClient = (url, options = {}) => fetch(resolveApiUrl(url), {
+          ...options,
+          credentials: 'include',
+        });
+        const result = await executeWayforpayCreditCheckout({
+          httpClient,
+          packageId: selected.id,
+          currency: wayforpayCurrency,
+          serverTestMode: wayforpayTestMode,
+        });
+        if (result.mode === 'redirect') return;
+        if (result.mode === 'test' && result.data?.paid) {
+          onClose();
+          window.location.assign(`/checkout?credits=success&package=${encodeURIComponent(selected.id)}`);
+          return;
+        }
+        setError(result.data?.message || 'Test checkout completed.');
+        return;
+      }
+
       const response = await fetch(resolveApiUrl('/api/payments/creem/credit-checkout'), {
         method: 'POST',
         credentials: 'include',
@@ -85,8 +113,8 @@ export default function AiCreditsPurchaseModal({ open, onClose }) {
         return;
       }
       setError('Checkout URL was not returned by the payment provider.');
-    } catch {
-      setError('Could not start checkout. Try again later.');
+    } catch (checkoutError) {
+      setError(checkoutError?.message || 'Could not start checkout. Try again later.');
     } finally {
       setBuying(false);
     }

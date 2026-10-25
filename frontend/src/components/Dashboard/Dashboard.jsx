@@ -19,18 +19,10 @@ import EverydayCards from '../EverydayAI/EverydayCards';
 import ManageSubscriptionModal from './ManageSubscriptionModal';
 import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
 import { isCompleteCreditStatus, normalizeCreditStatus } from '../../lib/creditStatus';
-import { normalizeModelStatusMap, resolveModelOnlineStatus } from '../../data/ollamaCloudVariants';
+import { normalizeModelStatusMap } from '../../data/ollamaCloudVariants';
+import { resolveModelLibraryCardStatus } from '../../lib/modelLibraryStatus';
 
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
-
-const modelProviderStatus = (slug, modelStatus) => {
-  if (slug === 'smart') return { label: 'Auto route', className: 'neutral' };
-  if (!Object.keys(modelStatus).length) return { label: 'Checking…', className: 'pending' };
-  const online = resolveModelOnlineStatus(slug, modelStatus);
-  return online
-    ? { label: 'Configured', className: '' }
-    : { label: 'Setup needed', className: 'offline' };
-};
 
 const DASHBOARD_CODE_SAMPLE = `const result = await allModelAI.chat({
   model: 'claude-sonnet',
@@ -66,6 +58,7 @@ export default function Dashboard() {
   const [recentProjects, setRecentProjects] = useState([]);
   const [manageSubOpen, setManageSubOpen] = useState(false);
   const [modelStatus, setModelStatus] = useState({});
+  const [modelHealth, setModelHealth] = useState({});
 
   const loadSubscription = useCallback(async () => {
     if (!user?.email) {
@@ -160,6 +153,7 @@ export default function Dashboard() {
       .then((data) => {
         if (data?.models || data?.providers) {
           setModelStatus(normalizeModelStatusMap(data?.models || {}, data?.providers || {}));
+          setModelHealth(data?.modelHealth && typeof data.modelHealth === 'object' ? data.modelHealth : {});
         }
       })
       .catch(() => {});
@@ -280,6 +274,7 @@ export default function Dashboard() {
               )}
               <div className="dashboard-subscription-actions">
                 <button type="button" className="dashboard-sub-manage" onClick={() => setManageSubOpen(true)}>Manage subscription</button>
+                <Link to="/dashboard/orders">Order history</Link>
                 <Link to="/checkout?plan=pro">Upgrade plan</Link>
                 {creditStatus.aiCredits?.enabled ? <Link to="/credits">Buy AI credits</Link> : null}
               </div>
@@ -317,7 +312,7 @@ export default function Dashboard() {
         <div className="dashboard-section-title"><div><span>Model library</span><h2>Choose your intelligence</h2></div><p>Switch providers whenever your task changes.</p></div>
         <div className="dashboard-grid">
           {models.map((model) => {
-            const providerStatus = modelProviderStatus(model.slug, modelStatus);
+            const providerStatus = resolveModelLibraryCardStatus(model.slug, modelStatus, modelHealth);
             return (
               <Link className="dashboard-model-card" to={`/models/${model.slug}`} key={model.name}>
                 <article>

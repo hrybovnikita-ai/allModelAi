@@ -1,4 +1,5 @@
 const { planAmountDecimal, normalizePlanKey, subscriptionPlans } = require('../billing/plans');
+const { resolvePackConfig } = require('../billing/aiCreditPackages');
 
 const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'UAH'];
 
@@ -44,6 +45,13 @@ function convertUsdPlanAmount(usdAmountString, currency) {
     return converted.toFixed(2);
 }
 
+function creditPackAmountForCurrency(packageId, currency) {
+    const pack = resolvePackConfig(packageId);
+    if (!pack?.priceUsdCents) return null;
+    const usd = (pack.priceUsdCents / 100).toFixed(2);
+    return convertUsdPlanAmount(usd, currency);
+}
+
 function planAmountForCurrency(planKey, currency) {
     const normalized = normalizePlanKey(planKey);
     const plan = subscriptionPlans[normalized];
@@ -60,6 +68,7 @@ module.exports = {
     SUPPORTED_CURRENCIES,
     resolveWayforpayCurrency,
     planAmountForCurrency,
+    creditPackAmountForCurrency,
     convertUsdPlanAmount,
     wayforpayLanguageForCurrency,
     parseFxRatesFromEnv,

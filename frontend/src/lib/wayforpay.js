@@ -21,14 +21,22 @@ export function submitWayforpayCheckout(checkoutPayload) {
   });
 }
 
-export async function createWayforpayCheckout(httpClient, { plan, currency }) {
+export async function createWayforpayCheckout(httpClient, { plan, currency, packageId, purchaseType }) {
   const isAxios = typeof httpClient?.post === 'function';
-  const body = { plan, ...(currency ? { currency } : {}) };
+  const body = {
+    ...(plan ? { plan } : {}),
+    ...(packageId ? { packageId } : {}),
+    ...(purchaseType ? { purchaseType } : {}),
+    ...(currency ? { currency } : {}),
+  };
+  const path = packageId || purchaseType === 'ai_credits'
+    ? '/api/payments/wayforpay/credit-checkout'
+    : '/api/payments/wayforpay/create';
   if (isAxios) {
-    const response = await httpClient.post('/api/payments/wayforpay/create', body, { withCredentials: true });
+    const response = await httpClient.post(path, body, { withCredentials: true });
     return response.data;
   }
-  const response = await httpClient('/api/payments/wayforpay/create', {
+  const response = await httpClient(path, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },

@@ -63,8 +63,8 @@ const AI_CREDITS_PLAN = {
   features: [
     'Starter, Plus, Pro, and Ultimate packs',
     'Credits never replace subscription quotas',
-    'Fulfillment via verified payment webhooks',
-    'Creem checkout coming after merchant approval',
+    'Fulfillment after verified WayForPay payment',
+    'USD checkout when WayForPay is your primary provider',
   ],
   cta: 'Buy Credits',
   featured: false,

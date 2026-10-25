@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiFetch } from '../../lib/api';
 import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
+import { formatPaymentOrderStatus } from '../../lib/paymentOrderStatus';
 import './ManageSubscriptionModal.css';
 
 export default function ManageSubscriptionModal({ onClose, onUpdated }) {
@@ -106,7 +107,7 @@ export default function ManageSubscriptionModal({ onClose, onUpdated }) {
               {history.map((row) => (
                 <li key={row.orderReference}>
                   <span>{row.planName} · ${Number(row.amount).toFixed(2)} {row.currency}</span>
-                  <span>{row.status}{row.test ? ' (test)' : ''}</span>
+                  <span>{formatPaymentOrderStatus(row.displayStatus, row.status)}{row.test ? ' (test)' : ''}</span>
                   <small>{row.paidAt || row.createdAt}</small>
                 </li>
               ))}

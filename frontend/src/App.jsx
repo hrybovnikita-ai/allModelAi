@@ -21,6 +21,7 @@ import Pricing from "./components/Pricing/Pricing";
 import Users from "./components/Users/Users";
 import Footer from "./components/Footer/Footer";
 import Dashboard from "./components/Dashboard/Dashboard";
+import PaymentOrderHistory from "./components/Dashboard/PaymentOrderHistory";
 import CreditsWallet from "./components/Credits/CreditsWallet";
 import AiMemoryPage from "./components/Memory/AiMemoryPage";
 import ModelDetails from "./components/ModelDetails/ModelDetails";
@@ -219,6 +220,7 @@ export default function App() {
       <Route path="/models/:slug" element={<ModelDetails />} />
       <Route path="/prompts" element={<PromptGallery />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/dashboard/orders" element={<PaymentOrderHistory />} />
       <Route path="/credits" element={<CreditsWallet />} />
       <Route path="/ai-memory" element={<AiMemoryPage />} />
       <Route path="/everyday-ai" element={<EverydayAI />} />

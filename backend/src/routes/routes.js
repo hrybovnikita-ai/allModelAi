@@ -102,6 +102,7 @@ const {
 } = require('../controllers/trainingLabController');
 const {
     createWayforpayPayment,
+    createWayforpayCreditPayment,
     completeMockWayforpayPayment,
     completeTestWayforpayCheckout,
     getWayforpayPaymentStatus,
@@ -335,6 +336,7 @@ router.get('/payments/plans/:slug', getCheckoutPlanQuote);
 router.get('/payments/config', requireAuth, getPaymentConfig);
 router.post('/payments/wayforpay/create', requireAuth, createWayforpayPayment);
 router.post('/payments/wayforpay/checkout', requireAuth, createWayforpayPayment);
+router.post('/payments/wayforpay/credit-checkout', requireAuth, createWayforpayCreditPayment);
 router.post('/payments/wayforpay/mock-complete', requireAuth, completeMockWayforpayPayment);
 router.post('/payments/wayforpay/test-checkout', requireAuth, completeTestWayforpayCheckout);
 router.get('/payments/wayforpay/status/:orderReference', requireAuth, getWayforpayPaymentStatus);

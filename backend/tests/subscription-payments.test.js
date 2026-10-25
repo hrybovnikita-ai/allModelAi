@@ -277,4 +277,29 @@ test('Subscription & payment lifecycle', async (t) => {
         assert.equal(create.body.testMode, true);
         assert.equal(create.body.payUrl, undefined);
     });
+
+    await t.test('TEST MODE WayForPay credit pack grants wallet credits once', async () => {
+        process.env.WAYFORPAY_TEST_MODE = 'true';
+        const email = `sub-credits-${Date.now()}@example.com`;
+        const cookie = await registerSandboxCheckoutCookie(email);
+        const pay = await request(app)
+            .post('/api/payments/wayforpay/credit-checkout')
+            .set('Cookie', cookie)
+            .send({ packageId: 'starter' });
+        assert.equal(pay.status, 201);
+        assert.equal(pay.body.mockCheckout, true);
+        assert.equal(pay.body.purchaseType, 'ai_credits');
+        const complete = await request(app)
+            .post('/api/payments/wayforpay/mock-complete')
+            .set('Cookie', cookie)
+            .send({ orderReference: pay.body.orderReference });
+        assert.equal(complete.status, 200);
+        assert.equal(complete.body.paid, true);
+        const wallet = await request(app).get('/api/credits/wallet').set('Cookie', cookie);
+        assert.equal(wallet.status, 200);
+        assert.ok(Number(wallet.body.balance) >= 500);
+        const history = await request(app).get('/api/payments/history').set('Cookie', cookie);
+        assert.equal(history.status, 200);
+        assert.ok(history.body.payments.some((row) => row.displayStatus === 'successful'));
+    });
 });

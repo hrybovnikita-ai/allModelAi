@@ -24,6 +24,7 @@
     "models:smoke": "node scripts/model-provider-smoke.mjs",
     "ollama:smoke": "node scripts/ollama-cloud-smoke.js",
     "ollama:chat-smoke": "node scripts/ollama-chat-api-smoke.js",
+    "groq:gpt-oss-smoke": "node scripts/gpt-oss-groq-smoke.js",
     "stripe:check": "node scripts/stripe-check.js",
     "stripe:sync": "node scripts/sync-stripe-publishable.js"
   },
