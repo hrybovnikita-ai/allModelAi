@@ -19,7 +19,7 @@ test('NVIDIA Nemotron 3 Ultra is listed in the model selector catalog', () => {
   assert.match(dashboardModelsSource, /slug:\s*'nemotron'/);
   assert.match(dashboardModelsSource, /NVIDIA Nemotron 3 Ultra/);
   assert.match(dashboardModelsSource, /NVIDIA \/ OpenRouter/);
-  assert.match(dashboardModelsSource, /Free endpoint/);
+  assert.match(dashboardModelsSource, /Free OpenRouter endpoint/);
   assert.match(dashboardModelsSource, /Reasoning/);
 });
 

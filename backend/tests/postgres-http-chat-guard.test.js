@@ -87,7 +87,7 @@ test('POST /api/chat on postgres uses async path and completes persistence after
 
         assert.ok(mockPool.usageCounts.get(email) >= 1, 'usage counter should increment');
 
-        const history = await request(app).get('/api/chat/history').set('Cookie', cookie).timeout(deadline);
+        const history = await request(app).get('/api/chat/history?includeMessages=true').set('Cookie', cookie).timeout(deadline);
         assert.equal(history.status, 200);
         assert.equal(history.body.length, 1);
         assert.ok(history.body[0].messages.some((item) => String(item.content || item.text || '').includes(CHAT_ANSWER)));

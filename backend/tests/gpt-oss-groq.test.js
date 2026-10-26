@@ -116,8 +116,11 @@ describe('GPT-OSS 120B GroqCloud helpers', () => {
     });
 
     test('subscription and Anonin identity labels', () => {
-        assert.equal(hasModelAccess({ models: ['gpt-oss-groq'] }, 'gpt-oss-groq'), true);
-        assert.equal(hasModelAccess({ models: ['gemini'] }, 'gpt-oss-groq'), false);
+        assert.equal(
+            hasModelAccess({ hasSubscription: true, active: true, models: ['gpt-oss-groq'] }, 'gpt-oss-groq'),
+            true,
+        );
+        assert.equal(hasModelAccess({ hasSubscription: true, active: true, models: ['gemini'] }, 'gpt-oss-groq'), false);
         const labels = buildIdentityLabels('gpt-oss-groq', GPT_OSS_GROQ_MODEL_ID);
         assert.equal(labels.actualSlug, 'gpt-oss-groq');
         assert.match(labels.providerLabel, /GroqCloud/i);

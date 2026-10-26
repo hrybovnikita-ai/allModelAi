@@ -77,7 +77,7 @@ describe('secure chat and knowledge API',()=>{
    const imageUrl = 'data:image/png;base64,aGVsbG8=';
    const created = await api.post('/api/chat/history').send({ model: 'gpt', messages: [{role:'user',text:'Draw a dragon'}, {role:'assistant',text:'Done',imageUrl}] });
    assert.equal(created.status, 201);
-   const history = await api.get('/api/chat/history');
+   const history = await api.get('/api/chat/history?includeMessages=true');
    assert.equal(history.body.find(item => item.id === created.body.id).messages[1].imageUrl, imageUrl);
    assert.equal((await request(app).post('/api/images').send({prompt:'dragon'})).status, 401);
  });

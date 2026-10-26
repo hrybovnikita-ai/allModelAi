@@ -28,7 +28,10 @@ console.log(
     `(per-file timeout ${FILE_TIMEOUT_MS}ms)`,
 );
 
-let failed = false;
+/** @type {{ label: string; reason: string; durationMs: number }[]} */
+const failures = [];
+/** @type {{ label: string; durationMs: number }[]} */
+const passed = [];
 
 for (const file of testFiles) {
     const label = path.basename(file);
@@ -47,7 +50,7 @@ for (const file of testFiles) {
         ],
         {
             cwd: backendRoot,
-            stdio: 'inherit',
+            encoding: 'utf8',
             env: process.env,
             timeout: FILE_TIMEOUT_MS,
             killSignal: 'SIGTERM',
@@ -55,26 +58,40 @@ for (const file of testFiles) {
     );
 
     const durationMs = Date.now() - started;
+    const stdout = child.stdout || '';
+    const stderr = child.stderr || '';
+    if (stdout) process.stdout.write(stdout);
+    if (stderr) process.stderr.write(stderr);
 
     if (child.error) {
-        console.error(`[backend-tests] ERROR ${label}: ${child.error.message}`);
-        failed = true;
+        const reason = child.error.message;
+        console.error(`[backend-tests] ERROR ${label}: ${reason}`);
+        failures.push({ label, reason, durationMs });
     } else if (child.signal) {
-        console.error(
-            `[backend-tests] TIMEOUT ${label} signal=${child.signal} after ${durationMs}ms`,
-        );
-        failed = true;
+        const reason = `signal=${child.signal} after ${durationMs}ms (timeout ${FILE_TIMEOUT_MS}ms)`;
+        console.error(`[backend-tests] TIMEOUT ${label} ${reason}`);
+        failures.push({ label, reason, durationMs });
     } else if (child.status !== 0) {
-        console.error(
-            `[backend-tests] FAIL ${label} exit=${child.status} duration=${durationMs}ms`,
-        );
-        failed = true;
+        const reason = `exit=${child.status} duration=${durationMs}ms`;
+        console.error(`[backend-tests] FAIL ${label} ${reason}`);
+        const tail = `${stdout}\n${stderr}`.trim().split(/\r?\n/).slice(-40).join('\n');
+        if (tail) {
+            console.error(`[backend-tests] FAIL ${label} — last output lines:\n${tail}`);
+        }
+        failures.push({ label, reason, durationMs });
     } else {
-        console.log(`[backend-tests] END ${label} ok duration=${durationMs}ms`);
+        console.log(`[backend-tests] PASS ${label} duration=${durationMs}ms`);
+        passed.push({ label, durationMs });
     }
 }
 
-if (failed) {
+console.log('[backend-tests] === Summary ===');
+console.log(`[backend-tests] passed: ${passed.length}/${testFiles.length}`);
+if (failures.length) {
+    console.error(`[backend-tests] failed: ${failures.length}/${testFiles.length}`);
+    for (const item of failures) {
+        console.error(`[backend-tests]   ✗ ${item.label} — ${item.reason}`);
+    }
     console.error('[backend-tests] Suite failed.');
     process.exit(1);
 }

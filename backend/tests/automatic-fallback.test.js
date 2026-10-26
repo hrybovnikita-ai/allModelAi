@@ -148,15 +148,18 @@ describe('fallback tracker and recovery', () => {
     });
 
     test('free-tier requests never select paid fallback candidates', () => {
-        assert.equal(isFreeTierSlug('nemotron'), true);
+        assert.equal(isFreeTierSlug('gemini'), true);
+        assert.equal(isFreeTierSlug('anonin'), true);
+        assert.equal(isFreeTierSlug('nemotron'), false);
         const candidates = selectFallbackCandidates({
-            requestedSlug: 'nemotron',
+            requestedSlug: 'anonin',
             preferredChain: ['gpt', 'claude', 'gemini', 'gpt-oss', 'deepseek'],
             maxAttempts: 5,
         });
-        assert.deepEqual(candidates, ['gemini', 'gpt-oss']);
+        assert.deepEqual(candidates, ['gemini']);
         assert.ok(!candidates.includes('gpt'));
         assert.ok(!candidates.includes('claude'));
         assert.ok(!candidates.includes('deepseek'));
+        assert.ok(!candidates.includes('gpt-oss'));
     });
 });

@@ -5,6 +5,11 @@ const { after } = require('node:test');
 
 process.env.NODE_ENV = 'test';
 
+/** Allowlisted DEVELOPER_EMAILS in tests can use premium models (never active in production). */
+if (!process.env.ENABLE_PLUS_TEST_MODE) {
+    process.env.ENABLE_PLUS_TEST_MODE = 'true';
+}
+
 if (process.env.ALLOW_POSTGRES_TESTS !== 'true') {
     delete process.env.DATABASE_URL;
 }

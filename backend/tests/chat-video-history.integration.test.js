@@ -45,10 +45,10 @@ test('GET /api/chat/history rebuilds video from conversation-linked job when mes
         conversationId,
     );
 
-    const history = await api.get('/api/chat/history');
+    const history = await api.get(`/api/chat/history/${conversationId}`);
     assert.equal(history.status, 200);
-    const conversation = history.body.find((item) => item.id === conversationId);
-    assert.ok(conversation, 'conversation should be returned');
+    const conversation = history.body;
+    assert.ok(conversation?.id === conversationId, 'conversation should be returned');
     const assistant = conversation.messages.find((item) => item.role === 'assistant');
     assert.ok(assistant, 'assistant message should be rebuilt');
     assert.equal(assistant.videoJobId, jobId);

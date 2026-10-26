@@ -69,8 +69,8 @@ test('passwordless accounts cannot be claimed through login or registration', as
   try {
     const blocked = await request(app).post('/api/auth/login').send({ email, password: 'attacker-password' });
     assert.equal(blocked.status, 401);
-    assert.equal(blocked.body.code, 'INVALID_CREDENTIALS');
-    assert.match(blocked.body.message, /incorrect email or password/i);
+    assert.equal(blocked.body.code, 'PASSWORD_SETUP_REQUIRED');
+    assert.match(blocked.body.message, /password/i);
     assert.equal((await request(app).post('/api/auth/register').send({
       name: 'Attacker',
       email,

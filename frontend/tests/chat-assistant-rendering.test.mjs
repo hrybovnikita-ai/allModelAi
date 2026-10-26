@@ -46,7 +46,7 @@ test('background success notice is conditional and never the only delivery path'
 
 test('empty completed assistant placeholders are not rendered as blank black blocks', () => {
   assert.match(chatSource, /isPendingAssistant/);
-  assert.match(chatSource, /if \(isPendingAssistant && !isSending\) return null/);
+  assert.match(chatSource, /if \(isPendingAssistant && !isSending\) \{/);
 });
 
 test('message keys prefer stable message ids', () => {

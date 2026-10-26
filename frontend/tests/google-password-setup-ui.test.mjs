@@ -18,7 +18,7 @@ test('dashboard no longer shows the AllModelAI password setup banner', async () 
   assert.doesNotMatch(dashboard, /Set a separate AllModelAI password/);
   assert.doesNotMatch(dashboard, /SocialAuth\.css/);
   assert.doesNotMatch(enhancements, /dashboard-password-setup/);
-  assert.match(dashboard, /Welcome, \{user\.name/);
+  assert.match(dashboard, /Hi \{user\.name/);
 });
 
 test('account security keeps the shared password enrollment form', async () => {

@@ -3,10 +3,12 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
 
-test('run-all.js executes each test file in isolation with START/END logging and timeouts', () => {
+test('run-all.js executes each test file in isolation with START/PASS/FAIL logging and timeouts', () => {
     const source = readFileSync(path.join(__dirname, 'run-all.js'), 'utf8');
     assert.match(source, /\[backend-tests\] START/);
-    assert.match(source, /\[backend-tests\] END/);
+    assert.match(source, /\[backend-tests\] PASS/);
+    assert.match(source, /\[backend-tests\] FAIL/);
+    assert.match(source, /\[backend-tests\] === Summary ===/);
     assert.match(source, /timeout:\s*FILE_TIMEOUT_MS/);
     assert.match(source, /test-force-exit/);
     assert.doesNotMatch(source, /experimental-test-isolation=process/);

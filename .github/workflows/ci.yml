@@ -67,6 +67,7 @@ jobs:
         env:
           PYTHON_BIN: python
           NODE_ENV: test
+          ENABLE_PLUS_TEST_MODE: 'true'
 
       - name: Run Python router unit tests
         working-directory: ai_python

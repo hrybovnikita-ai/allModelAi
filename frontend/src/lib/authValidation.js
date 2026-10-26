@@ -45,7 +45,6 @@ export function validateRegistrationForm({ name, email, password, confirmPasswor
       name: trimmedName,
       email: trimmedEmail.toLowerCase(),
       password,
-      confirmPassword,
     },
   };
 }

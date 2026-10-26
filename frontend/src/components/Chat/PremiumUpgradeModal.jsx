@@ -1,7 +1,7 @@
 import { useLanguage } from '../../lib/useLanguage';
 import './PremiumUpgradeModal.css';
 
-export default function PremiumUpgradeModal({ open, modelName, onSubscribe, onDismiss }) {
+export default function PremiumUpgradeModal({ open, onSubscribe, onDismiss }) {
   const { t } = useLanguage();
   if (!open) return null;
 

@@ -813,6 +813,48 @@ export default function Chat() {
     updateChatMeta(conversationId, { projectId });
   }, [updateChatMeta]);
 
+  const openConversation = useCallback(async (conversation) => {
+    if (!conversation?.id) return;
+    let resolved = conversation;
+    const needsFetch = !Array.isArray(resolved.messages)
+      || (!resolved.messages.length && Number(resolved.messageCount) > 0);
+    if (needsFetch) {
+      const loaded = await fetchChatConversation(apiFetch, resolved.id);
+      if (!loaded.ok) {
+        setChatError(loaded.message || 'Could not open this conversation.');
+        setHistoryLoadError(loaded.message || '');
+        return;
+      }
+      resolved = loaded.conversation;
+      setChatHistory((current) => current.map((item) => (
+        String(item.id) === String(resolved.id) ? { ...item, ...resolved } : item
+      )));
+    }
+    const isTemp = Boolean(resolved?.isTemporary || resolved?.temporary);
+    setTemporaryChat(isTemp);
+    setTemporaryExpiresAt(isTemp ? (resolved.expiresAt || resolved.expires_at || null) : null);
+    if (!isTemp) {
+      const projectId = chatMeta[conversation.id]?.projectId;
+      let project = projectId ? projects.find((item) => item.id === projectId) : null;
+      if (!project && activeProject) {
+        updateChatMeta(conversation.id, { projectId: activeProject.id });
+        project = activeProject;
+      }
+      setActiveProject(project || null);
+      persistActiveProjectId(project || null);
+    } else {
+      setActiveProject(null);
+    }
+    setActiveConversationId(resolved.id);
+    activeConversationIdRef.current = resolved.id;
+    setMessages(normalizeConversationMessages(resolved.messages || []));
+    setSelectedSlug(validModelSlug(resolved.model));
+    setPrompt('');
+    setChatError('');
+    setChatMenuId(null);
+    setSidebarOpen(false);
+  }, [activeProject, chatMeta, projects, updateChatMeta, persistActiveProjectId]);
+
   useEffect(() => {
     linkConversationToProject(activeConversationId);
   }, [activeConversationId, activeProject?.id, linkConversationToProject]);
@@ -2823,48 +2865,6 @@ export default function Chat() {
     setActiveProject(null);
     newChat();
   };
-
-  const openConversation = useCallback(async (conversation) => {
-    if (!conversation?.id) return;
-    let resolved = conversation;
-    const needsFetch = !Array.isArray(resolved.messages)
-      || (!resolved.messages.length && Number(resolved.messageCount) > 0);
-    if (needsFetch) {
-      const loaded = await fetchChatConversation(apiFetch, resolved.id);
-      if (!loaded.ok) {
-        setChatError(loaded.message || 'Could not open this conversation.');
-        setHistoryLoadError(loaded.message || '');
-        return;
-      }
-      resolved = loaded.conversation;
-      setChatHistory((current) => current.map((item) => (
-        String(item.id) === String(resolved.id) ? { ...item, ...resolved } : item
-      )));
-    }
-    const isTemp = Boolean(resolved?.isTemporary || resolved?.temporary);
-    setTemporaryChat(isTemp);
-    setTemporaryExpiresAt(isTemp ? (resolved.expiresAt || resolved.expires_at || null) : null);
-    if (!isTemp) {
-      const projectId = chatMeta[conversation.id]?.projectId;
-      let project = projectId ? projects.find((item) => item.id === projectId) : null;
-      if (!project && activeProject) {
-        updateChatMeta(conversation.id, { projectId: activeProject.id });
-        project = activeProject;
-      }
-      setActiveProject(project || null);
-      persistActiveProjectId(project || null);
-    } else {
-      setActiveProject(null);
-    }
-    setActiveConversationId(resolved.id);
-    activeConversationIdRef.current = resolved.id;
-    setMessages(normalizeConversationMessages(resolved.messages || []));
-    setSelectedSlug(validModelSlug(resolved.model));
-    setPrompt('');
-    setChatError('');
-    setChatMenuId(null);
-    setSidebarOpen(false);
-  }, [activeProject, chatMeta, projects, updateChatMeta]);
 
   const pinConversation = (conversation) => {
     const pinned = !chatMeta[conversation.id]?.pinned;

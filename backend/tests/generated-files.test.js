@@ -36,14 +36,14 @@ test('file mode reaches the model and produces a durable private file', async ()
     await new Promise(resolve => setImmediate(resolve));
     const { parseGeneratedFile, findGeneratedFile } = await import('../../frontend/src/lib/generatedFiles.js');
     const id = parseGeneratedFile(artifact).id;
-    const history = await owner.get('/api/chat/history');
+    const history = await owner.get('/api/chat/history?includeMessages=true');
     const conversation = history.body.find(item => item.id === created.body.id);
     assert.equal(findGeneratedFile(conversation, id).content, 'print("Hello")\n');
     assert.equal((await other.get('/api/chat/history')).body.some(item => item.id === conversation.id), false);
     assert.equal((await request(app).get('/api/chat/history')).status, 401);
     app.locals.db.close();
     app.locals.db = require('../src/db').connectDatabase();
-    const reloaded = await owner.get('/api/chat/history');
+    const reloaded = await owner.get('/api/chat/history?includeMessages=true');
     assert.equal(findGeneratedFile(reloaded.body.find(item => item.id === conversation.id), id).name, 'hello.py');
   } finally { global.fetch = oldFetch; }
 });
