@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { apiFetch, parseJsonResponse } from '../../lib/api';
+import { ensureSocialAuthReady, isFirebaseSocialConfigured } from '../../lib/firebase';
 
 export default function ForgotPassword() {
   const [searchParams] = useSearchParams();
@@ -53,6 +55,15 @@ export default function ForgotPassword() {
         throw new Error(
           data.message || 'Could not create password reset request.'
         );
+      }
+
+      if (isFirebaseSocialConfigured()) {
+        try {
+          const auth = await ensureSocialAuthReady();
+          await sendPasswordResetEmail(auth, cleanEmail);
+        } catch {
+          /* Backend reset is the AllModelAI source of truth. Do not reveal whether Firebase has this email. */
+        }
       }
 
       const baseMessage =

@@ -66,6 +66,22 @@ export {
 
 const GOOGLE_PROVIDER = 'Google';
 
+export function recoverPopupResultFromCurrentUser(auth, error) {
+  const code = error?.code;
+  if (code !== 'auth/popup-closed-by-user' && code !== 'auth/internal-error') {
+    return null;
+  }
+  const user = auth?.currentUser;
+  if (!user?.email || user.emailVerified === false) {
+    return null;
+  }
+  const lastSignIn = Date.parse(user.metadata?.lastSignInTime || '');
+  if (!Number.isFinite(lastSignIn) || Date.now() - lastSignIn > 120000) {
+    return null;
+  }
+  return { user };
+}
+
 let pendingLink = null;
 let redirectRecoveryPromise = null;
 
@@ -145,7 +161,7 @@ export function cancelSocialLink() {
   pendingLink = null;
 }
 
-function shouldUseRedirectSignInFirst() {
+export function shouldUseRedirectSignInFirst() {
   return isCapacitorNative() || isElectronShell() || shouldPreferGoogleRedirectSignIn();
 }
 
@@ -233,19 +249,19 @@ export async function completeGooglePopupSignIn(auth, popupPromise, name, option
   let redirected = false;
   let succeeded = false;
   try {
-    if (shouldUseRedirectSignInFirst()) {
-      markGooglePopupSignInEnded();
-      endGoogleSignInFlow();
-      redirected = true;
-      return beginRedirectSignIn(auth, name, options, 'capacitor-native');
+    // A popup is already open from launchGooglePopupSignIn(). Never start a
+    // second redirect here — that duplicates Google's OAuth tab.
+    let result;
+    try {
+      result = await popupPromise;
+    } catch (popupError) {
+      const recovered = recoverPopupResultFromCurrentUser(auth, popupError);
+      if (!recovered) {
+        throw popupError;
+      }
+      socialAuthDebug('GOOGLE_POPUP_COOP_RECOVERED', { code: popupError.code });
+      result = recovered;
     }
-    if (!shouldTryGooglePopupFirst()) {
-      markGooglePopupSignInEnded();
-      endGoogleSignInFlow();
-      redirected = true;
-      return beginRedirectSignIn(auth, name, options, 'popup-unavailable');
-    }
-    const result = await popupPromise;
     authLog('Popup sign-in resolved');
     const challenge = await prepareBackendChallenge(options);
     const user = await complete(result, { ...options, challenge });
@@ -439,11 +455,10 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
       return user;
     } catch (error) {
       await applyAuthPersistenceAfterRedirectRecovery(auth).catch(() => {});
+      await signOut(auth).catch(() => {});
       clearSocialRedirectIntent();
       endGoogleSignInFlow();
       throw error;
-    } finally {
-      await signOut(auth).catch(() => {});
     }
   })().finally(() => {
     redirectRecoveryPromise = null;

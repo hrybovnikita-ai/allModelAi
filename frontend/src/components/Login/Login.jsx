@@ -9,6 +9,8 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { authPost } from '../../lib/authApi';
+import { signInWithEmailPasswordAllModelAI } from '../../lib/emailPasswordSignIn';
+import { syncFirebaseEmailAccountAfterRegister } from '../../lib/firebaseEmailAccount';
 import { validateRegistrationForm } from '../../lib/authValidation';
 import { ensureSocialAuthReady, getMissingFirebaseConfigKeys, isFirebaseSocialConfigured } from '../../lib/firebase';
 import { ensureFirebaseSocialConfigLoaded } from '../../lib/loadFirebaseConfig';
@@ -18,9 +20,9 @@ import {
   isGoogleRedirectRecoveryPending,
   launchGooglePopupSignIn,
   navigateAfterSocialLogin,
+  shouldUseRedirectSignInFirst,
   startGoogleRedirectSignIn,
 } from '../../lib/socialSignIn';
-import { shouldPreferGoogleRedirectSignIn } from '../../lib/socialSignInEnv';
 import { canUseGoogleRedirectSignIn } from '../../lib/storageAvailability';
 import { markFreshLogin } from '../../lib/session';
 import { useSession } from '../Session/SessionProvider';
@@ -57,6 +59,8 @@ function LoginForm({
   const [authReadyForGoogle, setAuthReadyForGoogle] = useState(false);
   const [socialErrorCode, setSocialErrorCode] = useState('');
   const googleSignInClickLock = useRef(false);
+  const emailSubmitLock = useRef(false);
+  const [passwordSetupHint, setPasswordSetupHint] = useState(false);
 
   useEffect(() => {
     if (isGoogleRedirectRecoveryPending()) {
@@ -108,7 +112,7 @@ function LoginForm({
     setSocialErrorCode('');
     setSocialBusy(provider);
 
-    if (shouldPreferGoogleRedirectSignIn()) {
+    if (shouldUseRedirectSignInFirst()) {
       if (!canUseGoogleRedirectSignIn()) {
         setSocialBusy(null);
         setError(
@@ -148,9 +152,9 @@ function LoginForm({
         }
         document.activeElement?.blur();
         markFreshLogin();
-        await refresh({ force: true });
-        onClose?.();
+        await refresh({ force: true, silent: true });
         await navigateAfterSocialLogin(outcome, { navigate, replaceDashboard: true });
+        onClose?.();
       } catch (requestError) {
         if (isBenignGoogleSignInCancellation(requestError)) {
           setError('');
@@ -172,8 +176,13 @@ function LoginForm({
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (emailSubmitLock.current || submitting || socialBusy) {
+      return;
+    }
     setError('');
     setSuccessNotice('');
+    setPasswordSetupHint(false);
+    setSubmitting(true);
 
     const formData = new FormData(event.currentTarget);
     const raw = Object.fromEntries(formData.entries());
@@ -188,16 +197,19 @@ function LoginForm({
       });
       if (!validation.ok) {
         setError(validation.message);
+        setSubmitting(false);
         return;
       }
       payload = { ...validation.payload, rememberMe };
     } else {
       if (!String(raw.email || '').trim()) {
         setError('Please enter your email address.');
+        setSubmitting(false);
         return;
       }
       if (!raw.password) {
         setError('Please enter a password.');
+        setSubmitting(false);
         return;
       }
       payload = {
@@ -209,27 +221,44 @@ function LoginForm({
 
     const destination = signingUp ? '/dashboard' : returnTo;
 
+    emailSubmitLock.current = true;
     try {
-      setSubmitting(true);
+      let data;
+      let sessionUser;
 
-      const { data } = await authPost(
-        signingUp ? 'register' : 'login',
-        payload,
-      );
+      if (signingUp) {
+        ({ data } = await authPost('register', payload));
+        await syncFirebaseEmailAccountAfterRegister(payload.email, payload.password);
+      } else {
+        const outcome = await signInWithEmailPasswordAllModelAI({
+          email: payload.email,
+          password: payload.password,
+          rememberMe: payload.rememberMe,
+        });
+        if (outcome.channel === 'firebase') {
+          sessionUser = outcome.user;
+          data = outcome.data;
+        } else {
+          data = outcome.data;
+        }
+      }
 
       if (signingUp && data?.needsEmailVerification) {
         setSuccessNotice(
           data.message ||
             'Account created. Check your email to verify ownership, then sign in.',
         );
-        setSubmitting(false);
         onModeChange?.('signin');
         return;
       }
 
-      applyAuthResponsePayload(data);
-      rememberSession(data.user, { serverVerified: false });
-      const user = await confirmSession(data.user);
+      if (!sessionUser) {
+        applyAuthResponsePayload(data);
+        rememberSession(data.user, { serverVerified: false });
+        sessionUser = await confirmSession(data.user);
+      } else {
+        rememberSession(sessionUser, { serverVerified: true });
+      }
       markFreshLogin();
       await refresh({ force: true });
 
@@ -242,7 +271,7 @@ function LoginForm({
         replace: true,
         state: {
           ...returnState,
-          user,
+          user: sessionUser,
           welcomeEmail: data.welcomeEmail,
         },
       });
@@ -279,10 +308,8 @@ function LoginForm({
           && !/incorrect email or password/i.test(requestError.message)
           ? requestError.message
           : '';
-        setError(
-          fromServer
-            || 'This account uses Google or another sign-in provider. Continue with Google below, or use Forgot password to set an AllModelAI password after verifying your email.',
-        );
+        setPasswordSetupHint(true);
+        setError('');
       } else if (
         !signingUp
         && (requestError.status === 401 || requestError.code === 'INVALID_CREDENTIALS')
@@ -309,12 +336,14 @@ function LoginForm({
         );
       }
     } finally {
+      emailSubmitLock.current = false;
       setSubmitting(false);
     }
   };
 
   const changeMode = (nextMode) => {
     setError('');
+    setPasswordSetupHint(false);
     onModeChange(nextMode);
   };
 
@@ -484,6 +513,22 @@ function LoginForm({
             </p>
           )}
 
+          {passwordSetupHint && !signingUp && !error ? (
+            <p className="login-hint">
+              This account uses Google.
+              {' '}
+              <button
+                type="button"
+                className="login-inline-action"
+                disabled={socialDisabled}
+                onClick={() => handleSocialSignIn('Google')}
+              >
+                Continue with Google
+              </button>
+              , then set a password in Settings.
+            </p>
+          ) : null}
+
           {error && (
             <div className="login-error-block" role="alert">
               <p className="login-error">{error}</p>
@@ -534,13 +579,6 @@ function LoginForm({
         </div>
 
         <div className="login-socials login-socials--single" role="group" aria-label="Social sign-in">
-          {firebaseConfigChecked && !firebaseSocialReady && (
-            <p className="login-social-config-hint" role="status">
-              {import.meta.env.DEV
-                ? `Google sign-in is not configured. Set ${getMissingFirebaseConfigKeys().join(', ')} in frontend/.env or FIREBASE_WEB_* on the backend, then restart dev servers.`
-                : 'Google sign-in is unavailable. Use email and password, or try again later.'}
-            </p>
-          )}
           <button
             type="button"
             className="login-social-btn login-social-btn--google"

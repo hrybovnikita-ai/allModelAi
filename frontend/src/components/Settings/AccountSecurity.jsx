@@ -14,6 +14,7 @@ export default function AccountSecurity() {
   const [loading, setLoading] = useState(true);
   const [passwordEnabled, setPasswordEnabled] = useState(false);
   const [providers, setProviders] = useState([]);
+  const [email, setEmail] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -23,6 +24,7 @@ export default function AccountSecurity() {
         if (!active) return;
         setPasswordEnabled(Boolean(data?.passwordEnabled));
         setProviders(Array.isArray(data?.providers) ? data.providers : []);
+        setEmail(typeof data?.email === 'string' ? data.email : '');
       })
       .catch((requestError) => {
         if (!active) return;
@@ -76,6 +78,7 @@ export default function AccountSecurity() {
       {!loading && !error ? (
         <SetAllModelAiPasswordForm
           passwordEnabled={passwordEnabled}
+          email={email}
           onSuccess={(result) => {
             if (result?.passwordEnabled) setPasswordEnabled(true);
           }}

@@ -11,6 +11,7 @@ import {
   degradedSessionUserFromFailure,
   hasSessionRestoreHint,
   isSessionUserVerified,
+  isFreshLoginGraceActive,
   isLogoutInProgress,
   readStoredSessionUser,
   restoreSession,
@@ -21,6 +22,7 @@ import { consumeSessionRestoreMeta } from '../../lib/sessionRestoreMeta.js';
 import {
   GOOGLE_POPUP_SIGNIN_EVENT,
   isGooglePopupSignInActive,
+  isGoogleSignInFlowActive,
   reconcileStaleRedirectIntent,
   shouldShowGoogleRedirectRecoveryUI,
 } from '../../lib/socialRedirectState.js';
@@ -117,6 +119,13 @@ export function SessionProvider({ children }) {
           sessionVerified: current.sessionVerified,
           connectionIssue: current.connectionIssue,
         };
+      }
+      if (isFreshLoginGraceActive() && current.user?.email && current.sessionVerified) {
+        socialAuthDebug('SESSION_PROVIDER_PRESERVED', { phase: 'fresh-login-grace' });
+        return current;
+      }
+      if (current.status === AUTH_STATUS.UNAUTHENTICATED && !current.user) {
+        return current;
       }
       socialAuthDebug('SESSION_PROVIDER_ANONYMOUS', {});
       return {
@@ -257,8 +266,6 @@ export function SessionProvider({ children }) {
     const onPopupSignIn = (event) => {
       if (event.detail?.active) return;
       reconcileStaleRedirectIntent();
-      if (shouldShowGoogleRedirectRecoveryUI()) return;
-      void refresh({ force: true });
     };
     globalThis.addEventListener(GOOGLE_POPUP_SIGNIN_EVENT, onPopupSignIn);
     return () => globalThis.removeEventListener(GOOGLE_POPUP_SIGNIN_EVENT, onPopupSignIn);
@@ -279,8 +286,10 @@ export function SessionProvider({ children }) {
   useEffect(() => {
     const revalidate = () => {
       if (document.visibilityState === 'hidden' || isLogoutInProgress()
-        || shouldShowGoogleRedirectRecoveryUI() || isGooglePopupSignInActive()) return;
-      void refresh({ force: true });
+        || shouldShowGoogleRedirectRecoveryUI() || isGooglePopupSignInActive()
+        || isGoogleSignInFlowActive()) return;
+      if (!hasSessionRestoreHint() && !isFreshLoginGraceActive()) return;
+      void refresh({ force: true, silent: true });
     };
     const onStorage = (event) => {
       if (event.key === 'allmodelai_user' || event.key === 'allmodelai_native_session' || event.key === 'allmodelai_signed_out' || event.key === null) revalidate();

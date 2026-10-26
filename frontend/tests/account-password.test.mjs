@@ -44,6 +44,8 @@ test('settings security UI exposes password enrollment for signed-in users', asy
   assert.match(security, /SetAllModelAiPasswordForm/);
   assert.match(form, /setAccountPassword/);
   assert.match(form, /validatePasswordEnrollmentForm/);
+  assert.match(form, /I confirm I want to add Email\/Password/);
+  assert.match(form, /linkEmailPasswordToCurrentFirebaseUser/);
 });
 
 test('login uses generic credential errors without internal debug codes in UI', async () => {

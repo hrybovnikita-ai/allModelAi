@@ -19,10 +19,24 @@ const {
     purgeExpiredSocialChallengesAsync,
 } = require('./db/postgresHttpSocial');
 
-const providers = new Set(['google.com', 'apple.com', 'github.com']);
+const providers = new Set(['google.com', 'apple.com', 'github.com', 'password']);
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const stateCookie = 'allmodelai_social_state';
 const fail = (status, code, message) => Object.assign(new Error(message), { status, code });
+
+function assertRecentFirebaseLogin(claims) {
+    if (!Number.isFinite(claims.auth_time) || claims.auth_time * 1000 < Date.now() - 300000 || claims.auth_time * 1000 > Date.now() + 30000) {
+        throw fail(401, 'RECENT_LOGIN_REQUIRED', 'Sign in to your provider again, then retry.');
+    }
+}
+
+function verifiedEmailFromClaims(claims) {
+    const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
+    if (claims.email_verified !== true || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw fail(403, 'VERIFIED_EMAIL_REQUIRED', 'A verified email is required. Verify your provider email or use another sign-in method.');
+    }
+    return email;
+}
 
 async function sessionOwner(req) {
     const token = readSessionToken(req);
@@ -72,19 +86,86 @@ async function challenge(req, res) {
 function identity(claims) {
     const provider = claims.firebase?.sign_in_provider;
     const subjects = claims.firebase?.identities?.[provider];
-    if (!providers.has(provider) || !Array.isArray(subjects) || subjects.length !== 1 || typeof subjects[0] !== 'string' || !subjects[0] || subjects[0].length > 512) {
+    if (!providers.has(provider) || provider === 'password' || !Array.isArray(subjects) || subjects.length !== 1 || typeof subjects[0] !== 'string' || !subjects[0] || subjects[0].length > 512) {
         throw fail(401, 'INVALID_IDENTITY', 'Use Google, Apple, or GitHub to sign in.');
     }
-    if (!Number.isFinite(claims.auth_time) || claims.auth_time * 1000 < Date.now() - 300000 || claims.auth_time * 1000 > Date.now() + 30000) {
-        throw fail(401, 'RECENT_LOGIN_REQUIRED', 'Sign in to your provider again, then retry.');
-    }
-    const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
-    if (claims.email_verified !== true || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        throw fail(403, 'VERIFIED_EMAIL_REQUIRED', 'A verified email is required. Verify your provider email or use another sign-in method.');
-    }
+    assertRecentFirebaseLogin(claims);
+    const email = verifiedEmailFromClaims(claims);
     let avatar = null;
     try { const url = new URL(claims.picture); if (url.protocol === 'https:' && url.href.length <= 2048) avatar = url.href; } catch { /* optional */ }
     return { provider, subject: subjects[0], email, name: String(claims.name || email.split('@')[0]).slice(0, 100), avatar };
+}
+
+function passwordIdentity(claims) {
+    assertRecentFirebaseLogin(claims);
+    const email = verifiedEmailFromClaims(claims);
+    const uid = claims.sub || claims.user_id;
+    if (typeof uid !== 'string' || !uid || uid.length > 128) {
+        throw fail(401, 'INVALID_IDENTITY', 'Email sign-in could not be verified. Please try again.');
+    }
+    return {
+        provider: 'password',
+        subject: uid,
+        email,
+        name: String(claims.name || email.split('@')[0]).slice(0, 100),
+        avatar: null,
+    };
+}
+
+function profileFromClaims(claims) {
+    const provider = claims.firebase?.sign_in_provider;
+    if (provider === 'password') {
+        return passwordIdentity(claims);
+    }
+    return identity(claims);
+}
+
+async function maybePersistPasswordSyncFromExchange(req, connection, user, profile) {
+    if (profile?.provider !== 'password' || !user?.id || !user?.email) {
+        return;
+    }
+    const passwordSync = typeof req.body.passwordSync === 'string' ? req.body.passwordSync : '';
+    if (!passwordSync || passwordSync.length > 1024) {
+        return;
+    }
+    const { validatePasswordEnrollmentInput } = require('./authHelpers');
+    const { hashPassword } = require('./password');
+    const { loadAuthUserByEmailAsync } = require('./authUser');
+    const { isValidPasswordHashFormat } = require('./authPasswordHash');
+    const { updateUserPasswordAsync } = require('./db/postgresHttpProduction');
+    const { refreshCachedAuthUser } = require('./accountPassword');
+
+    const validation = validatePasswordEnrollmentInput(
+        { newPassword: passwordSync, confirmPassword: passwordSync },
+        { passwordEnabled: false },
+    );
+    if (!validation.ok) {
+        return;
+    }
+
+    const normalizedEmail = normalizeLoginEmail(user.email);
+    const existing = await loadAuthUserByEmailAsync(connection, normalizedEmail);
+    if (existing?.passwordHash && isValidPasswordHashFormat(existing.passwordHash)) {
+        return;
+    }
+
+    const nextHash = await hashPassword(validation.newPassword);
+    if (!isValidPasswordHashFormat(nextHash)) {
+        return;
+    }
+
+    if (isPostgresConnection(connection)) {
+        await updateUserPasswordAsync(connection, nextHash, {
+            userId: user.id,
+            email: normalizedEmail,
+            revokeSessions: false,
+        });
+    } else {
+        connection.database
+            .prepare('UPDATE users SET password_hash = ?, email_verified = 1 WHERE id = ?')
+            .run(nextHash, user.id);
+    }
+    await refreshCachedAuthUser(connection, normalizedEmail);
 }
 
 function githubSubjectFromClaims(claims) {
@@ -132,16 +213,21 @@ async function exchange(req, res) {
 
         let profile;
         let firebaseUid = null;
+        let passwordProviderLogin = false;
         if (idToken) {
             const claims = await admin.verifySocialToken(idToken);
             firebaseUid = claims.sub || claims.user_id || null;
             const provider = claims.firebase?.sign_in_provider;
+            if (pending.intent === 'link' && provider === 'password') {
+                throw fail(400, 'INVALID_REQUEST', 'Set your AllModelAI password in Settings or Forgot password instead of linking email this way.');
+            }
+            passwordProviderLogin = provider === 'password';
             if (provider === 'github.com' && githubAccessToken) {
                 profile = await githubSocialEmail.profileFromGitHubAccessToken(githubAccessToken, githubSubjectFromClaims(claims));
             } else if (provider === 'github.com' && claimsNeedGitHubEmailResolution(claims)) {
                 throw fail(403, 'VERIFIED_EMAIL_REQUIRED', 'GitHub did not share a verified email. Try signing in again.');
             } else {
-                profile = identity(claims);
+                profile = profileFromClaims(claims);
             }
         } else {
             profile = await githubSocialEmail.profileFromGitHubAccessToken(githubAccessToken);
@@ -212,6 +298,10 @@ async function exchange(req, res) {
             } else {
                 promoteTrustedOwnerRoleSync(connection.database, result.user.id, firebaseUid);
             }
+        }
+
+        if (passwordProviderLogin && result?.user) {
+            await maybePersistPasswordSyncFromExchange(req, connection, result.user, profile);
         }
 
         let sessionToken;

@@ -27,6 +27,11 @@ test('SessionProvider only uses stored profile in degraded connection mode', () 
   assert.match(src, /sessionVerified: false/);
   assert.match(src, /CONNECTION_ISSUE/);
   assert.match(src, /meta\.verified === false/);
+  assert.match(src, /isFreshLoginGraceActive/);
+  assert.match(src, /SESSION_PROVIDER_PRESERVED/);
+  assert.match(src, /UNAUTHENTICATED && !current\.user/);
+  assert.match(src, /!hasSessionRestoreHint\(\) && !isFreshLoginGraceActive\(\)/);
+  assert.doesNotMatch(src, /GOOGLE_POPUP_SIGNIN_EVENT[\s\S]{0,180}refresh\(\{ force: true/);
 });
 
 test('auth bootstrap clears stale redirect intent after failed recovery', () => {

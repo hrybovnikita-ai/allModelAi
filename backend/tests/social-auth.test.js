@@ -56,7 +56,7 @@ test('Google creates one SQL account, restores avatar/name and revokes the cooki
   assert.equal(db.prepare('SELECT count(*) AS n FROM users WHERE email = ?').get('google-new@example.com').n, 1);
 });
 test('invalid, expired, revoked, stale, unsupported and unverified tokens cannot establish sessions', async () => {
-  for (const value of ['invalid', 'expired', 'revoked', token('stale', { auth_time: 1 }), token('unverified', { email_verified: false }), token('no-email', { email: null }), token('password-token', { firebase: { sign_in_provider: 'password' } })]) {
+  for (const value of ['invalid', 'expired', 'revoked', token('stale', { auth_time: 1 }), token('unverified', { email_verified: false }), token('no-email', { email: null }), token('password-token', { sub: '', firebase: { sign_in_provider: 'password' } })]) {
     const agent = request.agent(app);
     const result = await login(agent, value);
     assert.ok([401, 403].includes(result.status), JSON.stringify(result.body));

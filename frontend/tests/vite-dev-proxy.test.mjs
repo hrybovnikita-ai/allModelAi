@@ -7,4 +7,6 @@ test('vite.config.js proxies /api to local backend default 5050', async () => {
   assert.match(config, /['"]\/api['"]/);
   assert.match(config, /127\.0\.0\.1:5050|localhost:5050/);
   assert.match(config, /API_PROXY_TARGET/);
+  assert.match(config, /['"]\/__\/auth['"]/);
+  assert.match(config, /allmodelai\.firebaseapp\.com/);
 });

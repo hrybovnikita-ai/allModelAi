@@ -24,6 +24,9 @@ export default defineConfig(({ mode }) => {
  const isElectronBuild = mode === 'electron'
  const pwaDisabled = env.VITE_DISABLE_PWA === 'true' || isCapacitorBuild || isElectronBuild
  const apiProxyTarget = env.API_PROXY_TARGET || 'http://127.0.0.1:5050'
+ const oauthCoopHeaders = {
+   'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+ }
  const proxy = {
    '/api': {
      target: apiProxyTarget,
@@ -46,6 +49,12 @@ export default defineConfig(({ mode }) => {
      target: 'https://allmodelai.firebaseapp.com',
      changeOrigin: true,
      secure: true,
+     configure: (proxyServer) => {
+       proxyServer.on('proxyRes', (proxyRes) => {
+         proxyRes.headers['cross-origin-opener-policy'] = 'same-origin-allow-popups'
+         delete proxyRes.headers['cross-origin-embedder-policy']
+       })
+     },
    },
  }
  return {
@@ -123,6 +132,7 @@ export default defineConfig(({ mode }) => {
     port: 5173,
     strictPort: true,
     cors: true,
+    headers: oauthCoopHeaders,
     proxy,
   },
   preview: {
@@ -130,6 +140,7 @@ export default defineConfig(({ mode }) => {
     port: Number(env.VITE_PREVIEW_PORT) || 4173,
     strictPort: false,
     cors: true,
+    headers: oauthCoopHeaders,
     proxy,
   },
  }

@@ -19,6 +19,7 @@ import {
   isExplicitCustomAuthDomain,
   isFirebaseAppDomain,
   isFirebaseAuthProxyHostname,
+  isLocalFirebaseDevHost,
   isUsableFirebaseConfigValue as isUsableFirebaseConfigValueCore,
   resolveAuthDomainForRuntime as resolveAuthDomainCore,
 } from './firebaseAuthDomain.js';
@@ -74,9 +75,8 @@ function hostedSiteAuthDomain() {
 
 /**
  * authDomain must match where /__/auth/handler is served.
- * Local dev: VITE_FIREBASE_AUTH_DOMAIN=allmodelai.firebaseapp.com + Vite /__/auth proxy.
- * Production: auth.all-model-ai.com (Firebase Hosting custom auth domain) via VITE_FIREBASE_AUTH_DOMAIN
- * or auto-detect when the app runs on all-model-ai.com / www.
+ * Production + branded local: all-model-ai.com (Vercel reverse-proxies /__/auth to Firebase).
+ * Fallback: allmodelai.firebaseapp.com with the Vite /__/auth proxy on localhost.
  */
 /** iOS WebKit: avoid default *.firebaseapp.com redirect URI when a custom auth host is available. */
 export function shouldPreferHostedFirebaseAuthDomain() {
@@ -89,12 +89,19 @@ export function shouldPreferHostedFirebaseAuthDomain() {
 export function resolveAuthDomainForRuntime(configuredAuthDomain) {
   const viteEnv = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
   const envAuthDomain = readFirebaseAuthDomainFromEnv(viteEnv);
+  const pageHost = typeof window !== 'undefined' ? window.location?.hostname : '';
+  const hosted = hostedSiteAuthDomain() || pageHost;
+
+  if (isLocalFirebaseDevHost(hosted) || isLocalFirebaseDevHost(pageHost)) {
+    if (isExplicitCustomAuthDomain(envAuthDomain)) return String(envAuthDomain).trim();
+    if (isFirebaseAppDomain(envAuthDomain)) return String(envAuthDomain).trim();
+    if (isFirebaseAppDomain(configuredAuthDomain)) return String(configuredAuthDomain).trim();
+    return DEFAULT_FIREBASE_AUTH_DOMAIN;
+  }
 
   if (isExplicitCustomAuthDomain(envAuthDomain)) {
     return String(envAuthDomain).trim();
   }
-
-  const hosted = hostedSiteAuthDomain();
   const customAuth = isCustomAuthDomainEnabled();
   const onProductionSite = isFirebaseAuthProxyHostname(hosted);
 
@@ -359,7 +366,7 @@ export async function ensureSocialAuthReady() {
     ) {
       console.warn(
         '[AllModelAI:Firebase] Production OAuth is still using a *.firebaseapp.com authDomain. '
-        + 'Redeploy with VITE_FIREBASE_AUTH_DOMAIN=auth.all-model-ai.com and hard-refresh (clear PWA cache if needed).',
+        + 'Redeploy with VITE_FIREBASE_AUTH_DOMAIN=all-model-ai.com and hard-refresh (clear PWA cache if needed).',
       );
     }
 

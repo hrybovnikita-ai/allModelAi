@@ -146,16 +146,40 @@
 .login-demo-account span, .login-demo-account small { color: #cbd5e1; font-size: .7rem; }
 .login-switch { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--text-secondary); font-size: .8rem; }
 .login-switch button { padding: 0; border: 0; background: transparent; color: #a5b4fc; font: inherit; font-weight: 800; cursor: pointer; }
+.login-hint {
+  margin: 0;
+  color: #c4b5fd;
+  font-size: .78rem;
+  line-height: 1.45;
+}
 .login-error-block { display: grid; gap: 8px; }
+.login-error-actions {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: #e2e8f0;
+}
+.login-inline-action {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #a5b4fc;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.login-inline-action:hover:not(:disabled) { color: #c7d2fe; }
+.login-inline-action:disabled { opacity: 0.55; cursor: not-allowed; }
 .login-error {
-  padding: 10px 12px;
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  border-radius: 10px;
-  background: rgba(127, 29, 29, 0.22);
-  color: #fecaca;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #fca5a5;
   font-size: .78rem;
   line-height: 1.4;
-  margin: 0;
 }
 .login-retry-btn {
   justify-self: start;

@@ -31,6 +31,23 @@ test('localhost keeps firebaseapp.com for Vite /__/auth proxy dev flow', async (
   }
 });
 
+test('localhost keeps branded all-model-ai.com so Google shows Continue to all-model-ai.com', () => {
+  assert.equal(
+    resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {
+      envAuthDomain: 'all-model-ai.com',
+      hostedHostname: 'localhost',
+    }),
+    'all-model-ai.com',
+  );
+  assert.equal(
+    resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {
+      envAuthDomain: 'all-model-ai.com',
+      hostedHostname: '127.0.0.1',
+    }),
+    'all-model-ai.com',
+  );
+});
+
 test('resolveAuthDomainForRuntime keeps firebaseapp.com when no override', () => {
   assert.equal(
     resolveAuthDomainForRuntime('allmodelai.firebaseapp.com'),
@@ -96,13 +113,13 @@ test('coerceProductionAuthDomain maps apex and firebaseapp hosts on live site', 
   );
 });
 
-test('explicit env custom auth domain wins over hosted hostname', () => {
+test('auth subdomain env is branded to apex on the production site', () => {
   assert.equal(
     resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {
       envAuthDomain: 'auth.all-model-ai.com',
       hostedHostname: 'all-model-ai.com',
     }),
-    'auth.all-model-ai.com',
+    FIREBASE_CUSTOM_AUTH_HOST,
   );
 });
 
@@ -168,8 +185,12 @@ test('iOS Safari uses custom auth host on production site (not firebaseapp.com)'
 });
 
 test('vercel.json proxies Firebase auth handler under /__/auth', () => {
-  const vercel = readFileSync(`${root}vercel.json`, 'utf8');
-  assert.match(vercel, /\/__\/auth/);
-  assert.match(vercel, /allmodelai\.firebaseapp\.com\/__\/auth\/:path\*/);
-  assert.match(vercel, /"source": "\/__\/auth\/:path\*"/);
+  const frontendVercel = readFileSync(`${root}vercel.json`, 'utf8');
+  const repoVercel = readFileSync(`${root}../vercel.json`, 'utf8');
+  for (const vercel of [frontendVercel, repoVercel]) {
+    assert.match(vercel, /\/__\/auth/);
+    assert.match(vercel, /allmodelai\.firebaseapp\.com\/__\/auth\/:path\*/);
+    assert.match(vercel, /"source": "\/__\/auth\/:path\*"/);
+    assert.match(vercel, /"source": "\/__\/auth"/);
+  }
 });

@@ -72,20 +72,33 @@ test('Chrome desktop prefers popup and does not require redirect recovery', asyn
   assert.equal(shouldTryGooglePopupFirst(CHROME_WINDOWS_UA), true);
 });
 
-test('production authDomain resolves to auth.all-model-ai.com', async () => {
+test('production authDomain resolves to all-model-ai.com', async () => {
   const {
     resolveAuthDomainForRuntime,
     applyRuntimeFirebaseConfig,
     getEffectiveFirebaseConfig,
   } = await import('../src/lib/firebase.js');
+  const previousWindow = global.window;
+  global.window = {
+    location: {
+      hostname: 'all-model-ai.com',
+      origin: 'https://all-model-ai.com',
+      protocol: 'https:',
+      port: '',
+    },
+  };
   applyRuntimeFirebaseConfig({
     apiKey: 'AIzaSyRuntimeKey123456789012345',
     authDomain: 'allmodelai.firebaseapp.com',
     projectId: 'allmodelai',
     appId: '1:123456789:web:abcdef123456',
   });
-  assert.equal(resolveAuthDomainForRuntime('allmodelai.firebaseapp.com'), 'auth.all-model-ai.com');
-  assert.equal(getEffectiveFirebaseConfig().authDomain, 'auth.all-model-ai.com');
+  try {
+    assert.equal(resolveAuthDomainForRuntime('allmodelai.firebaseapp.com'), 'all-model-ai.com');
+    assert.equal(getEffectiveFirebaseConfig().authDomain, 'all-model-ai.com');
+  } finally {
+    global.window = previousWindow;
+  }
 });
 
 test('pending redirect recovery defers setPersistence until after getRedirectResult', async () => {

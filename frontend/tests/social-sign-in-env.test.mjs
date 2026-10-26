@@ -43,7 +43,7 @@ test('redirect recovery has a single bootstrap pipeline', async () => {
   assert.match(app, /GoogleRedirectRecoveryGate/);
   assert.match(signIn, /startGoogleRedirectSignIn/);
   assert.match(signIn, /signInWithRedirect/);
-  assert.match(login, /shouldPreferGoogleRedirectSignIn/);
+  assert.match(login, /shouldUseRedirectSignInFirst/);
   assert.match(login, /startGoogleRedirectSignIn/);
   assert.match(recovery, /bootstrapGoogleRedirectRecovery/);
   assert.match(signIn, /runGoogleRedirectRecoveryPipeline/);

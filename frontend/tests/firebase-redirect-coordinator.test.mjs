@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-test('resolveAuthDomainForRuntime uses auth.all-model-ai.com on production website host', async () => {
+test('resolveAuthDomainForRuntime uses all-model-ai.com on production website host', async () => {
   const {
     resolveAuthDomainForRuntime,
     applyRuntimeFirebaseConfig,
@@ -26,9 +26,9 @@ test('resolveAuthDomainForRuntime uses auth.all-model-ai.com on production websi
   try {
     assert.equal(
       resolveAuthDomainForRuntime('allmodelai.firebaseapp.com'),
-      'auth.all-model-ai.com',
+      'all-model-ai.com',
     );
-    assert.equal(getEffectiveFirebaseConfig().authDomain, 'auth.all-model-ai.com');
+    assert.equal(getEffectiveFirebaseConfig().authDomain, 'all-model-ai.com');
   } finally {
     global.window = previousWindow;
   }
@@ -47,7 +47,7 @@ test('resolveAuthDomainForRuntime maps www host to custom auth domain', async ()
   try {
     assert.equal(
       resolveAuthDomainForRuntime('allmodelai.firebaseapp.com'),
-      'auth.all-model-ai.com',
+      'all-model-ai.com',
     );
   } finally {
     global.window = previousWindow;

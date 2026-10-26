@@ -2,15 +2,18 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { validatePasswordEnrollmentForm } from '../../lib/authValidation.js';
 import { setAccountPassword } from '../../lib/accountSecurity.js';
+import { linkEmailPasswordToCurrentFirebaseUser } from '../../lib/linkEmailPassword.js';
 import { restoreSession } from '../../lib/session.js';
 import './Settings.css';
 
 /**
  * Secure AllModelAI password enrollment for the signed-in account.
- * Never asks for or stores a Google account password.
+ * Requires explicit confirmation. Never stores the password in localStorage,
+ * sessionStorage, or the URL. Never asks for a Google account password.
  */
 export default function SetAllModelAiPasswordForm({
   passwordEnabled = false,
+  email = '',
   onSuccess,
   showForgotLink = true,
   compact = false,
@@ -20,6 +23,7 @@ export default function SetAllModelAiPasswordForm({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -32,6 +36,10 @@ export default function SetAllModelAiPasswordForm({
     event.preventDefault();
     setError('');
     setSuccess('');
+    if (!enabled && !confirmed) {
+      setError('Confirm that you want to add Email/Password sign-in to this account.');
+      return;
+    }
     const validation = validatePasswordEnrollmentForm(
       { newPassword, confirmPassword, currentPassword },
       { passwordEnabled: enabled },
@@ -40,19 +48,32 @@ export default function SetAllModelAiPasswordForm({
       setError(validation.message);
       return;
     }
+    const nextPassword = validation.payload.newPassword;
     try {
       setSubmitting(true);
       const result = await setAccountPassword(validation.payload);
+      const firebaseLink = await linkEmailPasswordToCurrentFirebaseUser(email, nextPassword);
       setEnabled(true);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      setSuccess(
-        result?.message
-          || (enabled
-            ? 'Password updated.'
-            : 'AllModelAI password saved. You can sign in with email and password or Google.'),
-      );
+      setConfirmed(false);
+      setPasswordVisible(false);
+      const backendMessage = result?.message
+        || (enabled
+          ? 'Password updated.'
+          : 'AllModelAI password saved. You can sign in with email and password or Google.');
+      if (!enabled && firebaseLink?.linked === false && (
+        firebaseLink?.reason === 'firebase-user-mismatch'
+        || firebaseLink?.reason === 'auth/credential-already-in-use'
+        || firebaseLink?.reason === 'auth/email-already-in-use'
+      )) {
+        setSuccess(
+          `${backendMessage} Email/Password will work on AllModelAI. Open Settings after signing in with Google if you also want this password linked in Firebase.`,
+        );
+      } else {
+        setSuccess(backendMessage);
+      }
       if (result?.sessionRevoked) {
         await restoreSession({ force: true });
       }
@@ -71,7 +92,8 @@ export default function SetAllModelAiPasswordForm({
     >
       <p className="settings-security-hint">
         This creates a separate AllModelAI password for your existing account.
-        It is never your Google password.
+        It is never your Google password. Your account id, chats, credits, and
+        subscription stay the same.
       </p>
       {enabled ? (
         <label>
@@ -117,10 +139,27 @@ export default function SetAllModelAiPasswordForm({
           required
         />
       </label>
+      {!enabled ? (
+        <label className="settings-password-confirm">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(event) => setConfirmed(event.target.checked)}
+          />
+          <span>
+            I confirm I want to add Email/Password sign-in to this Google account.
+            This does not change my Google password.
+          </span>
+        </label>
+      ) : null}
       {success ? <p className="settings-password-success" role="status">{success}</p> : null}
       {error ? <p className="settings-password-error" role="alert">{error}</p> : null}
       <div className="settings-password-actions">
-        <button type="submit" className="settings-save" disabled={submitting}>
+        <button
+          type="submit"
+          className="settings-save"
+          disabled={submitting || (!enabled && !confirmed)}
+        >
           {submitting ? 'Saving…' : enabled ? 'Update password' : 'Set AllModelAI password'}
         </button>
         {showForgotLink ? (

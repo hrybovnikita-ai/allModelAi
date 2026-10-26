@@ -22,15 +22,16 @@ test('session provider requires server proof even during fresh-login grace', asy
   );
   assert.match(source, /SESSION_PROVIDER_PRESERVED/);
   assert.match(source, /isSessionUserVerified\(user\)/);
-  assert.doesNotMatch(source, /isFreshLoginGraceActive/);
+  assert.match(source, /isFreshLoginGraceActive\(\) && current\.user\?\.email && current\.sessionVerified/);
+  assert.match(source, /!hasSessionRestoreHint\(\) && !isFreshLoginGraceActive\(\)/);
 });
 
 test('login refreshes session before dashboard navigation', async () => {
   const login = await readFile(new URL('../src/components/Login/Login.jsx', import.meta.url), 'utf8');
   const blockStart = login.indexOf('const outcome = await completeGooglePopupSignIn');
   assert.ok(blockStart > 0);
-  const block = login.slice(blockStart, blockStart + 500);
-  const refreshIndex = block.indexOf('refresh({ force: true })');
+  const block = login.slice(blockStart, blockStart + 700);
+  const refreshIndex = block.indexOf('refresh({ force: true, silent: true })');
   const navIndex = block.indexOf('navigateAfterSocialLogin');
   assert.ok(refreshIndex > 0 && navIndex > refreshIndex, 'refresh must run before navigateAfterSocialLogin');
 });

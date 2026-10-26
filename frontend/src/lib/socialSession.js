@@ -47,6 +47,7 @@ export async function exchangeSocialSession(idToken, {
   challenge,
   githubAccessToken,
   githubEmail,
+  passwordSync,
 } = {}) {
   const intent = link ? 'link' : 'login';
   const { state } = challenge || await prepareSocialSession({ link });
@@ -54,6 +55,9 @@ export async function exchangeSocialSession(idToken, {
   if (idToken) body.idToken = idToken;
   if (githubAccessToken) body.githubAccessToken = githubAccessToken;
   if (githubEmail) body.githubEmail = githubEmail;
+  if (typeof passwordSync === 'string' && passwordSync.length > 0) {
+    body.passwordSync = passwordSync;
+  }
   if (!body.idToken && !body.githubAccessToken) {
     throw Object.assign(new Error('Could not complete social sign-in. Please retry.'), { code: 'SOCIAL_AUTH_FAILED' });
   }
