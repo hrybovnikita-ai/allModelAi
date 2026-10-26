@@ -1,39 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { DASHBOARD_NAV_LINKS } from './dashboardNavLinks';
+import { DASHBOARD_NAV_GROUPS } from './dashboardNavGroups';
+import DashboardIcon, { SIDEBAR_ICON_BY_LABEL } from './DashboardIcons';
 
 const STORAGE_KEY = 'allmodelai_dashboard_sidebar_collapsed';
-
-const SIDEBAR_ICONS = {
-  Dashboard: '◆',
-  Profile: '◎',
-  Settings: '⚙',
-  Chat: '💬',
-  'Storage Hub': '▦',
-  'AI Training Course': '📚',
-  'AI Learning Lab': '✦',
-  'PyTorch Lab': '⚡',
-  'Developer Toolkit': '🛠',
-  'Workspace Tools': '▤',
-  Models: '◇',
-  Studio: '✨',
-  'AI Workflows': '↻',
-  'Research & Learning': '🔬',
-  'Model Toolkit': '🧰',
-  'AI Platform': '⬡',
-  'Website Builder': '🌐',
-  Arena: '⚔',
-  'Power Lab': '⚡',
-  'Creator Lab': '🎨',
-  Features: '＋',
-  Control: '◎',
-};
 
 export default function DashboardSidebar() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY) === '1';
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved === '1' || saved === '0') return saved === '1';
+      return window.matchMedia('(max-width: 1440px)').matches;
     } catch {
       return false;
     }
@@ -93,7 +71,7 @@ export default function DashboardSidebar() {
       ) : null}
       <aside className={sidebarClass} aria-label="Dashboard navigation">
         <div className="dashboard-sidebar-head">
-          {!collapsed ? <span className="dashboard-sidebar-title">Workspace</span> : null}
+          {!collapsed ? <span className="dashboard-sidebar-title">Navigate</span> : null}
           <button
             type="button"
             className="dashboard-sidebar-collapse"
@@ -104,26 +82,37 @@ export default function DashboardSidebar() {
           </button>
         </div>
         <nav id="dashboard-sidebar-nav" className="dashboard-sidebar-nav">
-          {DASHBOARD_NAV_LINKS.map((item) => {
-            const active =
-              location.pathname === item.to
-              || (item.to !== '/dashboard' && location.pathname.startsWith(item.to));
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`dashboard-sidebar-link${active ? ' dashboard-sidebar-link--active' : ''}`}
-                aria-current={active ? 'page' : undefined}
-                title={collapsed ? item.label : undefined}
-                onClick={() => setMobileOpen(false)}
-              >
-                <span className="dashboard-sidebar-icon" aria-hidden="true">
-                  {SIDEBAR_ICONS[item.label] || '•'}
-                </span>
-                <span className="dashboard-sidebar-label">{item.label}</span>
-              </Link>
-            );
-          })}
+          {DASHBOARD_NAV_GROUPS.map((group) => (
+            <div key={group.id} className="dashboard-sidebar-group">
+              {!collapsed ? (
+                <p className="dashboard-sidebar-group-label">{group.label}</p>
+              ) : (
+                <div className="dashboard-sidebar-group-rule" aria-hidden="true" />
+              )}
+              {group.items.map((item) => {
+                const active =
+                  location.pathname === item.to
+                  || (item.to !== '/dashboard' && location.pathname.startsWith(item.to));
+                const iconName = SIDEBAR_ICON_BY_LABEL[item.label] || 'spark';
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={`dashboard-sidebar-link${active ? ' dashboard-sidebar-link--active' : ''}`}
+                    aria-current={active ? 'page' : undefined}
+                    title={collapsed ? item.label : undefined}
+                    data-tooltip={collapsed ? item.label : undefined}
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    <span className="dashboard-sidebar-icon" aria-hidden="true">
+                      <DashboardIcon name={iconName} size={16} />
+                    </span>
+                    <span className="dashboard-sidebar-label">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </aside>
     </>

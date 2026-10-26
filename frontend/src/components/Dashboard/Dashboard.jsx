@@ -17,7 +17,8 @@ import DashboardSidebar from './DashboardSidebar';
 import { DASHBOARD_QUICK_ACTIONS } from './dashboardQuickActions';
 import AccountDeleteModal from '../AccountDeleteModal';
 import DashboardResources from './DashboardResources';
-import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
+import AllModelAILogo from '../AllModelAILogo/AllModelAILogo';
+import DashboardIcon, { QUICK_ACTION_ICON } from './DashboardIcons';
 import EverydayCards from '../EverydayAI/EverydayCards';
 import ManageSubscriptionModal from './ManageSubscriptionModal';
 import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
@@ -68,6 +69,7 @@ export default function Dashboard() {
   const [manageSubOpen, setManageSubOpen] = useState(false);
   const [modelStatus, setModelStatus] = useState({});
   const [modelHealth, setModelHealth] = useState({});
+  const [analyticsLoad, setAnalyticsLoad] = useState('idle');
 
   const loadSubscription = useCallback(async () => {
     if (!user?.email) {
@@ -134,6 +136,7 @@ export default function Dashboard() {
     if (!user?.email || !backendReady) return;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
+    setAnalyticsLoad('loading');
     Promise.all([
       apiFetch(`/api/analytics?email=${encodeURIComponent(user.email)}`, {
         skipAuthRedirect: true,
@@ -146,8 +149,9 @@ export default function Dashboard() {
     ]).then(([stats, projects]) => {
       setAnalytics(stats);
       setRecentProjects(Array.isArray(projects) ? projects.slice(0, 3) : []);
+      setAnalyticsLoad(stats ? 'ready' : 'empty');
     }).catch(() => {
-      /* analytics/workspace are non-critical; never force logout from these */
+      setAnalyticsLoad('error');
     }).finally(() => clearTimeout(timeout));
     return () => {
       clearTimeout(timeout);
@@ -206,6 +210,13 @@ export default function Dashboard() {
     && !creditStatus.isOwner
     && (creditStatus.subscriptionStatus === 'free' || !creditStatus.hasSubscription);
 
+  const firstName = user.name?.split(' ')[0] || 'there';
+  const topModels = analytics?.byModel
+    ? Object.entries(analytics.byModel)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+    : [];
+
   return (
     <main className="dashboard-page dashboard-violet dashboard-page--premium">
       <DashboardSidebar />
@@ -218,31 +229,34 @@ export default function Dashboard() {
       {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}
       {deleteError && !deleteModalOpen && <p role="alert">{deleteError}</p>}
       <section className="dashboard-hero dashboard-card-reveal" style={{ '--dash-delay': '40ms' }}>
-        <div>
+        <div className="dashboard-hero-main">
+          <div className="dashboard-hero-brand-lockup">
+            <AllModelAILogo size={44} className="dashboard-hero-logo" textClassName="dashboard-hero-logo-text" />
+          </div>
           <p className="dashboard-eyebrow">Signed in as {user.email}</p>
           <h1>
-            Welcome back to <span className="dashboard-hero-brand">AllModelAI</span>
+            Welcome back, <span className="dashboard-hero-name">{firstName}</span>
           </h1>
-          <p>
-            Hi {user.name?.split(' ')[0] || 'there'} — your workspace, models, and billing are ready.
-            Jump in with a quick action or open Smart chat.
+          <p className="dashboard-hero-lede">
+            Your models, billing, and workspace are ready. Pick a quick action below or open Smart chat for the best model on each task.
           </p>
-          <div className="dashboard-actions">
+          <div className="dashboard-hero-cta">
             <Link to="/chat?model=smart" className="dashboard-action-primary">Open Smart chat</Link>
-            <Link to="/next-12">Reliability tools</Link>
-            <Link to="/builder-25">Developer Toolkit</Link>
-            <Link to="/next-25">AI Workflows</Link>
-            <Link to="/next-9">Research</Link>
-            <Link to="/production">Production</Link>
-            <Link to="/skills-hub">Skills Hub</Link>
+            <Link to="/explore" className="dashboard-action-secondary">Browse models</Link>
           </div>
         </div>
-        <div className="dashboard-orbit" aria-hidden="true"><AllModelAILogoMark /></div>
       </section>
       <section className="dashboard-quick-actions" aria-label="Quick actions">
-        {DASHBOARD_QUICK_ACTIONS.map((action) => (
-          <Link key={action.to} to={action.to} className="dashboard-quick-action">
-            <span className="dashboard-quick-action-icon" aria-hidden="true">{action.icon}</span>
+        {DASHBOARD_QUICK_ACTIONS.map((action, index) => (
+          <Link
+            key={action.to}
+            to={action.to}
+            className="dashboard-quick-action dashboard-card-reveal"
+            style={{ '--dash-delay': `${60 + index * 35}ms` }}
+          >
+            <span className="dashboard-quick-action-icon" aria-hidden="true">
+              <DashboardIcon name={QUICK_ACTION_ICON[action.iconKey] || 'spark'} size={22} />
+            </span>
             <strong>{action.label}</strong>
             <small>{action.description}</small>
           </Link>
@@ -321,18 +335,87 @@ export default function Dashboard() {
           )}
         </section>
       )}
-      <section className="personal-overview"><div className="overview-heading"><div><p className="dashboard-eyebrow">Your week</p><h2>Workspace overview</h2></div><Link to="/studio">Open analytics →</Link></div><div className="overview-grid"><article><small>CONVERSATIONS</small><strong>{analytics?.conversations ?? '—'}</strong><span>Saved in your workspace</span></article><article><small>MESSAGES</small><strong>{analytics?.messages ?? '—'}</strong><span>Across every AI model</span></article><article><small>ESTIMATED TOKENS</small><strong>{analytics ? (analytics.estimatedTokens ?? 0).toLocaleString() : '—'}</strong><span>Processed in conversations</span></article><article className="continue-card"><small>QUICK START</small><strong>Continue creating</strong><div><Link to="/chat?model=smart">Smart chat</Link><Link to="/arena">AI Arena</Link></div></article></div><div className="recent-projects"><div><h3>Recent projects</h3><Link to="/studio">View all</Link></div>{recentProjects.length ? recentProjects.map(project => <Link to="/studio" key={project.id}><span>▦</span><div><strong>{project.name}</strong><small>{project.content?.slice(0, 70) || 'Ready for your next task'}</small></div><b>→</b></Link>) : <div className="projects-empty"><span>✦</span><p>No projects yet. Turn your next idea into a focused workspace.</p><Link to="/studio">Create project</Link></div>}</div></section>
+      <section
+        className="personal-overview dashboard-card-reveal"
+        style={{ '--dash-delay': '120ms' }}
+        aria-busy={analyticsLoad === 'loading'}
+      >
+        <div className="overview-heading">
+          <div>
+            <p className="dashboard-eyebrow">Analytics</p>
+            <h2>Workspace overview</h2>
+          </div>
+          <Link to="/studio">Open analytics →</Link>
+        </div>
+        {analyticsLoad === 'loading' && !analytics ? (
+          <div className="dashboard-analytics-skeleton" role="status">
+            <div className="dashboard-skeleton-shimmer" style={{ width: '100%', height: 88 }} aria-hidden="true" />
+            <p>Loading usage stats…</p>
+          </div>
+        ) : null}
+        {analyticsLoad === 'error' ? (
+          <p className="dashboard-analytics-empty" role="status">Usage stats are temporarily unavailable. Your chats and billing are unaffected.</p>
+        ) : null}
+        <div className="overview-grid">
+          <article>
+            <small>CONVERSATIONS</small>
+            <strong>{analytics?.conversations ?? '—'}</strong>
+            <span>Saved in your workspace</span>
+          </article>
+          <article>
+            <small>MESSAGES</small>
+            <strong>{analytics?.messages ?? '—'}</strong>
+            <span>Across every AI model</span>
+          </article>
+          <article>
+            <small>ESTIMATED TOKENS</small>
+            <strong>{analytics ? (analytics.estimatedTokens ?? 0).toLocaleString() : '—'}</strong>
+            <span>Processed in conversations</span>
+          </article>
+          <article className="overview-model-usage">
+            <small>TOP MODELS</small>
+            <strong>{topModels.length ? topModels.length : '—'}</strong>
+            <span>
+              {topModels.length
+                ? topModels.map(([slug, count]) => `${slug} (${count})`).join(' · ')
+                : 'Usage appears after your first chats'}
+            </span>
+          </article>
+        </div>
+        <div className="recent-projects">
+          <div>
+            <h3>Recent projects</h3>
+            <Link to="/studio">View all</Link>
+          </div>
+          {recentProjects.length ? recentProjects.map((project) => (
+            <Link to="/studio" key={project.id}>
+              <span aria-hidden="true">▦</span>
+              <div>
+                <strong>{project.name}</strong>
+                <small>{project.content?.slice(0, 70) || 'Ready for your next task'}</small>
+              </div>
+              <b aria-hidden="true">→</b>
+            </Link>
+          )) : (
+            <div className="projects-empty">
+              <span aria-hidden="true">✦</span>
+              <p>No projects yet. Turn your next idea into a focused workspace.</p>
+              <Link to="/studio">Create project</Link>
+            </div>
+          )}
+        </div>
+      </section>
       <EverydayCards />
       <section className="dashboard-feature-cards" aria-label="Workspace highlights">
         <article className="dashboard-feature-card dashboard-feature-card-skills">
-          <span className="feature-card-icon">✦</span>
+          <span className="feature-card-icon"><DashboardIcon name="sparkles" size={20} /></span>
           <p className="dashboard-eyebrow">Skills</p>
           <h2>Make ideas move.</h2>
           <p>Write, code, research, and plan with focused AI skills built for your next task.</p>
           <Link to="/chat">Open prompt studio <b>→</b></Link>
         </article>
         <article className="dashboard-feature-card dashboard-feature-card-stickers">
-          <span className="feature-card-icon">◇</span>
+          <span className="feature-card-icon"><DashboardIcon name="layers" size={20} /></span>
           <p className="dashboard-eyebrow">Stickers</p>
           <h2>Give every model a mood.</h2>
           <div className="dashboard-sticker-row"><span>Claude</span><span>Gemini</span><span>GPT</span><span>Llama</span></div>
@@ -340,7 +423,7 @@ export default function Dashboard() {
           <a href="#dashboard-models">Browse the library <b>→</b></a>
         </article>
         <article className="dashboard-feature-card dashboard-feature-card-pricing">
-          <span className="feature-card-icon">＋</span>
+          <span className="feature-card-icon"><DashboardIcon name="spark" size={20} /></span>
           <p className="dashboard-eyebrow">Pricing</p>
           <h2>More room to create.</h2>
           <p>Start free, then unlock more credits when your experiments become real work.</p>

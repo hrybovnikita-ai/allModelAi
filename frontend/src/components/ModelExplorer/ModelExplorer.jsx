@@ -75,7 +75,9 @@ export default function ModelExplorer() {
           return (
             <article key={model.slug}>
               <div className="model-top">
-                <img src={model.image} alt="" />
+                <span className="explorer-logo">
+                  <img src={model.image} alt="" width={36} height={36} />
+                </span>
                 <i className={online ? '' : 'offline'}>{cardStatus.label === 'Checking…' ? 'Checking…' : cardStatus.label}</i>
               </div>
               <small>{model.provider}</small>

@@ -36,7 +36,7 @@ const envTrim = (name) => String(process.env[name] || '').trim();
 const openRouterKey = () => getOpenRouterApiKey();
 const openAiKey = () => envTrim('OPENAI_API_KEY') || envTrim('OPEN_AI_API_KEY');
 const geminiKey = () => envTrim('GEMINI_API_KEY');
-const claudeKey = () => envTrim('CLAUDE_API_KEY');
+const claudeKey = () => envTrim('CLAUDE_API_KEY') || envTrim('ANTHROPIC_API_KEY');
 const mistralKey = () => envTrim('MISTRAL_API_KEY');
 const kimiKey = () => (envTrim('KIMI_PROVIDER') === 'openrouter' ? '' : envTrim('KIMI_API_KEY'));
 const { isCloudflareWorkersAiConfigured } = require('./cloudflareWorkersAiConfig');

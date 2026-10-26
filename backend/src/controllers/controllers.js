@@ -1158,6 +1158,7 @@ const { providerAvailabilityForRouter, buildProviderSnapshot, resolveAvailableSm
 const {
     buildNoAiProvidersPayload,
     findRoutedModelWithApiKey,
+    claudeKey,
     listConfiguredChatProviderIds,
     logSmartRouter,
     openAiKey: readValidatedOpenAiKey,
@@ -2641,7 +2642,7 @@ async function createChatResponseImpl(req, res) {
     const usePreferredGemini = preferGemini && requestedModel === 'smart' && (routedModel === 'gpt' || routedModel === 'copilot');
     let isOpenAI = Boolean(openAIKey && !usePreferredGemini && (routedModel === 'gpt' || routedModel === 'copilot'));
     let isXAI = shouldUseGrokDirect(routedModel);
-    let isClaude = routedModel === 'claude' && Boolean(process.env.CLAUDE_API_KEY?.trim());
+    let isClaude = routedModel === 'claude' && Boolean(claudeKey());
     const { shouldUseGoogleGeminiDirect } = require('../services/geminiModelRouting');
     const { isGeminiConfigured } = require('../services/geminiApiService');
     let isGemini = (routedModel === 'gemini' || usePreferredGemini) && isGeminiConfigured();
@@ -2695,13 +2696,13 @@ async function createChatResponseImpl(req, res) {
         } else if (visionSlug === 'gpt' && openAIKey) {
             isOpenAI = true;
             routedModel = 'gpt';
-        } else if (visionSlug === 'claude' && (process.env.CLAUDE_API_KEY?.trim() || gatewayKey?.trim())) {
-            isClaude = Boolean(process.env.CLAUDE_API_KEY?.trim());
+        } else if (visionSlug === 'claude' && (claudeKey() || gatewayKey?.trim())) {
+            isClaude = Boolean(claudeKey());
             routedModel = 'claude';
         }
     }
     const cloudflareKey = getCloudflareWorkersAiToken();
-    let apiKey = isOpenRouterFree ? openRouterFreeRoute.apiKey : isOllamaCloud ? getOllamaApiKey() : isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? process.env.CLAUDE_API_KEY : isGemini ? process.env.GEMINI_API_KEY : isDeepSeek ? process.env.DEEPSEEK_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isPerplexity ? directPerplexityKey : isGroq ? directGroqKey : (isGptOssCf || isCloudflare) ? cloudflareKey : gatewayKey;
+    let apiKey = isOpenRouterFree ? openRouterFreeRoute.apiKey : isOllamaCloud ? getOllamaApiKey() : isOpenAI ? openAIKey : isXAI ? xaiKey : isClaude ? claudeKey() : isGemini ? process.env.GEMINI_API_KEY : isDeepSeek ? process.env.DEEPSEEK_API_KEY : isKimi ? (directKimiKey || gatewayKey) : isMistral ? directMistralKey : isPerplexity ? directPerplexityKey : isGroq ? directGroqKey : (isGptOssCf || isCloudflare) ? cloudflareKey : gatewayKey;
     const usesDirectProvider = Boolean(isOpenAI || isXAI || isClaude || isGemini || isDeepSeek || (isKimi && directKimiKey) || isMistral || isPerplexity || isGroq || isCloudflare || isGptOssCf || isOllamaCloud);
     let ollamaCloudModelId = isOllamaCloud
         ? resolveOllamaCloudModel(selectedVariant)
@@ -3304,8 +3305,8 @@ async function createChatResponseImpl(req, res) {
                 }
             }
 
-            if (!apiResponse.ok && routedModel === 'claude' && !isClaude && process.env.CLAUDE_API_KEY?.trim() && billingOrQuota) {
-                apiKey = process.env.CLAUDE_API_KEY.trim();
+            if (!apiResponse.ok && routedModel === 'claude' && !isClaude && claudeKey() && billingOrQuota) {
+                apiKey = claudeKey();
                 isClaude = true;
                 isOpenAI = false;
                 isXAI = false;

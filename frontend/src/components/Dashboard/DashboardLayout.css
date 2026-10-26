@@ -27,7 +27,7 @@
   margin-inline: 0;
 }
 
-/* Hero: balanced two-column composition */
+/* Hero layout */
 .dashboard-violet .dashboard-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
@@ -37,6 +37,19 @@
   padding-block: clamp(32px, 4vw, 64px);
   max-width: none;
   margin: 0;
+}
+
+.dashboard-page--premium.dashboard-violet .dashboard-hero {
+  display: block;
+  grid-template-columns: unset;
+  min-height: 0;
+  padding-block: clamp(20px, 3vw, 36px);
+}
+
+.dashboard-page--premium.dashboard-violet .dashboard-hero h1 {
+  font-size: clamp(1.75rem, 2.2vw + 0.75rem, 2.75rem);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
 }
 
 .dashboard-violet .dashboard-hero > div:first-child {
@@ -65,16 +78,8 @@
 }
 
 @media (min-width: 1920px) {
-  .dashboard-violet .dashboard-hero h1 {
+  .dashboard-violet:not(.dashboard-page--premium) .dashboard-hero h1 {
     font-size: clamp(3.25rem, 3.5vw + 1rem, 5.75rem);
-  }
-
-  .dashboard-violet .dashboard-orbit {
-    width: clamp(280px, 22vw, 420px);
-  }
-
-  .dashboard-violet .dashboard-orbit .allmodelai-logo-mark {
-    width: clamp(96px, 40%, 150px);
   }
 }
 
@@ -100,8 +105,8 @@
 }
 
 .dashboard-violet .dashboard-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(12px, 1.25vw, 16px);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .dashboard-violet .everyday-card-grid {
@@ -132,17 +137,11 @@
 }
 
 .dashboard-violet .everyday-cards {
-  padding: clamp(22px, 3vw, 44px);
-  margin-block: clamp(24px, 3vw, 36px);
+  padding: clamp(16px, 2vw, 24px);
+  margin-block: clamp(16px, 2vw, 24px);
 }
 
-@media (min-width: 2200px) {
-  .dashboard-violet .dashboard-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 1199px) {
+@media (max-width: 1439px) {
   .dashboard-violet .dashboard-grid,
   .dashboard-violet .everyday-card-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -154,7 +153,7 @@
   }
 }
 
-@media (max-width: 991px) {
+@media (max-width: 1023px) {
   .dashboard-violet .dashboard-grid,
   .dashboard-violet .everyday-card-grid,
   .dashboard-violet .overview-grid {
@@ -174,18 +173,15 @@
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .dashboard-violet .dashboard-hero {
     grid-template-columns: 1fr;
     min-height: auto;
-    padding-block: clamp(20px, 5vw, 40px);
+    padding-block: clamp(16px, 4vw, 28px);
   }
 
   .dashboard-violet .dashboard-orbit {
-    display: grid;
-    justify-self: center;
-    width: min(72vw, 280px);
-    margin-top: 8px;
+    display: none;
   }
 
   .dashboard-violet .dashboard-grid,

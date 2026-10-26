@@ -19,7 +19,7 @@ function providerCatalog() {
             defaultModel: 'gemini-2.0-flash',
         },
         claude: {
-            keys: ['CLAUDE_API_KEY'],
+            keys: ['CLAUDE_API_KEY', 'ANTHROPIC_API_KEY'],
             modelEnv: 'CLAUDE_MODEL',
             defaultModel: 'claude-sonnet-4-20250514',
         },

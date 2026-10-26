@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
     anyChatProviderConfigured,
     buildNoAiProvidersPayload,
+    claudeKey,
     findRoutedModelWithApiKey,
     isChatProviderConfigured,
     routedModelHasApiKey,
@@ -51,9 +52,27 @@ test('buildNoAiProvidersPayload never includes secret values', () => {
     delete process.env.OPENAI_API_KEY;
 });
 
+test('claudeKey accepts CLAUDE_API_KEY or ANTHROPIC_API_KEY', () => {
+    const previous = {
+        CLAUDE_API_KEY: process.env.CLAUDE_API_KEY,
+        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    };
+    delete process.env.CLAUDE_API_KEY;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test-alias';
+    try {
+        assert.equal(claudeKey(), 'sk-ant-test-alias');
+        assert.equal(isChatProviderConfigured('claude'), true);
+    } finally {
+        if (previous.CLAUDE_API_KEY === undefined) delete process.env.CLAUDE_API_KEY;
+        else process.env.CLAUDE_API_KEY = previous.CLAUDE_API_KEY;
+        if (previous.ANTHROPIC_API_KEY === undefined) delete process.env.ANTHROPIC_API_KEY;
+        else process.env.ANTHROPIC_API_KEY = previous.ANTHROPIC_API_KEY;
+    }
+});
+
 test('returns null when no chat provider keys exist', () => {
     const previous = {};
-    for (const key of ['OPENAI_API_KEY', 'OPEN_AI_API_KEY', 'GEMINI_API_KEY', 'ALLMODELAI_OPENROUTER_API_KEY', 'OPENROUTER_API_KEY', 'API_KEY', 'CLAUDE_API_KEY']) {
+    for (const key of ['OPENAI_API_KEY', 'OPEN_AI_API_KEY', 'GEMINI_API_KEY', 'ALLMODELAI_OPENROUTER_API_KEY', 'OPENROUTER_API_KEY', 'API_KEY', 'CLAUDE_API_KEY', 'ANTHROPIC_API_KEY']) {
         previous[key] = process.env[key];
         delete process.env[key];
     }

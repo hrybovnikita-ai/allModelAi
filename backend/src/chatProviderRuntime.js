@@ -41,7 +41,7 @@ function geminiKey() {
 }
 
 function claudeKey() {
-    return envTrim('CLAUDE_API_KEY');
+    return envTrim('CLAUDE_API_KEY') || envTrim('ANTHROPIC_API_KEY');
 }
 
 const { getGrokDirectApiKey, grokProviderMode } = require('./services/grokChat');
@@ -74,7 +74,7 @@ function perplexityKey() {
 const CHAT_PROVIDER_ENV = {
     openai: { keys: ['OPENAI_API_KEY', 'OPEN_AI_API_KEY'], optional: ['OPENAI_MODEL'] },
     gemini: { keys: ['GEMINI_API_KEY'], optional: ['GEMINI_MODEL', 'PREFER_GEMINI'] },
-    claude: { keys: ['CLAUDE_API_KEY'], optional: ['CLAUDE_MODEL'] },
+    claude: { keys: ['CLAUDE_API_KEY', 'ANTHROPIC_API_KEY'], optional: ['CLAUDE_MODEL'] },
     openrouter: { keys: [...OPENROUTER_KEY_ENV_NAMES], optional: ['OPENROUTER_FALLBACK_MODELS', 'OPENROUTER_FREE_MODEL'] },
     grok: { keys: ['XAI_API_KEY', 'GROK_API_KEY'], optional: ['GROK_MODEL', 'GROK_PROVIDER', 'XAI_MODEL'] },
     groq: { keys: ['GROQ_API_KEY'], optional: ['GROQ_MODEL', 'GROQ_PROVIDER'] },
@@ -303,6 +303,7 @@ module.exports = {
     logAiProviderStatus,
     logSmartRouter,
     looksLikeOpenAiApiKey,
+    claudeKey,
     openAiKey,
     openRouterKey,
     routedModelHasApiKey,

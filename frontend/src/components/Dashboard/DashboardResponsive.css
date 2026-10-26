@@ -67,9 +67,9 @@
 }
 
 .dashboard-violet .overview-grid article {
-  padding: clamp(16px, 2vw, 22px);
+  padding: 14px 16px;
   border-radius: 14px;
-  min-height: 120px;
+  min-height: 0;
 }
 
 .dashboard-violet .overview-grid small {
@@ -112,8 +112,8 @@
 }
 
 .dashboard-violet .everyday-card-grid > a {
-  min-height: 168px;
-  padding: clamp(18px, 2vw, 24px);
+  min-height: 0;
+  padding: 14px 16px;
   border-radius: 14px;
 }
 
@@ -133,8 +133,8 @@
 
 /* —— Skills / stickers / pricing —— */
 .dashboard-violet .dashboard-feature-card {
-  min-height: clamp(220px, 18vw, 260px);
-  padding: clamp(20px, 2.5vw, 28px);
+  min-height: 0;
+  padding: 16px 18px;
   border-radius: 15px;
 }
 
@@ -144,8 +144,8 @@
 
 .dashboard-violet .dashboard-feature-card > p:not(.dashboard-eyebrow) {
   font-size: clamp(0.8125rem, 0.78rem + 0.12vw, 0.9375rem);
-  line-height: 1.6;
-  min-height: 3.2em;
+  line-height: 1.55;
+  min-height: 0;
 }
 
 .dashboard-violet .dashboard-feature-card > a,
@@ -293,10 +293,9 @@
   font-size: clamp(0.8125rem, 0.78rem + 0.08vw, 0.9rem);
 }
 
-@media (min-width: 1024px) and (max-width: 1439px) {
-  .dashboard-violet .dashboard-grid,
-  .dashboard-violet .everyday-card-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+@media (min-width: 1440px) {
+  .dashboard-violet .dashboard-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

@@ -78,6 +78,14 @@
   font-size: clamp(0.95rem, 1.2vw, 1.1rem);
   font-weight: 800;
   white-space: nowrap;
+  min-width: 0;
+}
+
+.fg-nav-brand .allmodelai-logo-mark {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 10px rgba(109, 66, 204, 0.35));
 }
 
 .fg-nav-brand:focus-visible {
