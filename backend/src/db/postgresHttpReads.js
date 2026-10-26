@@ -12,6 +12,21 @@ function isMissingTemporaryColumnError(error) {
         || /column .* does not exist/i.test(message);
 }
 
+function isMissingLifecycleColumnError(error) {
+    const code = String(error?.code || '');
+    const message = String(error?.message || '');
+    return code === '42703'
+        || /lifecycle_status|trashed_at/i.test(message)
+        || /column .* does not exist/i.test(message);
+}
+
+function normalizeLifecycleScope(scope) {
+    const normalized = String(scope || 'active').trim().toLowerCase();
+    if (normalized === 'trash') return 'trashed';
+    if (normalized === 'active' || normalized === 'archived' || normalized === 'trashed') return normalized;
+    return 'active';
+}
+
 async function listChatHistoryRows(connection, normalizedEmail, { temporaryOnly = false } = {}) {
     const pool = resolvePostgresAsyncPool(connection);
     const nowIso = new Date().toISOString();
@@ -74,6 +89,85 @@ async function listChatHistoryRows(connection, normalizedEmail, { temporaryOnly 
                 updated_at AS "updatedAt",
                 FALSE AS "isTemporary",
                 NULL AS "expiresAt"
+            FROM conversations
+            WHERE lower(trim(email)) = $1
+            ORDER BY updated_at DESC`,
+            [normalizedEmail],
+        );
+        return fallback.rows;
+    }
+}
+
+/**
+ * Lightweight history list — omits the messages blob (can be tens of MB per user).
+ */
+async function listChatHistorySummaryRows(connection, normalizedEmail, {
+    temporaryOnly = false,
+    lifecycleScope = 'active',
+} = {}) {
+    const pool = resolvePostgresAsyncPool(connection);
+    const nowIso = new Date().toISOString();
+    const scope = normalizeLifecycleScope(lifecycleScope);
+    try {
+        const result = temporaryOnly
+            ? await queryPgPool(
+                pool,
+                `SELECT
+                    id,
+                    email,
+                    model,
+                    title,
+                    created_at AS "createdAt",
+                    updated_at AS "updatedAt",
+                    COALESCE(is_temporary, FALSE) AS "isTemporary",
+                    expires_at AS "expiresAt",
+                    COALESCE(lifecycle_status, 'active') AS "lifecycleStatus",
+                    jsonb_array_length(COALESCE(messages::jsonb, '[]'::jsonb)) AS "messageCount"
+                FROM conversations
+                WHERE lower(trim(email)) = $1
+                  AND COALESCE(is_temporary, FALSE) = TRUE
+                  AND expires_at IS NOT NULL
+                  AND expires_at > $2::timestamptz
+                ORDER BY updated_at DESC`,
+                [normalizedEmail, nowIso],
+            )
+            : await queryPgPool(
+                pool,
+                `SELECT
+                    id,
+                    email,
+                    model,
+                    title,
+                    created_at AS "createdAt",
+                    updated_at AS "updatedAt",
+                    COALESCE(is_temporary, FALSE) AS "isTemporary",
+                    expires_at AS "expiresAt",
+                    COALESCE(lifecycle_status, 'active') AS "lifecycleStatus",
+                    jsonb_array_length(COALESCE(messages::jsonb, '[]'::jsonb)) AS "messageCount"
+                FROM conversations
+                WHERE lower(trim(email)) = $1
+                  AND COALESCE(is_temporary, FALSE) = FALSE
+                  AND COALESCE(lifecycle_status, 'active') = $2
+                ORDER BY updated_at DESC`,
+                [normalizedEmail, scope],
+            );
+        return result.rows;
+    } catch (error) {
+        if (!isMissingLifecycleColumnError(error) && !isMissingTemporaryColumnError(error)) throw error;
+        if (temporaryOnly) return [];
+        const fallback = await queryPgPool(
+            pool,
+            `SELECT
+                id,
+                email,
+                model,
+                title,
+                created_at AS "createdAt",
+                updated_at AS "updatedAt",
+                FALSE AS "isTemporary",
+                NULL AS "expiresAt",
+                'active' AS "lifecycleStatus",
+                jsonb_array_length(COALESCE(messages::jsonb, '[]'::jsonb)) AS "messageCount"
             FROM conversations
             WHERE lower(trim(email)) = $1
             ORDER BY updated_at DESC`,
@@ -154,6 +248,8 @@ module.exports = {
     isPostgresConnection,
     listAnalyticsConversationRows,
     listChatHistoryRows,
+    listChatHistorySummaryRows,
+    normalizeLifecycleScope,
     listWorkspaceItemRows,
     lookupDeveloperApiKeyAsync,
     touchDeveloperApiKeyAsync,

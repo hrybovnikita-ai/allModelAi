@@ -33,7 +33,7 @@
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   align-items: center;
   gap: clamp(32px, 5vw, 96px);
-  min-height: clamp(340px, 42vh, 520px);
+  min-height: clamp(260px, 32vh, 400px);
   padding-block: clamp(32px, 4vw, 64px);
   max-width: none;
   margin: 0;
@@ -100,8 +100,8 @@
 }
 
 .dashboard-violet .dashboard-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: clamp(12px, 1.25vw, 20px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 1.25vw, 16px);
 }
 
 .dashboard-violet .everyday-card-grid {
@@ -138,7 +138,7 @@
 
 @media (min-width: 2200px) {
   .dashboard-violet .dashboard-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

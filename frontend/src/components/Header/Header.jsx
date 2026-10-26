@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../Navbar/Navbar';
-import HeroProviderOrbit from './HeroProviderOrbit';
+import HeroAuraVisual from './HeroAuraVisual';
 import WindowsDownloadButton from '../Download/WindowsDownloadButton';
 import { IconSendUp } from '../Chat/ComposerIcons';
 import './Header.css';
@@ -68,8 +68,8 @@ export default function Header() {
           <button type="button" onClick={() => navigate('/arena')}>⚔ Compare in Arena</button>
         </div>
 
-        <div className="hero-orbit-region hero-reveal hero-reveal--4">
-          <HeroProviderOrbit />
+        <div className="hero-visual-region hero-reveal hero-reveal--4">
+          <HeroAuraVisual />
         </div>
       </div>
     </header>

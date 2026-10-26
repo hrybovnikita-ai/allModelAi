@@ -142,7 +142,8 @@ test('google-only login without password stays generic then enroll works', async
       password: 'not-set-yet-1',
     });
     assert.equal(blocked.status, 401);
-    assert.equal(blocked.body.code, 'INVALID_CREDENTIALS');
+    assert.equal(blocked.body.code, 'PASSWORD_SETUP_REQUIRED');
+    assert.match(blocked.body.message, /google/i);
 
     const requested = await request(app).post('/api/auth/password-reset/request').send({ email });
     assert.equal(requested.status, 200);

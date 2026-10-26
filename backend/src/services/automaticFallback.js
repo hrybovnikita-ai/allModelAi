@@ -15,14 +15,10 @@ const {
 const { parseEnvBoolean } = require('../platform/featureRegistry');
 const { securityLog } = require('../security/structuredLog');
 
+const { FREE_SMART_ROUTER_SLUGS } = require('../billing/modelEntitlements');
+
 /** Free-tier chat slugs that must not auto-failover onto paid gateways. */
-const FREE_TIER_SLUGS = new Set([
-    'gemini',
-    'cloudflare',
-    'gpt-oss',
-    'nemotron',
-    'deepseek-r1',
-]);
+const FREE_TIER_SLUGS = new Set(FREE_SMART_ROUTER_SLUGS);
 
 /**
  * Machine-readable codes for SSE / API clients (stable contract).

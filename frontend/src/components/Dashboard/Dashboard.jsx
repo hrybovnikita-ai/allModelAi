@@ -12,6 +12,9 @@ import './DashboardFeatureCards.css';
 import './DashboardDarkViolet.css';
 import './DashboardLayout.css';
 import './DashboardResponsive.css';
+import './DashboardPremium.css';
+import DashboardSidebar from './DashboardSidebar';
+import { DASHBOARD_QUICK_ACTIONS } from './dashboardQuickActions';
 import AccountDeleteModal from '../AccountDeleteModal';
 import DashboardResources from './DashboardResources';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
@@ -21,6 +24,12 @@ import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
 import { isCompleteCreditStatus, normalizeCreditStatus } from '../../lib/creditStatus';
 import { normalizeModelStatusMap } from '../../data/ollamaCloudVariants';
 import { resolveModelLibraryCardStatus } from '../../lib/modelLibraryStatus';
+import {
+  buildProCheckoutPath,
+  canUseChatModel,
+  isPaidPlanAccess,
+} from '../../lib/modelEntitlements';
+import './DashboardModelLibrary.css';
 
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
 
@@ -193,20 +202,31 @@ export default function Dashboard() {
     }
   };
 
+  const isFreePlan = creditStatus
+    && !creditStatus.isOwner
+    && (creditStatus.subscriptionStatus === 'free' || !creditStatus.hasSubscription);
+
   return (
-    <main className="dashboard-page dashboard-violet">
-      <div className="dashboard-shell">
+    <main className="dashboard-page dashboard-violet dashboard-page--premium">
+      <DashboardSidebar />
+      <div className="dashboard-layout-main">
+      <div className="dashboard-shell dashboard-shell--enter">
       {location.state?.subscriptionActivated?.message && (
         <div className="dashboard-email-notice" role="status">{location.state.subscriptionActivated.message}</div>
       )}
       {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user?.email}</div>}
       {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}
       {deleteError && !deleteModalOpen && <p role="alert">{deleteError}</p>}
-      <section className="dashboard-hero">
+      <section className="dashboard-hero dashboard-card-reveal" style={{ '--dash-delay': '40ms' }}>
         <div>
-          <p className="dashboard-eyebrow">Workspace ready</p>
-          <h1>Welcome, {user.name?.split(' ')[0] || 'creator'}.</h1>
-          <p>Your account is connected to the backend. Choose a model and start building something remarkable.</p>
+          <p className="dashboard-eyebrow">Signed in as {user.email}</p>
+          <h1>
+            Welcome back to <span className="dashboard-hero-brand">AllModelAI</span>
+          </h1>
+          <p>
+            Hi {user.name?.split(' ')[0] || 'there'} — your workspace, models, and billing are ready.
+            Jump in with a quick action or open Smart chat.
+          </p>
           <div className="dashboard-actions">
             <Link to="/chat?model=smart" className="dashboard-action-primary">Open Smart chat</Link>
             <Link to="/next-12">Reliability tools</Link>
@@ -219,10 +239,26 @@ export default function Dashboard() {
         </div>
         <div className="dashboard-orbit" aria-hidden="true"><AllModelAILogoMark /></div>
       </section>
+      <section className="dashboard-quick-actions" aria-label="Quick actions">
+        {DASHBOARD_QUICK_ACTIONS.map((action) => (
+          <Link key={action.to} to={action.to} className="dashboard-quick-action">
+            <span className="dashboard-quick-action-icon" aria-hidden="true">{action.icon}</span>
+            <strong>{action.label}</strong>
+            <small>{action.description}</small>
+          </Link>
+        ))}
+      </section>
       {user?.email && (
-        <section className="dashboard-usage dashboard-subscription-card" aria-busy={subscriptionLoad === 'loading'}>
+        <section
+          className="dashboard-usage dashboard-subscription-card dashboard-card-reveal"
+          style={{ '--dash-delay': '80ms' }}
+          aria-busy={subscriptionLoad === 'loading'}
+        >
           {subscriptionLoad === 'loading' && !creditStatus && (
-            <p className="dashboard-subscription-loading" role="status">Loading subscription…</p>
+            <div className="dashboard-subscription-loading" role="status">
+              <div className="dashboard-skeleton-shimmer" style={{ width: '40%', marginBottom: 12 }} aria-hidden="true" />
+              <p>Loading subscription…</p>
+            </div>
           )}
           {subscriptionError && (
             <p className="dashboard-subscription-error" role="alert">
@@ -273,9 +309,12 @@ export default function Dashboard() {
                 <div className="usage-track"><i style={{ width: `${Math.min((creditStatus.used / creditStatus.limit) * 100, 100)}%` }} /></div>
               )}
               <div className="dashboard-subscription-actions">
+                {isFreePlan ? (
+                  <Link to="/checkout?plan=pro" className="dashboard-subscribe-btn">Subscribe</Link>
+                ) : null}
                 <button type="button" className="dashboard-sub-manage" onClick={() => setManageSubOpen(true)}>Manage subscription</button>
                 <Link to="/dashboard/orders">Order history</Link>
-                <Link to="/checkout?plan=pro">Upgrade plan</Link>
+                {!isFreePlan ? <Link to="/checkout?plan=pro">Upgrade plan</Link> : null}
                 {creditStatus.aiCredits?.enabled ? <Link to="/credits">Buy AI credits</Link> : null}
               </div>
             </>
@@ -313,21 +352,46 @@ export default function Dashboard() {
         <div className="dashboard-grid">
           {models.map((model) => {
             const providerStatus = resolveModelLibraryCardStatus(model.slug, modelStatus, modelHealth);
+            const hasChatAccess = creditStatus
+              ? canUseChatModel(creditStatus, model.slug)
+              : model.slug === 'smart' || model.slug === 'anonin';
+            const tierLabel = hasChatAccess
+              ? (creditStatus && isPaidPlanAccess(creditStatus) ? 'Included' : 'Free')
+              : 'Pro';
+            const tierClass = hasChatAccess ? 'free' : 'pro';
+            const checkoutHref = buildProCheckoutPath({ returnModel: model.slug });
             return (
-              <Link className="dashboard-model-card" to={`/models/${model.slug}`} key={model.name}>
+              <div className="dashboard-model-card" key={model.name}>
                 <article>
-                  <img src={model.image} alt={`${model.name} logo`} />
-                  <small>{model.provider} · {model.priceLabel || 'Premium'}</small>
-                  <h3>{model.name}</h3>
-                  <p>{model.note}</p>
+                  <div className="dashboard-model-card-top">
+                    <span className="dashboard-model-logo">
+                      <img src={model.image} alt="" width={32} height={32} loading="lazy" decoding="async" />
+                    </span>
+                    <div className="dashboard-model-heading">
+                      <h3>{model.name}</h3>
+                      <small>{model.provider}{model.priceLabel ? ` · ${model.priceLabel}` : ''}</small>
+                    </div>
+                    <span className={`dashboard-model-tier dashboard-model-tier--${tierClass}`}>
+                      {tierLabel}
+                    </span>
+                  </div>
+                  <p className="dashboard-model-note">{model.note}</p>
                   <div className="model-meta">
                     <span>{modelMeta[model.name]?.[0] || 'Available'}</span>
                     <span>{modelMeta[model.name]?.[1] || 'Unified API'}</span>
                     <i className={providerStatus.className || undefined}>{providerStatus.label}</i>
                   </div>
-                  <span className="model-open">Open {model.name} <b>→</b></span>
+                  {hasChatAccess ? (
+                    <Link className="model-open" to={`/models/${model.slug}`}>
+                      Open model <b>→</b>
+                    </Link>
+                  ) : (
+                    <Link className="model-open model-open--subscribe" to={checkoutHref}>
+                      Subscribe to unlock <b>→</b>
+                    </Link>
+                  )}
                 </article>
-              </Link>
+              </div>
             );
           })}
         </div>
@@ -348,6 +412,7 @@ export default function Dashboard() {
         </div>
       </section>
       <DashboardResources />
+      </div>
       </div>
       {manageSubOpen && (
         <ManageSubscriptionModal

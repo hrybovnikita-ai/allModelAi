@@ -19,6 +19,13 @@ import {
 } from '../../data/ollamaCloudVariants';
 import { historicalProviderErrorPresentation } from '../../lib/historicalProviderErrors';
 import { apiFetch, checkChatResponse } from '../../lib/api';
+import {
+  fetchChatConversation,
+  fetchChatHistoryList,
+  setConversationLifecycle,
+} from '../../lib/chatHistoryApi';
+import { createChatStreamDiagnostics } from '../../lib/chatStreamDiagnostics';
+import { isNearScrollBottom } from '../../lib/chatScroll';
 import { formatChatVisionError, prepareChatImageAttachment } from '../../lib/imageAttachment';
 import {
   buildImageRequestBody,
@@ -117,6 +124,15 @@ import MessageActions from './MessageActions';
 import AnoninMessageReveal from './AnoninMessageReveal';
 import { fetchAnoninRevealedIds } from '../../lib/anoninClient';
 import { isAnoninModelSlug, normalizeAnoninModelSlug } from '../../lib/anoninModelSlug';
+import {
+  buildProCheckoutPath,
+  canUseChatModel,
+  freeModelsLabel,
+  isPaidPlanAccess,
+  isPremiumLockedModel,
+} from '../../lib/modelEntitlements';
+import PremiumUpgradeModal from './PremiumUpgradeModal';
+import ModelEntitlementBadge from './ModelEntitlementBadge';
 import ChatSidebar from './ChatSidebar';
 import TemporaryChatBanner from './TemporaryChatBanner';
 import { IconToolKnowledgeBase } from './ChatSidebarIcons';
@@ -254,6 +270,7 @@ export default function Chat() {
   const [searchParams] = useSearchParams();
   const messagesEnd = useRef(null);
   const messagesContainer = useRef(null);
+  const stickToBottomRef = useRef(true);
   const fileInput = useRef(null);
   const composerInputRef = useRef(null);
   const composerShellRef = useRef(null);
@@ -304,6 +321,9 @@ export default function Chat() {
   const sidebarResizeActiveRef = useRef(false);
   const [messages, setMessages] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
+  const [archivedHistory, setArchivedHistory] = useState([]);
+  const [trashedHistory, setTrashedHistory] = useState([]);
+  const [historyLoadError, setHistoryLoadError] = useState('');
   const [chatMeta, setChatMeta] = useState(() =>
     safeJSON(safeStorageGet('localStorage', 'allmodelai_chat_meta'), {})
   );
@@ -375,6 +395,8 @@ export default function Chat() {
   const [arenaTask, setArenaTask] = useState('');
   const [variantCatalog, setVariantCatalog] = useState({});
   const [subscribeModalOpen, setSubscribeModalOpen] = useState(false);
+  const [premiumUpgradeOpen, setPremiumUpgradeOpen] = useState(false);
+  const [premiumUpgradeTarget, setPremiumUpgradeTarget] = useState({ name: '', slug: '', variantId: '' });
   const [aiCreditsPurchaseOpen, setAiCreditsPurchaseOpen] = useState(false);
   const [subscribePlan, setSubscribePlan] = useState(null);
   const [subscribeForm, setSubscribeForm] = useState({ cardNumber: '', holder: '', email: '', city: '', birthDate: '', expiry: '', cvc: '' });
@@ -418,7 +440,36 @@ export default function Chat() {
     },
   ];
 
-  const openSubscribe = () => {
+  const navigateToProCheckout = (returnModel, returnVariant) => {
+    const path = buildProCheckoutPath({
+      returnModel: returnModel || selectedSlug,
+      returnVariant: returnVariant || premiumUpgradeTarget.variantId || selectedVersion?.id,
+    });
+    setModelMenuOpen(false);
+    setPremiumUpgradeOpen(false);
+    if (isGuest || !user?.email) {
+      navigate('/login', { state: { from: path } });
+      return;
+    }
+    navigate(path);
+  };
+
+  const openPremiumUpgrade = (model, version) => {
+    const name = typeof model === 'string'
+      ? model
+      : [model?.name, version?.name].filter(Boolean).join(' · ') || model?.name || '';
+    const slug = typeof model === 'object' && model?.slug ? model.slug : selectedSlug;
+    const variantId = version?.id || '';
+    setPremiumUpgradeTarget({ name, slug, variantId });
+    setPremiumUpgradeOpen(true);
+    setModelMenuOpen(false);
+  };
+
+  const openSubscribe = (returnModel) => {
+    if (!creditStatus?.isDeveloper) {
+      navigateToProCheckout(returnModel);
+      return;
+    }
     setSubscribeError('');
     setSubscribePlan(null);
     setPaymentsConfigLoaded(false);
@@ -556,37 +607,61 @@ export default function Chat() {
     return () => window.removeEventListener('storage', syncStickerPref);
   }, []);
 
-  const refreshHistory = useCallback(() => Promise.all([
-    apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
-      .then((response) => response.ok ? response.json() : []),
-    apiFetch(`/api/chat/history?temporary=true&email=${encodeURIComponent(user.email)}`)
-      .then((response) => response.ok ? response.json() : []),
-  ])
-    .then(([history, temps]) => {
-      setChatHistory(history);
-      setTemporaryHistory(Array.isArray(temps) ? temps : []);
-      const activeId = activeConversationIdRef.current;
-      const active = history.find((item) => String(item.id) === String(activeId))
-        || (Array.isArray(temps) ? temps.find((item) => String(item.id) === String(activeId)) : null);
-      if (active?.expiresAt && active.isTemporary) {
-        setTemporaryExpiresAt(active.expiresAt);
+  const refreshHistory = useCallback(async () => {
+    if (!user?.email || isGuest) return;
+    const [activeResult, tempResult, archivedResult, trashedResult] = await Promise.all([
+      fetchChatHistoryList(apiFetch, { scope: 'active' }),
+      fetchChatHistoryList(apiFetch, { temporary: true }),
+      fetchChatHistoryList(apiFetch, { scope: 'archived' }),
+      fetchChatHistoryList(apiFetch, { scope: 'trashed' }),
+    ]);
+    const failed = [activeResult, tempResult, archivedResult, trashedResult].find((item) => !item.ok);
+    if (failed && !activeResult.ok) {
+      setHistoryLoadError(failed.message || 'Could not load saved chats.');
+      return;
+    }
+    setHistoryLoadError('');
+    const history = activeResult.ok ? activeResult.conversations : [];
+    const temps = tempResult.ok ? tempResult.conversations : [];
+    setChatHistory(history);
+    setArchivedHistory(archivedResult.ok ? archivedResult.conversations : []);
+    setTrashedHistory(trashedResult.ok ? trashedResult.conversations : []);
+    setTemporaryHistory(Array.isArray(temps) ? temps : []);
+    const activeId = activeConversationIdRef.current;
+    const active = history.find((item) => String(item.id) === String(activeId))
+      || (Array.isArray(temps) ? temps.find((item) => String(item.id) === String(activeId)) : null);
+    if (active?.expiresAt && active.isTemporary) {
+      setTemporaryExpiresAt(active.expiresAt);
+    }
+    if (!active?.messages?.length) return;
+    setMessages((current) => {
+      const historyMessages = normalizeConversationMessages(active.messages);
+      if (!shouldReplaceMessagesFromHistory({
+        isSending: isSendingRef.current,
+        activeId,
+        historyConversationId: active.id,
+        localMessages: current,
+        historyMessages,
+      })) {
+        return current;
       }
-      if (!active?.messages?.length) return;
-      setMessages((current) => {
-        const historyMessages = normalizeConversationMessages(active.messages);
-        if (!shouldReplaceMessagesFromHistory({
-          isSending: isSendingRef.current,
-          activeId,
-          historyConversationId: active.id,
-          localMessages: current,
-          historyMessages,
-        })) {
-          return current;
-        }
-        return historyMessages;
-      });
-    })
-    .catch(() => {}), [user.email]);
+      return historyMessages;
+    });
+  }, [user?.email, isGuest]);
+
+  /** Faster sidebar sync after each message — skips archive/trash round-trips. */
+  const syncHistoryAfterSend = useCallback(async () => {
+    if (!user?.email || isGuest) return;
+    const [activeResult, tempResult] = await Promise.all([
+      fetchChatHistoryList(apiFetch, { scope: 'active' }),
+      fetchChatHistoryList(apiFetch, { temporary: true }),
+    ]);
+    if (activeResult.ok) setChatHistory(activeResult.conversations);
+    if (tempResult.ok) setTemporaryHistory(tempResult.conversations);
+    if (!activeResult.ok) {
+      setHistoryLoadError(activeResult.message || 'Could not refresh chat list.');
+    }
+  }, [user?.email, isGuest]);
 
   const resumedVideoJobIdsRef = useRef(new Set());
 
@@ -818,8 +893,12 @@ export default function Chat() {
     return resolveModelOnlineStatus(slug, modelStatus);
   };
 
-  const modelAllowed = (slug) => slug === 'smart' || isAnoninModelSlug(slug)
-    || Boolean(creditStatus?.models?.includes('all') || creditStatus?.models?.includes(slug));
+  const modelVersionAllowed = (slug, variantId) => canUseChatModel(creditStatus, slug, variantId);
+  const modelFamilyLocked = (slug) => {
+    if (slug === 'smart' || isAnoninModelSlug(slug)) return !modelVersionAllowed(slug);
+    if (slug === 'gemini') return false;
+    return !isPaidPlanAccess(creditStatus);
+  };
 
   const changeAccessMode = async (mode) => {
     if (!creditStatus?.canUseDeveloper || isSending || accessModeSaving) return;
@@ -835,8 +914,13 @@ export default function Chat() {
       if (!response.ok) throw new Error(access.message || 'Could not change the access mode.');
       setCreditStatus(normalizeCreditStatus(access) || access);
       globalThis.dispatchEvent(new CustomEvent('allmodelai:access-mode-updated', { detail: access }));
-      if (!access.models.includes('all') && !access.models.includes(selectedSlug) && selectedSlug !== 'smart' && !isAnoninModelSlug(selectedSlug)) {
+      if (!access.models.includes('all') && !modelVersionAllowed(selectedSlug, selectedVersion?.id)) {
         setSelectedSlug('gemini');
+        setChosenVersions((prev) => {
+          const next = { ...prev, gemini: '3.5-flash-lite' };
+          safeStorageSet('localStorage', 'allmodelai_model_versions', JSON.stringify(next));
+          return next;
+        });
         safeStorageSet('localStorage', 'allmodelai_selected_model', 'gemini');
         navigate('/chat?model=gemini', { replace: true });
       }
@@ -849,8 +933,7 @@ export default function Chat() {
   };
 
   const openPlusSubscription = () => {
-    setModelMenuOpen(false);
-    openSubscribe();
+    openSubscribe(selectedSlug);
   };
 
   const chooseModel = (model, version) => {
@@ -863,7 +946,10 @@ export default function Chat() {
       }
     }
 
-    if (!modelAllowed(model.slug)) { setChatError('This model is available with a subscription or in Developer mode.'); return; }
+    if (!modelVersionAllowed(model.slug, version?.id)) {
+      openPremiumUpgrade(model, version);
+      return;
+    }
     const online = modelIsOnline(model.slug);
     setSelectedSlug(model.slug);
     // Temporary Chat must not overwrite the user's persistent model preference.
@@ -1031,8 +1117,11 @@ export default function Chat() {
   };
 
   const conversationPreview = (conversation) => {
+    if (conversation?.preview) {
+      return String(conversation.preview).replace(/\s+/g, ' ').trim().slice(0, 54);
+    }
     const firstUserMessage = conversation.messages?.find((message) => message.role === 'user');
-    return String(firstUserMessage?.content ?? firstUserMessage?.text ?? 'Saved conversation').replace(/\s+/g, ' ').trim().slice(0, 54);
+    return String(firstUserMessage?.content ?? firstUserMessage?.text ?? conversation.title ?? 'Saved conversation').replace(/\s+/g, ' ').trim().slice(0, 54);
   };
   const matchesHistoryQuery = useCallback((conversation) => {
     const haystack = `${conversation.title} ${conversationPreview(conversation)} ${(conversation.messages || []).map((message) => message.text || message.content || '').join(' ')} ${(Array.isArray(chatMeta[conversation.id]?.tags) ? chatMeta[conversation.id].tags : []).join(' ')}`.toLowerCase();
@@ -1054,7 +1143,22 @@ export default function Chat() {
   const historyFeed = useMemo(() => {
     const rows = [];
     chatHistory.forEach((conversation) => {
-      (conversation.messages || []).forEach((message, messageIndex) => {
+      const messageList = conversation.messages || [];
+      if (!messageList.length) {
+        const text = String(conversation.preview || conversation.title || '').replace(/\s+/g, ' ').trim();
+        if (!text) return;
+        rows.push({
+          id: `${conversation.id}-0`,
+          conversation,
+          messageIndex: 0,
+          text,
+          title: conversation.title || conversationPreview(conversation),
+          model: conversation.model,
+          updatedAt: conversation.updatedAt || conversation.createdAt || '',
+        });
+        return;
+      }
+      messageList.forEach((message, messageIndex) => {
         if (message.role !== 'user') return;
         const text = String(message.content ?? message.text ?? '').replace(/\s+/g, ' ').trim();
         if (!text) return;
@@ -1326,6 +1430,17 @@ export default function Chat() {
   useEffect(() => {
     const container = messagesContainer.current;
     if (!container) return;
+    const onScroll = () => {
+      stickToBottomRef.current = isNearScrollBottom(container, 140);
+    };
+    container.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => container.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const container = messagesContainer.current;
+    if (!container || !stickToBottomRef.current) return;
     if (typeof container.scrollTo === 'function') {
       container.scrollTo({ top: container.scrollHeight, behavior: isSending ? 'smooth' : 'auto' });
     } else {
@@ -1459,34 +1574,43 @@ export default function Chat() {
   }, [subscribeModalOpen, isGuest, t]);
 
   useEffect(() => {
-    if (!user?.email || isGuest) return;
-    apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`)
-      .then((response) => response.ok ? response.json() : [])
-      .then((history) => {
-        setChatHistory(history);
-        const requestedId = new URLSearchParams(window.location.search).get('conversation');
-        const requested = requestedId
-          ? history.find((item) => String(item.id) === String(requestedId))
-          : null;
-        const latest = history[0];
-        const conversation = requested || latest;
-        const allowBootstrap = shouldBootstrapOpenConversation({
-          hasBootstrapped: historyBootstrappedRef.current,
-          activeId: activeConversationIdRef.current,
-          isSending: isSendingRef.current,
-          localMessageCount: messagesCountRef.current,
-          requestedId,
-          historyFirstId: latest?.id || null,
-        });
-        historyBootstrappedRef.current = true;
-        if (!allowBootstrap || !conversation?.messages?.length) return;
-        activeConversationIdRef.current = conversation.id;
-        setActiveConversationId(conversation.id);
-        setMessages(normalizeConversationMessages(conversation.messages));
-        setSelectedSlug(validModelSlug(conversation.model));
-      })
-      .catch(() => {});
-  }, [user?.email, isGuest, sessionVerified]);
+    if (!user?.email || isGuest || !sessionVerified) return;
+    let cancelled = false;
+    (async () => {
+      await refreshHistory();
+      if (cancelled) return;
+      const history = await fetchChatHistoryList(apiFetch, { scope: 'active' });
+      if (!history.ok || cancelled) return;
+      const list = history.conversations;
+      const requestedId = new URLSearchParams(window.location.search).get('conversation');
+      const requested = requestedId
+        ? list.find((item) => String(item.id) === String(requestedId))
+        : null;
+      const latest = list[0];
+      const conversation = requested || latest;
+      const allowBootstrap = shouldBootstrapOpenConversation({
+        hasBootstrapped: historyBootstrappedRef.current,
+        activeId: activeConversationIdRef.current,
+        isSending: isSendingRef.current,
+        localMessageCount: messagesCountRef.current,
+        requestedId,
+        historyFirstId: latest?.id || null,
+      });
+      historyBootstrappedRef.current = true;
+      if (!allowBootstrap || !conversation) return;
+      if (!(conversation.messageCount > 0 || conversation.messages?.length)) return;
+      const loaded = conversation.messages?.length
+        ? { ok: true, conversation }
+        : await fetchChatConversation(apiFetch, conversation.id);
+      if (cancelled || !loaded.ok) return;
+      const full = loaded.conversation;
+      activeConversationIdRef.current = full.id;
+      setActiveConversationId(full.id);
+      setMessages(normalizeConversationMessages(full.messages || []));
+      setSelectedSlug(validModelSlug(full.model));
+    })();
+    return () => { cancelled = true; };
+  }, [user?.email, isGuest, sessionVerified, refreshHistory]);
 
   useEffect(() => {
     sidebarWidthRef.current = sidebarWidth;
@@ -1804,8 +1928,16 @@ export default function Chat() {
     setAttachedImage(null);
     setChatError('');
     setIsSending(true);
+    setIsStreamingResponse(false);
     const controller = new AbortController();
     activeRequest.current = controller;
+    const streamDiagnostics = createChatStreamDiagnostics();
+    const releaseComposerBusy = () => {
+      setIsStreamingResponse(false);
+      setIsSending(false);
+      if (activeRequest.current === controller) activeRequest.current = null;
+    };
+    stickToBottomRef.current = true;
     const assistantIndex = nextMessages.length;
     const assistantMessageId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     setMessages([...nextMessages, {
@@ -1998,10 +2130,11 @@ export default function Chat() {
           if (temporaryChat || conversation.isTemporary) {
             setTemporaryExpiresAt(conversation.expiresAt || temporaryExpiresAt);
           }
-          await refreshHistory();
+          void syncHistoryAfterSend();
         } catch {
           if (stillOpen() || !startedConversationId) setChatError('The image is ready, but saving history failed. Download the picture before closing the chat.');
         }
+        releaseComposerBusy();
         logger.success('Assistant response completed', { mode: 'image', durationMs: timingElapsed(requestStartedAt) });
         return;
       }
@@ -2080,12 +2213,13 @@ export default function Chat() {
           if (temporaryChat || conversation.isTemporary) {
             setTemporaryExpiresAt(conversation.expiresAt || temporaryExpiresAt);
           }
-          await refreshHistory();
+          void syncHistoryAfterSend();
         } catch {
           if (stillOpen() || !startedConversationId) {
             setChatError('The video is ready, but saving history failed. Download it before closing the chat.');
           }
         }
+        releaseComposerBusy();
         logger.success('Assistant response completed', { mode: 'video', durationMs: timingElapsed(requestStartedAt) });
         videoSubmitLockRef.current = false;
         setSelectedSkill(null);
@@ -2197,9 +2331,12 @@ export default function Chat() {
           content: jsonFinal.text,
           aiSticker: jsonFinal.aiSticker,
           status: 'completed',
+          webSearching: false,
         });
+        streamDiagnostics.markComplete({ model: selectedSlug, chars: responseText.length, streaming: false });
+        releaseComposerBusy();
         if (conversationId) {
-          await apiFetch(`/api/chat/history/${conversationId}`, {
+          void apiFetch(`/api/chat/history/${conversationId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2213,8 +2350,9 @@ export default function Chat() {
                 ...stickerFieldsForPersist(jsonFinal),
               }],
             }),
-          });
-          await refreshHistory();
+          }).then(() => syncHistoryAfterSend()).catch(() => {});
+        } else {
+          void syncHistoryAfterSend();
         }
         if (shouldShowBackgroundReplyNotice({
           belongsToOpenChat: responseBelongsToOpenChat(),
@@ -2233,7 +2371,13 @@ export default function Chat() {
       let webSourcesForMessage = [];
       let routerGroupOpened = false;
       let fallbackProvider = null;
-      const enqueueReveal = (chunkText) => {
+      let pendingStreamText = '';
+      let streamRevealFrame = null;
+      const flushStreamReveal = () => {
+        streamRevealFrame = null;
+        const chunkText = pendingStreamText;
+        pendingStreamText = '';
+        if (!chunkText) return;
         setIsStreamingResponse(true);
         setMessages((current) => {
           if (!responseBelongsToOpenChat(current)) return current;
@@ -2244,8 +2388,24 @@ export default function Chat() {
             text: nextText,
             content: nextText,
             status: 'streaming',
+            webSearching: false,
           });
         });
+      };
+      const enqueueReveal = (chunkText) => {
+        if (!chunkText) return;
+        streamDiagnostics.markFirstToken({ model: selectedSlug });
+        pendingStreamText += chunkText;
+        if (streamRevealFrame == null) {
+          streamRevealFrame = requestAnimationFrame(flushStreamReveal);
+        }
+      };
+      const flushPendingStreamReveal = () => {
+        if (streamRevealFrame != null) {
+          cancelAnimationFrame(streamRevealFrame);
+          streamRevealFrame = null;
+        }
+        flushStreamReveal();
       };
 
       while (true) {
@@ -2270,6 +2430,7 @@ export default function Chat() {
           }
           if (event.unlimited) setCreditStatus((current) => ({ ...current, ...event, unlimited: true }));
           if (event.routedModel) {
+            streamDiagnostics.setProvider(event.routedModel);
             if (event.routedModel === 'ollama' || event.providerLabel === 'Ollama Cloud' || /^Ollama Cloud/i.test(String(event.routeDisplayName || ''))) {
               setModelStatus((current) => markModelOnline(current, 'ollama'));
             } else if (event.routedModel && event.actualModelId) {
@@ -2376,6 +2537,7 @@ export default function Chat() {
 
         if (done) break;
       }
+      flushPendingStreamReveal();
       if (webSearchViaChat || selectedSkill === 'web' || options.forceWebSearch) {
         setSelectedSkill(null);
       }
@@ -2410,32 +2572,42 @@ export default function Chat() {
           ...(webSourcesForMessage.length ? { webSources: webSourcesForMessage, webSearchComplete: true } : {}),
         });
       }
+      streamDiagnostics.markComplete({
+        model: selectedSlug,
+        chars: assistantText.length,
+        streaming: true,
+      });
+      releaseComposerBusy();
+      const persistPayload = streamFinal ? {
+        id: assistantMessageId,
+        role: 'assistant',
+        text: streamFinal.text,
+        content: streamFinal.text,
+        modelSlug: selectedSlug,
+        ...stickerFieldsForPersist(streamFinal),
+        ...(webSourcesForMessage.length ? { webSources: webSourcesForMessage, webSearchComplete: true } : {}),
+      } : {
+        id: assistantMessageId,
+        role: 'assistant',
+        text: assistantText,
+        content: assistantText,
+        modelSlug: selectedSlug,
+        ...(webSourcesForMessage.length ? { webSources: webSourcesForMessage, webSearchComplete: true } : {}),
+      };
       if (conversationId) {
-        await apiFetch(`/api/chat/history/${conversationId}`, {
+        void apiFetch(`/api/chat/history/${conversationId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             email: user.email,
-            messages: [...nextMessages, streamFinal ? {
-              id: assistantMessageId,
-              role: 'assistant',
-              text: streamFinal.text,
-              content: streamFinal.text,
-              modelSlug: selectedSlug,
-              ...stickerFieldsForPersist(streamFinal),
-              ...(webSourcesForMessage.length ? { webSources: webSourcesForMessage, webSearchComplete: true } : {}),
-            } : {
-              id: assistantMessageId,
-              role: 'assistant',
-              text: assistantText,
-              content: assistantText,
-              modelSlug: selectedSlug,
-              ...(webSourcesForMessage.length ? { webSources: webSourcesForMessage, webSearchComplete: true } : {}),
-            }],
+            messages: [...nextMessages, persistPayload],
           }),
+        }).then(() => syncHistoryAfterSend()).catch((error) => {
+          logger.apiError('Conversation save failed', { message: error?.message || 'unknown' });
         });
+      } else {
+        void syncHistoryAfterSend();
       }
-      await refreshHistory();
       if (voiceMode && !generatingFile) speakText(assistantText);
       if (shouldShowBackgroundReplyNotice({
         belongsToOpenChat: responseBelongsToOpenChat(),
@@ -2449,7 +2621,7 @@ export default function Chat() {
       if (fallbackProvider) logger.router(`${fallbackProvider} succeeded`);
       if (selectedSlug === 'smart') logger.router('Response completed');
       if (selectedSlug === 'ollama' || assistantText) {
-        refreshModelStatus();
+        void refreshModelStatus();
       }
       logger.success('Assistant response completed', {
         mode: generatingFile ? 'file' : 'chat',
@@ -2458,6 +2630,7 @@ export default function Chat() {
       });
     } catch (requestError) {
       if (requestError.name === 'AbortError') {
+        streamDiagnostics.markAborted();
         setMessages((current) => current.filter((message, index) => index !== assistantIndex || String(message.text || message.content || '').trim()));
       } else {
         if (generatingImage && activeConversationIdRef.current === startedConversationId) setPrompt((current) => current || rawText);
@@ -2557,9 +2730,7 @@ export default function Chat() {
         }
       }
     } finally {
-      if (activeRequest.current === controller) activeRequest.current = null;
-      setIsStreamingResponse(false);
-      setIsSending(false);
+      releaseComposerBusy();
     }
   };
 
@@ -2653,10 +2824,26 @@ export default function Chat() {
     newChat();
   };
 
-  const openConversation = (conversation) => {
-    const isTemp = Boolean(conversation?.isTemporary || conversation?.temporary);
+  const openConversation = useCallback(async (conversation) => {
+    if (!conversation?.id) return;
+    let resolved = conversation;
+    const needsFetch = !Array.isArray(resolved.messages)
+      || (!resolved.messages.length && Number(resolved.messageCount) > 0);
+    if (needsFetch) {
+      const loaded = await fetchChatConversation(apiFetch, resolved.id);
+      if (!loaded.ok) {
+        setChatError(loaded.message || 'Could not open this conversation.');
+        setHistoryLoadError(loaded.message || '');
+        return;
+      }
+      resolved = loaded.conversation;
+      setChatHistory((current) => current.map((item) => (
+        String(item.id) === String(resolved.id) ? { ...item, ...resolved } : item
+      )));
+    }
+    const isTemp = Boolean(resolved?.isTemporary || resolved?.temporary);
     setTemporaryChat(isTemp);
-    setTemporaryExpiresAt(isTemp ? (conversation.expiresAt || conversation.expires_at || null) : null);
+    setTemporaryExpiresAt(isTemp ? (resolved.expiresAt || resolved.expires_at || null) : null);
     if (!isTemp) {
       const projectId = chatMeta[conversation.id]?.projectId;
       let project = projectId ? projects.find((item) => item.id === projectId) : null;
@@ -2669,15 +2856,15 @@ export default function Chat() {
     } else {
       setActiveProject(null);
     }
-    setActiveConversationId(conversation.id);
-    activeConversationIdRef.current = conversation.id;
-    setMessages(normalizeConversationMessages(conversation.messages || []));
-    setSelectedSlug(validModelSlug(conversation.model));
+    setActiveConversationId(resolved.id);
+    activeConversationIdRef.current = resolved.id;
+    setMessages(normalizeConversationMessages(resolved.messages || []));
+    setSelectedSlug(validModelSlug(resolved.model));
     setPrompt('');
     setChatError('');
     setChatMenuId(null);
     setSidebarOpen(false);
-  };
+  }, [activeProject, chatMeta, projects, updateChatMeta]);
 
   const pinConversation = (conversation) => {
     const pinned = !chatMeta[conversation.id]?.pinned;
@@ -2712,11 +2899,25 @@ export default function Chat() {
       kind: 'delete-chat',
       payload: conversation,
       title: t('Delete chat?') || 'Delete chat?',
-      description: `This will permanently delete "${title}". This action cannot be undone.`,
+      description: `"${title}" will move to Trash. You can restore it from Trash or delete it permanently later.`,
       confirmLabel: t('Delete chat') || 'Delete chat',
       cancelLabel: t('Cancel') || 'Cancel',
       destructive: true,
     });
+  };
+
+  const archiveConversation = async (conversation) => {
+    if (!conversation?.id) return;
+    await setConversationLifecycle(apiFetch, conversation.id, 'archived');
+    setChatMenuId(null);
+    await refreshHistory();
+    if (activeConversationId === conversation.id) newChat();
+  };
+
+  const restoreConversation = async (conversation, targetStatus = 'active') => {
+    if (!conversation?.id) return;
+    await setConversationLifecycle(apiFetch, conversation.id, targetStatus);
+    await refreshHistory();
   };
 
   const performDeleteConversation = async (conversation) => {
@@ -3086,6 +3287,10 @@ export default function Chat() {
         pinConversation={pinConversation}
         renameConversation={renameConversation}
         deleteConversation={deleteConversation}
+        archiveConversation={archiveConversation}
+        restoreConversation={restoreConversation}
+        archivedHistory={archivedHistory}
+        trashedHistory={trashedHistory}
         themePreference={themePreference}
         textColor={textColor}
         chatTextColors={chatTextColors}
@@ -3201,15 +3406,85 @@ export default function Chat() {
             </button>
             {modelMenuOpen && <div className="model-options model-family-options" role="listbox" aria-label={t("Choose AI model")}>
               {dashboardModels.map((model) => {
-                const allowed = modelAllowed(model.slug);
                 const online = modelIsOnline(model.slug);
-                if (model.slug === 'smart') return <button type="button" role="option" aria-selected={selectedSlug === 'smart'} className={selectedSlug === 'smart' ? 'selected' : ''} key={model.slug} onClick={() => chooseModel(model)}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {t("Ready")}</small></span>{selectedSlug === 'smart' && <b>✓</b>}</button>;
-                if (model.slug === 'anonin') return <button type="button" role="option" aria-selected={isAnoninModelSlug(selectedSlug)} className={isAnoninModelSlug(selectedSlug) ? 'selected' : ''} key={model.slug} onClick={() => chooseModel(model)}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{t('Mystery AI · reveal after reply')}</small></span>{isAnoninModelSlug(selectedSlug) && <b>✓</b>}</button>;
+                const paid = isPaidPlanAccess(creditStatus);
+                if (model.slug === 'smart') {
+                  return (
+                    <button type="button" role="option" aria-selected={selectedSlug === 'smart'} className={selectedSlug === 'smart' ? 'selected' : ''} key={model.slug} onClick={() => chooseModel(model)}>
+                      <img src={model.image} alt="" />
+                      <span><strong>{model.name}</strong><small>{model.provider} · {t('Ready')}</small></span>
+                      {!paid && <ModelEntitlementBadge tier="free" />}
+                      {selectedSlug === 'smart' && <b>✓</b>}
+                    </button>
+                  );
+                }
+                if (model.slug === 'anonin') {
+                  return (
+                    <button type="button" role="option" aria-selected={isAnoninModelSlug(selectedSlug)} className={isAnoninModelSlug(selectedSlug) ? 'selected' : ''} key={model.slug} onClick={() => chooseModel(model)}>
+                      <img src={model.image} alt="" />
+                      <span><strong>{model.name}</strong><small>{t('Mystery AI · reveal after reply')}</small></span>
+                      {!paid && <ModelEntitlementBadge tier="free" />}
+                      {isAnoninModelSlug(selectedSlug) && <b>✓</b>}
+                    </button>
+                  );
+                }
+                const familyLocked = modelFamilyLocked(model.slug);
                 return <div className="model-family-group" role="group" aria-labelledby={`model-family-${model.slug}`} key={model.slug}>
-                  <div className="model-family-heading" id={`model-family-${model.slug}`}><img src={model.image} alt="" /><span><strong>{model.name}</strong><small>{model.provider} · {!allowed ? 'Subscription / Developer' : online ? t("Ready") : t("API needed")}</small></span>{!allowed && <button type="button" className="subscribe-btn" onClick={(event) => { event.stopPropagation(); setModelMenuOpen(false); openSubscribe(); }}><span>🔒</span> {t('Subscribe')}</button>}</div>
+                  <div
+                    className={`model-family-heading${familyLocked ? ' model-family-heading--locked' : ''}`}
+                    id={`model-family-${model.slug}`}
+                    role={familyLocked ? 'button' : undefined}
+                    tabIndex={familyLocked ? 0 : undefined}
+                    onClick={familyLocked ? () => openPremiumUpgrade(model) : undefined}
+                    onKeyDown={familyLocked ? (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openPremiumUpgrade(model); } } : undefined}
+                  >
+                    <img src={model.image} alt="" />
+                    <span>
+                      <strong>{model.name}</strong>
+                      <small>
+                        {model.provider}
+                        {' · '}
+                        {familyLocked ? t('Pro subscription required') : online ? t('Ready') : t('API needed')}
+                      </small>
+                    </span>
+                    {familyLocked && <ModelEntitlementBadge tier="pro" locked />}
+                    {familyLocked && (
+                      <button
+                        type="button"
+                        className="subscribe-btn"
+                        onClick={(event) => { event.stopPropagation(); openSubscribe(model.slug); }}
+                      >
+                        <span aria-hidden="true">🔒</span> {t('Subscribe')}
+                      </button>
+                    )}
+                  </div>
                   {(variantCatalog[model.slug] || []).map((version) => {
                     const selected = selectedSlug === model.slug && selectedVersion?.id === version.id;
-                    return <button type="button" role="option" aria-selected={selected} disabled={!allowed} key={version.id} className={`model-family-version${selected ? ' selected' : ''}`} onClick={() => chooseModel(model, version)}><img src={model.image} alt="" /><span><strong>{version.name}{version.label ? ` ${version.label}` : ''}<ModelSpeedBadge speed={version.speed} /></strong>{version.description && <small>{version.description}</small>}</span><b>{selected ? '✓' : '›'}</b></button>;
+                    const versionAllowed = modelVersionAllowed(model.slug, version.id);
+                    const locked = isPremiumLockedModel(creditStatus, model.slug, version.id);
+                    return (
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        disabled={!versionAllowed}
+                        key={version.id}
+                        className={`model-family-version${selected ? ' selected' : ''}${locked ? ' model-family-version--locked' : ''}`}
+                        onClick={() => chooseModel(model, version)}
+                      >
+                        <img src={model.image} alt="" />
+                        <span>
+                          <strong>
+                            {version.name}{version.label ? ` ${version.label}` : ''}
+                            <ModelSpeedBadge speed={version.speed} />
+                            {!paid && versionAllowed && <ModelEntitlementBadge tier="free" />}
+                            {(paid || locked) && <ModelEntitlementBadge tier="pro" locked={locked && !paid} />}
+                          </strong>
+                          {version.description && <small>{version.description}</small>}
+                        </span>
+                        <b>{selected ? '✓' : locked && !paid ? '🔒' : '›'}</b>
+                      </button>
+                    );
                   })}
                   {!variantCatalog[model.slug]?.length && (
                     <p className="model-versions-note">
@@ -3279,7 +3554,7 @@ export default function Chat() {
                       ? t('Plus Test Mode · all models')
                       : creditStatus.mode === 'developer' && creditStatus.hasSubscription
                         ? t('All models')
-                        : t('5 free models')}
+                        : freeModelsLabel(creditStatus, t)}
                 {creditStatus.canAccessModelDiagnostics && (
                   <>
                     {' · '}
@@ -3381,15 +3656,21 @@ export default function Chat() {
             const messageModel = message.modelSlug === 'anonin'
               ? anoninCatalog || selectedModel
               : dashboardModels.find((model) => model.slug === message.modelSlug) || selectedModel;
-            const text = message.content ?? message.text ?? '';
+            let text = message.content ?? message.text ?? '';
             const generatedFile = message.role === 'assistant' ? parseGeneratedFile(text) : null;
             const filePending = message.generatingFile && isSending && index === messages.length - 1;
             const imagePending = message.generatingImage && isSending && index === messages.length - 1;
             const messageImage = message.role === 'user' ? message.image || message.imageUrl : null;
+            const activelyStreaming = message.role === 'assistant'
+              && index === messages.length - 1
+              && isSending
+              && (message.status === 'streaming' || isStreamingResponse)
+              && Boolean(String(text).trim());
             const isPendingAssistant = message.role === 'assistant' && !text && !messageImage && !messageHasVideoReference(message) && !message.imageUrl && !(message.images?.length) && !message.deepResearchClarification && !(message.webSearchStatus || message.webSearching);
             if (isPendingAssistant && isSending && index === messages.length - 1) return null;
-            if (isPendingAssistant && !isSending) return null;
-            const activelyStreaming = isStreamingResponse && isSending && index === messages.length - 1 && message.role === 'assistant';
+            if (isPendingAssistant && !isSending) {
+              text = 'No response was received from the model. Tap Regenerate or send your message again.';
+            }
             const editing = message.role === 'user' && editingMessageIndex === index;
             const feedback = messageFeedback[index];
             const favoriteEntry = favorites.some((item) => item.text === text);
@@ -3463,7 +3744,30 @@ export default function Chat() {
             </div>
            </article>
             })}
-          {isSending && !isStreamingResponse && !messages.some((message) => message.webSearching || message.webSearchStatus) && <article className="chat-message assistant thinking-message"><span className="thinking-avatar" aria-hidden="true"><i /></span><div><small>{selectedModel.name}</small><p className="typing-indicator"><b>Thinking<span className="thinking-dots"><i /><i /><i /></span></b></p></div></article>}
+          {isSending && !messages.some((message) => message.webSearching || message.webSearchStatus) && (() => {
+            const last = messages[messages.length - 1];
+            const lastAssistantText = last?.role === 'assistant'
+              ? String(last.text || last.content || '').trim()
+              : '';
+            if (lastAssistantText) return null;
+            return (
+              <article className="chat-message assistant thinking-message">
+                <span className="thinking-avatar" aria-hidden="true"><i /></span>
+                <div>
+                  <small>{selectedModel.name}</small>
+                  <p className="typing-indicator"><b>Thinking<span className="thinking-dots"><i /><i /><i /></span></b></p>
+                </div>
+              </article>
+            );
+          })()}
+          {historyLoadError && !chatError && (
+            <div className="chat-api-error" role="alert">
+              <span>{historyLoadError}</span>
+              <div>
+                <button type="button" onClick={() => { void refreshHistory(); }}>Retry loading chats</button>
+              </div>
+            </div>
+          )}
           {chatError && <div className="chat-api-error" role="alert"><span>{chatError}</span><div>{/(microphone|speech|voice recognition)/i.test(chatError) ? <><button type="button" onClick={() => { setChatError(''); toggleVoiceInput(); }}>Try microphone again</button><button type="button" onClick={() => setChatError('')}>Dismiss</button></> : !sessionExpired && <button type="button" disabled={isSending} onClick={() => {
             const lastUserIndex = messages.findLastIndex((message) => message.role === 'user');
             if (lastUserIndex >= 0) {
@@ -4044,6 +4348,12 @@ export default function Chat() {
         />
       )}
       {arenaOpen && <div className="feature-modal-backdrop" onClick={() => setArenaOpen(false)}><section className="feature-modal" onClick={(event) => event.stopPropagation()}><span className="feature-modal-icon">⚔</span><small>AI ARENA</small><h2>Compare the best models</h2><p>Describe the exact task you want the models to compare.</p><textarea autoFocus value={arenaTask} onChange={(event) => setArenaTask(event.target.value)} placeholder="Example: Build a launch plan for my new fitness app" rows="3" /><div className="arena-models"><span>GPT</span><span>Claude</span><span>Gemini</span><span>Grok</span></div><button disabled={!arenaTask.trim()} onClick={launchArena}>Create comparison prompt</button><button className="modal-cancel" onClick={() => setArenaOpen(false)}>{t("Cancel")}</button></section></div>}
+      <PremiumUpgradeModal
+        open={premiumUpgradeOpen}
+        modelName={premiumUpgradeTarget.name}
+        onSubscribe={() => navigateToProCheckout(premiumUpgradeTarget.slug, premiumUpgradeTarget.variantId)}
+        onDismiss={() => setPremiumUpgradeOpen(false)}
+      />
       {subscribeModalOpen && <div className="feature-modal-backdrop" onClick={() => setSubscribeModalOpen(false)}><section className="feature-modal subscribe-modal" onClick={(event) => event.stopPropagation()}>
         <span className="feature-modal-icon">💎</span><small>{t('SUBSCRIPTION')}</small>
         {!subscribePlan ? <>

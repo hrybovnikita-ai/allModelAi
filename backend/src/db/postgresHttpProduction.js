@@ -256,10 +256,11 @@ async function deleteAccountTokenAsync(connection, tokenHash) {
 
 async function findUserByEmailInsensitiveAsync(connection, email) {
     const pool = resolvePostgresAsyncPool(connection);
+    const normalized = String(email || '').trim().toLowerCase();
     const result = await queryPgPool(
         pool,
-        'SELECT id, email FROM users WHERE lower(email) = lower($1)',
-        [email],
+        'SELECT id, email FROM users WHERE lower(trim(email)) = $1',
+        [normalized],
     );
     return result.rows[0] || null;
 }

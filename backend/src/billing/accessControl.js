@@ -1,4 +1,10 @@
 const { subscriptionPlans, normalizePlanKey } = require('./plans');
+const {
+    ENTITLEMENT_TIER,
+    FREE_SMART_ROUTER_SLUGS,
+    hasModelEntitlement,
+    resolveEntitlementTier,
+} = require('./modelEntitlements');
 const { getOpenRouterApiKey } = require('../openRouterConfig');
 
 function openRouterKey() {
@@ -46,13 +52,21 @@ function modelsForPlan(planKey) {
     return plan.models || subscriptionPlans.free.models;
 }
 
-function hasModelAccess(access, modelSlug) {
-    const slug = String(modelSlug || '').trim();
-    if (!slug || slug === 'smart' || slug === 'ai_python' || slug === 'anonin') return true;
+function hasModelAccess(access, modelSlug, variantId) {
     if (ownerPlusActive(access)) return true;
-    const allowed = access?.models || modelsForPlan(access?.plan);
-    if (allowed.includes('all')) return true;
-    return allowed.includes(slug);
+    return hasModelEntitlement(access, modelSlug, variantId);
+}
+
+/** Smart Router slug gate (free users: gemini + anonin only). */
+function smartRouterSlugAllowed(access, slug) {
+    if (ownerPlusActive(access)) return true;
+    const normalized = String(slug || '').trim();
+    if (!normalized || normalized === 'smart') return true;
+    const tier = resolveEntitlementTier(access);
+    if (access?.ownerPreview || tier === ENTITLEMENT_TIER.FREE) {
+        return FREE_SMART_ROUTER_SLUGS.includes(normalized);
+    }
+    return hasModelAccess(access, normalized);
 }
 
 function checkUsageLimit(access) {
@@ -175,6 +189,7 @@ module.exports = {
     applyOwnerAccess,
     checkUsageLimit,
     hasModelAccess,
+    smartRouterSlugAllowed,
     isOwner,
     isOwnerRole,
     modelsForPlan,

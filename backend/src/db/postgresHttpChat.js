@@ -118,12 +118,22 @@ async function updateConversationRowAsync(connection, id, email, patch) {
         values.push(patch.updatedAt);
         index += 1;
     }
+    if (patch.lifecycleStatus != null) {
+        fields.push(`lifecycle_status = $${index}`);
+        values.push(patch.lifecycleStatus);
+        index += 1;
+    }
+    if (patch.trashedAt !== undefined) {
+        fields.push(`trashed_at = $${index}`);
+        values.push(patch.trashedAt);
+        index += 1;
+    }
     // Intentionally never patch expires_at / is_temporary — TTL is fixed at creation.
     if (!fields.length) return 0;
     values.push(id, email);
     const result = await queryPgPool(
         pool,
-        `UPDATE conversations SET ${fields.join(', ')} WHERE id = $${index} AND email = $${index + 1}`,
+        `UPDATE conversations SET ${fields.join(', ')} WHERE id = $${index} AND lower(trim(email)) = lower(trim($${index + 1}))`,
         values,
     );
     return result.rowCount ?? 0;

@@ -96,6 +96,8 @@ function ConversationRow({
   onPin,
   onRename,
   onDelete,
+  onArchive,
+  onRestore,
   onExport,
   canExport,
   t,
@@ -126,6 +128,8 @@ function ConversationRow({
         <div className="sidebar-chat-menu" lang="en">
           <button type="button" onClick={onRename}>{t('Rename')}</button>
           <button type="button" onClick={onPin}>{pinned ? t('Unpin') : t('Pin')}</button>
+          {onArchive && <button type="button" onClick={onArchive}>{t('Archive')}</button>}
+          {onRestore && <button type="button" onClick={onRestore}>{t('Restore')}</button>}
           {canExport && <button type="button" onClick={onExport}>{t('Export')}</button>}
           <button type="button" className="is-danger" onClick={onDelete}>{t('Delete')}</button>
         </div>
@@ -181,6 +185,10 @@ export default function ChatSidebar({
   pinConversation,
   renameConversation,
   deleteConversation,
+  archiveConversation,
+  restoreConversation,
+  archivedHistory = [],
+  trashedHistory = [],
   themePreference,
   textColor,
   chatTextColors,
@@ -210,8 +218,11 @@ export default function ChatSidebar({
   };
 
   const conversationPreview = (conversation) => {
+    if (conversation?.preview) {
+      return String(conversation.preview).replace(/\s+/g, ' ').trim().slice(0, 80);
+    }
     const firstUserMessage = conversation.messages?.find((message) => message.role === 'user');
-    return String(firstUserMessage?.content ?? firstUserMessage?.text ?? 'Saved conversation')
+    return String(firstUserMessage?.content ?? firstUserMessage?.text ?? conversation.title ?? 'Saved conversation')
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 80);
@@ -224,7 +235,7 @@ export default function ChatSidebar({
 
   const modelLabel = (slug) => dashboardModels.find((model) => model.slug === slug)?.name || slug || '';
 
-  const renderConversation = (conversation) => {
+  const renderConversation = (conversation, { allowArchive = true, allowRestore = false } = {}) => {
     const title = conversationDisplayTitle(conversation, conversationPreview);
     const secondaryLabel = conversationSecondaryLabel(conversation);
     const ts = getConversationTimestamp(conversation);
@@ -247,6 +258,8 @@ export default function ChatSidebar({
         onPin={() => pinConversation(conversation)}
         onRename={() => renameConversation(conversation)}
         onDelete={() => deleteConversation(conversation)}
+        onArchive={allowArchive && archiveConversation ? () => archiveConversation(conversation) : undefined}
+        onRestore={allowRestore && restoreConversation ? () => restoreConversation(conversation) : undefined}
         onExport={exportConversation}
         canExport={canExport}
         t={t}
@@ -470,9 +483,23 @@ export default function ChatSidebar({
               {grouped.groups.map((group) => (
                 <div className="sidebar-chat-group" key={group.id}>
                   <p className="sidebar-chat-group-label">{t(group.label)}</p>
-                  {group.items.map(renderConversation)}
+                  {group.items.map((conversation) => renderConversation(conversation))}
                 </div>
               ))}
+
+              {archivedHistory.length > 0 && (
+                <div className="sidebar-chat-group">
+                  <p className="sidebar-chat-group-label">{t('Archive')}</p>
+                  {archivedHistory.map((conversation) => renderConversation(conversation, { allowArchive: false, allowRestore: true }))}
+                </div>
+              )}
+
+              {trashedHistory.length > 0 && (
+                <div className="sidebar-chat-group">
+                  <p className="sidebar-chat-group-label">{t('Trash')}</p>
+                  {trashedHistory.map((conversation) => renderConversation(conversation, { allowArchive: false, allowRestore: true }))}
+                </div>
+              )}
             </div>
           </section>
 

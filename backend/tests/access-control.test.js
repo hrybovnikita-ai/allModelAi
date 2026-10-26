@@ -33,18 +33,22 @@ test('owner bypasses application usage limits', () => {
 });
 
 test('free users remain limited and cannot access premium models', () => {
+    const { FREE_USER_MODEL_KEYS } = require('../src/billing/modelEntitlements');
     const freeUser = applyOwnerAccess({
         plan: 'free',
         limit: 100,
         used: 100,
         remaining: 0,
         enforced: true,
-        models: ['smart', 'gemini', 'gpt'],
+        models: [...FREE_USER_MODEL_KEYS],
+        freeModelKeys: [...FREE_USER_MODEL_KEYS],
         planDisplayName: 'Free',
     }, 'user');
     assert.equal(checkUsageLimit(freeUser).allowed, false);
     assert.equal(hasModelAccess(freeUser, 'claude'), false);
-    assert.equal(hasModelAccess(freeUser, 'gemini'), true);
+    assert.equal(hasModelAccess(freeUser, 'llama'), false);
+    assert.equal(hasModelAccess(freeUser, 'gemini', '3.5-flash-lite'), true);
+    assert.equal(hasModelAccess(freeUser, 'gemini', '3.1-pro'), false);
 });
 
 test('resolveOpenRouterModelId uses openrouter/free for Smart Router on free plan', () => {
@@ -59,9 +63,9 @@ test('resolveOpenRouterModelId uses openrouter/free for Smart Router on free pla
     assert.equal(model, 'openrouter/free');
 });
 
-test('resolveOpenRouterModelId keeps explicit gateway ids for free plan', () => {
+test('resolveOpenRouterModelId keeps explicit gateway ids for paid plan', () => {
     const model = resolveOpenRouterModelId({
-        access: { plan: 'free', isOwner: false },
+        access: { plan: 'common', isOwner: false, hasSubscription: true, active: true, models: ['all'] },
         requestedModel: 'qwen',
         routedModel: 'qwen',
         gatewayModel: 'qwen/qwen3-coder',

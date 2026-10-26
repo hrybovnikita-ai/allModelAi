@@ -200,12 +200,10 @@ function LoginForm({
         setError('Please enter a password.');
         return;
       }
-      const optionalName = String(raw.name || '').trim();
       payload = {
         email: String(raw.email).trim().toLowerCase(),
         password: raw.password,
         rememberMe,
-        ...(optionalName ? { name: optionalName } : {}),
       };
     }
 
@@ -364,17 +362,19 @@ function LoginForm({
         </h2>
 
         <form className="login-form" onSubmit={handleSubmit} noValidate>
-          <label>
-            <span>{signingUp ? 'Full name' : 'Name (optional)'}</span>
-            <input
-              name="name"
-              type="text"
-              placeholder={signingUp ? 'Your full name' : 'Your name'}
-              autoComplete="name"
-              required={signingUp}
-              aria-required={signingUp}
-            />
-          </label>
+          {signingUp && (
+            <label>
+              <span>Full name</span>
+              <input
+                name="name"
+                type="text"
+                placeholder="Your full name"
+                autoComplete="name"
+                required
+                aria-required="true"
+              />
+            </label>
+          )}
 
           <label>
             <span>{signingUp ? 'Email address' : 'Email'}</span>

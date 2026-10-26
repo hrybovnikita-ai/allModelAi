@@ -186,7 +186,9 @@ async function exchange(req, res) {
                     const other = db.prepare('SELECT subject FROM social_identities WHERE user_id = ? AND provider = ?').get(id, profile.provider);
                     if (other && other.subject !== profile.subject) throw fail(409, 'IDENTITY_CONFLICT', 'A different identity from this provider is already connected.');
                 } else if (!id) {
-                    const existing = db.prepare('SELECT id, name FROM users WHERE lower(email) = ?').get(canonicalEmail);
+                    const existing = db.prepare(
+                        'SELECT id, name FROM users WHERE lower(trim(email)) = ?',
+                    ).get(canonicalEmail);
                     if (existing) {
                         id = existing.id;
                         if (profile.name && (!existing.name || existing.name === profile.email.split('@')[0])) {

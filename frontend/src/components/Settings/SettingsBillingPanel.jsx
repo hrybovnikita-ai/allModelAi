@@ -50,7 +50,8 @@ export default function SettingsBillingPanel() {
           <div className="settings-password-actions">
             <Link className="settings-save" to="/credits">Manage credits</Link>
             <Link className="settings-security-link" to="/dashboard">Open dashboard</Link>
-            <Link className="settings-security-link" to="/checkout">Plans & checkout</Link>
+            <Link className="settings-security-link" to="/billing">Billing overview</Link>
+            <Link className="settings-security-link" to="/checkout/pro">Plans & checkout</Link>
           </div>
         </div>
       ) : null}

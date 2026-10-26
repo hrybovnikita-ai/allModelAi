@@ -76,16 +76,16 @@ test('model cards define phone, tablet, and desktop grid tiers', async () => {
   assert.match(models, /grid-template-columns:\s*1fr/);
 });
 
-test('header stacks hero and keeps provider orbit on mobile', async () => {
+test('header stacks hero and keeps aura visual on mobile', async () => {
   const header = await readFile(
     new URL('../src/components/Header/Header.css', import.meta.url),
     'utf8',
   );
-  const orbit = await readFile(
-    new URL('../src/components/Header/HeroProviderOrbit.css', import.meta.url),
+  const aura = await readFile(
+    new URL('../src/components/Header/HeroAuraVisual.css', import.meta.url),
     'utf8',
   );
   assert.match(header, /header-content--stack/);
-  assert.match(orbit, /max-width: 767px/);
-  assert.doesNotMatch(orbit, /display:\s*none/);
+  assert.match(aura, /max-width: 767px/);
+  assert.doesNotMatch(aura, /display:\s*none/);
 });

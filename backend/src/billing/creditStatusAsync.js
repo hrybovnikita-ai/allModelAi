@@ -6,6 +6,7 @@ const {
 } = require('./subscriptionLifecycle');
 const { queryPgPool, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
 const { applyOwnerAccess } = require('./accessControl');
+const { attachEntitlementMetadata } = require('./modelEntitlements');
 const { applyPlusTestCreditStatus, isAllowlistedDeveloper } = require('./plusTestMode');
 const { readUserRoleAsync } = require('./userRole');
 const { aiCreditsEnabled } = require('./aiCreditUsage');
@@ -165,12 +166,12 @@ async function buildCreditStatusPostgres(connection, email) {
         ...subscriptionView,
     });
     const role = await readUserRoleAsync(connection, normalizedEmail);
-    const withOwner = applyOwnerAccess(base, role, { savedMode });
+    const withOwner = attachEntitlementMetadata(applyOwnerAccess(base, role, { savedMode }));
     if (!aiCreditsEnabled()) {
-        return { ...withOwner, aiCredits: { enabled: false, balance: null } };
+        return attachEntitlementMetadata({ ...withOwner, aiCredits: { enabled: false, balance: null } });
     }
     const wallet = await readWalletSummaryAsync(connection, normalizedEmail);
-    return { ...withOwner, aiCredits: wallet };
+    return attachEntitlementMetadata({ ...withOwner, aiCredits: wallet });
 }
 
 async function getCreditStatusCoreAsync(connection, email) {

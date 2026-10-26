@@ -160,22 +160,27 @@ function TextBlock({ value, citationMap }) {
 export default function ChatMessageContent({ text, streaming, citationSources, conversationId = null }) {
   const citationMap = useMemo(() => buildCitationSourceMap(citationSources), [citationSources]);
   const parts = useMemo(() => splitMessageParts(String(text || '')), [text]);
+  const raw = String(text || '');
 
   return (
-    <div className="message-content">
-      {parts.map((part, index) => (
-        part.type === 'code'
-          ? (
-            <ChatCodeBlock
-              key={`code-${index}`}
-              language={part.language}
-              filename={part.filename}
-              code={part.value}
-              conversationId={conversationId}
-            />
-          )
-          : part.value.trim() && <TextBlock value={part.value} citationMap={citationMap} key={`text-${index}`} />
-      ))}
+    <div className={`message-content${streaming ? ' message-content--streaming' : ''}`}>
+      {streaming ? (
+        <p className="message-stream-plain">{raw}</p>
+      ) : (
+        parts.map((part, index) => (
+          part.type === 'code'
+            ? (
+              <ChatCodeBlock
+                key={`code-${index}`}
+                language={part.language}
+                filename={part.filename}
+                code={part.value}
+                conversationId={conversationId}
+              />
+            )
+            : part.value.trim() && <TextBlock value={part.value} citationMap={citationMap} key={`text-${index}`} />
+        ))
+      )}
       {streaming && <i className="stream-cursor" aria-hidden="true" />}
     </div>
   );

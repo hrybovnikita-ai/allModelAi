@@ -6,6 +6,7 @@ const now = () => new Date().toISOString();
 const { databaseFingerprint } = require('../runtimeDiagnostics');
 const { getDatabaseEngine } = require('../db/provider');
 const { isPostgresConnection } = require('../db/postgresHttpReads');
+const { shouldExposeAccountTokenInResponse } = require('../accountTokenExposure');
 const {
     pingPostgresAsync,
     countActiveSessionsAsync,
@@ -366,7 +367,13 @@ const createAccountToken = async (req, res, purpose) => {
         connection.database.prepare('INSERT INTO account_tokens (token_hash,email,purpose,expires_at,created_at) VALUES (?,?,?,?,?)').run(hashValue(secret), req.user.email, purpose, expiresAt, now());
     }
     await audit(req, `${purpose}.requested`, 'account', String(req.user.id));
-    return res.json({ message: `${purpose === 'verify_email' ? 'Verification' : 'Password reset'} request created`, ...(process.env.NODE_ENV === 'test' || process.env.EXPOSE_ACCOUNT_TOKENS === 'true' ? { token: secret } : {}) });
+    const { isTransactionalEmailConfigured } = require('../transactionalEmail');
+    return res.json({
+        message: `${purpose === 'verify_email' ? 'Verification' : 'Password reset'} request created`,
+        ...(shouldExposeAccountTokenInResponse({ emailDeliveryConfigured: isTransactionalEmailConfigured() })
+            ? { token: secret }
+            : {}),
+    });
 };
 
 const requestEmailVerification = (req, res) => createAccountToken(req, res, 'verify_email');
@@ -403,7 +410,9 @@ const requestPasswordReset = async (req, res) => {
     const connection = req.app.locals.db;
     const user = isPostgresConnection(connection)
         ? await findUserByEmailInsensitiveAsync(connection, email)
-        : connection.database.prepare('SELECT id,email FROM users WHERE lower(email)=lower(?)').get(email);
+        : connection.database.prepare(
+            'SELECT id, email FROM users WHERE lower(trim(email)) = ?',
+        ).get(email);
     if (!user) {
         return res.json({ message: genericMessage, emailDeliveryConfigured: emailConfigured });
     }
@@ -438,7 +447,9 @@ const requestPasswordReset = async (req, res) => {
     return res.json({
         message,
         emailDeliveryConfigured: emailConfigured,
-        ...(process.env.NODE_ENV === 'test' || process.env.EXPOSE_ACCOUNT_TOKENS === 'true' ? { token: secret } : {}),
+        ...(shouldExposeAccountTokenInResponse({ emailDeliveryConfigured: emailConfigured })
+            ? { token: secret }
+            : {}),
     });
 };
 

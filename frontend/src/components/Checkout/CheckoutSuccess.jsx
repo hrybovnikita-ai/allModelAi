@@ -21,6 +21,8 @@ export default function CheckoutSuccess() {
   const [planQuote, setPlanQuote] = useState(null);
 
   const planSlug = searchParams.get('plan') || 'pro';
+  const returnModel = searchParams.get('returnModel');
+  const returnVariant = searchParams.get('returnVariant');
   const intentId = searchParams.get('payment_intent') || searchParams.get('intent');
   const orderReference = searchParams.get('orderReference');
   const sessionId = searchParams.get('session_id');
@@ -166,8 +168,18 @@ export default function CheckoutSuccess() {
           {testMode && (
             <p className="checkout-test-mode-inline checkout-success-test-note" role="status">{TEST_MODE_BANNER}</p>
           )}
-          <button type="button" className="pay-button checkout-continue-btn" onClick={() => navigate('/dashboard', { replace: true })}>
-            Go to Dashboard
+          <button
+            type="button"
+            className="pay-button checkout-continue-btn"
+            onClick={() => {
+              if (returnModel) {
+                navigate(`/chat?model=${encodeURIComponent(returnModel)}${returnVariant ? `&variant=${encodeURIComponent(returnVariant)}` : ''}`, { replace: true });
+                return;
+              }
+              navigate('/dashboard', { replace: true });
+            }}
+          >
+            {returnModel ? 'Continue to chat' : 'Go to Dashboard'}
           </button>
         </>
       )}

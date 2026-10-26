@@ -1,10 +1,12 @@
+const { FREE_USER_MODEL_KEYS } = require('./modelEntitlements');
+
 const subscriptionPlans = {
     free: {
         name: 'User',
         amount: 0,
         interval: 'month',
         limit: 5000,
-        models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'mistral', 'groq', 'gpt-oss-groq', 'qwen', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'ollama'],
+        models: [...FREE_USER_MODEL_KEYS],
     },
     week: {
         name: 'Weekly',
@@ -99,6 +101,7 @@ const planStorageValue = (planKey) => planSlugForKey(normalizePlanKey(planKey));
 
 module.exports = {
     subscriptionPlans,
+    FREE_USER_MODEL_KEYS,
     normalizePlanKey,
     planSlugForKey,
     PLAN_UI_LABELS,

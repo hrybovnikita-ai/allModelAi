@@ -69,6 +69,8 @@ import AuthSessionNotice from "./components/AuthSessionNotice/AuthSessionNotice"
 import ModelComparison from "./components/ModelComparison/ModelComparison";
 import UsageAnalytics from "./components/UsageAnalytics/UsageAnalytics";
 import ModelExplorer from "./components/ModelExplorer/ModelExplorer";
+import PricingPage from "./pages/PricingPage";
+import BillingPage from "./pages/BillingPage";
 
 import EverydayAI from "./components/EverydayAI/EverydayAI";
 import EverydayCards from "./components/EverydayAI/EverydayCards";
@@ -165,7 +167,9 @@ function HomePage() {
         <HomeReveal delay={40}>
           <Workflow />
         </HomeReveal>
-        <Users />
+        <HomeReveal delay={50}>
+          <Users />
+        </HomeReveal>
         <HomeReveal delay={40}>
           <Stickers />
         </HomeReveal>
@@ -198,6 +202,7 @@ export default function App() {
       <Route path="/acceptable-use" element={<InfoPage type="aup" />} />
       <Route path="/contact" element={<InfoPage type="contact" />} />
       <Route path="/cookies" element={<InfoPage type="cookies" />} />
+      <Route path="/pricing" element={<PricingPage />} />
       <Route path="/explore" element={<ModelExplorer />} />
       <Route path="/provider-health" element={<ProviderHealthDashboard />} />
       <Route path="/python-ai" element={<PythonAILab />} />
@@ -211,6 +216,8 @@ export default function App() {
       <Route path="/register" element={<AuthPage mode="signup" />} />
       <Route path="/checkout/success" element={<CheckoutSuccess />} />
       <Route path="/checkout/cancel" element={<CheckoutCancel />} />
+      <Route path="/payment/success" element={<CheckoutSuccess />} />
+      <Route path="/payment/cancelled" element={<CheckoutCancel />} />
       <Route path="/checkout" element={<Checkout />} />
       <Route path="/checkout/starter" element={<Checkout />} />
       <Route path="/checkout/pro" element={<Checkout />} />
@@ -226,6 +233,7 @@ export default function App() {
       <Route path="/everyday-ai" element={<EverydayAI />} />
       <Route path="/everyday-ai/:tool" element={<EverydayAI />} />
       <Route path="/settings" element={<Settings />} />
+      <Route path="/billing" element={<BillingPage />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="/chat" element={<Chat />} />
       <Route path="/developer/model-diagnostics" element={<ModelDiagnostics />} />

@@ -9,12 +9,11 @@ export default function AuthPage({ mode }) {
   const navigate = useNavigate();
   const { status, user, authLoading } = useSession();
   const from = location.state?.from;
-  const returnTo =
-    mode === 'signup'
-      ? '/dashboard'
-      : typeof from === 'string' && from.startsWith('/') && !from.startsWith('//')
-        ? from
-        : '/dashboard';
+  const safeFrom =
+    typeof from === 'string' && from.startsWith('/') && !from.startsWith('//')
+      ? from
+      : null;
+  const returnTo = safeFrom || (mode === 'signup' ? '/dashboard' : '/dashboard');
 
   useEffect(() => {
     if (authLoading || status === AUTH_STATUS.CHECKING_REDIRECT) return;

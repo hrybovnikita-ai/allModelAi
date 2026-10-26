@@ -8,6 +8,7 @@ const VIDEO_JOBS_CONVERSATION_MIGRATION = path.join(__dirname, '..', '..', 'migr
 const PROVIDER_HEALTH_MIGRATION = path.join(__dirname, '..', '..', 'migrations', '009_provider_health.sql');
 const ANONIN_ROUTING_MIGRATION = path.join(__dirname, '..', '..', 'migrations', '011_anonin_routing.sql');
 const TEMPORARY_CHATS_MIGRATION = path.join(__dirname, '..', '..', 'migrations', '015_temporary_chats.sql');
+const CONVERSATION_LIFECYCLE_MIGRATION = path.join(__dirname, '..', '..', 'migrations', '017_conversation_lifecycle.sql');
 
 function isPostgresEngine(connection) {
     return (connection?.engine || 'sqlite') === 'postgres';
@@ -129,11 +130,23 @@ async function ensurePostgresTemporaryChatsAsync(connection) {
     return { applied: true, hasIsTemporary: true, hasExpiresAt: true };
 }
 
+async function ensurePostgresConversationLifecycleAsync(connection) {
+    if (!isPostgresEngine(connection)) return { applied: false, reason: 'not_postgres' };
+    const pool = resolvePostgresAsyncPool(connection);
+    if (!pool) return { applied: false, reason: 'pool_unavailable' };
+    if (!fs.existsSync(CONVERSATION_LIFECYCLE_MIGRATION)) {
+        return { applied: false, reason: 'migration_missing' };
+    }
+    await runMigrationFile(pool, CONVERSATION_LIFECYCLE_MIGRATION);
+    return { applied: true };
+}
+
 module.exports = {
     ensurePostgresAiImprovementAsync,
     ensurePostgresVideoJobsAsync,
     ensurePostgresProviderHealthAsync,
     ensurePostgresAnoninRoutingAsync,
     ensurePostgresTemporaryChatsAsync,
+    ensurePostgresConversationLifecycleAsync,
     splitSqlStatements,
 };

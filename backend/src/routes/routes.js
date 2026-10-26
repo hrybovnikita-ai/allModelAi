@@ -23,6 +23,7 @@ const {
     getModelStatus,
     getAdminStats,
     getChatHistory,
+    getChatConversation,
     createChatHistory,
     renameChat,
     deleteChat,
@@ -384,6 +385,7 @@ router.get('/subscription', requireAuth, getSubscriptionSummary);
 router.post('/subscription/cancel-test', requireAuth, cancelTestSubscriptionHandler);
 router.patch('/access-mode', requireAuth, setAccessMode);
 router.get('/chat/history', requireAuth, getChatHistory);
+router.get('/chat/history/:id', requireAuth, getChatConversation);
 router.post('/chat/history', requireAuth, createChatHistory);
 router.patch('/chat/history/:id', requireAuth, renameChat);
 router.delete('/chat/history/:id', requireAuth, deleteChat);

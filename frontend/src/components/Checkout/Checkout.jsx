@@ -151,15 +151,18 @@ export default function Checkout() {
     if (isDeveloper) return undefined;
     if (isAuthInitializing(sessionStatus)) return undefined;
     if (sessionStatus === 'authenticated') return undefined;
-    const returnPath = location.pathname || '/checkout/pro';
+    const returnPath = `${location.pathname || '/checkout/pro'}${location.search || ''}`;
     navigate('/login', { replace: true, state: { from: returnPath } });
     return undefined;
   }, [sessionStatus, isDeveloper, navigate, location.pathname]);
 
+  const returnModel = searchParams.get('returnModel');
   const checkoutReturnUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
-    return `${window.location.origin}/checkout/success?plan=${encodeURIComponent(planSlug)}`;
-  }, [planSlug]);
+    const params = new URLSearchParams({ plan: planSlug });
+    if (returnModel) params.set('returnModel', returnModel);
+    return `${window.location.origin}/checkout/success?${params.toString()}`;
+  }, [planSlug, returnModel]);
 
   const activateDeveloperPlan = async () => {
     setCheckoutBusy(true);
@@ -302,8 +305,9 @@ export default function Checkout() {
       plan: planSlug,
       session_id: '{CHECKOUT_SESSION_ID}',
     });
+    if (returnModel) params.set('returnModel', returnModel);
     return `${window.location.origin}/checkout/success?${params.toString()}`;
-  }, [planSlug]);
+  }, [planSlug, returnModel]);
 
   const canceled = location.pathname.endsWith('/cancel') || new URLSearchParams(location.search).get('canceled') === '1';
   const sessionReady = sessionStatus === 'authenticated';

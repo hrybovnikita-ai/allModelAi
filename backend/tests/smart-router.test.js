@@ -92,5 +92,7 @@ test('Smart Router preview stays within allowed user models', async () => {
     const preview = await agent.post('/api/router/preview').send({ prompt: 'hello world' });
     assert.equal(preview.status, 200);
     const credits = await agent.get('/api/credits');
-    assert.ok(credits.body.models.includes(preview.body.model));
+    assert.equal(preview.body.model, 'gemini');
+    assert.ok(credits.body.models.includes('smart'));
+    assert.ok(credits.body.models.some((key) => String(key).startsWith('gemini:')));
 });

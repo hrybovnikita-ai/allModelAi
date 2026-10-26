@@ -25,6 +25,7 @@ async function bootstrapPostgresSchema() {
         ensurePostgresProviderHealthAsync,
         ensurePostgresAnoninRoutingAsync,
         ensurePostgresTemporaryChatsAsync,
+        ensurePostgresConversationLifecycleAsync,
     } = require('./src/db/postgresSchemaBootstrap');
     try {
         const result = await ensurePostgresAiImprovementAsync(database);
@@ -57,6 +58,12 @@ async function bootstrapPostgresSchema() {
     } catch (error) {
         console.error('[PG_BOOTSTRAP] temporary chats failed:', error.code || error.name, error.message);
         console.error('[PG_BOOTSTRAP] Run: npm run db:migrate (015_temporary_chats.sql)');
+    }
+    try {
+        const lifecycle = await ensurePostgresConversationLifecycleAsync(database);
+        console.log('[PG_BOOTSTRAP] conversation_lifecycle columns', lifecycle.applied ? 'ready' : lifecycle.reason || 'skipped');
+    } catch (error) {
+        console.error('[PG_BOOTSTRAP] conversation lifecycle failed:', error.code || error.name, error.message);
     }
 }
 

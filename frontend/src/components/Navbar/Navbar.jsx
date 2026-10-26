@@ -46,6 +46,15 @@ export default function Navbar() {
     setMenuOpen(false);
   }, [location.pathname]);
 
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   const closeMenu = () => setMenuOpen(false);
 
   return (
@@ -58,7 +67,10 @@ export default function Navbar() {
           onClick={closeMenu}
         />
       ) : null}
-      <nav className={`navbar${menuOpen ? ' navbar--menu-open' : ''}`} aria-label="Main navigation">
+      <nav
+        className={`navbar${menuOpen ? ' navbar--menu-open' : ''}${scrolled ? ' navbar--scrolled' : ''}`}
+        aria-label="Main navigation"
+      >
         <a href="#home" className="nav-brand" onClick={closeMenu}>
           <AllModelAILogo size={36} textClassName="nav-brand-wordmark" />
         </a>

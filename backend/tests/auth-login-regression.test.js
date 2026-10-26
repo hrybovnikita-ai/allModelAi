@@ -96,6 +96,17 @@ test('Account without password hash returns PASSWORD_SETUP_REQUIRED', async () =
     assert.match(login.body.message, /forgot password/i);
 });
 
+test('register rejects mismatched confirmPassword', async () => {
+    const res = await request(app).post('/api/auth/register').send({
+        name: 'Confirm Test',
+        email: `mismatch-${Date.now()}@example.com`,
+        password: 'MatchPass1!',
+        confirmPassword: 'OtherPass1!',
+    });
+    assert.equal(res.status, 400);
+    assert.match(res.body.message, /do not match/i);
+});
+
 test('login email normalization accepts mixed case and surrounding spaces', async () => {
     const email = `normalize-${Date.now()}@example.com`;
     const password = 'NormalizePass1!';

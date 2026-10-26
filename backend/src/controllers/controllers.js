@@ -58,16 +58,21 @@ async function respondPasswordSetupRequired(req, res, user, { reason = 'PASSWORD
     authLog('Login rejected', { reason, userId: user?.id || null });
     const connection = req.app.locals.db;
     let hasSocialIdentity = false;
+    let providers = [];
     try {
         if (user?.id && connection) {
             if (isPostgresConnection(connection)) {
                 hasSocialIdentity = await userHasSocialIdentityAsync(connection, user.id);
+                if (hasSocialIdentity) {
+                    const { listSocialProvidersForUserAsync } = require('../db/postgresHttpSocial');
+                    providers = await listSocialProvidersForUserAsync(connection, user.id);
+                }
             } else {
-                hasSocialIdentity = Boolean(
-                    connection.database
-                        .prepare('SELECT 1 AS ok FROM social_identities WHERE user_id = ? LIMIT 1')
-                        .get(user.id),
-                );
+                const rows = connection.database
+                    .prepare('SELECT provider FROM social_identities WHERE user_id = ?')
+                    .all(user.id);
+                providers = rows.map((row) => row.provider);
+                hasSocialIdentity = providers.length > 0;
             }
         }
     } catch (error) {
@@ -81,6 +86,9 @@ async function respondPasswordSetupRequired(req, res, user, { reason = 'PASSWORD
     const body = {
         code: 'PASSWORD_SETUP_REQUIRED',
         message,
+        passwordEnabled: false,
+        canSetPasswordViaReset: true,
+        ...(providers.length ? { providers } : {}),
     };
     if (authLoginDiagnosticsEnabled()) {
         body.debugReason = reason;
@@ -97,11 +105,16 @@ const publicUser = ({ passwordHash, password_hash, ...user }) => user;
 function syncUserCache(user) {
     if (!user?.id || !user?.email) return;
     const index = users.findIndex((item) => item.id === user.id);
+    const previous = index >= 0 ? users[index] : null;
     const entry = {
         id: user.id,
         name: user.name,
         email: user.email,
-        passwordHash: user.passwordHash ?? user.password_hash ?? null,
+        passwordHash:
+            user.passwordHash
+            ?? user.password_hash
+            ?? previous?.passwordHash
+            ?? null,
     };
     if (index >= 0) {
         users[index] = entry;
@@ -556,7 +569,13 @@ const registerUser = async (req, res) => {
             needsEmailVerification: true,
             user: publicUser({ ...newUser, emailVerified: false }),
             verificationEmail,
-            ...(process.env.EXPOSE_ACCOUNT_TOKENS === 'true' ? { token: secret } : {}),
+            ...(() => {
+                const { shouldExposeAccountTokenInResponse } = require('../accountTokenExposure');
+                const { isTransactionalEmailConfigured } = require('../transactionalEmail');
+                return shouldExposeAccountTokenInResponse({
+                    emailDeliveryConfigured: isTransactionalEmailConfigured(),
+                }) ? { token: secret } : {};
+            })(),
         });
     }
 
@@ -703,6 +722,7 @@ const loginUser = async (req, res) => {
     }
 
     try {
+        syncUserCache(user);
         const synced = explicitLoginName
             ? await syncLoginUserName(req.app.locals.db, user, explicitLoginName, users)
             : user;
@@ -764,7 +784,9 @@ const quickSocialLogin = async (req, res) => {
             user = await findOrCreateQuickSocialUserAsync(connection, { safeName, normalizedEmail, avatar });
         } else {
             const db = connection.database;
-            user = db.prepare('SELECT id, name, email, avatar_url AS avatar FROM users WHERE lower(email) = ?').get(normalizedEmail);
+            user = db.prepare(
+                'SELECT id, name, email, avatar_url AS avatar FROM users WHERE lower(trim(email)) = ?',
+            ).get(normalizedEmail);
             if (!user) {
                 const id = Number(db.prepare('INSERT INTO users (name, email, avatar_url, email_verified) VALUES (?, ?, ?, 1)').run(safeName, normalizedEmail, avatar || null).lastInsertRowid);
                 user = { id, name: safeName, email: normalizedEmail, avatar: avatar || null };
@@ -1075,6 +1097,8 @@ const {
     isPostgresConnection,
     listAnalyticsConversationRows,
     listChatHistoryRows,
+    listChatHistorySummaryRows,
+    normalizeLifecycleScope,
     listWorkspaceItemRows,
 } = require('../db/postgresHttpReads');
 const {
@@ -1169,6 +1193,7 @@ const {
     checkUsageLimit,
     hasModelAccess,
     resolveOpenRouterModelId,
+    smartRouterSlugAllowed,
 } = require('../billing/accessControl');
 
 const { getPublicModelStatus } = require('../services/modelStatusService');
@@ -1283,12 +1308,52 @@ const bumpUsageCount = (database, normalizedEmail) => {
     `).run(normalizedEmail);
 };
 
+function mapChatHistorySummaryRow(row) {
+    let messageCount = Number(row.messageCount ?? row.messagecount ?? 0);
+    if (!messageCount && row.messages) {
+        try {
+            messageCount = JSON.parse(row.messages || '[]').length;
+        } catch {
+            messageCount = 0;
+        }
+    }
+    const title = String(row.title || '').trim();
+    return {
+        id: row.id,
+        email: row.email,
+        model: row.model,
+        title,
+        createdAt: row.createdAt ?? row.createdat,
+        updatedAt: row.updatedAt ?? row.updatedat,
+        isTemporary: Boolean(row.isTemporary ?? row.is_temporary),
+        expiresAt: row.expiresAt ?? row.expires_at ?? null,
+        lifecycleStatus: row.lifecycleStatus ?? row.lifecycle_status ?? 'active',
+        messageCount,
+        preview: title || 'Saved conversation',
+        messages: [],
+    };
+}
+
 const getChatHistory = async (req, res) => {
     const normalizedEmail = String(req.user.email || '').trim().toLowerCase();
     const temporaryOnly = String(req.query.temporary || '').toLowerCase() === 'true'
         || String(req.query.scope || '').toLowerCase() === 'temporary';
+    const includeMessages = String(req.query.includeMessages || '').toLowerCase() === 'true';
+    const lifecycleScope = temporaryOnly ? 'active' : normalizeLifecycleScope(req.query.scope);
     try {
         const connection = req.app.locals.db;
+        if (!includeMessages) {
+            const rows = isPostgresConnection(connection)
+                ? await listChatHistorySummaryRows(connection, normalizedEmail, { temporaryOnly, lifecycleScope })
+                : sqliteListChatHistoryRows(connection.database, normalizedEmail, { temporaryOnly })
+                    .filter((row) => {
+                        if (temporaryOnly) return true;
+                        const status = String(row.lifecycleStatus ?? row.lifecycle_status ?? 'active').toLowerCase();
+                        return status === lifecycleScope;
+                    });
+            const conversations = rows.map((row) => mapChatHistorySummaryRow(row)).filter(Boolean);
+            return res.status(200).json(conversations);
+        }
         const rows = isPostgresConnection(connection)
             ? await listChatHistoryRows(connection, normalizedEmail, { temporaryOnly })
             : sqliteListChatHistoryRows(connection.database, normalizedEmail, { temporaryOnly });
@@ -1311,11 +1376,58 @@ const getChatHistory = async (req, res) => {
         return res.status(200).json(conversations);
     } catch (error) {
         if (process.env.NODE_ENV !== 'test') {
-            console.log('[CHAT] HISTORY_FAILED', { reason: 'HISTORY_READ_ERROR' });
+            console.log('[CHAT] HISTORY_FAILED', { reason: 'HISTORY_READ_ERROR', message: error.message });
         }
         return res.status(500).json({
             code: 'CHAT_HISTORY_UNAVAILABLE',
             message: 'Could not load chat history. Please try again.',
+        });
+    }
+};
+
+const getChatConversation = async (req, res) => {
+    const email = String(req.user.email || '').trim().toLowerCase();
+    const connection = req.app.locals.db;
+    const { assertTemporaryAccessible } = require('../services/temporaryChat');
+    try {
+        const row = isPostgresConnection(connection)
+            ? await getConversationRowAsync(connection, req.params.id, email)
+            : connection.database.prepare(`
+                SELECT id, email, model, title, messages, created_at AS createdAt, updated_at AS updatedAt,
+                       COALESCE(is_temporary, 0) AS isTemporary, expires_at AS expiresAt
+                FROM conversations WHERE id = ? AND lower(trim(email)) = ?
+            `).get(req.params.id, email);
+        if (!row) {
+            return res.status(404).json({ message: 'Conversation not found' });
+        }
+        const access = assertTemporaryAccessible(row);
+        if (!access.ok) {
+            return res.status(access.status).json({ code: access.code, message: access.message });
+        }
+        let messages = [];
+        try {
+            messages = JSON.parse(row.messages || '[]');
+        } catch {
+            messages = [];
+        }
+        const payload = await getConversationPayload(connection, email, {
+            ...row,
+            messages,
+        });
+        if (!payload) {
+            return res.status(410).json({
+                code: 'TEMPORARY_CHAT_EXPIRED',
+                message: 'This temporary chat has expired and is no longer available.',
+            });
+        }
+        return res.status(200).json(payload);
+    } catch (error) {
+        if (process.env.NODE_ENV !== 'test') {
+            console.log('[CHAT] CONVERSATION_READ_FAILED', { id: req.params.id, message: error.message });
+        }
+        return res.status(500).json({
+            code: 'CHAT_HISTORY_UNAVAILABLE',
+            message: 'Could not load this conversation. Please try again.',
         });
     }
 };
@@ -1377,7 +1489,12 @@ const renameChat = async (req, res) => {
     const email = String(req.user.email || '').trim().toLowerCase();
     const title = req.body.title === undefined ? undefined : String(req.body.title).trim().slice(0, 60);
     const messages = Array.isArray(req.body.messages) ? normalizeMessages(req.body.messages) : undefined;
-    if (!title && !messages) return res.status(400).json({ message: 'Title or messages are required' });
+    const lifecycleStatus = req.body.lifecycleStatus === undefined
+        ? undefined
+        : normalizeLifecycleScope(req.body.lifecycleStatus);
+    if (!title && !messages && !lifecycleStatus) {
+        return res.status(400).json({ message: 'Title, messages, or lifecycleStatus are required' });
+    }
 
     const { assertTemporaryAccessible, nowIso } = require('../services/temporaryChat');
     const connection = req.app.locals.db;
@@ -1391,6 +1508,10 @@ const renameChat = async (req, res) => {
         }
         const patch = { updatedAt: now };
         if (title) patch.title = title;
+        if (lifecycleStatus) {
+            patch.lifecycleStatus = lifecycleStatus;
+            patch.trashedAt = lifecycleStatus === 'trashed' ? now : null;
+        }
         if (messages) {
             let existingMessages = [];
             try {
@@ -1432,19 +1553,46 @@ const renameChat = async (req, res) => {
     } catch {
         nextMessages = messages;
     }
-    connection.database.prepare(`
-        UPDATE conversations
-        SET title = COALESCE(?, title),
-            messages = COALESCE(?, messages),
-            updated_at = ?
-        WHERE id = ? AND lower(trim(email)) = ?
-    `).run(
-        title || null,
-        nextMessages ? JSON.stringify(nextMessages) : null,
-        now,
-        req.params.id,
-        email,
-    );
+    let lifecycleSql = '';
+    const lifecycleParams = [];
+    if (lifecycleStatus) {
+        lifecycleSql = ', lifecycle_status = ?, trashed_at = ?';
+        lifecycleParams.push(lifecycleStatus, lifecycleStatus === 'trashed' ? now : null);
+    }
+    try {
+        connection.database.prepare(`
+            UPDATE conversations
+            SET title = COALESCE(?, title),
+                messages = COALESCE(?, messages),
+                updated_at = ?${lifecycleSql}
+            WHERE id = ? AND lower(trim(email)) = ?
+        `).run(
+            title || null,
+            nextMessages ? JSON.stringify(nextMessages) : null,
+            now,
+            ...lifecycleParams,
+            req.params.id,
+            email,
+        );
+    } catch (error) {
+        if (lifecycleStatus && /no such column/i.test(String(error.message || ''))) {
+            connection.database.prepare(`
+                UPDATE conversations
+                SET title = COALESCE(?, title),
+                    messages = COALESCE(?, messages),
+                    updated_at = ?
+                WHERE id = ? AND lower(trim(email)) = ?
+            `).run(
+                title || null,
+                nextMessages ? JSON.stringify(nextMessages) : null,
+                now,
+                req.params.id,
+                email,
+            );
+        } else {
+            throw error;
+        }
+    }
     const updated = connection.database.prepare(`
         SELECT id, email, model, title, messages, created_at AS createdAt, updated_at AS updatedAt,
                COALESCE(is_temporary, 0) AS isTemporary, expires_at AS expiresAt
@@ -1459,17 +1607,23 @@ const renameChat = async (req, res) => {
 
 const deleteChat = async (req, res) => {
     const email = String(req.user.email || '').trim().toLowerCase();
+    const permanent = String(req.query.permanent || req.body?.permanent || '').toLowerCase() === 'true';
     const connection = req.app.locals.db;
+    const now = new Date().toISOString();
+    if (!permanent) {
+        req.body = { ...(req.body || {}), lifecycleStatus: 'trashed' };
+        return renameChat(req, res);
+    }
     if (isPostgresConnection(connection)) {
         const changes = await deleteConversationRowAsync(connection, req.params.id, email);
         if (!changes) return res.status(404).json({ message: 'Conversation not found' });
-        return res.status(200).json({ message: 'Conversation deleted successfully' });
+        return res.status(200).json({ message: 'Conversation permanently deleted' });
     }
     const result = connection.database.prepare(
         'DELETE FROM conversations WHERE id = ? AND lower(trim(email)) = ?',
     ).run(req.params.id, email);
     if (!result.changes) return res.status(404).json({ message: 'Conversation not found' });
-    return res.status(200).json({ message: 'Conversation deleted successfully' });
+    return res.status(200).json({ message: 'Conversation permanently deleted' });
 };
 
 const { stripeGuardUserMessage } = require('../payments/stripeUserMessages');
@@ -2055,7 +2209,7 @@ const previewRouter = async (req, res) => {
     const hasImage = Boolean(req.body.image || req.body.hasImage);
     if (!prompt && !hasImage) return res.status(400).json({ message: 'Prompt or image is required' });
     const access = await getCreditStatusAsync(req.app.locals.db, req.user.email);
-    const modelAllowedPreview = (slug) => access.models.includes('all') || access.models.includes(slug) || slug === 'ai_python' || slug === 'anonin';
+    const modelAllowedPreview = (slug) => smartRouterSlugAllowed(access, slug);
     const route = chooseSmartRoute(prompt, req.body.routerMode, hasImage, modelAllowedPreview);
     if (!modelAllowedPreview(route.model)) {
         route.model = 'gemini';
@@ -2227,7 +2381,7 @@ async function createChatResponseImpl(req, res) {
         }
     }
     const creditStatus = await getCreditStatusAsync(req.app.locals.db, userEmail);
-    const modelAllowedEarly = (slug) => hasModelAccess(creditStatus, slug);
+    const modelAllowedEarly = (slug) => smartRouterSlugAllowed(creditStatus, slug);
     let routerPerformance = {};
     const anoninStrategyNormalized = String(anoninStrategy || 'random').trim().toLowerCase();
     if (requestedModel === 'smart' || (requestedModel === 'anonin' && anoninStrategyNormalized === 'smart')) {
@@ -2276,11 +2430,11 @@ async function createChatResponseImpl(req, res) {
             required: aiCreditGate.required,
         });
     }
-    const modelAllowed = (slug) => hasModelAccess(creditStatus, slug);
-    if (requestedModel !== 'smart' && requestedModel !== 'anonin' && !modelAllowed(requestedModel)) {
+    const modelAllowed = (slug) => smartRouterSlugAllowed(creditStatus, slug);
+    if (requestedModel !== 'smart' && !hasModelAccess(creditStatus, requestedModel, resolvedVariantId)) {
         return res.status(403).json({
-            message: `${requestedModel} is not included in your current plan. Upgrade for premium models.`,
-            code: 'MODEL_NOT_ALLOWED',
+            message: `${requestedModel} requires AllModelAI Pro. Subscribe to unlock premium models.`,
+            code: 'SUBSCRIPTION_REQUIRED',
         });
     }
     if (requestedModel === 'smart' && !modelAllowed(routeDecision.model)) {
@@ -5024,6 +5178,7 @@ module.exports = {
     getProviderHealth,
     getAdminStats,
     getChatHistory,
+    getChatConversation,
     createChatHistory,
     renameChat,
     deleteChat,

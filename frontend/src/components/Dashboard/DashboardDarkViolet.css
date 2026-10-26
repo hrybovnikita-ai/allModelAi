@@ -1,13 +1,13 @@
 /* Dashboard — same black / violet language as Chat (Dark Violet) */
 .dashboard-page.dashboard-violet {
-  --dv-bg: #07070b;
-  --dv-panel: #101016;
-  --dv-card: #15151d;
-  --dv-line: rgba(124, 92, 255, 0.18);
-  --dv-muted: #8b8b9a;
-  --dv-accent: #7c5cff;
-  --dv-accent-2: #9d7bff;
-  --dv-glow: rgba(124, 92, 255, 0.22);
+  --dv-bg: #07070d;
+  --dv-panel: #0d0c18;
+  --dv-card: rgba(13, 12, 24, 0.88);
+  --dv-line: rgba(139, 92, 246, 0.22);
+  --dv-muted: #a8b4c7;
+  --dv-accent: #8b5cf6;
+  --dv-accent-2: #b794f6;
+  --dv-glow: rgba(109, 66, 204, 0.28);
   color: #eef2ff;
   background-color: var(--dv-bg);
   background-image:

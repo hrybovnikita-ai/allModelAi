@@ -7,10 +7,14 @@
   --surface: #101016;
   --surface-elevated: #15151d;
   --surface-hover: #1b1b26;
-  --surface-glass: rgba(16, 16, 22, 0.82);
+  --surface-glass: rgba(16, 16, 22, 0.72);
+  --surface-glass-strong: rgba(12, 14, 24, 0.88);
   --border: rgba(148, 163, 184, 0.12);
   --border-strong: rgba(124, 92, 255, 0.22);
   --border-active: rgba(157, 123, 255, 0.55);
+  --glass-border: rgba(180, 154, 255, 0.22);
+  --glass-highlight: rgba(246, 245, 255, 0.06);
+  --glass-blur: 20px;
 
   /* Text */
   --text-primary: #eef2ff;
@@ -25,7 +29,10 @@
   --cyan-soft: rgba(0, 155, 165, 0.15);
   --lavender: #b49aff;
   --violet: #9c76f5;
-  --hero-gradient: linear-gradient(115deg, #b49aff 5%, #9c76f5 40%, #69a9ff 72%, #60e0d0 95%);
+  --hero-gradient: linear-gradient(115deg, #c4b5fd 0%, #b49aff 18%, #9c76f5 42%, #7c6cf0 68%, #6366f1 88%, #60e0d0 100%);
+  --gradient-violet-purple: linear-gradient(135deg, #6548c9 0%, #9c76f5 52%, #b49aff 100%);
+  --gradient-purple-indigo: linear-gradient(125deg, #7c5cff 0%, #6366f1 55%, #4f46e5 100%);
+  --gradient-ambient: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(124, 92, 255, 0.2), transparent 55%);
 
   /* Premium reference accents (borders / hover / glow — not large fills) */
   --ama-deep-black: #080910;
@@ -55,12 +62,16 @@
   --radius-md: 14px;
   --radius-lg: 18px;
   --radius-xl: 22px;
+  --radius-2xl: 26px;
+  --radius-pill: 9999px;
 
   /* Shadows */
   --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.28);
   --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.38);
   --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.48);
   --shadow-glow: 0 0 0 1px var(--purple-glow-soft), 0 12px 28px var(--purple-glow-soft);
+  --shadow-glow-strong: 0 0 0 1px rgba(180, 154, 255, 0.35), 0 20px 48px rgba(101, 72, 201, 0.28);
+  --shadow-inner-glow: inset 0 1px 0 var(--glass-highlight), inset 0 -1px 0 rgba(0, 0, 0, 0.25);
 
   /* Blur */
   --blur-strength: 16px;
@@ -80,9 +91,12 @@
 
   /* Motion */
   --ease-out: cubic-bezier(0.22, 0.8, 0.22, 1);
+  --ease-smooth: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-spring: cubic-bezier(0.34, 1.2, 0.64, 1);
   --duration-fast: 120ms;
   --duration-normal: 200ms;
-  --duration-slow: 250ms;
+  --duration-slow: 280ms;
+  --duration-reveal: 550ms;
 
   /* Typography */
   --font-display: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

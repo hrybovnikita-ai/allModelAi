@@ -32,7 +32,7 @@ function parseRememberMe(value) {
     return true;
 }
 
-function validateRegistrationInput({ name, email, password }) {
+function validateRegistrationInput({ name, email, password, confirmPassword }) {
     if (typeof name !== 'string' || !name.trim()) {
         return { ok: false, status: 400, message: 'Please enter your name.' };
     }
@@ -58,6 +58,14 @@ function validateRegistrationInput({ name, email, password }) {
     }
     if (password.length > MAX_PASSWORD_LENGTH) {
         return { ok: false, status: 400, message: 'Password is too long.' };
+    }
+    if (confirmPassword !== undefined && confirmPassword !== null) {
+        if (typeof confirmPassword !== 'string' || !confirmPassword) {
+            return { ok: false, status: 400, message: 'Please confirm your password.' };
+        }
+        if (password !== confirmPassword) {
+            return { ok: false, status: 400, message: 'Passwords do not match.' };
+        }
     }
     return { ok: true, name: trimmedName, email: normalizedEmail, password };
 }

@@ -1,0 +1,50 @@
+.pricing-page-shell {
+  padding-top: 72px;
+}
+
+.billing-page {
+  min-height: calc(100vh - 120px);
+  padding: 48px 20px 64px;
+}
+
+.billing-page-inner {
+  width: min(720px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 24px;
+}
+
+.billing-page-header h1 {
+  margin: 0 0 8px;
+  color: #f8fafc;
+}
+
+.billing-page-lede {
+  margin: 0;
+  color: #94a3b8;
+  max-width: 52ch;
+}
+
+.billing-page-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.billing-page-cta {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.billing-page-secondary {
+  color: #c4b5fd;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.billing-page-secondary:hover {
+  text-decoration: underline;
+}

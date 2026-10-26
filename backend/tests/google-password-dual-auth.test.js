@@ -65,8 +65,9 @@ test('Google-only account login returns PASSWORD_SETUP_REQUIRED with provider gu
     assert.equal(blocked.status, 401);
     assert.equal(blocked.body.code, 'PASSWORD_SETUP_REQUIRED');
     assert.match(blocked.body.message, /google/i);
-    assert.equal(blocked.body.passwordEnabled, undefined);
-    assert.equal(blocked.body.providers, undefined);
+    assert.equal(blocked.body.passwordEnabled, false);
+    assert.ok(Array.isArray(blocked.body.providers));
+    assert.ok(blocked.body.providers.includes('google.com'));
 });
 
 test('invalid password stays 401 without revealing account details', async () => {

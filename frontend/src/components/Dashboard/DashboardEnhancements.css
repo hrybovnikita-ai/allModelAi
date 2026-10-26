@@ -45,7 +45,7 @@
 	padding-left: 0;
 }
 
-.dashboard-hero h1 {
+.dashboard-page:not(.dashboard-page--premium) .dashboard-hero h1 {
 	font-size: clamp(3rem, 6vw, 6.5rem);
 }
 
@@ -97,6 +97,10 @@
 	min-height: 276px;
 	display: flex;
 	flex-direction: column;
+}
+
+.dashboard-violet .dashboard-grid article {
+	min-height: 0;
 }
 
 .dashboard-grid article > p {
@@ -180,6 +184,11 @@
 	.dashboard-grid article {
 		min-height: 300px;
 		padding: clamp(20px, 1.6vw, 28px);
+	}
+
+	.dashboard-violet .dashboard-grid article {
+		min-height: 0;
+		padding: 14px 16px 16px;
 	}
 }
 

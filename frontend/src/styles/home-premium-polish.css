@@ -112,33 +112,20 @@
   box-shadow: 0 10px 28px rgba(101, 72, 201, 0.18);
 }
 
-/* —— Smart Router orbit —— */
-.home-surface .hero-orbit-glow {
-  background: radial-gradient(circle, rgba(156, 118, 245, 0.28), transparent 70%);
-  filter: blur(10px);
+/* —— Hero aura visual (replaces provider orbit) —— */
+.home-surface .hero-aura-panel {
+  border-color: rgba(180, 154, 255, 0.28);
 }
 
-.home-surface .hero-orbit-ring--guide {
-  border-color: rgba(156, 118, 245, 0.18);
-  box-shadow: 0 0 40px rgba(101, 72, 201, 0.08);
+.home-surface .hero-aura-orb--1 {
+  background: radial-gradient(circle, rgba(180, 154, 255, 0.5), rgba(124, 58, 237, 0.06));
 }
 
-.home-surface .hero-orbit-core {
-  border-color: rgba(180, 154, 255, 0.5);
-  background: radial-gradient(circle at 35% 28%, rgba(180, 154, 255, 0.38), rgba(14, 18, 36, 0.96) 62%);
-  box-shadow:
-    0 0 70px rgba(156, 118, 245, 0.32),
-    0 0 0 1px rgba(246, 245, 255, 0.06) inset;
-}
-
-.home-surface .hero-orbit-badge {
-  border-color: rgba(156, 118, 245, 0.32);
-  background: rgba(14, 18, 36, 0.88);
-}
-
-.home-surface .hero-orbit-badge-btn:not(.hero-orbit-badge-btn--static):hover .hero-orbit-badge {
-  border-color: rgba(180, 154, 255, 0.6);
-  box-shadow: 0 0 24px rgba(156, 118, 245, 0.35), var(--shadow-sm);
+.home-surface .hero-aura-title {
+  background: linear-gradient(120deg, #ffffff 0%, #e9d5ff 40%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 /* —— Model picker —— */

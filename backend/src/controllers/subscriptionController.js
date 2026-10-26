@@ -11,6 +11,7 @@ const {
 } = require('../billing/subscriptionLifecycle');
 const { getCreditStatusCoreAsync } = require('../billing/creditStatusAsync');
 const { applyOwnerAccess } = require('../billing/accessControl');
+const { attachEntitlementMetadata } = require('../billing/modelEntitlements');
 const { applyPlusTestCreditStatus, isAllowlistedDeveloper } = require('../billing/plusTestMode');
 const { readUserRoleSync } = require('../billing/userRole');
 const { aiCreditsEnabled } = require('../billing/aiCreditUsage');
@@ -68,16 +69,16 @@ const getCreditStatusCore = (database, email) => {
     const role = readUserRoleSync(database, normalizedEmail);
     const withOwner = applyOwnerAccess(base, role, { savedMode });
     if (!aiCreditsEnabled()) {
-        return { ...withOwner, aiCredits: { enabled: false, balance: null } };
+        return attachEntitlementMetadata({ ...withOwner, aiCredits: { enabled: false, balance: null } });
     }
-    return {
+    return attachEntitlementMetadata({
         ...withOwner,
         aiCredits: {
             enabled: true,
             balance: readBalanceSync(database, normalizedEmail),
             currencyLabel: 'credits',
         },
-    };
+    });
 };
 
 const getSubscriptionSummary = async (req, res) => {

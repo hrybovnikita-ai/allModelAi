@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 import { normalizeCreditStatus } from '../../lib/creditStatus';
+import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
 import { useSession } from '../Session/SessionProvider';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { isMoreMenuActive, NAV_PRIMARY_LINKS, NAV_SETTINGS_LINK } from './navConfig';
@@ -119,6 +120,11 @@ export default function FloatingGlassNav() {
           </nav>
 
           <div className="fg-nav-right">
+            {creditStatus ? (
+              <span className="fg-nav-plan-pill" title="Current plan">
+                {creditStatus.isOwner ? 'Owner' : formatSubscriptionPlanLabel(creditStatus)}
+              </span>
+            ) : null}
             <NavThemeToggle />
             <NavProfileMenu
               user={user}
