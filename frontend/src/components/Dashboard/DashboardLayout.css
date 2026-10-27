@@ -3,20 +3,15 @@
   --dash-body: clamp(0.9375rem, 0.88rem + 0.15vw, 1rem);
   --dash-card-title: clamp(1rem, 0.92rem + 0.35vw, 1.25rem);
   --dash-section-title: clamp(1.5rem, 1.2rem + 1.1vw, 2rem);
-  /* Override legacy 5vw padding from Dashboard.css — single gutter system */
-  padding:
-    0
-    max(var(--app-shell-gutter, 24px), env(safe-area-inset-right, 0px))
-    clamp(64px, 8vw, 96px)
-    max(var(--app-shell-gutter, 24px), env(safe-area-inset-left, 0px));
+  padding: 0;
   overflow-x: clip;
 }
 
 .dashboard-shell {
   box-sizing: border-box;
-  width: var(--app-content-width, min(100% - 48px, 1600px));
-  max-width: 100%;
-  margin-inline: auto;
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: 0;
   padding-inline: 0;
 }
 

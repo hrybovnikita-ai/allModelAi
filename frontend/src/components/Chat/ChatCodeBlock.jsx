@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Highlight } from 'prism-react-renderer';
 import { Prism, codeTheme, languageAliases } from '../../lib/codeHighlight';
 import { copyToClipboard } from '../../lib/clipboard';
+import { apiFetch } from '../../lib/api';
 import { defaultFilenameForLanguage } from '../../lib/parseCodeFence';
 import './ChatCodeBlock.css';
 
@@ -12,6 +13,30 @@ export default function ChatCodeBlock({ language, code, filename = null, convers
   const [copied, setCopied] = useState(false);
   const [wrapped, setWrapped] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [assist, setAssist] = useState(null);
+  const [assistError, setAssistError] = useState('');
+  const [assistBusy, setAssistBusy] = useState(false);
+  const [showFixed, setShowFixed] = useState(false);
+
+  const runAssist = async (mode) => {
+    setAssistBusy(true);
+    setAssistError('');
+    try {
+      const response = await apiFetch('/api/code/assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, code, language: prismLanguage }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || 'Code assistant could not run.');
+      setAssist(data);
+      setShowFixed(false);
+    } catch (error) {
+      setAssistError(error.message || 'Code assistant could not run.');
+    } finally {
+      setAssistBusy(false);
+    }
+  };
 
   const prismLanguage = languageAliases[language?.toLowerCase()] || language?.toLowerCase() || 'text';
   const displayName = filename || defaultFilenameForLanguage(prismLanguage);
@@ -77,6 +102,9 @@ export default function ChatCodeBlock({ language, code, filename = null, convers
           <button type="button" className="code-action-btn" onClick={openInWorkspace}>
             Open workspace
           </button>
+          <button type="button" className="code-action-btn" disabled={assistBusy} onClick={() => runAssist('analyze')}>Check</button>
+          <button type="button" className="code-action-btn" disabled={assistBusy} onClick={() => runAssist('fix')}>Fix code</button>
+          <button type="button" className="code-action-btn" disabled={assistBusy} onClick={() => runAssist('explain')}>Explain</button>
           <button
             type="button"
             className="code-action-btn"
@@ -98,6 +126,21 @@ export default function ChatCodeBlock({ language, code, filename = null, convers
           </button>
         </div>
       </header>
+      {assistError ? <p className="code-assist-note" role="alert">{assistError}</p> : null}
+      {assist ? (
+        <div className="code-assist-panel" role="status">
+          <p>Static check only. This code was not executed.</p>
+          {assist.confirmed?.length ? <ul>{assist.confirmed.map((item) => <li key={item.message}>Confirmed: {item.message}</li>)}</ul> : <p>No confirmed problems from the static checker.</p>}
+          {assist.possible?.length ? <ul>{assist.possible.map((item) => <li key={item.message}>Possible: {item.message}</li>)}</ul> : null}
+          {assist.suggestion?.corrected ? (
+            <div>
+              <button type="button" className="code-action-btn" onClick={() => setShowFixed((value) => !value)}>Compare changes</button>
+              {showFixed ? <pre className="code-assist-fix">{assist.suggestion.corrected}</pre> : null}
+              <p>{assist.suggestion.explanation}</p>
+            </div>
+          ) : assist.suggestion?.explanation ? <p>{assist.suggestion.explanation}</p> : null}
+        </div>
+      ) : null}
       <div id={`${regionId}-body`} className="chat-code-block-body" hidden={collapsed}>
         <Highlight prism={Prism} theme={codeTheme} code={code} language={prismLanguage}>
           {({ className, style, tokens, getLineProps, getTokenProps }) => (

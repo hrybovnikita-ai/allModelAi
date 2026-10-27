@@ -16,6 +16,40 @@ Keep the project compact enough to finish every block. Never leave TODOs or pret
 Use in-memory state in the preview. If persistence is useful, guard localStorage access with try/catch because the preview is sandboxed.
 Do not use external images or APIs. Do not include secrets, authentication, or payment simulations presented as real services.`;
 
+const MAX_REDESIGN_CONTEXT = 12000;
+
+function prepareWebsiteRedesign(req, res, next) {
+    const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
+    const files = req.body?.files;
+    if (!prompt || prompt.length > 2000) {
+        return res.status(400).json({ message: 'Describe the change in 1–2000 characters.' });
+    }
+    if (!files || typeof files !== 'object' || Array.isArray(files)) {
+        return res.status(400).json({ message: 'Current project files are required.' });
+    }
+    const safeEntries = Object.entries(files)
+        .filter(([name, value]) => (
+            typeof name === 'string'
+            && /^[a-zA-Z0-9._-]{1,80}$/.test(name)
+            && typeof value === 'string'
+            && value.length <= 80000
+        ))
+        .slice(0, 24);
+    if (!safeEntries.length) {
+        return res.status(400).json({ message: 'Project files were empty or used unsafe names.' });
+    }
+    let context = safeEntries.map(([name, value]) => `FILE ${name}\n${value}`).join('\n\n');
+    if (context.length > MAX_REDESIGN_CONTEXT) context = context.slice(0, MAX_REDESIGN_CONTEXT);
+    req.body = {
+        model: 'smart',
+        temporary: true,
+        maxTokens: 8192,
+        systemInstructions: `${APP_INSTRUCTIONS}\nUpdate the existing website to satisfy the latest request. Return the full updated file set as fenced blocks. Preserve pages and behavior that the request does not change.`,
+        messages: [{ role: 'user', text: `Existing project:\n${context}\n\nChange request: ${prompt}` }],
+    };
+    next();
+}
+
 function prepareAppGeneration(req, res, next) {
     const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
     if (!prompt || prompt.length > 4000) {
@@ -29,4 +63,4 @@ function prepareAppGeneration(req, res, next) {
     next();
 }
 
-module.exports = { prepareAppGeneration };
+module.exports = { prepareAppGeneration, prepareWebsiteRedesign };

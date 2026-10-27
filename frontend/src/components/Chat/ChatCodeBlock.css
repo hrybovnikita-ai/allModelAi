@@ -107,6 +107,19 @@
   tab-size: 4;
 }
 
+.code-assist-panel, .code-assist-note {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  color: #ddd6fe;
+}
+.code-assist-fix {
+  overflow: auto;
+  max-height: 220px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+}
 .chat-code-block.is-collapsed .chat-code-block-body {
   display: none;
 }

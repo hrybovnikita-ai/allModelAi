@@ -20,6 +20,18 @@ export default function ChatSettings() {
   const [inputColor,setInputColor] = useState(initial.inputColor || '#262626');
   const [pendingLang,setPendingLang] = useState(null);
   const [responsePrefs, setResponsePrefs] = useState(() => readResponsePrefs());
+  const [codeAssist, setCodeAssist] = useState(() => {
+    try {
+      return { enabled: true, autoCheck: false, inlineSuggestions: false, explainFixes: true, level: 'beginner', language: 'auto', ...JSON.parse(localStorage.getItem('allmodelai_code_assistant') || '{}') };
+    } catch {
+      return { enabled: true, autoCheck: false, inlineSuggestions: false, explainFixes: true, level: 'beginner', language: 'auto' };
+    }
+  });
+  const updateCodeAssist = (patch) => {
+    const next = { ...codeAssist, ...patch };
+    setCodeAssist(next);
+    localStorage.setItem('allmodelai_code_assistant', JSON.stringify(next));
+  };
   const { language, setLanguage, t } = useLanguage();
 
   const setResponseLanguage = (value) => {
@@ -54,6 +66,19 @@ export default function ChatSettings() {
       <article><small>04 · AI replies</small><h2>AI response language</h2><p>Choose the language models use in chat. Auto-detect follows your latest message — separate from the website interface language above.</p><div className="page-color-grid language-grid">
         {RESPONSE_LANGUAGE_OPTIONS.map((option) => <button type="button" aria-pressed={(responsePrefs.responseLanguage || DEFAULT_RESPONSE_PREFS.responseLanguage) === option.value} className={(responsePrefs.responseLanguage || 'auto') === option.value ? 'active' : ''} onClick={() => setResponseLanguage(option.value)} key={option.value}><i className="language-icon" aria-hidden="true">{option.value === 'auto' ? 'A' : option.label.slice(0, 2).toUpperCase()}</i><span>{option.label}</span><b aria-hidden="true">{(responsePrefs.responseLanguage || 'auto') === option.value ? '✓' : ''}</b></button>)}
       </div></article>
+      <article><small>05 · Code assistant</small><h2>Code assistant</h2><p>Static checks stay separate from automatic edits. Your original code is not replaced unless you apply a suggestion yourself.</p>
+        <label><input type="checkbox" checked={codeAssist.enabled} onChange={(event) => updateCodeAssist({ enabled: event.target.checked })} /> Enable code assistant</label>
+        <label><input type="checkbox" checked={codeAssist.autoCheck} onChange={(event) => updateCodeAssist({ autoCheck: event.target.checked })} /> Check code automatically when sent</label>
+        <label><input type="checkbox" checked={codeAssist.inlineSuggestions} onChange={(event) => updateCodeAssist({ inlineSuggestions: event.target.checked })} /> Show inline suggestions while editing</label>
+        <label><input type="checkbox" checked={codeAssist.explainFixes} onChange={(event) => updateCodeAssist({ explainFixes: event.target.checked })} /> Explain every correction</label>
+        <label>Explanation mode
+          <select value={codeAssist.level} onChange={(event) => updateCodeAssist({ level: event.target.value })}>
+            <option value="beginner">Beginner</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="advanced">Advanced</option>
+          </select>
+        </label>
+      </article>
       <article><small>{t('inputField')}</small><h2>{t('inputTitle')}</h2><p>{t('inputDescription')}</p>{colorChoices([['Black','#090909'],['Graphite','#262626'],...colors],inputColor,setInputColor)}</article>
       <article><small>01 · {t('appearance')}</small><h2>{t('themeTitle')}</h2><p>{t('themeDescription')}</p><div className="page-theme-grid">
         {[['light','☀','bright'],['dark','●','deepBlack'],['auto','◐','matchDevice']].map(([value,icon,description]) => <button type="button" aria-pressed={theme === value} className={theme === value ? 'active' : ''} onClick={() => setTheme(value)} key={value}><i aria-hidden="true">{icon}</i><span><strong>{t(value)}</strong><small>{t(description)}</small></span><b aria-hidden="true">{theme === value ? '✓' : ''}</b></button>)}

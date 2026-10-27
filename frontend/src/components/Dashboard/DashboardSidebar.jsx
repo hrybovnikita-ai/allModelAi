@@ -17,6 +17,9 @@ export default function DashboardSidebar() {
     }
   });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState(() => (
+    Object.fromEntries(DASHBOARD_NAV_GROUPS.map((group) => [group.id, true]))
+  ));
 
   useEffect(() => {
     setMobileOpen(false);
@@ -85,11 +88,21 @@ export default function DashboardSidebar() {
           {DASHBOARD_NAV_GROUPS.map((group) => (
             <div key={group.id} className="dashboard-sidebar-group">
               {!collapsed ? (
-                <p className="dashboard-sidebar-group-label">{group.label}</p>
+                <button
+                  type="button"
+                  className="dashboard-sidebar-group-label"
+                  aria-expanded={openGroups[group.id] !== false}
+                  onClick={() => setOpenGroups((current) => ({
+                    ...current,
+                    [group.id]: current[group.id] === false,
+                  }))}
+                >
+                  {group.label}
+                </button>
               ) : (
                 <div className="dashboard-sidebar-group-rule" aria-hidden="true" />
               )}
-              {group.items.map((item) => {
+              {(collapsed || openGroups[group.id] !== false) && group.items.map((item) => {
                 const active =
                   location.pathname === item.to
                   || (item.to !== '/dashboard' && location.pathname.startsWith(item.to));

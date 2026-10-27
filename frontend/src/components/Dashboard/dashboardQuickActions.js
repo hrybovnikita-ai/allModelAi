@@ -8,3 +8,10 @@ export const DASHBOARD_QUICK_ACTIONS = [
   { to: '/knowledge', label: 'Knowledge Base', iconKey: 'knowledge', description: 'Documents for grounded chat' },
   { to: '/settings', label: 'Settings', iconKey: 'settings', description: 'Account & security' },
 ];
+
+export const DASHBOARD_MORE_TOOLS = [
+  { to: '/website-builder', label: 'Website Builder', iconKey: 'studio', description: 'Generate and export sites' },
+  { to: '/voice-studio', label: 'Voice Studio', iconKey: 'spark', description: 'Text to speech voices' },
+  { to: '/credits', label: 'Credits', iconKey: 'spark', description: 'Balance and top-ups' },
+  { to: '/usage-analytics', label: 'Usage analytics', iconKey: 'models', description: 'Deeper usage details' },
+];

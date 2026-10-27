@@ -14,10 +14,9 @@ import './DashboardLayout.css';
 import './DashboardResponsive.css';
 import './DashboardPremium.css';
 import DashboardSidebar from './DashboardSidebar';
-import { DASHBOARD_QUICK_ACTIONS } from './dashboardQuickActions';
+import { DASHBOARD_MORE_TOOLS, DASHBOARD_QUICK_ACTIONS } from './dashboardQuickActions';
 import AccountDeleteModal from '../AccountDeleteModal';
 import DashboardResources from './DashboardResources';
-import AllModelAILogo from '../AllModelAILogo/AllModelAILogo';
 import DashboardIcon, { QUICK_ACTION_ICON } from './DashboardIcons';
 import EverydayCards from '../EverydayAI/EverydayCards';
 import ManageSubscriptionModal from './ManageSubscriptionModal';
@@ -32,6 +31,7 @@ import {
 import ProSubscribeButton from '../Subscribe/ProSubscribeButton';
 import DashboardUsageChart from './DashboardUsageChart';
 import './DashboardModelLibrary.css';
+import './DashboardSaas.css';
 
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
 
@@ -71,6 +71,7 @@ export default function Dashboard() {
   const [modelStatus, setModelStatus] = useState({});
   const [modelHealth, setModelHealth] = useState({});
   const [analyticsLoad, setAnalyticsLoad] = useState('idle');
+  const [showMoreTools, setShowMoreTools] = useState(false);
 
   const loadSubscription = useCallback(async () => {
     if (!user?.email) {
@@ -133,32 +134,27 @@ export default function Dashboard() {
     if (!user?.email || !backendReady) return;
     void loadSubscription();
   }, [user?.email, backendReady, location.state?.subscriptionActivated, loadSubscription]);
-  useEffect(() => {
+  const loadAnalytics = useCallback(async () => {
     if (!user?.email || !backendReady) return;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
     setAnalyticsLoad('loading');
-    Promise.all([
-      apiFetch(`/api/analytics?email=${encodeURIComponent(user.email)}`, {
-        skipAuthRedirect: true,
-        signal: controller.signal,
-      }).then((r) => (r.ok ? r.json() : null)),
-      apiFetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`, {
-        skipAuthRedirect: true,
-        signal: controller.signal,
-      }).then((r) => (r.ok ? r.json() : [])),
-    ]).then(([stats, projects]) => {
+    try {
+      const [statsResponse, projectsResponse] = await Promise.all([
+        apiFetch(`/api/analytics?email=${encodeURIComponent(user.email)}`, { skipAuthRedirect: true }),
+        apiFetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`, { skipAuthRedirect: true }),
+      ]);
+      const stats = statsResponse.ok ? await statsResponse.json() : null;
+      const projects = projectsResponse.ok ? await projectsResponse.json() : [];
       setAnalytics(stats);
       setRecentProjects(Array.isArray(projects) ? projects.slice(0, 3) : []);
-      setAnalyticsLoad(stats ? 'ready' : 'empty');
-    }).catch(() => {
+      setAnalyticsLoad(stats ? 'ready' : 'error');
+    } catch {
       setAnalyticsLoad('error');
-    }).finally(() => clearTimeout(timeout));
-    return () => {
-      clearTimeout(timeout);
-      controller.abort();
-    };
+    }
   }, [user?.email, backendReady]);
+
+  useEffect(() => {
+    void loadAnalytics();
+  }, [loadAnalytics]);
 
   useEffect(() => {
     if (!backendReady) return;
@@ -229,32 +225,24 @@ export default function Dashboard() {
       {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user?.email}</div>}
       {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}
       {deleteError && !deleteModalOpen && <p role="alert">{deleteError}</p>}
-      <section className="dashboard-hero dashboard-card-reveal" style={{ '--dash-delay': '40ms' }}>
+      <section className="dashboard-hero dashboard-hero--compact dashboard-card-reveal" style={{ '--dash-delay': '40ms' }}>
         <div className="dashboard-hero-main">
-          <div className="dashboard-hero-brand-lockup">
-            <AllModelAILogo size={44} className="dashboard-hero-logo" textClassName="dashboard-hero-logo-text" />
-          </div>
           <p className="dashboard-eyebrow">Signed in as {user.email}</p>
           <h1>
             Welcome back, <span className="dashboard-hero-name">{firstName}</span>
           </h1>
           <p className="dashboard-hero-lede">
-            Your models, billing, and workspace are ready. Pick a quick action below or open Smart chat for the best model on each task.
+            Open a chat or browse models. Billing and usage stay in the cards below.
           </p>
           <div className="dashboard-hero-cta">
-            <Link to="/chat?model=smart" className="dashboard-action-primary">Open Smart chat</Link>
-            <Link to="/explore" className="dashboard-action-secondary">Browse models</Link>
+            <Link to="/chat?model=smart" className="dashboard-action-primary">Open Smart Chat</Link>
+            <Link to="/explore" className="dashboard-action-secondary">Explore Models</Link>
           </div>
         </div>
       </section>
       <section className="dashboard-quick-actions" aria-label="Quick actions">
-        {DASHBOARD_QUICK_ACTIONS.map((action, index) => (
-          <Link
-            key={action.to}
-            to={action.to}
-            className="dashboard-quick-action dashboard-card-reveal"
-            style={{ '--dash-delay': `${60 + index * 35}ms` }}
-          >
+        {DASHBOARD_QUICK_ACTIONS.map((action) => (
+          <Link key={action.to} to={action.to} className="dashboard-quick-action">
             <span className="dashboard-quick-action-icon" aria-hidden="true">
               <DashboardIcon name={QUICK_ACTION_ICON[action.iconKey] || 'spark'} size={22} />
             </span>
@@ -263,6 +251,22 @@ export default function Dashboard() {
           </Link>
         ))}
       </section>
+      <button type="button" className="dashboard-more-tools-toggle" aria-expanded={showMoreTools} onClick={() => setShowMoreTools((open) => !open)}>
+        {showMoreTools ? 'Hide extra tools' : 'Explore all tools'}
+      </button>
+      {showMoreTools ? (
+        <section className="dashboard-quick-actions" aria-label="More tools">
+          {DASHBOARD_MORE_TOOLS.map((action) => (
+            <Link key={action.to} to={action.to} className="dashboard-quick-action">
+              <span className="dashboard-quick-action-icon" aria-hidden="true">
+                <DashboardIcon name={QUICK_ACTION_ICON[action.iconKey] || 'spark'} size={22} />
+              </span>
+              <strong>{action.label}</strong>
+              <small>{action.description}</small>
+            </Link>
+          ))}
+        </section>
+      ) : null}
       {user?.email && (
         <section
           className="dashboard-usage dashboard-subscription-card dashboard-card-reveal"
@@ -330,7 +334,7 @@ export default function Dashboard() {
                   </ProSubscribeButton>
                 ) : null}
                 <button type="button" className="dashboard-sub-manage" onClick={() => setManageSubOpen(true)}>Manage subscription</button>
-                <Link to="/dashboard/orders">Order history</Link>
+                <Link to="/dashboard/orders">Billing history</Link>
                 {!isFreePlan ? (
                   <ProSubscribeButton className="pro-subscribe-btn--compact" variant="violet">
                     Upgrade plan
@@ -361,7 +365,10 @@ export default function Dashboard() {
           </div>
         ) : null}
         {analyticsLoad === 'error' ? (
-          <p className="dashboard-analytics-empty" role="status">Usage stats are temporarily unavailable. Your chats and billing are unaffected.</p>
+          <p className="dashboard-analytics-empty" role="status">
+            Usage stats are temporarily unavailable. Your chats and billing are unaffected.{' '}
+            <button type="button" className="dashboard-sub-retry" onClick={() => { void loadAnalytics(); }}>Retry</button>
+          </p>
         ) : null}
         <div className="overview-grid">
           <article>

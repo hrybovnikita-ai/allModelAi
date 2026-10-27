@@ -1,0 +1,133 @@
+/* Dashboard SaaS layout pass — spacing on an 8px scale, no new brand. */
+
+.dashboard-page--premium .dashboard-shell {
+  max-width: 1600px;
+  width: 100%;
+  margin-inline: 0;
+  padding-bottom: 32px;
+}
+
+.dashboard-hero--compact {
+  display: block;
+  grid-template-columns: 1fr;
+  min-height: 0;
+  padding: 24px 24px 20px;
+  margin-bottom: 16px;
+  background:
+    radial-gradient(ellipse 70% 80% at 100% 0%, rgba(139, 92, 246, 0.16), transparent 55%),
+    rgba(18, 16, 32, 0.9);
+}
+
+.dashboard-hero--compact h1 {
+  margin: 8px 0;
+  font-size: clamp(1.6rem, 2.4vw, 2rem);
+}
+
+.dashboard-hero--compact .dashboard-hero-lede {
+  max-width: 42rem;
+  margin: 0 0 16px;
+}
+
+.dashboard-page--premium .dashboard-quick-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.dashboard-page--premium .dashboard-quick-action {
+  min-height: 132px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(167, 139, 250, 0.16);
+  background: rgba(24, 19, 39, 0.92);
+}
+
+.dashboard-page--premium .dashboard-quick-action:hover {
+  border-color: rgba(139, 92, 246, 0.55);
+  transform: translateY(-2px);
+}
+
+.dashboard-page--premium .dashboard-quick-action:focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 2px;
+}
+
+.dashboard-more-tools-toggle {
+  margin: 0 0 16px;
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  background: transparent;
+  color: #f7f5ff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dashboard-page--premium .dashboard-subscription-card,
+.dashboard-page--premium .personal-overview {
+  border-radius: 16px;
+  margin-bottom: 24px;
+}
+
+.dashboard-page--premium .dashboard-subscription-head {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+}
+
+.dashboard-page--premium .overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.dashboard-sidebar-link {
+  min-height: 40px;
+}
+
+@media (max-width: 1439px) {
+  .dashboard-page--premium .dashboard-quick-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1023px) {
+  .dashboard-page--premium .dashboard-quick-actions,
+  .dashboard-page--premium .overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .dashboard-page--premium .dashboard-quick-actions,
+  .dashboard-page--premium .overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-hero--compact {
+    padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-page--premium .dashboard-quick-action:hover {
+    transform: none;
+  }
+}
+
+/* Beat older shell rules that center a max-width column beside the sidebar. */
+.dashboard-page.dashboard-violet.dashboard-page--premium {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  padding-inline: 0 !important;
+}
+
+.dashboard-page--premium .dashboard-shell {
+  width: 100% !important;
+  max-width: 1600px !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}

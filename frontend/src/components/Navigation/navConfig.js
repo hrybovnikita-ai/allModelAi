@@ -46,7 +46,7 @@ export const NAV_MORE_GROUPS = [
       { to: '/next-20', label: 'Workspace Tools', description: 'Productivity and builder utilities' },
       { to: '/studio', label: 'Studio', description: 'Creative and production workflows' },
       { to: '/voice-studio', label: 'Voice Studio', description: 'Natural male and female AI voices' },
-      { to: '/website-builder', label: 'Website Builder', description: 'Generate sites from prompts' },
+      { to: '/website-builder', label: 'AI Website Builder', description: 'Generate, preview, and export sites' },
     ],
   },
   {

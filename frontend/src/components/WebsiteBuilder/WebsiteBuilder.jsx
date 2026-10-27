@@ -41,6 +41,9 @@ export default function WebsiteBuilder() {
   const [busy, setBusy] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState('Saved locally');
+  const [projectId, setProjectId] = useState('');
+  const [projectName, setProjectName] = useState('Untitled site');
+  const [projects, setProjects] = useState([]);
   const request = useRef(null);
   const previewPageRef = useRef(previewPage);
   const filesRef = useRef(files);
@@ -48,6 +51,15 @@ export default function WebsiteBuilder() {
   useEffect(() => { previewPageRef.current = previewNav.page; }, [previewNav.page]);
   useEffect(() => { filesRef.current = files; }, [files]);
   useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => {
+    if (!user?.email) return;
+    void (async () => {
+      const response = await apiFetch('/api/workspace?type=website');
+      if (!response.ok) return;
+      const rows = await response.json();
+      setProjects(Array.isArray(rows) ? rows : []);
+    })().catch(() => {});
+  }, [user?.email]);
 
   const saveFiles = (next) => {
     const normalized = normalizeProject(next);
@@ -126,6 +138,87 @@ export default function WebsiteBuilder() {
     bumpPreview();
   };
 
+  const refreshProjects = async () => {
+    const response = await apiFetch('/api/workspace?type=website');
+    if (!response.ok) return;
+    const rows = await response.json();
+    setProjects(Array.isArray(rows) ? rows : []);
+  };
+
+  const persistProject = async () => {
+    const payload = {
+      type: 'website',
+      name: projectName.trim() || 'Untitled site',
+      files,
+      revisions: [{ savedAt: new Date().toISOString(), files }].slice(0, 1),
+    };
+    if (projectId) {
+      const current = projects.find((item) => item.id === projectId);
+      const revisions = [
+        { savedAt: new Date().toISOString(), files },
+        ...(Array.isArray(current?.revisions) ? current.revisions : []),
+      ].slice(0, 5);
+      const response = await apiFetch(`/api/workspace/${encodeURIComponent(projectId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: payload.name, files, revisions }),
+      });
+      if (!response.ok) throw new Error('Could not save the project.');
+      setSaveStatus('Saved to your account');
+    } else {
+      const response = await apiFetch('/api/workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, revisions: [{ savedAt: new Date().toISOString(), files }] }),
+      });
+      if (!response.ok) throw new Error('Could not save the project.');
+      const created = await response.json();
+      setProjectId(created.id);
+      setSaveStatus('Saved to your account');
+    }
+    await refreshProjects();
+  };
+
+  const openProject = (item) => {
+    const next = normalizeProject(item.files);
+    setFiles(next);
+    setProjectId(item.id);
+    setProjectName(item.name || 'Untitled site');
+    const home = listProjectFiles(next).find((name) => name.endsWith('.html')) || DEFAULT_PAGE;
+    setActiveFile(home);
+    setPreviewNav({ page: home, history: [home], index: 0 });
+    bumpPreview();
+    setSaveStatus('Opened from your account');
+  };
+
+  const applyRedesign = async () => {
+    if (!prompt.trim() || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const controller = new AbortController();
+      request.current = controller;
+      const response = await apiFetch('/api/apps/redesign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, files }),
+        signal: controller.signal,
+      });
+      await checkChatResponse(response);
+      const answer = await readGenerationStream(response);
+      const next = extractApplication(answer);
+      saveFiles(next);
+      const home = listProjectFiles(next).find((name) => name.endsWith('.html')) || DEFAULT_PAGE;
+      setActiveFile(home);
+      setPreviewNav({ page: home, history: [home], index: 0 });
+      bumpPreview();
+    } catch (requestError) {
+      if (requestError.name !== 'AbortError') setError(requestError.message || 'Could not update the website.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const generateWebsite = async () => {
     if (!prompt.trim() || busy) return;
     setBusy(true);
@@ -157,13 +250,19 @@ export default function WebsiteBuilder() {
   return <main className="website-builder">
     <header className="builder-header">
       <Link to="/dashboard" className="builder-brand"><AllModelAILogoMark />AllModelAI</Link>
-      <div className="builder-title"><strong>App Builder</strong><small>{saveStatus}</small></div>
-      <nav><button type="button" onClick={() => setImageOpen(true)}>✦ Create image</button><Link to="/chat">Chat</Link><Link to="/studio">Studio</Link><button type="button" onClick={() => downloadProject(files)}>Download</button></nav>
+      <div className="builder-title"><strong>AI Website Builder</strong><small>{saveStatus}</small></div>
+      <nav>
+        <input aria-label="Project name" value={projectName} onChange={(event) => setProjectName(event.target.value)} maxLength={80} />
+        <button type="button" onClick={() => { void persistProject().catch((error) => setError(error.message)); }}>Save project</button>
+        <button type="button" onClick={() => downloadProject(files)}>Export ZIP</button>
+        <Link to="/chat">Chat</Link>
+      </nav>
     </header>
 
     <section className="builder-prompt">
       <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Describe your app: to-do list, calculator, quiz…" aria-label="Application description" maxLength={4000} disabled={busy} rows="2" />
-      <button type="button" disabled={!prompt.trim() || busy} onClick={generateWebsite}>{busy ? 'Creating app…' : 'Create app'}</button>
+      <button type="button" disabled={!prompt.trim() || busy} onClick={generateWebsite}>{busy ? 'Generating…' : 'Generate website'}</button>
+      <button type="button" disabled={!prompt.trim() || busy} onClick={applyRedesign}>Apply change</button>
       <small className="builder-help">Multi-page websites · Live preview navigation · Editor · Download ZIP</small>
       {busy && <p role="status">AI is writing your app code…</p>}
       {error && <p role="alert">{error}</p>}
@@ -172,6 +271,33 @@ export default function WebsiteBuilder() {
     <div className="builder-workspace">
       <section className="builder-editor">
         <div className="builder-file-panel">
+          <p className="builder-file-heading">PROJECTS</p>
+          <div className="builder-file-list">
+            {projects.map((item) => (
+              <div key={item.id} className="builder-project-row">
+                <button type="button" onClick={() => openProject(item)}>{item.name || item.id}</button>
+                <button type="button" onClick={async () => {
+                  const response = await apiFetch('/api/workspace', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'website', name: `${item.name || 'Site'} copy`, files: item.files, revisions: [] }),
+                  });
+                  if (response.ok) {
+                    const rows = await (await apiFetch('/api/workspace?type=website')).json();
+                    setProjects(Array.isArray(rows) ? rows : []);
+                  }
+                }}>Duplicate</button>
+                <button type="button" onClick={async () => {
+                  const response = await apiFetch(`/api/workspace/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+                  if (response.ok) {
+                    if (projectId === item.id) setProjectId('');
+                    const rows = await (await apiFetch('/api/workspace?type=website')).json();
+                    setProjects(Array.isArray(rows) ? rows : []);
+                  }
+                }}>Delete</button>
+              </div>
+            ))}
+          </div>
           <p className="builder-file-heading">FILES</p>
           <div className="builder-file-list" role="tablist" aria-label="Project files">
             {projectFiles.map((name) => (

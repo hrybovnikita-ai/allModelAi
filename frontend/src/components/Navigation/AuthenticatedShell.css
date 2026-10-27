@@ -1,6 +1,9 @@
 .authenticated-shell {
   min-height: 0;
   width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
 }
 
 .authenticated-shell--chat {
