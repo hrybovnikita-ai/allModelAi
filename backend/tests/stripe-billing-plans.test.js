@@ -24,7 +24,7 @@ async function registerCookie(email) {
 test('Stripe billing plans and config', async (t) => {
     await t.test('plan amounts match Starter / Pro / Unlimited UI', () => {
         assert.equal(subscriptionPlans.starter.amount, 500);
-        assert.equal(subscriptionPlans.common.amount, 1500);
+        assert.equal(subscriptionPlans.common.amount, 999);
         assert.equal(subscriptionPlans.plus.amount, 3000);
         assert.equal(normalizePlanKey('starter'), 'starter');
         assert.equal(normalizePlanKey('unlimited'), 'plus');
@@ -32,7 +32,7 @@ test('Stripe billing plans and config', async (t) => {
 
     await t.test('resolvePaidCheckoutPlan rejects client amounts', () => {
         const pro = resolvePaidCheckoutPlan('pro');
-        assert.equal(pro.amountCents, 1500);
+        assert.equal(pro.amountCents, 999);
         assert.equal(resolvePaidCheckoutPlan('invalid'), null);
     });
 
@@ -82,6 +82,6 @@ test('Stripe billing plans and config', async (t) => {
         assert.ok(res.body.plans.starter);
         assert.ok(res.body.plans.pro);
         assert.ok(res.body.plans.unlimited);
-        assert.equal(res.body.plans.pro.amountCents, 1500);
+        assert.equal(res.body.plans.pro.amountCents, 999);
     });
 });

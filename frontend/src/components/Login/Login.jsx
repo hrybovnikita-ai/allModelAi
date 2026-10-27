@@ -309,7 +309,7 @@ function LoginForm({
           ? requestError.message
           : '';
         setPasswordSetupHint(true);
-        setError('');
+        setError(fromServer);
       } else if (
         !signingUp
         && (requestError.status === 401 || requestError.code === 'INVALID_CREDENTIALS')
@@ -513,9 +513,9 @@ function LoginForm({
             </p>
           )}
 
-          {passwordSetupHint && !signingUp && !error ? (
+          {passwordSetupHint && !signingUp ? (
             <p className="login-hint">
-              This account uses Google.
+              This account uses Google and has no password yet.
               {' '}
               <button
                 type="button"
@@ -525,7 +525,7 @@ function LoginForm({
               >
                 Continue with Google
               </button>
-              , then set a password in Settings.
+              , then set a password in Settings, or use Forgot password to create one for this same account.
             </p>
           ) : null}
 

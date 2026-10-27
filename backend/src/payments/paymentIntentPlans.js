@@ -12,7 +12,7 @@ const PAID_CHECKOUT_SLUGS = {
 
 const PLAN_AMOUNTS_CENTS = {
     starter: subscriptionPlans.starter?.amount ?? 500,
-    common: subscriptionPlans.common?.amount ?? 1500,
+    common: subscriptionPlans.common?.amount ?? 999,
     plus: subscriptionPlans.plus?.amount ?? 3000,
 };
 

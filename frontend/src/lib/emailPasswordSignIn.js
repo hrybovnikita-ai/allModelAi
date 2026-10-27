@@ -22,6 +22,9 @@ function shouldAttemptFirebaseEmailFallback(backendError) {
   if (!backendError || backendError.status !== 401) {
     return false;
   }
+  // Backend already proved this row has no password_hash and only a Google identity.
+  // accounts:signInWithPassword then returns HTTP 400 INVALID_LOGIN_CREDENTIALS.
+  // Do not call Identity Toolkit until the account owner sets a password.
   if (isGoogleOnlyPasswordSetup(backendError)) {
     return false;
   }
@@ -52,6 +55,7 @@ export async function signInWithEmailPasswordAllModelAI({ email, password, remem
     if (backendError.code === 'PASSWORD_SETUP_REQUIRED') {
       socialAuthDebug('EMAIL_LOGIN_PASSWORD_SETUP_REQUIRED', {
         providers: providersFromError(backendError),
+        googleLinked: isGoogleOnlyPasswordSetup(backendError),
       });
     }
 

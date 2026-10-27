@@ -23,8 +23,8 @@ const subscriptionPlans = {
         models: ['smart', 'gemini', 'gpt', 'llama', 'deepseek', 'mistral', 'groq', 'gpt-oss-groq', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'ollama'],
     },
     common: {
-        name: 'Pro Monthly',
-        amount: 1500,
+        name: 'AllModelAI Pro Subscription',
+        amount: 999,
         interval: 'month',
         limit: 3000,
         models: [

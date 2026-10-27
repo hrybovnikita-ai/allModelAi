@@ -425,7 +425,7 @@ export default function Chat() {
       id: 'pro',
       icon: '🚀',
       name: t('Pro'),
-      price: '$15',
+      price: '$9.99',
       period: t('per month'),
       popular: true,
       features: [t('Premium model access'), t('3,000 requests per month'), t('Priority routing'), t('Image generation'), t('Priority support')],

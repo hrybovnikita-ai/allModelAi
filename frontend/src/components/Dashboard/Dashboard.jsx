@@ -26,10 +26,11 @@ import { isCompleteCreditStatus, normalizeCreditStatus } from '../../lib/creditS
 import { normalizeModelStatusMap } from '../../data/ollamaCloudVariants';
 import { resolveModelLibraryCardStatus } from '../../lib/modelLibraryStatus';
 import {
-  buildProCheckoutPath,
   canUseChatModel,
   isPaidPlanAccess,
 } from '../../lib/modelEntitlements';
+import ProSubscribeButton from '../Subscribe/ProSubscribeButton';
+import DashboardUsageChart from './DashboardUsageChart';
 import './DashboardModelLibrary.css';
 
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
@@ -324,11 +325,17 @@ export default function Dashboard() {
               )}
               <div className="dashboard-subscription-actions">
                 {isFreePlan ? (
-                  <Link to="/checkout?plan=pro" className="dashboard-subscribe-btn">Subscribe</Link>
+                  <ProSubscribeButton className="dashboard-subscribe-btn pro-subscribe-btn--compact" variant="violet">
+                    Subscribe
+                  </ProSubscribeButton>
                 ) : null}
                 <button type="button" className="dashboard-sub-manage" onClick={() => setManageSubOpen(true)}>Manage subscription</button>
                 <Link to="/dashboard/orders">Order history</Link>
-                {!isFreePlan ? <Link to="/checkout?plan=pro">Upgrade plan</Link> : null}
+                {!isFreePlan ? (
+                  <ProSubscribeButton className="pro-subscribe-btn--compact" variant="violet">
+                    Upgrade plan
+                  </ProSubscribeButton>
+                ) : null}
                 {creditStatus.aiCredits?.enabled ? <Link to="/credits">Buy AI credits</Link> : null}
               </div>
             </>
@@ -372,6 +379,15 @@ export default function Dashboard() {
             <strong>{analytics ? (analytics.estimatedTokens ?? 0).toLocaleString() : '—'}</strong>
             <span>Processed in conversations</span>
           </article>
+          <article>
+            <small>EST. API SPEND</small>
+            <strong>
+              {analytics?.estimatedCost != null
+                ? `$${Number(analytics.estimatedCost).toFixed(2)}`
+                : '—'}
+            </strong>
+            <span>Heuristic from token volume and paid model mix</span>
+          </article>
           <article className="overview-model-usage">
             <small>TOP MODELS</small>
             <strong>{topModels.length ? topModels.length : '—'}</strong>
@@ -382,6 +398,9 @@ export default function Dashboard() {
             </span>
           </article>
         </div>
+        {analytics?.byModel ? (
+          <DashboardUsageChart byModel={analytics.byModel} />
+        ) : null}
         <div className="recent-projects">
           <div>
             <h3>Recent projects</h3>
@@ -442,7 +461,6 @@ export default function Dashboard() {
               ? (creditStatus && isPaidPlanAccess(creditStatus) ? 'Included' : 'Free')
               : 'Pro';
             const tierClass = hasChatAccess ? 'free' : 'pro';
-            const checkoutHref = buildProCheckoutPath({ returnModel: model.slug });
             return (
               <div className="dashboard-model-card" key={model.name}>
                 <article>
@@ -469,9 +487,13 @@ export default function Dashboard() {
                       Open model <b>→</b>
                     </Link>
                   ) : (
-                    <Link className="model-open model-open--subscribe" to={checkoutHref}>
-                      Subscribe to unlock <b>→</b>
-                    </Link>
+                    <ProSubscribeButton
+                      returnModel={model.slug}
+                      variant="violet"
+                      className="model-open model-open--subscribe pro-subscribe-btn--pill"
+                    >
+                      Subscribe to unlock <b aria-hidden="true">→</b>
+                    </ProSubscribeButton>
                   )}
                 </article>
               </div>

@@ -1,0 +1,139 @@
+/**
+ * AllModelAI 3.0 workspace layer — glass surfaces, overflow guards, composer polish.
+ * Builds on design-system.css tokens; does not replace brand colors.
+ */
+
+html {
+  overflow-x: clip;
+}
+
+body {
+  overflow-x: clip;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100dvh;
+  overflow-x: clip;
+}
+
+.ama-glass-panel {
+  background: var(--surface-glass-strong, rgba(12, 14, 24, 0.88));
+  border: 1px solid var(--glass-border, rgba(180, 154, 255, 0.22));
+  border-radius: var(--radius-lg, 18px);
+  box-shadow: var(--shadow-inner-glow, inset 0 1px 0 rgba(246, 245, 255, 0.06));
+  backdrop-filter: blur(var(--glass-blur, 20px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 20px));
+}
+
+.dashboard-violet .personal-overview,
+.dashboard-violet .dashboard-feature-card,
+.dashboard-violet .dashboard-model-card article {
+  background: linear-gradient(
+    145deg,
+    rgba(16, 14, 28, 0.92) 0%,
+    rgba(22, 18, 38, 0.78) 48%,
+    rgba(12, 10, 22, 0.9) 100%
+  );
+  border-color: rgba(157, 123, 255, 0.18);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+/* Chat composer — premium round send */
+.chat-page .composer-box {
+  background: rgba(14, 16, 28, 0.85);
+  border: 1px solid rgba(124, 92, 255, 0.22);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition:
+    border-color var(--duration-normal, 200ms) var(--ease-out),
+    box-shadow var(--duration-normal, 200ms) var(--ease-out);
+}
+
+.chat-page .composer-box:focus-within {
+  border-color: rgba(157, 123, 255, 0.45);
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.4),
+    0 0 0 2px rgba(124, 92, 255, 0.15);
+}
+
+.chat-page .composer-actions .send-message {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  border: none;
+  border-radius: 50%;
+  background: var(--gradient-primary, linear-gradient(135deg, #6548c9, #7c5cff, #9c76f5));
+  color: #f8f7ff;
+  box-shadow:
+    0 8px 22px rgba(99, 102, 241, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition:
+    transform var(--duration-fast, 120ms) var(--ease-out),
+    filter var(--duration-fast, 120ms) var(--ease-out),
+    box-shadow var(--duration-normal, 200ms) var(--ease-out);
+}
+
+.chat-page .composer-actions .send-message:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.chat-page .composer-actions .send-message:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.chat-page .composer-actions .send-message:focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 3px;
+}
+
+.chat-page .composer-actions .send-message:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Model library — prevent oversized cards on ultrawide */
+.dashboard-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+}
+
+.dashboard-model-card {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.dashboard-model-card article {
+  min-width: 0;
+}
+
+/* Focus rings for workspace controls */
+.dashboard-violet a:focus-visible,
+.dashboard-violet button:focus-visible,
+.chat-page button:focus-visible,
+.chat-page a:focus-visible {
+  outline: 2px solid rgba(196, 181, 253, 0.85);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-page .composer-actions .send-message,
+  .chat-page .composer-box,
+  .dashboard-skeleton-shimmer {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-page .composer-actions .send-message {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

@@ -9,7 +9,8 @@ test('email password sign-in tries backend then Firebase fallback', async () => 
   assert.match(source, /exchangeSocialSession/);
   assert.match(source, /passwordSync/);
   assert.match(source, /PASSWORD_SETUP_REQUIRED/);
-  assert.match(source, /isGoogleOnlyPasswordSetup/);
+  assert.match(source, /isGoogleOnlyPasswordSetup\(backendError\)/);
+  assert.match(source, /INVALID_LOGIN_CREDENTIALS/);
   assert.doesNotMatch(source, /stashPendingEmailPasswordLink/);
   assert.doesNotMatch(source, /localStorage/);
 });

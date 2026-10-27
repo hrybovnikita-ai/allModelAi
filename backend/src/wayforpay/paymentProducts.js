@@ -23,7 +23,11 @@ function resolvePaymentProductLabel(planKey) {
         const pack = getPublicCreditPackage(creditId);
         return pack?.name ? `AllModelAI ${pack.name} Credits` : `AllModelAI ${creditId} credits`;
     }
-    const plan = subscriptionPlans[normalizePlanKey(planKey)];
+    const normalized = normalizePlanKey(planKey);
+    if (normalized === 'common') {
+        return 'AllModelAI Pro Subscription';
+    }
+    const plan = subscriptionPlans[normalized];
     return plan?.name ? `AllModelAI ${plan.name}` : 'AllModelAI subscription';
 }
 

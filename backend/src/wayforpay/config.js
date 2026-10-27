@@ -1,4 +1,5 @@
 const WAYFORPAY_PAY_URL = 'https://secure.wayforpay.com/pay';
+const DEFAULT_PRO_BUTTON_URL = 'https://secure.wayforpay.com/button/ba5962ea4be5f';
 
 const envTrim = (name) => String(process.env[name] || '').trim();
 
@@ -41,6 +42,7 @@ const wayforpayConfig = () => {
         currency,
         supportedCurrencies: SUPPORTED_CURRENCIES,
         payUrl: WAYFORPAY_PAY_URL,
+        proButtonUrl: envTrim('WAYFORPAY_PRO_BUTTON_URL') || DEFAULT_PRO_BUTTON_URL,
         testMode: wayforpayTestModeEnabled(),
         livePaymentsAllowed: !wayforpayTestModeEnabled() && process.env.WAYFORPAY_LIVE_CONFIRM === 'true',
         usdCheckoutEnabled: currency === 'USD' && SUPPORTED_CURRENCIES.includes('USD'),

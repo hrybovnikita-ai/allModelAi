@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AiCreditsPurchaseModal from './AiCreditsPurchaseModal';
+import ProSubscribeButton from '../Subscribe/ProSubscribeButton';
+import { PRO_SUBSCRIPTION_PRICE_LABEL } from '../../lib/proSubscription';
 import './Pricing.css';
 
 /** Verified subscription catalog — amounts must match backend/src/billing/plans.js */
@@ -24,7 +26,7 @@ const PLANS = [
     slug: 'pro',
     path: '/checkout/pro',
     tier: 'Pro',
-    price: '$15',
+    price: PRO_SUBSCRIPTION_PRICE_LABEL,
     desc: 'Premium models, image generation, and priority routing',
     features: [
       'Premium model access',
@@ -33,8 +35,9 @@ const PLANS = [
       'Image generation',
       'Priority support',
     ],
-    cta: 'Upgrade to Pro',
+    cta: 'Subscribe',
     featured: true,
+    proSubscribe: true,
   },
   {
     slug: 'unlimited',
@@ -75,6 +78,7 @@ function PricingCard({ plan, onSelect, onCreditsOpen }) {
   const handleKeyDown = (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
+      if (plan.proSubscribe) return;
       if (plan.creditsCard) onCreditsOpen();
       else onSelect(plan.path);
     }
@@ -82,6 +86,13 @@ function PricingCard({ plan, onSelect, onCreditsOpen }) {
 
   const handleActivate = (event) => {
     event.stopPropagation();
+    if (plan.proSubscribe) return;
+    if (plan.creditsCard) onCreditsOpen();
+    else onSelect(plan.path);
+  };
+
+  const handleCardActivate = () => {
+    if (plan.proSubscribe) return;
     if (plan.creditsCard) onCreditsOpen();
     else onSelect(plan.path);
   };
@@ -94,7 +105,7 @@ function PricingCard({ plan, onSelect, onCreditsOpen }) {
       role="button"
       tabIndex={0}
       aria-label={`${plan.tier} plan, ${plan.price}${priceSuffix}. ${plan.cta}`}
-      onClick={() => (plan.creditsCard ? onCreditsOpen() : onSelect(plan.path))}
+      onClick={handleCardActivate}
       onKeyDown={handleKeyDown}
     >
       {plan.featured && <span className="featured-badge">Most Popular</span>}
@@ -109,20 +120,29 @@ function PricingCard({ plan, onSelect, onCreditsOpen }) {
           <li key={item}>{item}</li>
         ))}
       </ul>
-      <button
-        className={[
-          'pricing-btn',
-          'pricing-btn-pill',
-          plan.featured ? 'featured-btn' : '',
-          plan.creditsCard ? 'credits-btn' : '',
-          !plan.featured && !plan.creditsCard && plan.slug === 'starter' ? 'starter-btn' : '',
-          !plan.featured && !plan.creditsCard && plan.slug === 'unlimited' ? 'unlimited-btn' : '',
-        ].filter(Boolean).join(' ')}
-        type="button"
-        onClick={handleActivate}
-      >
-        {plan.cta}
-      </button>
+      {plan.proSubscribe ? (
+        <ProSubscribeButton
+          variant="violet"
+          className="pro-subscribe-btn--pill pricing-pro-subscribe"
+        >
+          {plan.cta}
+        </ProSubscribeButton>
+      ) : (
+        <button
+          className={[
+            'pricing-btn',
+            'pricing-btn-pill',
+            plan.featured ? 'featured-btn' : '',
+            plan.creditsCard ? 'credits-btn' : '',
+            !plan.featured && !plan.creditsCard && plan.slug === 'starter' ? 'starter-btn' : '',
+            !plan.featured && !plan.creditsCard && plan.slug === 'unlimited' ? 'unlimited-btn' : '',
+          ].filter(Boolean).join(' ')}
+          type="button"
+          onClick={handleActivate}
+        >
+          {plan.cta}
+        </button>
+      )}
     </article>
   );
 }

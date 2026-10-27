@@ -54,7 +54,7 @@ test('starter pro unlimited routes and pricing amounts are wired', () => {
   assert.match(appSource, /path="\/checkout\/starter"/);
   assert.match(appSource, /path="\/checkout\/unlimited"/);
   assert.match(pricingSource, /price: '\$5'/);
-  assert.match(pricingSource, /price: '\$15'/);
+  assert.match(pricingSource, /PRO_SUBSCRIPTION_PRICE_LABEL/);
   assert.match(pricingSource, /price: '\$30'/);
   assert.match(pricingSource, /800 requests per month/);
   assert.match(pricingSource, /3,000 requests per month/);

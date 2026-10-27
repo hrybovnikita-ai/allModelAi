@@ -27,9 +27,9 @@ test('Payment provider selection and checkout plans', async (t) => {
     await t.test('public plan prices are server-defined', () => {
         const pro = getPublicCheckoutPlan('pro');
         const ent = getPublicCheckoutPlan('enterprise');
-        assert.equal(pro.amountCents, 1500);
+        assert.equal(pro.amountCents, 999);
         assert.equal(ent.amountCents, 3000);
-        assert.equal(pro.amountDisplay, '15.00');
+        assert.equal(pro.amountDisplay, '9.99');
         assert.equal(ent.amountDisplay, '30.00');
     });
 
@@ -44,6 +44,8 @@ test('Payment provider selection and checkout plans', async (t) => {
         assert.equal(info.primaryProvider, 'wayforpay');
         assert.equal(info.wayforpayCheckoutEnabled, true);
         assert.equal(info.stripeCheckoutEnabled, false);
+        assert.equal(info.wayforpayProButtonUrl, null);
+        assert.equal(info.showTestModeBanner, true);
     });
 
     await t.test('create-intent rejects client amount tampering', async () => {
@@ -68,6 +70,6 @@ test('Payment provider selection and checkout plans', async (t) => {
     await t.test('GET /api/payments/plans/pro returns quote', async () => {
         const res = await request(app).get('/api/payments/plans/pro');
         assert.equal(res.status, 200);
-        assert.equal(res.body.amountCents, 1500);
+        assert.equal(res.body.amountCents, 999);
     });
 });

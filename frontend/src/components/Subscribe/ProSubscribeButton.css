@@ -1,0 +1,79 @@
+.pro-subscribe-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0.65rem 1.35rem;
+  border: none;
+  border-radius: 9999px;
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    transform 220ms cubic-bezier(0.22, 0.8, 0.22, 1),
+    box-shadow 220ms cubic-bezier(0.22, 0.8, 0.22, 1),
+    filter 220ms cubic-bezier(0.22, 0.8, 0.22, 1);
+}
+
+.pro-subscribe-btn--violet {
+  color: #f8f7ff;
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 45%, #4f46e5 100%);
+  box-shadow:
+    0 10px 28px rgba(99, 102, 241, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.pro-subscribe-btn--violet:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+  box-shadow:
+    0 14px 32px rgba(99, 102, 241, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.pro-subscribe-btn--violet:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.pro-subscribe-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pro-subscribe-btn:focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 3px;
+}
+
+.pro-subscribe-btn--compact {
+  min-height: 38px;
+  padding: 0.45rem 1rem;
+  font-size: 0.82rem;
+}
+
+.pro-subscribe-btn--pill {
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .pro-subscribe-btn {
+    width: 100%;
+    min-height: 48px;
+  }
+}
+
+.pro-subscribe-inline-error {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.76rem;
+  color: #fca5a5;
+}
+
+.model-open--subscribe.pro-subscribe-btn {
+  width: 100%;
+  text-decoration: none;
+}

@@ -117,6 +117,9 @@ const buildCheckoutInfo = () => {
         wayforpayDefaultCurrency: wayforpayOn ? wayforpayConfig().currency : null,
         wayforpayUsdCheckout: wayforpayOn ? wayforpayConfig().usdCheckoutEnabled : false,
         wayforpayLivePaymentsAllowed: wayforpayOn ? wayforpayConfig().livePaymentsAllowed : false,
+        wayforpayProButtonUrl: wayforpayOn && wayforpayConfig().livePaymentsAllowed
+            ? wayforpayConfig().proButtonUrl
+            : null,
         supportedPaymentMethodsNote: primaryProvider === 'wayforpay'
             ? 'Visa, MasterCard, Google Pay, and Apple Pay through WayForPay secure checkout.'
             : primaryProvider === 'stripe'
