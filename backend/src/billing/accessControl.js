@@ -74,11 +74,18 @@ function checkUsageLimit(access) {
         return { allowed: true };
     }
     if (access?.enforced && Number(access.used) >= Number(access.limit)) {
+        const periodEnd = access.periodEnd || access.resetAt || null;
+        const resetMs = periodEnd ? Date.parse(periodEnd) : Number.NaN;
+        const resetAt = Number.isFinite(resetMs) && resetMs > Date.now() ? new Date(resetMs).toISOString() : null;
         return {
             allowed: false,
             status: 429,
-            code: 'PLAN_LIMIT_REACHED',
-            message: `Your ${access.planDisplayName || access.plan || 'plan'} plan has reached its request limit. Upgrade to continue.`,
+            code: 'USER_QUOTA_EXCEEDED',
+            messageKey: 'usage.limitReached',
+            limitType: 'ai_requests',
+            resetAt,
+            remaining: 0,
+            message: `Your ${access.planDisplayName || access.plan || 'plan'} plan has reached its request limit.`,
         };
     }
     return { allowed: true };

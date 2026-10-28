@@ -1,7 +1,7 @@
 /* Dashboard SaaS layout pass — spacing on an 8px scale, no new brand. */
 
 .dashboard-page--premium .dashboard-shell {
-  max-width: 1600px;
+  max-width: none;
   width: 100%;
   margin-inline: 0;
   padding-bottom: 32px;
@@ -57,7 +57,7 @@
   margin: 0 0 16px;
   min-height: 40px;
   padding: 8px 16px;
-  border-radius: 999px;
+  border-radius: 9999px;
   border: 1px solid rgba(167, 139, 250, 0.28);
   background: transparent;
   color: #f7f5ff;
@@ -127,7 +127,7 @@
 
 .dashboard-page--premium .dashboard-shell {
   width: 100% !important;
-  max-width: 1600px !important;
+  max-width: none !important;
   margin-left: 0 !important;
   margin-right: 0 !important;
 }

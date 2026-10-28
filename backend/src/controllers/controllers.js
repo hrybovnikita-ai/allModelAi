@@ -310,6 +310,113 @@ function sqliteListChatHistoryRows(database, normalizedEmail, { temporaryOnly = 
     });
 }
 
+function sqliteListChatHistorySummaryRows(database, normalizedEmail, {
+    temporaryOnly = false,
+    lifecycleScope = 'active',
+    limit = 200,
+    offset = 0,
+} = {}) {
+    const rowLimit = clampHistoryLimit(limit);
+    const rowOffset = Math.max(0, Math.floor(Number(offset) || 0));
+    const scope = normalizeLifecycleScope(lifecycleScope);
+    const {
+        nowIso,
+        isTemporaryExpired,
+        isTemporaryConversation,
+    } = require('../services/temporaryChat');
+    const cutoff = nowIso();
+    let rows;
+    try {
+        rows = temporaryOnly
+            ? database.prepare(`
+                SELECT
+                    id, email, model, title,
+                    created_at AS createdAt,
+                    updated_at AS updatedAt,
+                    COALESCE(is_temporary, 0) AS isTemporary,
+                    expires_at AS expiresAt,
+                    COALESCE(lifecycle_status, 'active') AS lifecycleStatus,
+                    json_array_length(COALESCE(messages, '[]')) AS messageCount
+                FROM conversations
+                WHERE lower(trim(email)) = ?
+                  AND COALESCE(is_temporary, 0) = 1
+                  AND expires_at IS NOT NULL
+                  AND expires_at > ?
+                ORDER BY updated_at DESC
+                LIMIT ? OFFSET ?
+            `).all(normalizedEmail, cutoff, rowLimit, rowOffset)
+            : database.prepare(`
+                SELECT
+                    id, email, model, title,
+                    created_at AS createdAt,
+                    updated_at AS updatedAt,
+                    COALESCE(is_temporary, 0) AS isTemporary,
+                    expires_at AS expiresAt,
+                    COALESCE(lifecycle_status, 'active') AS lifecycleStatus,
+                    json_array_length(COALESCE(messages, '[]')) AS messageCount
+                FROM conversations
+                WHERE lower(trim(email)) = ?
+                  AND COALESCE(is_temporary, 0) = 0
+                  AND COALESCE(lifecycle_status, 'active') = ?
+                ORDER BY updated_at DESC
+                LIMIT ? OFFSET ?
+            `).all(normalizedEmail, scope, rowLimit, rowOffset);
+    } catch (error) {
+        if (!/no such column/i.test(String(error.message || ''))) throw error;
+        try {
+            rows = temporaryOnly
+                ? database.prepare(`
+                    SELECT
+                        id, email, model, title,
+                        created_at AS createdAt,
+                        updated_at AS updatedAt,
+                        COALESCE(is_temporary, 0) AS isTemporary,
+                        expires_at AS expiresAt,
+                        json_array_length(COALESCE(messages, '[]')) AS messageCount
+                    FROM conversations
+                    WHERE lower(trim(email)) = ?
+                      AND COALESCE(is_temporary, 0) = 1
+                      AND expires_at IS NOT NULL
+                      AND expires_at > ?
+                    ORDER BY updated_at DESC
+                    LIMIT ? OFFSET ?
+                `).all(normalizedEmail, cutoff, rowLimit, rowOffset)
+                : database.prepare(`
+                    SELECT
+                        id, email, model, title,
+                        created_at AS createdAt,
+                        updated_at AS updatedAt,
+                        COALESCE(is_temporary, 0) AS isTemporary,
+                        expires_at AS expiresAt,
+                        json_array_length(COALESCE(messages, '[]')) AS messageCount
+                    FROM conversations
+                    WHERE lower(trim(email)) = ?
+                      AND COALESCE(is_temporary, 0) = 0
+                    ORDER BY updated_at DESC
+                    LIMIT ? OFFSET ?
+                `).all(normalizedEmail, rowLimit, rowOffset);
+        } catch (innerError) {
+            if (!/no such column/i.test(String(innerError.message || ''))) throw innerError;
+            rows = database.prepare(`
+                SELECT
+                    id, email, model, title,
+                    created_at AS createdAt,
+                    updated_at AS updatedAt,
+                    json_array_length(COALESCE(messages, '[]')) AS messageCount
+                FROM conversations
+                WHERE lower(trim(email)) = ?
+                ORDER BY updated_at DESC
+                LIMIT ? OFFSET ?
+            `).all(normalizedEmail, rowLimit, rowOffset);
+            if (temporaryOnly) return [];
+        }
+    }
+    return rows.filter((row) => {
+        if (temporaryOnly) return !isTemporaryExpired(row);
+        return !isTemporaryConversation(row);
+    });
+}
+
 function persistSqliteChatTurn(database, {
     userEmail,
     conversationId,
@@ -1095,6 +1202,8 @@ const getCreditStatusAsync = (database, email) => getCreditStatusCoreAsync(datab
 const { deleteAuthSessionByToken } = require('../authSessionStore');
 const {
     isPostgresConnection,
+    clampHistoryLimit,
+    computeUserAnalyticsAggregatesAsync,
     listAnalyticsConversationRows,
     listChatHistoryRows,
     listChatHistorySummaryRows,
@@ -1163,6 +1272,7 @@ const {
     logSmartRouter,
     openAiKey: readValidatedOpenAiKey,
     openRouterKey,
+    slugDependsOnOpenRouterPaidCredits,
 } = require('../chatProviderRuntime');
 const { displayModelName } = require('../services/smartRouter2/capabilities');
 const {
@@ -1341,17 +1451,24 @@ const getChatHistory = async (req, res) => {
         || String(req.query.scope || '').toLowerCase() === 'temporary';
     const includeMessages = String(req.query.includeMessages || '').toLowerCase() === 'true';
     const lifecycleScope = temporaryOnly ? 'active' : normalizeLifecycleScope(req.query.scope);
+    const listLimit = clampHistoryLimit(req.query.limit);
+    const listOffset = Math.max(0, Math.floor(Number(req.query.offset) || 0));
     try {
         const connection = req.app.locals.db;
         if (!includeMessages) {
             const rows = isPostgresConnection(connection)
-                ? await listChatHistorySummaryRows(connection, normalizedEmail, { temporaryOnly, lifecycleScope })
-                : sqliteListChatHistoryRows(connection.database, normalizedEmail, { temporaryOnly })
-                    .filter((row) => {
-                        if (temporaryOnly) return true;
-                        const status = String(row.lifecycleStatus ?? row.lifecycle_status ?? 'active').toLowerCase();
-                        return status === lifecycleScope;
-                    });
+                ? await listChatHistorySummaryRows(connection, normalizedEmail, {
+                    temporaryOnly,
+                    lifecycleScope,
+                    limit: listLimit,
+                    offset: listOffset,
+                })
+                : sqliteListChatHistorySummaryRows(connection.database, normalizedEmail, {
+                    temporaryOnly,
+                    lifecycleScope,
+                    limit: listLimit,
+                    offset: listOffset,
+                });
             const conversations = rows.map((row) => mapChatHistorySummaryRow(row)).filter(Boolean);
             return res.status(200).json(conversations);
         }
@@ -2330,7 +2447,9 @@ async function createChatResponseImpl(req, res) {
         claude: 'anthropic/claude-haiku-4.5',
         gemini: 'google/gemini-2.5-flash',
         grok: DEFAULT_GROK_OPENROUTER_GATEWAY,
-        groq: 'groq/llama-3.3-70b-versatile',
+        groq: require('../services/groqChat').resolveGroqOpenRouterGateway(
+            require('../data/modelVariants.json').groq?.[0],
+        ),
         'gpt-oss-groq': require('../services/groqChat').GPT_OSS_GROQ_MODEL_ID,
         copilot: DEFAULT_OPENROUTER_GPT(),
         perplexity: 'perplexity/sonar',
@@ -2399,7 +2518,17 @@ async function createChatResponseImpl(req, res) {
     });
     const usageGate = checkUsageLimit(creditStatus);
     if (!usageGate.allowed) {
-        return res.status(usageGate.status).json({ message: usageGate.message, code: usageGate.code });
+        return res.status(usageGate.status).json({
+            message: usageGate.message,
+            code: usageGate.code,
+            error: {
+                code: usageGate.code,
+                messageKey: usageGate.messageKey || 'usage.limitReached',
+                limitType: usageGate.limitType || 'ai_requests',
+                resetAt: usageGate.resetAt || null,
+                remaining: usageGate.remaining ?? 0,
+            },
+        });
     }
     const {
         checkAiCreditsBeforeChat,
@@ -2514,10 +2643,17 @@ async function createChatResponseImpl(req, res) {
         }
     }
 
+    const { isOpenRouterCreditsExhausted } = require('../services/gatewayModelHealth');
     const anoninFallbackGateway = process.env.ANONIN_FALLBACK_OPENROUTER_MODEL?.trim()
         || process.env.ANONIN_OPENROUTER_MODEL?.trim()
         || '';
-    if (requestedModel === ANONIN_SLUG && anoninFallbackGateway && providerModels[routedModel]) {
+    if (
+        requestedModel === ANONIN_SLUG
+        && anoninFallbackGateway
+        && providerModels[routedModel]
+        && !isOpenRouterCreditsExhausted()
+        && !slugDependsOnOpenRouterPaidCredits(routedModel)
+    ) {
         providerModels[routedModel] = anoninFallbackGateway;
     }
 
@@ -3027,6 +3163,7 @@ async function createChatResponseImpl(req, res) {
 
     try {
         const { resolveGeminiDirectModel } = require('../services/geminiModelRouting');
+        const { retryTransient503 } = require('../services/geminiApiService');
         const directGeminiModel = resolveGeminiDirectModel({
             selectedVariant: routedModel === 'gemini' ? selectedVariant : null,
             hasImages: hasAttachedImage,
@@ -3064,7 +3201,15 @@ async function createChatResponseImpl(req, res) {
         if (initialUsesOpenRouter) openRouterAttempted = true;
         const grokDirectModelId = isXAI ? resolveGrokDirectModel(selectedVariant) : null;
         const ollamaCloudUrl = isOllamaCloud ? ollamaCloudChatCompletionsUrl() : null;
-        let apiResponse = await fetchProvider(isOpenRouterFree ? OPENROUTER_CHAT_COMPLETIONS_URL : isOllamaCloud ? ollamaCloudUrl : isGptOssCf ? gptOssCompletionsUrl : isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? XAI_CHAT_COMPLETIONS_URL : isClaude ? 'https://api.anthropic.com/v1/messages' : isGemini ? geminiUrl : isDeepSeek ? 'https://api.deepseek.com/chat/completions' : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isGroq ? GROQ_CHAT_COMPLETIONS_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
+        const geminiRequest = () => fetchProvider(geminiUrl, {
+            method: 'POST',
+            signal: requestSignal(),
+            headers: { 'Content-Type': 'application/json' },
+            body: geminiBody(),
+        });
+        let apiResponse = isGemini
+            ? await retryTransient503(geminiRequest, { maxAttempts: 3, baseMs: 400 })
+            : await fetchProvider(isOpenRouterFree ? OPENROUTER_CHAT_COMPLETIONS_URL : isOllamaCloud ? ollamaCloudUrl : isGptOssCf ? gptOssCompletionsUrl : isOpenAI ? 'https://api.openai.com/v1/chat/completions' : isXAI ? XAI_CHAT_COMPLETIONS_URL : isClaude ? 'https://api.anthropic.com/v1/messages' : isDeepSeek ? 'https://api.deepseek.com/chat/completions' : isKimi && directKimiKey ? directKimiUrl : isMistral ? directMistralUrl : isPerplexity ? PERPLEXITY_CHAT_URL : isGroq ? GROQ_CHAT_COMPLETIONS_URL : isCloudflare ? cloudflareUrl : 'https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             signal: requestSignal(),
             headers: isOpenRouterFree || isOllamaCloud || isGptOssCf || isOpenAI || isXAI || isGroq ? {
@@ -3261,15 +3406,6 @@ async function createChatResponseImpl(req, res) {
                     } else {
                         upstreamError = await apiResponse.json().catch(() => ({}));
                     }
-                } else if (routedModel === 'perplexity' && isPerplexity && (billingOrQuota || apiResponse.status === 401 || apiResponse.status === 403)) {
-                    apiResponse = await fetchOpenRouterChat(gatewayModel);
-                    if (apiResponse.ok) {
-                        equivalenceViaOpenRouter = true;
-                        isPerplexity = false;
-                        logSmartRouter('equivalence fallback', { from: 'perplexity-direct', to: 'openrouter', gatewayModel });
-                    } else {
-                        upstreamError = await apiResponse.json().catch(() => ({}));
-                    }
                 } else if (
                     routedModel === 'groq'
                     && !isGptOssGroqSlug(routedModel)
@@ -3350,6 +3486,11 @@ async function createChatResponseImpl(req, res) {
                 status: apiResponse.status,
                 detail: upstreamErrorMessage(failPeek),
             });
+            const openRouterCreditsPath = equivalenceViaOpenRouter || openRouterAttempted || initialUsesOpenRouter;
+            if (apiResponse.status === 402 && (openRouterCreditsPath || slugDependsOnOpenRouterPaidCredits(routedModel))) {
+                const { markOpenRouterCreditsExhausted } = require('../services/gatewayModelHealth');
+                markOpenRouterCreditsExhausted();
+            }
         }
 
         // Prefer Gemini for failed non-GPT selections (and Smart Router). Never silently replace GPT/Copilot.
@@ -3427,12 +3568,15 @@ async function createChatResponseImpl(req, res) {
                 const defaultGatewayFallbacks = hasAttachedImage
                     ? ['gpt', 'gemini', 'claude']
                     : ['gpt', 'gemini', 'mistral', 'deepseek', 'llama', 'ollama'];
+                const { isOpenRouterCreditsExhausted: openRouterBlocked } = require('../services/gatewayModelHealth');
                 const preferredChain = (configuredFallbacks.length
                     ? configuredFallbacks
                     : defaultGatewayFallbacks)
+                    .filter((candidate) => !openRouterBlocked() || candidate === 'ollama')
+                    .filter((candidate) => !slugDependsOnOpenRouterPaidCredits(candidate) || !openRouterBlocked())
                     .filter((candidate) => {
                         if (candidate === 'ollama') return isOllamaCloudConfigured();
-                        return providerModels[candidate] && gatewayKey?.trim();
+                        return providerModels[candidate] && gatewayKey?.trim() && !openRouterBlocked();
                     })
                     .filter((candidate) => !hasAttachedImage || isVisionCapableSlug(candidate));
                 const routeChain = Array.isArray(routeDecision?.fallbackSlugs)
@@ -3702,26 +3846,47 @@ async function createChatResponseImpl(req, res) {
                         httpStatus: apiResponse.status,
                         errorMessage: detail,
                     });
+                    if (geminiMapped?.errorClass === 'server_error') {
+                        const { markGatewayModelBlocked } = require('../services/gatewayModelHealth');
+                        markGatewayModelBlocked({
+                            gatewayModel: directGeminiModel,
+                            reason: 'temporarily_unavailable',
+                            ttlMs: 120000,
+                            blockSlug: false,
+                        });
+                    }
                     if (
                         openRouterBillingMapped
                         || groqMapped?.code === 'GROQ_QUOTA_EXHAUSTED'
+                        || groqMapped?.code === 'GROQ_MODEL_NOT_FOUND'
                         || classified.errorClass === 'quota_exhausted'
                         || classified.errorClass === 'authentication_failed'
                         || classified.errorClass === 'unsupported_model'
                     ) {
-                        const { markGatewayModelBlocked } = require('../services/gatewayModelHealth');
+                        const {
+                            markGatewayModelBlocked,
+                            markOpenRouterCreditsExhausted,
+                        } = require('../services/gatewayModelHealth');
+                        if (openRouterBillingMapped?.code === 'OPENROUTER_INSUFFICIENT_CREDITS' || apiResponse.status === 402) {
+                            markOpenRouterCreditsExhausted();
+                        }
                         const blockedModelId = (routedModel === 'groq' || isGptOssGroqSlug(routedModel))
                             ? resolveGroqDirectModel(selectedVariant, routedModel)
                             : normalizeOpenRouterGatewayModel(
                                 providerModels[routedModel],
                                 routedModel,
                             );
+                        const geminiVariantQuota = routedModel === 'gemini'
+                            && (classified.errorClass === 'quota_exhausted' || geminiMapped?.errorClass === 'quota_exceeded');
                         markGatewayModelBlocked({
                             gatewayModel: blockedModelId,
                             slug: routedModel,
                             reason: groqMapped?.code === 'GROQ_QUOTA_EXHAUSTED'
                                 ? 'quota_exhausted'
-                                : classified.errorClass,
+                                : groqMapped?.code === 'GROQ_MODEL_NOT_FOUND'
+                                    ? 'unsupported_model'
+                                    : classified.errorClass,
+                            blockSlug: !geminiVariantQuota,
                         });
                     }
                 } catch (telemetryError) {
@@ -4357,9 +4522,10 @@ const deleteWorkspaceItem = async (req, res) => {
 const getUsageAnalytics = async (req, res) => {
     const email = String(req.user?.email || '').trim().toLowerCase();
     const connection = req.app.locals.db;
+    const { buildUsageAnalyticsPayload } = require('../services/userAnalyticsAggregate');
     try {
-        const conversations = isPostgresConnection(connection)
-            ? await listAnalyticsConversationRows(connection, email)
+        const aggregateRows = isPostgresConnection(connection)
+            ? await computeUserAnalyticsAggregatesAsync(connection, email)
             : (() => {
                 try {
                     return connection.database.prepare(
@@ -4371,40 +4537,8 @@ const getUsageAnalytics = async (req, res) => {
                     ).all(email);
                 }
             })();
-        const byModel = {};
-        let messages = 0;
-        let characters = 0;
-        let freeConversations = 0;
-        const freeModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'gpt-oss-groq', 'nemotron', 'deepseek-r1']);
-        conversations.forEach((conversation) => {
-            let list = [];
-            try {
-                list = JSON.parse(conversation.messages || '[]');
-            } catch {
-                list = [];
-            }
-            if (!Array.isArray(list)) list = [];
-            const model = conversation.model || 'gpt';
-            byModel[model] = (byModel[model] || 0) + 1;
-            if (freeModels.has(model)) freeConversations += 1;
-            messages += list.length;
-            characters += list.reduce((sum, item) => sum + String(item.content || item.text || '').length, 0);
-        });
-        const estimatedTokens = Math.ceil(characters / 4);
-        const paidRatio = conversations.length
-            ? (conversations.length - freeConversations) / conversations.length
-            : 0;
-        const estimatedCost = Number((estimatedTokens / 1000000 * 2.4 * paidRatio).toFixed(4));
-        return res.json({
-            conversations: conversations.length,
-            messages,
-            estimatedTokens,
-            estimatedCost,
-            estimatedSavings: Number((estimatedTokens / 1000000 * 2.4 - estimatedCost).toFixed(4)),
-            freeConversations,
-            paidConversations: conversations.length - freeConversations,
-            byModel,
-        });
+        res.set('Cache-Control', 'private, max-age=60');
+        return res.json(buildUsageAnalyticsPayload(aggregateRows));
     } catch (error) {
         if (process.env.NODE_ENV !== 'test') {
             console.error('[ANALYTICS]', error.code || error.name, error.message);

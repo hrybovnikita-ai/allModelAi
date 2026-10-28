@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 import { formatPaymentOrderStatus, paymentStatusClass } from '../../lib/paymentOrderStatus';
 import './PaymentOrderHistory.css';
+import './DashboardButtons.css';
 
 export default function PaymentOrderHistory() {
   const [rows, setRows] = useState([]);

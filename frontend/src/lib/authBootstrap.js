@@ -3,7 +3,7 @@ import {
   clearSocialRedirectIntent,
   isGoogleRedirectRecoveryPending,
   reconcileStaleRedirectIntent,
-} from './socialSignIn.js';
+} from './socialRedirectState.js';
 import {
   shouldAttemptGoogleRedirectRecovery,
 } from './socialRedirectState.js';
@@ -16,7 +16,14 @@ import {
   shouldShowGoogleRedirectRecoveryUI,
 } from './socialRedirectState.js';
 
-let bootstrapInflight = null;
+import {
+  getAuthBootstrapInflight,
+  invalidateAuthBootstrap,
+  resetAuthBootstrapForTests,
+  setAuthBootstrapInflight,
+} from './authBootstrapState.js';
+
+export { invalidateAuthBootstrap, resetAuthBootstrapForTests };
 
 async function runBootstrapAuthenticatedUser() {
   reconcileStaleRedirectIntent();
@@ -89,24 +96,17 @@ async function runBootstrapAuthenticatedUser() {
  * Concurrent callers share one in-flight promise (StrictMode-safe).
  */
 export function bootstrapAuthenticatedUser() {
-  if (bootstrapInflight) {
-    return bootstrapInflight;
+  const existing = getAuthBootstrapInflight();
+  if (existing) {
+    return existing;
   }
-  bootstrapInflight = runBootstrapAuthenticatedUser()
+  const inflight = runBootstrapAuthenticatedUser()
     .catch((error) => {
       throw error;
     })
     .finally(() => {
-      bootstrapInflight = null;
+      invalidateAuthBootstrap();
     });
-  return bootstrapInflight;
-}
-
-export function resetAuthBootstrapForTests() {
-  bootstrapInflight = null;
-}
-
-/** Drop in-flight bootstrap so a fresh login re-reads the session (avoids stale null from redirect defer). */
-export function invalidateAuthBootstrap() {
-  bootstrapInflight = null;
+  setAuthBootstrapInflight(inflight);
+  return inflight;
 }

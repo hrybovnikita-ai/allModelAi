@@ -60,10 +60,19 @@ function mapGeminiHttpError(httpStatus, detailMessage = '') {
         };
     }
     if (status === 429 || /quota|rate limit|resource exhausted|too many requests/i.test(detail)) {
+        const quota = /quota|billing|plan|exceeded your current quota|resource exhausted/i.test(detail);
+        if (quota) {
+            return {
+                errorClass: 'quota_exceeded',
+                clientStatus: 429,
+                message: 'Gemini quota exceeded for this model on the configured Google account. Check AI Studio billing and limits. No paid upgrade was started.',
+                retryable: false,
+            };
+        }
         return {
             errorClass: 'rate_limited',
             clientStatus: 429,
-            message: 'Gemini rate limit or quota exceeded. Wait and retry or review quota in Google AI Studio.',
+            message: 'Gemini rate limit reached. Wait and retry.',
             retryable: true,
         };
     }
@@ -76,10 +85,13 @@ function mapGeminiHttpError(httpStatus, detailMessage = '') {
         };
     }
     if (status >= 500) {
+        const highDemand = status === 503 || /high demand|overloaded|temporarily unavailable|try again later/i.test(detail);
         return {
             errorClass: 'server_error',
-            clientStatus: 502,
-            message: 'Gemini is temporarily unavailable.',
+            clientStatus: status === 503 ? 503 : 502,
+            message: highDemand
+                ? 'Gemini reports this model is temporarily unavailable because of high demand. Try again later or choose another Gemini version.'
+                : 'Gemini is temporarily unavailable.',
             retryable: true,
         };
     }
@@ -206,6 +218,17 @@ async function testGeminiGenerateContent(modelId, {
     }
 }
 
+async function retryTransient503(request, { maxAttempts = 3, baseMs = 400, random = Math.random } = {}) {
+    let response = await request();
+    for (let attempt = 1; response?.status === 503 && attempt < maxAttempts; attempt += 1) {
+        try { await response.body?.cancel?.(); } catch { /* ignore */ }
+        const delay = baseMs * (2 ** (attempt - 1)) + Math.floor(random() * 250);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        response = await request();
+    }
+    return response;
+}
+
 module.exports = {
     GEMINI_API_BASE,
     buildGeminiUrl,
@@ -218,4 +241,5 @@ module.exports = {
     resolveDefaultGeminiChatModel,
     supportsGenerateContent,
     testGeminiGenerateContent,
+    retryTransient503,
 };

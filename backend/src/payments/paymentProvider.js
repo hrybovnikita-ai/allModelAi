@@ -1,6 +1,7 @@
 const { wayforpayCheckoutAvailable, wayforpayConfig } = require('../wayforpay/config');
 const { assertStripeCheckoutAllowed, getStripeMode, isStripeTestMode } = require('./stripeMode');
 const { paddleCheckoutEnabledForDeployment, paddlePaymentsConfigured } = require('./paddleConfig');
+const { lemonSqueezyConfigurationReport } = require('./lemonSqueezyConfig');
 
 const envTrim = (name) => String(process.env[name] || '').trim();
 
@@ -26,15 +27,21 @@ function shouldPreferStripeOverWayforpay() {
     return envTrim('STRIPE_CHECKOUT_WHEN_WAYFORPAY') === 'true';
 }
 
+function lemonSqueezyCheckoutEnabledForDeployment() {
+    return lemonSqueezyConfigurationReport().checkoutEnabled;
+}
+
 function resolvePrimaryPaymentProvider() {
     const forced = envTrim('PAYMENT_PROVIDER').toLowerCase();
     const wfp = wayforpayCheckoutAvailable();
     const stripeOn = stripePaymentsConfigured();
     const paddleOn = paddleCheckoutEnabledForDeployment();
+    const lemonOn = lemonSqueezyCheckoutEnabledForDeployment();
 
     if (forced === 'wayforpay') return wfp ? 'wayforpay' : null;
     if (forced === 'stripe') return stripeOn ? 'stripe' : null;
     if (forced === 'paddle') return paddleOn ? 'paddle' : null;
+    if (forced === 'lemonsqueezy' || forced === 'lemon_squeezy') return lemonOn ? 'lemonsqueezy' : null;
 
     if (wfp && !shouldPreferStripeOverWayforpay()) return 'wayforpay';
     if (stripeOn) return 'stripe';
@@ -48,6 +55,7 @@ function listAvailableCheckoutProviders() {
     if (stripeCheckoutEnabledForDeployment()) providers.push('stripe');
     if (paddleCheckoutEnabledForDeployment()) providers.push('paddle');
     if (wayforpayCheckoutEnabledForDeployment()) providers.push('wayforpay');
+    if (lemonSqueezyCheckoutEnabledForDeployment()) providers.push('lemonsqueezy');
     return providers;
 }
 
@@ -73,6 +81,7 @@ module.exports = {
     stripeCheckoutEnabledForDeployment,
     wayforpayCheckoutEnabledForDeployment,
     paddleCheckoutEnabledForDeployment,
+    lemonSqueezyCheckoutEnabledForDeployment,
     listAvailableCheckoutProviders,
     paymentsCheckoutAvailable,
     stripePaymentsConfigured,

@@ -89,7 +89,7 @@ function classifyFailure({ status, detail, error } = {}) {
     if (status === 400 || /invalid[_\s-]?request|bad request|unsupported|malformed/i.test(text)) {
         return ERROR_CATEGORIES.invalid || 'invalid_request';
     }
-    if (/insufficient.*(balance|credit|quota)|quota.*exceeded|billing/i.test(text)) {
+    if (status === 402 || /insufficient.*(balance|credit|quota)|requires more credits|can not afford|cannot afford|quota.*exceeded|billing/i.test(text)) {
         return ERROR_CATEGORIES.rate_limit;
     }
     return categorizeHttpStatus(status);

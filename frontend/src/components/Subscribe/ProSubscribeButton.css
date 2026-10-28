@@ -77,3 +77,16 @@
   width: 100%;
   text-decoration: none;
 }
+
+.lemon-squeezy-subscribe-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.lemon-squeezy-subscribe-error {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #fca5a5;
+}

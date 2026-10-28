@@ -291,6 +291,10 @@ export function SessionProvider({ children }) {
       if (!hasSessionRestoreHint() && !isFreshLoginGraceActive()) return;
       void refresh({ force: true, silent: true });
     };
+    const revalidateOnInterval = () => {
+      if (document.visibilityState === 'hidden') return;
+      revalidate();
+    };
     const onStorage = (event) => {
       if (event.key === 'allmodelai_user' || event.key === 'allmodelai_native_session' || event.key === 'allmodelai_signed_out' || event.key === null) revalidate();
     };
@@ -298,7 +302,7 @@ export function SessionProvider({ children }) {
     globalThis.addEventListener('online', revalidate);
     globalThis.addEventListener('storage', onStorage);
     document.addEventListener('visibilitychange', revalidate);
-    const timer = setInterval(revalidate, 60000);
+    const timer = setInterval(revalidateOnInterval, 120000);
     return () => {
       clearInterval(timer);
       globalThis.removeEventListener('focus', revalidate);

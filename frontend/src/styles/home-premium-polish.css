@@ -52,7 +52,17 @@
 }
 
 .home-surface .home-layout {
-  gap: clamp(48px, 6vw, 88px);
+  gap: clamp(36px, 4.5vw, 64px);
+}
+
+.home-surface {
+  --ama-black: #08070d;
+  --ama-midnight: #151022;
+  --ama-deep-violet: #34175f;
+  --ama-purple: #6536c4;
+  --ama-violet: #8b5cf6;
+  --ama-lavender: #b69aff;
+  --ama-white: #f7f5fc;
 }
 
 /* —— Hero polish —— */

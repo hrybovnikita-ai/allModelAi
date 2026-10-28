@@ -82,11 +82,11 @@ html[data-platform='ios'] .chat-page {
     grid-template-columns: min(272px, 32vw) minmax(0, 1fr);
   }
 
-  .chat-messages,
   .chat-page .chat-composer,
   .chat-page .chat-composer.welcome-composer,
   .chat-page .chat-composer.conversation-composer {
-    width: min(calc(100% - 28px), 720px) !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   .chat-header {
@@ -100,11 +100,11 @@ html[data-platform='ios'] .chat-page {
 
 /* Laptops */
 @media (min-width: 1024px) and (max-width: 1439px) {
-  .chat-messages,
   .chat-page .chat-composer,
   .chat-page .chat-composer.welcome-composer,
   .chat-page .chat-composer.conversation-composer {
-    width: min(calc(100% - 44px), 840px) !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 }
 

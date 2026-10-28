@@ -17,6 +17,7 @@ export const DASHBOARD_NAV_LINKS = [
   { to: '/next-20', label: 'Workspace Tools' },
   { to: '/explore', label: 'Models' },
   { to: '/studio', label: 'Studio' },
+  { to: '/studio-labs', label: 'Development Studio' },
   { to: '/next-25', label: 'AI Workflows' },
   { to: '/next-9', label: 'Research & Learning' },
   { to: '/next-10', label: 'Model Toolkit' },

@@ -1,0 +1,54 @@
+.studio-labs {
+  width: 100%;
+  min-height: 100dvh;
+  padding: clamp(16px, 2.5vw, 40px);
+  color: #f8fafc;
+  background: #07070d;
+}
+.studio-labs header, .studio-labs nav, .studio-labs section { width: min(100%, 1100px); }
+.studio-labs h1 { margin: 0 0 8px; font-size: clamp(28px, 3vw, 36px); }
+.studio-labs nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+.studio-labs button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 9999px;
+  padding: 10px 16px;
+  background: #2e1065;
+  color: white;
+  font: inherit;
+  cursor: pointer;
+}
+.studio-labs button.active { background: linear-gradient(90deg, #6d28d9, #7c3aed); }
+.studio-labs section {
+  padding: 22px;
+  border: 1px solid rgba(167, 139, 250, .28);
+  border-radius: 20px;
+  background: #12101c;
+}
+.studio-labs input, .studio-labs textarea {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid #4c1d95;
+  border-radius: 14px;
+  background: #0b0b12;
+  color: white;
+  font: inherit;
+}
+.studio-labs pre { overflow: auto; white-space: pre-wrap; }
+.studio-error { color: #fecaca; }
+.motion-preview {
+  width: 120px;
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 20px;
+  background: #6d28d9;
+  animation: studio-fade 1s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .motion-preview { animation: none; }
+}
+@keyframes studio-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}

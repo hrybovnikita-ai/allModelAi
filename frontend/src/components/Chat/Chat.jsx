@@ -22,6 +22,7 @@ import { apiFetch, checkChatResponse } from '../../lib/api';
 import {
   fetchChatConversation,
   fetchChatHistoryList,
+  invalidateChatHistoryListCache,
   setConversationLifecycle,
 } from '../../lib/chatHistoryApi';
 import { createChatStreamDiagnostics } from '../../lib/chatStreamDiagnostics';
@@ -67,6 +68,8 @@ import {
 } from '../../lib/chatResponseOwnership';
 import { finalizeAssistantMessage, stickerFieldsForPersist } from '../../lib/aiStickers/enhanceMessage';
 import AiCreditsPurchaseDialog from '../Credits/AiCreditsPurchaseDialog';
+import UsageLimitWarning from './UsageLimitWarning';
+import { isUserQuotaExceeded } from '../../lib/usageLimitMessages';
 import { readAiStickersEnabled, AI_STICKERS_ENABLED_KEY } from '../../lib/aiStickers/settings';
 import ChatAiSticker from './ChatAiSticker';
 import ChatEmptyState from './ChatEmptyState';
@@ -91,6 +94,8 @@ import './ComposerInput.css';
 import './ComposerModern.css';
 import './ComposerToolSurfaces.css';
 import './ChatMobileLayout.css';
+import './ChatRoundedTheme.css';
+import './ChatWorkspaceLayout.css';
 import './ChatModelSelector.css';
 import './AnoninMessageReveal.css';
 import {
@@ -264,7 +269,7 @@ function subscribeVoices(synthesis, onVoices) {
 }
 
 export default function Chat() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -292,6 +297,7 @@ export default function Chat() {
   const [isSending, setIsSending] = useState(false);
   const [isStreamingResponse, setIsStreamingResponse] = useState(false);
   const [chatError, setChatError] = useState('');
+  const [usageLimitNotice, setUsageLimitNotice] = useState(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [creditStatus, setCreditStatus] = useState(null);
   const [accessModeSaving, setAccessModeSaving] = useState(false);
@@ -522,6 +528,7 @@ export default function Chat() {
   });
   const selectedVersion = variantCatalog[selectedSlug]?.find((item) => item.id === chosenVersions[selectedSlug]);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [headerOverflowOpen, setHeaderOverflowOpen] = useState(false);
   const [voiceInputState, setVoiceInputState] = useState('idle');
   const isListening = voiceInputState === 'listening';
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -607,46 +614,45 @@ export default function Chat() {
     return () => window.removeEventListener('storage', syncStickerPref);
   }, []);
 
-  const refreshHistory = useCallback(async () => {
-    if (!user?.email || isGuest) return;
-    const [activeResult, tempResult, archivedResult, trashedResult] = await Promise.all([
-      fetchChatHistoryList(apiFetch, { scope: 'active' }),
-      fetchChatHistoryList(apiFetch, { temporary: true }),
-      fetchChatHistoryList(apiFetch, { scope: 'archived' }),
-      fetchChatHistoryList(apiFetch, { scope: 'trashed' }),
-    ]);
-    const failed = [activeResult, tempResult, archivedResult, trashedResult].find((item) => !item.ok);
-    if (failed && !activeResult.ok) {
-      setHistoryLoadError(failed.message || 'Could not load saved chats.');
-      return;
+  const refreshHistory = useCallback(async ({ includeArchive = false, force = false } = {}) => {
+    if (!user?.email || isGuest) return null;
+    const fetches = [
+      fetchChatHistoryList(apiFetch, { scope: 'active' }, { force }),
+      fetchChatHistoryList(apiFetch, { temporary: true }, { force }),
+    ];
+    if (includeArchive) {
+      fetches.push(
+        fetchChatHistoryList(apiFetch, { scope: 'archived' }, { force }),
+        fetchChatHistoryList(apiFetch, { scope: 'trashed' }, { force }),
+      );
+    }
+    const results = await Promise.all(fetches);
+    const [activeResult, tempResult, archivedResult, trashedResult] = results;
+    if (!activeResult?.ok) {
+      setHistoryLoadError(activeResult.message || 'Could not load saved chats.');
+      return null;
     }
     setHistoryLoadError('');
-    const history = activeResult.ok ? activeResult.conversations : [];
-    const temps = tempResult.ok ? tempResult.conversations : [];
+    const history = activeResult.conversations;
+    const temps = tempResult?.ok ? tempResult.conversations : [];
     setChatHistory(history);
-    setArchivedHistory(archivedResult.ok ? archivedResult.conversations : []);
-    setTrashedHistory(trashedResult.ok ? trashedResult.conversations : []);
     setTemporaryHistory(Array.isArray(temps) ? temps : []);
+    if (includeArchive) {
+      setArchivedHistory(archivedResult?.ok ? archivedResult.conversations : []);
+      setTrashedHistory(trashedResult?.ok ? trashedResult.conversations : []);
+    }
     const activeId = activeConversationIdRef.current;
     const active = history.find((item) => String(item.id) === String(activeId))
       || (Array.isArray(temps) ? temps.find((item) => String(item.id) === String(activeId)) : null);
     if (active?.expiresAt && active.isTemporary) {
       setTemporaryExpiresAt(active.expiresAt);
     }
-    if (!active?.messages?.length) return;
-    setMessages((current) => {
-      const historyMessages = normalizeConversationMessages(active.messages);
-      if (!shouldReplaceMessagesFromHistory({
-        isSending: isSendingRef.current,
-        activeId,
-        historyConversationId: active.id,
-        localMessages: current,
-        historyMessages,
-      })) {
-        return current;
-      }
-      return historyMessages;
-    });
+    return {
+      active: history,
+      temporary: temps,
+      archived: archivedResult?.ok ? archivedResult.conversations : undefined,
+      trashed: trashedResult?.ok ? trashedResult.conversations : undefined,
+    };
   }, [user?.email, isGuest]);
 
   /** Faster sidebar sync after each message — skips archive/trash round-trips. */
@@ -1619,11 +1625,9 @@ export default function Chat() {
     if (!user?.email || isGuest || !sessionVerified) return;
     let cancelled = false;
     (async () => {
-      await refreshHistory();
-      if (cancelled) return;
-      const history = await fetchChatHistoryList(apiFetch, { scope: 'active' });
-      if (!history.ok || cancelled) return;
-      const list = history.conversations;
+      const lists = await refreshHistory();
+      if (cancelled || !lists) return;
+      const list = lists.active;
       const requestedId = new URLSearchParams(window.location.search).get('conversation');
       const requested = requestedId
         ? list.find((item) => String(item.id) === String(requestedId))
@@ -1954,6 +1958,7 @@ export default function Chat() {
     const hadImageAttachment = Boolean(attachmentSnapshot?.url);
     const text = rawText || (currentAttachment ? 'Analyze this screenshot: describe in detail what is shown here and give me step-by-step guidance on where to click and what to do.' : '');
     if (!text || isSending) return;
+    if (usageLimitNotice?.resetAt && Date.parse(usageLimitNotice.resetAt) > Date.now()) return;
     const generatingFile = selectedSkill === 'file';
     const generatingVideo = !generatingFile && (options.forceVideo || selectedSkill === 'video');
     const generatingImage = !generatingFile && !generatingVideo && (options.forceImage || selectedSkill === 'image' || (!currentAttachment && /^(?:нарисуй|сгенерируй\s+(?:изображение|картинку|фото)|создай\s+(?:изображение|картинку)|draw|generate\s+(?:an?\s+)?(?:image|picture|photo)|намалюй|згенеруй\s+зображення)/i.test(rawText)));
@@ -1969,6 +1974,7 @@ export default function Chat() {
     setPrompt('');
     setAttachedImage(null);
     setChatError('');
+    setUsageLimitNotice(null);
     setIsSending(true);
     setIsStreamingResponse(false);
     const controller = new AbortController();
@@ -2700,6 +2706,13 @@ export default function Chat() {
           setAiCreditsPurchaseOpen(true);
           setChatError('');
           setMessages((current) => current.filter((_, index) => index !== assistantIndex));
+        } else if (isUserQuotaExceeded(requestError)) {
+          setUsageLimitNotice({
+            resetAt: requestError.resetAt || requestError.error?.resetAt || null,
+            at: Date.now(),
+          });
+          setChatError('');
+          setMessages((current) => current.filter((_, index) => index !== assistantIndex));
         } else if (generatingImage) {
           logger.apiError('Image generation failed', { message: requestError.message });
           const imageErrorText = requestError.retryable === false
@@ -2910,14 +2923,14 @@ export default function Chat() {
     if (!conversation?.id) return;
     await setConversationLifecycle(apiFetch, conversation.id, 'archived');
     setChatMenuId(null);
-    await refreshHistory();
+    await refreshHistory({ includeArchive: true, force: true });
     if (activeConversationId === conversation.id) newChat();
   };
 
   const restoreConversation = async (conversation, targetStatus = 'active') => {
     if (!conversation?.id) return;
     await setConversationLifecycle(apiFetch, conversation.id, targetStatus);
-    await refreshHistory();
+    await refreshHistory({ includeArchive: true, force: true });
   };
 
   const performDeleteConversation = async (conversation) => {
@@ -2964,8 +2977,9 @@ export default function Chat() {
       body: JSON.stringify(body),
     });
     if (response.ok) {
+      invalidateChatHistoryListCache();
       const updated = await response.json().catch(() => null);
-      await refreshHistory();
+      await refreshHistory({ force: true });
       if (activeConversationId === conversation.id) {
         setMessages(updated?.messages || nextMessages);
       }
@@ -3369,22 +3383,105 @@ export default function Chat() {
           </div>
         )}
         <header className="chat-header">
-          <div className="chat-header-primary">
-            <button
-              ref={sidebarToggleRef}
-              type="button"
-              className={`sidebar-toggle${sidebarOpen ? ' sidebar-toggle--open' : ''}`}
-              onClick={toggleSidebar}
-              aria-label={sidebarOpen ? t('Close sidebar') : t('Open sidebar')}
-              aria-expanded={sidebarOpen}
-              aria-controls={CHAT_SIDEBAR_DRAWER_ID}
-            >
-              <span className="sidebar-toggle-icon" aria-hidden="true">{sidebarOpen ? '×' : '☰'}</span>
-            </button>
-            <div className="active-model"><img src={selectedModel.image} alt="" /><span><small>{temporaryChat ? t("Temporary chat") : activeProject ? activeProject.name : t("Chatting with")}</small><strong>{selectedModel.name}{selectedVersion ? ` · ${selectedVersion.name}` : ''}</strong></span><i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? t("Online") : t("API needed")}</i></div>
-            {temporaryChat && (
-              <TemporaryChatBanner t={t} expiresAt={temporaryExpiresAt} />
+          <div className="chat-header-toolbar">
+            <div className="chat-header-left">
+              <button
+                ref={sidebarToggleRef}
+                type="button"
+                className={`sidebar-toggle${sidebarOpen ? ' sidebar-toggle--open' : ''}`}
+                onClick={toggleSidebar}
+                aria-label={sidebarOpen ? t('Close sidebar') : t('Open sidebar')}
+                aria-expanded={sidebarOpen}
+                aria-controls={CHAT_SIDEBAR_DRAWER_ID}
+              >
+                <span className="sidebar-toggle-icon" aria-hidden="true">{sidebarOpen ? '×' : '☰'}</span>
+              </button>
+              <div className="chat-header-brand">
+                <strong className="chat-header-title">{t('AllModelAI Chat')}</strong>
+              </div>
+              <div className="chat-header-model-meta active-model">
+                <img src={selectedModel.image} alt="" />
+                <span>
+                  <small>{temporaryChat ? t('Temporary chat') : activeProject ? activeProject.name : t('Chatting with')}</small>
+                  <strong>{selectedModel.name}{selectedVersion ? ` · ${selectedVersion.name}` : ''}</strong>
+                </span>
+                <i className={modelIsOnline(selectedSlug) ? '' : 'offline'}>{modelIsOnline(selectedSlug) ? t('Online') : t('API needed')}</i>
+              </div>
+              {temporaryChat && (
+                <TemporaryChatBanner t={t} expiresAt={temporaryExpiresAt} />
+              )}
+            </div>
+            {!isGuest && creditStatus && (
+              <div className="chat-header-center">
+                <div className="access-mode-control">
+                  {creditStatus.plusTestMode && (
+                    <span className="plus-test-mode-badge" role="status" title={t('Local developer Plus Test Mode')}>
+                      Plus Test Mode
+                    </span>
+                  )}
+                  <div className="access-mode-switch" role="group" aria-label="Access mode">
+                    <button
+                      type="button"
+                      aria-pressed={(creditStatus.mode || 'user') === 'user'}
+                      disabled={isSending || accessModeSaving}
+                      onClick={() => creditStatus.canUseDeveloper && changeAccessMode('user')}
+                    >
+                      {t('User')}
+                    </button>
+                    {creditStatus.canUseDeveloper ? (
+                      <button
+                        type="button"
+                        className={creditStatus.isOwner || creditStatus.plusBranding ? 'access-mode-plus' : ''}
+                        aria-pressed={creditStatus.mode === 'developer'}
+                        disabled={isSending || accessModeSaving}
+                        onClick={() => changeAccessMode('developer')}
+                        title={creditStatus.isOwner ? t('Owner Plus entitlement') : creditStatus.plusTestMode ? t('Plus Test Mode — all models') : t('All models')}
+                      >
+                        {creditStatus.isOwner
+                          ? (<><span aria-hidden="true">✦ </span>{t('Plus')}</>)
+                          : (creditStatus.plusTestEligible && !creditStatus.hasSubscription ? t('Plus Test') : t('Developer'))}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="access-mode-plus"
+                        aria-pressed={false}
+                        disabled={isSending}
+                        onClick={openPlusSubscription}
+                        title={t('Upgrade subscription')}
+                      >
+                        Plus
+                      </button>
+                    )}
+                  </div>
+                  <small>
+                    {accessModeSaving
+                      ? t('Saving…')
+                      : creditStatus.isOwner
+                        ? (creditStatus.plusActive ? t('Owner · Plus') : t('Owner · User preview'))
+                        : creditStatus.plusTestMode
+                          ? t('Plus Test Mode · all models')
+                          : creditStatus.mode === 'developer' && creditStatus.hasSubscription
+                            ? t('All models')
+                            : freeModelsLabel(creditStatus, t)}
+                    {creditStatus.canAccessModelDiagnostics && (
+                      <>
+                        {' · '}
+                        <Link to="/developer/model-diagnostics" className="access-subscribe-inline">{t('Model diagnostics')}</Link>
+                        {' · '}
+                        <Link to="/developer/ai-learning" className="access-subscribe-inline">{t('AI Learning')}</Link>
+                      </>
+                    )}
+                    {!creditStatus.canUseDeveloper && !creditStatus.hasSubscription && (
+                      <button type="button" className="access-subscribe-inline" onClick={openPlusSubscription}>
+                        {t('Subscription')} ↗
+                      </button>
+                    )}
+                  </small>
+                </div>
+              </div>
             )}
+            <div className="chat-header-right">
             <div className="chat-header-model-slot">
           <div className={`model-select custom-model-select ${modelMenuOpen ? 'open' : ''}`} onKeyDown={(event) => { if (event.key === 'Escape') setModelMenuOpen(false); }} onBlur={(event) => { const root = event.currentTarget; window.setTimeout(() => { if (!root.contains(document.activeElement) && !root.matches(':hover')) setModelMenuOpen(false); }, 180); }}>
             <div className="model-select-eyebrow" id="chat-model-select-label">{t('Model')}</div>
@@ -3500,78 +3597,34 @@ export default function Chat() {
             </div>}
           </div>
             </div>
-            <Link className="dashboard-link" to="/dashboard">{t("Dashboard")}</Link>
-          </div>
-          {!isGuest && creditStatus && (
-            <div className="chat-header-secondary">
-            <div className="access-mode-control">
-              {creditStatus.plusTestMode && (
-                <span className="plus-test-mode-badge" role="status" title={t('Local developer Plus Test Mode')}>
-                  Plus Test Mode
-                </span>
+            <button type="button" className="chat-header-action chat-header-action--pill chat-header-desktop-only" onClick={newChat}>
+              {t('New Chat')}
+            </button>
+            <Link className="chat-header-action chat-header-action--pill dashboard-link chat-header-desktop-only" to="/dashboard">{t('Dashboard')}</Link>
+            <Link className="chat-header-action chat-header-action--icon chat-header-desktop-only" to="/chat/settings" aria-label={t('Settings')} title={t('Settings')}>
+              <span aria-hidden="true">⚙</span>
+            </Link>
+            <div className="chat-header-overflow">
+              <button
+                type="button"
+                className="chat-header-action chat-header-action--icon"
+                aria-label={t('More actions')}
+                aria-expanded={headerOverflowOpen}
+                aria-haspopup="menu"
+                onClick={() => setHeaderOverflowOpen((open) => !open)}
+              >
+                <span aria-hidden="true">⋯</span>
+              </button>
+              {headerOverflowOpen && (
+                <div className="chat-header-overflow-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={() => { newChat(); setHeaderOverflowOpen(false); }}>{t('New Chat')}</button>
+                  <Link to="/dashboard" role="menuitem" onClick={() => setHeaderOverflowOpen(false)}>{t('Dashboard')}</Link>
+                  <Link to="/chat/settings" role="menuitem" onClick={() => setHeaderOverflowOpen(false)}>{t('Settings')}</Link>
+                </div>
               )}
-              <div className="access-mode-switch" role="group" aria-label="Access mode">
-                <button
-                  type="button"
-                  aria-pressed={(creditStatus.mode || 'user') === 'user'}
-                  disabled={isSending || accessModeSaving}
-                  onClick={() => creditStatus.canUseDeveloper && changeAccessMode('user')}
-                >
-                  {t('User')}
-                </button>
-                {creditStatus.canUseDeveloper ? (
-                  <button
-                    type="button"
-                    className={creditStatus.isOwner || creditStatus.plusBranding ? 'access-mode-plus' : ''}
-                    aria-pressed={creditStatus.mode === 'developer'}
-                    disabled={isSending || accessModeSaving}
-                    onClick={() => changeAccessMode('developer')}
-                    title={creditStatus.isOwner ? t('Owner Plus entitlement') : creditStatus.plusTestMode ? t('Plus Test Mode — all models') : t('All models')}
-                  >
-                    {creditStatus.isOwner
-                      ? (<><span aria-hidden="true">✦ </span>{t('Plus')}</>)
-                      : (creditStatus.plusTestEligible && !creditStatus.hasSubscription ? t('Plus Test') : t('Developer'))}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="access-mode-plus"
-                    aria-pressed={false}
-                    disabled={isSending}
-                    onClick={openPlusSubscription}
-                    title={t('Upgrade subscription')}
-                  >
-                    Plus
-                  </button>
-                )}
-              </div>
-              <small>
-                {accessModeSaving
-                  ? t('Saving…')
-                  : creditStatus.isOwner
-                    ? (creditStatus.plusActive ? t('Owner · Plus') : t('Owner · User preview'))
-                    : creditStatus.plusTestMode
-                      ? t('Plus Test Mode · all models')
-                      : creditStatus.mode === 'developer' && creditStatus.hasSubscription
-                        ? t('All models')
-                        : freeModelsLabel(creditStatus, t)}
-                {creditStatus.canAccessModelDiagnostics && (
-                  <>
-                    {' · '}
-                    <Link to="/developer/model-diagnostics" className="access-subscribe-inline">{t('Model diagnostics')}</Link>
-                    {' · '}
-                    <Link to="/developer/ai-learning" className="access-subscribe-inline">{t('AI Learning')}</Link>
-                  </>
-                )}
-                {!creditStatus.canUseDeveloper && !creditStatus.hasSubscription && (
-                  <button type="button" className="access-subscribe-inline" onClick={openPlusSubscription}>
-                    {t('Subscription')} ↗
-                  </button>
-                )}
-              </small>
             </div>
             </div>
-          )}
+          </div>
         </header>
         {(activeProject && !temporaryChat) || backgroundNotification ? (
           <div className="chat-statuses">
@@ -3588,12 +3641,14 @@ export default function Chat() {
               </div>
             )}
             {backgroundNotification && (
-              <div className="model-selection-notice chat-background-notification" role="status"><span><strong>{backgroundNotification.title}</strong><small>{backgroundNotification.text}</small></span><button type="button" onClick={async () => { const history = await apiFetch(`/api/chat/history?email=${encodeURIComponent(user.email)}`).then((response) => response.ok ? response.json() : []); const conversation = history.find((item) => item.id === backgroundNotification.conversationId); if (conversation) openConversation(conversation); setBackgroundNotification(null); }} aria-label="Open completed response">{t("Open chat")}</button><button type="button" onClick={() => setBackgroundNotification(null)} aria-label="Dismiss notification">×</button></div>
+              <div className="model-selection-notice chat-background-notification" role="status"><span><strong>{backgroundNotification.title}</strong><small>{backgroundNotification.text}</small></span><button type="button" onClick={async () => { const loaded = await fetchChatConversation(apiFetch, backgroundNotification.conversationId); if (loaded.ok) openConversation(loaded.conversation); setBackgroundNotification(null); }} aria-label="Open completed response">{t("Open chat")}</button><button type="button" onClick={() => setBackgroundNotification(null)} aria-label="Dismiss notification">×</button></div>
             )}
           </div>
         ) : null}
 
+        <div className="chat-main">
         <div className="chat-messages" ref={messagesContainer}>
+          <div className="chat-conversation-column">
           {messages.length === 0 && (
             activeProject && !temporaryChat && visibleHistory.length > 0 ? (
               <div className="project-conversation-panel" lang="en">
@@ -3636,18 +3691,6 @@ export default function Chat() {
                 selectedModel={selectedModel}
                 suggestions={suggestions}
                 onSelectSuggestion={chooseSuggestion}
-                chatHistory={chatHistory}
-                projects={projects}
-                modelStatus={modelStatus}
-                prompt={prompt}
-                onOpenConversation={openConversation}
-                onEnterProject={enterProject}
-                onAnalyzeFile={() => fileInput.current?.click()}
-                onAcceptImprovedPrompt={(next) => {
-                  setPrompt(next);
-                  document.querySelector('.chat-composer textarea')?.focus();
-                }}
-                selectedSlug={selectedSlug}
               />
             )
           )}
@@ -3779,10 +3822,20 @@ export default function Chat() {
             setSessionExpired(false);
             setChatError('Signed in successfully. You can now retry your message.');
           }} />}
+          {usageLimitNotice && (
+            <UsageLimitWarning
+              languageCode={language?.code || 'en'}
+              resetAt={usageLimitNotice.resetAt}
+              showPlans={Boolean(creditStatus && !creditStatus.hasSubscription)}
+              onExpired={() => setUsageLimitNotice(null)}
+            />
+          )}
           <div className="chat-scroll-tail" ref={messagesEnd} aria-hidden="true" />
+          </div>
         </div>
 
         <form className={`chat-composer chat-composer-modern ${messages.length === 0 ? 'welcome-composer' : 'conversation-composer'}`} onSubmit={sendMessage}>
+          <div className="chat-composer-container">
           {isAnoninModelSlug(selectedSlug) && (
             <div className="anonin-mode-bar" role="group" aria-label={t('Anonin routing strategy')}>
               <span>{t('Anonin Model')}</span>
@@ -4313,7 +4366,9 @@ export default function Chat() {
             </div>
           </div>
           <p>{selectedModel.name} can make mistakes. Check important information.</p>
+          </div>
         </form>
+        </div>
       </section>
       {previewModalImage && (
         <div className="image-lightbox-modal" onClick={() => setPreviewModalImage(null)}>

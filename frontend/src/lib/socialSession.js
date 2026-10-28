@@ -92,6 +92,8 @@ export function socialError(error) {
   const messages = {
     'auth/popup-closed-by-user': 'Google sign-in was cancelled.',
     'auth/cancelled-popup-request': 'Another sign-in window is open. Complete it or try again.',
+    'auth/popup-timeout':
+      'Google sign-in took too long to finish. Close any extra sign-in windows and try again.',
     'auth/popup-blocked': 'Your browser blocked the sign-in window. Allow popups, or you will be redirected automatically.',
     'auth/network-request-failed':
       'Could not reach Google sign-in (Firebase). Check your internet connection, VPN, proxy, or firewall, then tap Retry below.',

@@ -17,8 +17,8 @@ function penaltyForStatus(status) {
 
 /** Penalty applied in router scoring when recent passive health is poor (optional). */
 function healthPenaltyForSlug(slug) {
-    if (!isHealthAwareRoutingEnabled()) return 0;
     if (isSlugBlockedByGatewayHealth(slug)) return -8;
+    if (!isHealthAwareRoutingEnabled()) return 0;
     const cap = getCapabilities(slug);
     if (!cap) return 0;
     const providerId = slugToProviderId(cap.provider) || cap.provider;

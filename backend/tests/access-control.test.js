@@ -45,6 +45,9 @@ test('free users remain limited and cannot access premium models', () => {
         planDisplayName: 'Free',
     }, 'user');
     assert.equal(checkUsageLimit(freeUser).allowed, false);
+    assert.equal(checkUsageLimit(freeUser).code, 'USER_QUOTA_EXCEEDED');
+    assert.equal(checkUsageLimit(freeUser).messageKey, 'usage.limitReached');
+    assert.equal(checkUsageLimit(freeUser).remaining, 0);
     assert.equal(hasModelAccess(freeUser, 'claude'), false);
     assert.equal(hasModelAccess(freeUser, 'llama'), false);
     assert.equal(hasModelAccess(freeUser, 'gemini', '3.5-flash-lite'), true);

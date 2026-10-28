@@ -6,6 +6,7 @@ const {
     isBillingOrQuotaFailure,
     isTransientCapacityFailure,
 } = require('../modelProviderEquivalence');
+const { classifyModelHealthStatus, summarizeModelHealthRows } = require('./modelHealthLabels');
 
 const TEST_PROMPT = 'Reply with exactly: AllModelAI model test OK';
 const modelVariants = JSON.parse(
@@ -26,6 +27,12 @@ const PROVIDER_LABELS = {
     cloudflare: 'Cloudflare AI',
     llama: 'Meta Llama (OpenRouter)',
     cohere: 'Cohere',
+    groq: 'Groq',
+    'gpt-oss-groq': 'GroqCloud',
+    ollama: 'Ollama Cloud',
+    nemotron: 'NVIDIA (OpenRouter)',
+    'deepseek-r1': 'DeepSeek (OpenRouter free)',
+    grok: 'xAI Grok',
 };
 
 const lastResults = new Map();
@@ -192,6 +199,25 @@ function pickRoute(slug, variant) {
             if (cloudflareReady()) return { mode: 'cloudflare', model: v.direct, providerModel: v.direct };
             if (gateway) return { mode: 'openrouter', model: v.gateway, providerModel: v.gateway };
             return { mode: 'blocked', reason: 'Missing Cloudflare or OpenRouter API configuration' };
+        case 'groq':
+        case 'gpt-oss-groq': {
+            const {
+                shouldUseGroqDirect,
+                resolveGroqDirectModel,
+                isGroqConfigured,
+            } = require('./groqChat');
+            if (isGroqConfigured() && shouldUseGroqDirect(slug)) {
+                const modelId = resolveGroqDirectModel(v, slug);
+                return {
+                    mode: 'groq',
+                    model: modelId,
+                    providerModel: modelId,
+                    key: envTrim('GROQ_API_KEY'),
+                };
+            }
+            if (gateway) return { mode: 'openrouter', model: v.gateway, providerModel: v.gateway };
+            return { mode: 'blocked', reason: 'Missing Groq or OpenRouter API configuration' };
+        }
         default:
             if (gateway) return { mode: 'openrouter', model: v.gateway, providerModel: v.gateway };
             return { mode: 'blocked', reason: 'Missing OpenRouter API configuration' };
@@ -276,6 +302,18 @@ async function invokeProvider(route) {
         const text = String(data.result?.response || '').trim();
         return { ok: text.length > 0, textPreview: text.slice(0, 120), status: 200 };
     }
+    if (route.mode === 'groq') {
+        const { GROQ_CHAT_COMPLETIONS_URL } = require('./groqChat');
+        const res = await fetch(GROQ_CHAT_COMPLETIONS_URL, {
+            method: 'POST',
+            signal,
+            headers: { Authorization: `Bearer ${route.key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: route.model, stream: true, max_tokens: 64, messages }),
+        });
+        if (!res.ok) return { ok: false, ...sanitizeError(await res.json().catch(() => ({})), res.status) };
+        const text = await readOpenAiStreamText(res);
+        return { ok: text.length > 0, textPreview: text.slice(0, 120), status: 200 };
+    }
     if (route.mode === 'openrouter') {
         const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
@@ -324,6 +362,12 @@ function buildCatalogRow(slug, variant, email) {
         else availabilityStatus = 'FAILED';
     }
 
+    const healthStatus = classifyModelHealthStatus({
+        availabilityStatus,
+        lastTest: last,
+        routeMode: route.mode,
+    });
+
     return {
         slug,
         variantId: variant.id,
@@ -334,6 +378,8 @@ function buildCatalogRow(slug, variant, email) {
         visionSupport: caps.vision,
         textGenerationSupport: caps.text,
         availabilityStatus,
+        healthStatus,
+        latencyMs: last?.responseTimeMs ?? null,
         lastTest: last || null,
     };
 }
@@ -345,7 +391,11 @@ function buildModelDiagnosticsCatalog(email) {
             rows.push(buildCatalogRow(slug, variant, email));
         }
     }
-    return { models: rows, generatedAt: new Date().toISOString() };
+    return {
+        models: rows,
+        summary: summarizeModelHealthRows(rows),
+        generatedAt: new Date().toISOString(),
+    };
 }
 
 async function runModelDiagnosticTest({ email, slug, variantId, confirmBillable }) {

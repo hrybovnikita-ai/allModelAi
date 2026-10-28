@@ -3,6 +3,7 @@ import { useLanguage } from '../../lib/useLanguage';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import FloatingGlassNav from '../Navigation/FloatingGlassNav';
 import MobileDockNav from '../Navigation/MobileDockNav';
+import { WorkspaceNavDrawerProvider } from '../Navigation/WorkspaceNavDrawerContext';
 import '../Navigation/AuthenticatedShell.css';
 import { isGoogleRedirectRecoveryPending } from '../../lib/socialSignIn';
 import { isLogoutInProgress } from '../../lib/session';
@@ -82,27 +83,29 @@ export default function RequireAuth() {
     const isChatRoute = location.pathname === '/chat' || location.pathname.startsWith('/chat/');
 
     return (
-      <RouteErrorBoundary onRetry={() => { void refresh({ force: true }); }}>
-        {bannerMessage ? (
-          <ConnectionIssueBanner
-            message={bannerMessage}
-            onRetry={retryConnection}
-            retrying={retrying}
-          />
-        ) : null}
-        {!isChatRoute ? <FloatingGlassNav /> : null}
-        {!isChatRoute ? <MobileDockNav /> : null}
-        <div className={`authenticated-shell${isChatRoute ? ' authenticated-shell--chat' : ''}`}>
-          <Outlet
-            context={{
-              user,
-              sessionVerified,
-              connectionIssue,
-              retrySession: retryConnection,
-            }}
-          />
-        </div>
-      </RouteErrorBoundary>
+      <WorkspaceNavDrawerProvider>
+        <RouteErrorBoundary onRetry={() => { void refresh({ force: true }); }}>
+          {bannerMessage ? (
+            <ConnectionIssueBanner
+              message={bannerMessage}
+              onRetry={retryConnection}
+              retrying={retrying}
+            />
+          ) : null}
+          {!isChatRoute ? <FloatingGlassNav /> : null}
+          {!isChatRoute ? <MobileDockNav /> : null}
+          <div className={`authenticated-shell${isChatRoute ? ' authenticated-shell--chat' : ''}`}>
+            <Outlet
+              context={{
+                user,
+                sessionVerified,
+                connectionIssue,
+                retrySession: retryConnection,
+              }}
+            />
+          </div>
+        </RouteErrorBoundary>
+      </WorkspaceNavDrawerProvider>
     );
   }
 

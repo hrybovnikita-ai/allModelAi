@@ -45,20 +45,38 @@ function shouldUseGroqDirect(routedModel) {
     return true;
 }
 
+function stripGroqApiModelPrefix(modelId) {
+    const raw = String(modelId || '').trim();
+    if (!raw) return '';
+    if (raw.startsWith('groq/')) return raw.slice('groq/'.length);
+    return raw;
+}
+
 function resolveGroqDirectModel(selectedVariant, routedModel = 'groq') {
     if (isGptOssGroqSlug(routedModel)) {
         if (selectedVariant?.direct) {
-            const direct = String(selectedVariant.direct).trim();
+            const direct = stripGroqApiModelPrefix(selectedVariant.direct);
             if (direct === GPT_OSS_GROQ_MODEL_ID || direct.endsWith('gpt-oss-120b')) {
                 return GPT_OSS_GROQ_MODEL_ID;
             }
         }
         return GPT_OSS_GROQ_MODEL_ID;
     }
-    if (selectedVariant?.direct) return selectedVariant.direct;
+    if (selectedVariant?.direct) {
+        return stripGroqApiModelPrefix(selectedVariant.direct) || DEFAULT_GROQ_MODEL;
+    }
     const gateway = String(selectedVariant?.gateway || '').trim();
     if (gateway.startsWith('groq/')) return gateway.slice('groq/'.length);
-    return envTrim('GROQ_MODEL') || DEFAULT_GROQ_MODEL;
+    const fromEnv = stripGroqApiModelPrefix(envTrim('GROQ_MODEL'));
+    return fromEnv || DEFAULT_GROQ_MODEL;
+}
+
+/** OpenRouter / gateway ids use the groq/ prefix; GroqCloud direct API does not. */
+function resolveGroqOpenRouterGateway(selectedVariant) {
+    const gateway = String(selectedVariant?.gateway || '').trim();
+    if (gateway) return gateway;
+    const direct = stripGroqApiModelPrefix(selectedVariant?.direct || envTrim('GROQ_MODEL') || DEFAULT_GROQ_MODEL);
+    return direct.startsWith('groq/') ? direct : `groq/${direct}`;
 }
 
 function mapGroqHttpError(status, detail = '') {
@@ -100,6 +118,14 @@ function mapGroqHttpError(status, detail = '') {
         };
     }
     if (code === 400 || code === 422) {
+        if (/not a valid model|model.*not found|does not exist|unknown model/i.test(lower)) {
+            return {
+                code: 'GROQ_MODEL_NOT_FOUND',
+                clientStatus: 502,
+                provider: 'groq',
+                message: 'The selected Groq model id is invalid for api.groq.com. Use the bare id (for example llama-3.3-70b-versatile), not a groq/ OpenRouter prefix.',
+            };
+        }
         return {
             code: 'GROQ_INVALID_REQUEST',
             clientStatus: 400,
@@ -299,6 +325,8 @@ module.exports = {
     logGroqHttpError,
     mapGroqHttpError,
     resolveGroqDirectModel,
+    resolveGroqOpenRouterGateway,
+    stripGroqApiModelPrefix,
     resolveGptOssGroqLibraryHealth,
     getCachedGptOssGroqLiveStatus,
     probeGptOssGroqAvailability,

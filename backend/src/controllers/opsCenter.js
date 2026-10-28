@@ -116,6 +116,12 @@ const getOpsDashboard = async (req, res) => {
         activeSessions = null;
     }
 
+    let postgresQueryTraffic = null;
+    if (isPostgresConnection(connection)) {
+        const { getPgTrafficSnapshot } = require('../db/pgTrafficDiagnostics');
+        postgresQueryTraffic = getPgTrafficSnapshot();
+    }
+
     return res.json({
         updatedAt: new Date().toISOString(),
         readiness,
@@ -124,12 +130,69 @@ const getOpsDashboard = async (req, res) => {
         providersConfigured,
         passiveProviderTelemetry: snapshotPassiveProviders(),
         routerSummary,
+        postgresQueryTraffic,
         alerts: recentAlerts(25),
         rateLimit: {
             productionChatPerMinute: 60,
             productionApiPerMinute: 300,
             note: 'Per-IP sliding window on /api in production',
         },
+    });
+};
+
+const getOpsDbTraffic = (req, res) => {
+    const { getPgTrafficSnapshot } = require('../db/pgTrafficDiagnostics');
+    return res.json(getPgTrafficSnapshot());
+};
+
+async function probeAiPythonHealth() {
+    const base = String(process.env.AI_PYTHON_BASE_URL || process.env.PYTHON_AI_URL || '').trim().replace(/\/$/, '');
+    if (!base) {
+        return { configured: false, ok: null, latencyMs: null };
+    }
+    const started = Date.now();
+    try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 4000);
+        const response = await fetch(`${base}/health`, { signal: controller.signal });
+        clearTimeout(timer);
+        return {
+            configured: true,
+            ok: response.ok,
+            status: response.status,
+            latencyMs: Date.now() - started,
+        };
+    } catch (error) {
+        return {
+            configured: true,
+            ok: false,
+            latencyMs: Date.now() - started,
+            message: error.message,
+        };
+    }
+}
+
+const getOpsApiPerformance = async (req, res) => {
+    const windowMs = Number(process.env.OPS_METRICS_WINDOW_MS) || 15 * 60 * 1000;
+    const { summarizeApiPerformance } = require('../services/operationalMetrics');
+    const { summarizeRateLimits } = require('../services/rateLimitStats');
+    const { cacheStats } = require('../services/smartApiCache');
+    const connection = req.app.locals.db;
+    let postgresQueryTraffic = null;
+    if (isPostgresConnection(connection)) {
+        const { getPgTrafficSnapshot } = require('../db/pgTrafficDiagnostics');
+        postgresQueryTraffic = getPgTrafficSnapshot();
+    }
+    const aiPython = await probeAiPythonHealth();
+    return res.json({
+        updatedAt: new Date().toISOString(),
+        windowMs,
+        http: summarizeApiPerformance(windowMs),
+        rateLimits: summarizeRateLimits(windowMs),
+        smartCache: cacheStats(),
+        postgresQueryTraffic,
+        aiPython,
+        note: 'Postgres egress estimates reflect API result sizes only; confirm Supabase Usage dashboard for billing.',
     });
 };
 
@@ -164,6 +227,8 @@ const getOpsProviders = async (req, res) => {
 module.exports = {
     getReady,
     getOpsDashboard,
+    getOpsDbTraffic,
+    getOpsApiPerformance,
     getOpsProviders,
     buildReadinessPayload,
 };

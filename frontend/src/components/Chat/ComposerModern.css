@@ -1,6 +1,6 @@
 /* Modern AllModelAI chat composer — purple dark theme */
 .chat-composer-modern {
-  --composer-radius: 28px;
+  --composer-radius: var(--radius-input, 24px);
   --composer-violet: #8b5cf6;
   --composer-violet-soft: rgba(124, 92, 255, 0.22);
   --composer-border: rgba(124, 92, 255, 0.32);

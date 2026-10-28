@@ -2,7 +2,7 @@
    Colors: only existing design tokens / inherited chat theme values. */
 
 .chat-page .ai-workspace {
-  width: min(920px, 100%);
+  width: 100%;
   margin: var(--space-7, 32px) auto 0;
   text-align: left;
   animation: ai-workspace-in 320ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)) both;
@@ -44,7 +44,7 @@
   min-height: 92px;
   padding: 14px 14px 12px;
   border: 1px solid var(--border, rgba(148, 163, 184, 0.12));
-  border-radius: 13px;
+  border-radius: 20px;
   background: var(--surface, #101016);
   color: inherit;
   font: inherit;

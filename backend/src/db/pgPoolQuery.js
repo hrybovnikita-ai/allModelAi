@@ -1,4 +1,7 @@
+const { recordPgQuery } = require('./pgTrafficDiagnostics');
+
 const DEFAULT_QUERY_TIMEOUT_MS = Number(process.env.DATABASE_QUERY_TIMEOUT_MS || 15000);
+const PG_TRAFFIC_DIAGNOSTICS = String(process.env.ENABLE_DB_TRAFFIC_DIAGNOSTICS || 'true').toLowerCase() !== 'false';
 /** Extra HTTP guard after node-postgres query_timeout (does not cancel the query by itself). */
 const QUERY_GUARD_GRACE_MS = Number(process.env.DATABASE_QUERY_GUARD_GRACE_MS || 500);
 
@@ -69,7 +72,12 @@ async function queryPgPool(pool, text, values = [], { timeoutMs = DEFAULT_QUERY_
     });
 
     try {
-        return await Promise.race([queryPromise, guardPromise]);
+        const result = await Promise.race([queryPromise, guardPromise]);
+        if (PG_TRAFFIC_DIAGNOSTICS) {
+            const sqlText = typeof queryConfig.text === 'string' ? queryConfig.text : String(text || '');
+            recordPgQuery(sqlText, values, result);
+        }
+        return result;
     } finally {
         clearTimeout(guardTimer);
         queryPromise.catch(() => {});

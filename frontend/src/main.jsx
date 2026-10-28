@@ -63,6 +63,11 @@ const savedInputColor = savedAppearance.inputColor || '#262626'
 document.documentElement.style.setProperty('--composer-color', savedInputColor)
 // Chat composer surface is dark (Dark Violet) — typed text must stay light regardless of input swatch.
 document.documentElement.style.setProperty('--composer-text', '#ffffff')
+if (savedAppearance.aiTextColor) document.documentElement.style.setProperty('--ai-text-color', savedAppearance.aiTextColor)
+if (savedAppearance.chatBackground) document.documentElement.style.setProperty('--chat-canvas', savedAppearance.chatBackground)
+if (savedAppearance.lineHeight) document.documentElement.style.setProperty('--chat-line-height', String(savedAppearance.lineHeight))
+if (savedAppearance.codeTheme) document.documentElement.dataset.codeTheme = savedAppearance.codeTheme
+if (savedAppearance.fontSize) document.documentElement.style.setProperty('--chat-font-size', `${savedAppearance.fontSize}px`)
 const systemTheme = window.matchMedia('(prefers-color-scheme: light)')
 const applyTheme = () => {
   const preference = readAppearance().theme || 'dark'

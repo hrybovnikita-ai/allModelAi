@@ -11,6 +11,7 @@ import NavProfileMenu from './NavProfileMenu';
 import NavSettingsIcon from './NavSettingsIcon';
 import NavThemeToggle from './NavThemeToggle';
 import { useNavCompact } from './useNavCompact';
+import { useWorkspaceNavDrawer } from './WorkspaceNavDrawerContext';
 import './FloatingGlassNav.css';
 
 export default function FloatingGlassNav() {
@@ -18,6 +19,7 @@ export default function FloatingGlassNav() {
   const { user: sessionUser, authLoading } = useSession();
   const user = sessionUser;
   const { sentinelRef, compact } = useNavCompact();
+  const { open: navDrawerOpen, toggle: toggleNavDrawer } = useWorkspaceNavDrawer();
   const [moreOpen, setMoreOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [creditStatus, setCreditStatus] = useState(null);
@@ -79,10 +81,26 @@ export default function FloatingGlassNav() {
         role="banner"
       >
         <div className="fg-nav-glass">
-          <Link to="/dashboard" className="fg-nav-brand" onClick={() => { setMoreOpen(false); setProfileOpen(false); }}>
-            <AllModelAILogoMark size={34} />
-            <span>AllModelAI</span>
-          </Link>
+          <div className="fg-nav-left">
+            <button
+              type="button"
+              className="fg-nav-menu-btn"
+              aria-expanded={navDrawerOpen}
+              aria-controls="workspace-nav-drawer"
+              onClick={() => {
+                setMoreOpen(false);
+                setProfileOpen(false);
+                toggleNavDrawer();
+              }}
+            >
+              <span className="fg-nav-menu-icon" aria-hidden="true">☰</span>
+              <span className="fg-nav-menu-label">Menu</span>
+            </button>
+            <Link to="/dashboard" className="fg-nav-brand" onClick={() => { setMoreOpen(false); setProfileOpen(false); }}>
+              <AllModelAILogoMark size={34} />
+              <span>AllModelAI</span>
+            </Link>
+          </div>
 
           <nav className="fg-nav-center" aria-label="Main navigation">
             {NAV_PRIMARY_LINKS.map((item) => {

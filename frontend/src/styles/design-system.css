@@ -64,6 +64,10 @@
   --radius-xl: 22px;
   --radius-2xl: 26px;
   --radius-pill: 9999px;
+  --radius-card: 22px;
+  --radius-message: 20px;
+  --radius-input: 24px;
+  --radius-code: 16px;
 
   /* Shadows */
   --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.28);

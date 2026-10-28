@@ -12,7 +12,7 @@ export default function ProductionCenter(){
  const[query,setQuery]=useState(''),[results,setResults]=useState([]),[jobType,setJobType]=useState('research'),[jobInput,setJobInput]=useState(''),[hook,setHook]=useState({name:'',url:''}),[hookSecret,setHookSecret]=useState('');
  const load=()=>{api('/api/health').then(setHealth).catch(e=>setError(e.message));if(active==='jobs')api('/api/jobs').then(setJobs).catch(e=>setError(e.message));if(active==='notifications')api('/api/notifications').then(setNotifications).catch(e=>setError(e.message));if(active==='usage')api('/api/usage/report').then(setUsage).catch(e=>setError(e.message));if(active==='webhooks')api('/api/webhooks').then(setWebhooks).catch(e=>setError(e.message));if(active==='security')api('/api/audit').then(setAudit).catch(e=>setError(e.message));};
  useEffect(load,[active]);
- useEffect(()=>{if(active!=='jobs')return;const timer=setInterval(()=>api('/api/jobs').then(setJobs).catch(()=>{}),1000);return()=>clearInterval(timer);},[active]);
+ useEffect(()=>{if(active!=='jobs')return;const poll=()=>{if(document.visibilityState==='hidden')return;api('/api/jobs').then(setJobs).catch(()=>{});};poll();const timer=setInterval(poll,5000);return()=>clearInterval(timer);},[active]);
  if(!user)return <Navigate to="/" replace/>;
  const createJob=async()=>{try{const created=await post('/api/jobs',{type:jobType,payload:{objective:jobInput}});setJobs(items=>[created,...items]);setJobInput('');}catch(e){setError(e.message);}};
  const search=async()=>{try{setResults((await api(`/api/search?q=${encodeURIComponent(query)}`)).results||[]);}catch(e){setError(e.message);}};

@@ -1,0 +1,156 @@
+/**
+ * Dashboard action buttons — full pill shape (loads after other dashboard CSS).
+ */
+
+.dashboard-page.dashboard-violet {
+  --dash-btn-radius: 9999px;
+  --dash-btn-min-height: 46px;
+  --dash-btn-padding-x: 22px;
+  --dash-btn-gap: 12px;
+}
+
+.dashboard-page.dashboard-violet .dashboard-hero-cta,
+.dashboard-page.dashboard-violet .dashboard-actions,
+.dashboard-page.dashboard-violet .dashboard-subscription-actions,
+.dashboard-page.dashboard-violet .dashboard-banner-links {
+  gap: var(--dash-btn-gap);
+}
+
+.dashboard-page.dashboard-violet :is(
+  .dashboard-action-primary,
+  .dashboard-action-secondary,
+  .dashboard-actions a,
+  .dashboard-more-tools-toggle,
+  .dashboard-sub-manage,
+  .dashboard-sub-retry,
+  .dashboard-subscribe-btn,
+  .dashboard-subscription-actions a,
+  .dashboard-subscription-actions .pro-subscribe-btn,
+  .dashboard-subscription-actions .pro-subscribe-btn--compact,
+  .model-open,
+  .model-open--subscribe,
+  .dashboard-feature-card > a,
+  .dashboard-feature-card > button,
+  .dashboard-code-copy,
+  .dashboard-code-section > div > a,
+  .projects-empty > a,
+  .continue-card a,
+  .dashboard-usage > a,
+  .dashboard-banner-links a,
+  .payment-history-back,
+  .dashboard-modal-danger,
+  .dashboard-modal button:not(.dashboard-modal-close)
+) {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--dash-btn-min-height);
+  padding: 12px var(--dash-btn-padding-x);
+  border-radius: var(--dash-btn-radius) !important;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.22s ease,
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.dashboard-page.dashboard-violet .model-open {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.dashboard-page.dashboard-violet .dashboard-action-primary,
+.dashboard-page.dashboard-violet .dashboard-actions .dashboard-action-primary {
+  border: 0 !important;
+  background: linear-gradient(135deg, #6d42cc, #8b5cf6, #9d7bff) !important;
+  color: #fff !important;
+  box-shadow: 0 10px 28px rgba(109, 66, 204, 0.35);
+}
+
+.dashboard-page.dashboard-violet .dashboard-action-primary:hover,
+.dashboard-page.dashboard-violet .dashboard-actions .dashboard-action-primary:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+  box-shadow: 0 14px 32px rgba(109, 66, 204, 0.42);
+}
+
+.dashboard-page.dashboard-violet .dashboard-action-secondary {
+  border: 1px solid rgba(139, 92, 246, 0.4) !important;
+  background: rgba(13, 12, 24, 0.72) !important;
+  color: #ddd6fe !important;
+}
+
+.dashboard-page.dashboard-violet .dashboard-action-secondary:hover {
+  transform: translateY(-2px);
+  border-color: rgba(183, 148, 246, 0.6) !important;
+  background: rgba(109, 66, 204, 0.18) !important;
+  color: #fff !important;
+}
+
+.dashboard-page.dashboard-violet .dashboard-sub-manage {
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  background: rgba(13, 12, 24, 0.65);
+  color: #e9e4ff;
+}
+
+.dashboard-page.dashboard-violet .dashboard-sub-manage:hover {
+  transform: translateY(-1px);
+  border-color: rgba(183, 148, 246, 0.55);
+  background: rgba(109, 66, 204, 0.2);
+  color: #fff;
+}
+
+.dashboard-page.dashboard-violet .dashboard-sub-retry {
+  min-height: 40px;
+  padding: 8px 18px;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  background: rgba(13, 12, 24, 0.85);
+  color: #e9e4ff;
+}
+
+.dashboard-page.dashboard-violet .dashboard-more-tools-toggle:hover,
+.dashboard-page.dashboard-violet .dashboard-banner-links a:hover,
+.dashboard-page.dashboard-violet .model-open:hover,
+.dashboard-page.dashboard-violet .projects-empty > a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(183, 148, 246, 0.5);
+}
+
+.dashboard-page.dashboard-violet .dashboard-sidebar-collapse,
+.dashboard-page.dashboard-violet .dashboard-sidebar-mobile-trigger {
+  border-radius: var(--dash-btn-radius);
+}
+
+@media (max-width: 767px) {
+  .dashboard-page.dashboard-violet {
+    --dash-btn-padding-x: 20px;
+    --dash-btn-min-height: 44px;
+  }
+
+  .dashboard-page.dashboard-violet .dashboard-hero-cta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboard-page.dashboard-violet .dashboard-hero-cta a {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-page.dashboard-violet :is(
+    .dashboard-action-primary,
+    .dashboard-action-secondary,
+    .dashboard-sub-manage,
+    .model-open,
+    .dashboard-banner-links a
+  ):hover {
+    transform: none;
+  }
+}

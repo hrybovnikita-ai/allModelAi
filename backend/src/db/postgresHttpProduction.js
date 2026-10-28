@@ -34,7 +34,7 @@ async function globalSearchAsync(connection, email, query) {
         pool,
         `SELECT id, title AS name, model, updated_at AS "updatedAt"
          FROM conversations
-         WHERE email = $1 AND (title ILIKE $2 OR messages ILIKE $2)
+         WHERE email = $1 AND title ILIKE $2
          ORDER BY updated_at DESC LIMIT 20`,
         [email, pattern],
     );

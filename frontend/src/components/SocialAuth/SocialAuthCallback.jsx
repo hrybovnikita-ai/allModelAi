@@ -5,19 +5,6 @@ import { socialError } from '../../lib/socialSession';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import './SocialAuth.css';
 
-export function consumeStoredSocialAuthError() {
-  try {
-    const message = sessionStorage.getItem('allmodelai_social_error');
-    if (message) {
-      sessionStorage.removeItem('allmodelai_social_error');
-      return message;
-    }
-  } catch {
-    /* ignore */
-  }
-  return '';
-}
-
 /** UI shell only — redirect recovery runs in App bootstrap / shared pipeline. */
 export default function SocialAuthCallback() {
   const navigate = useNavigate();

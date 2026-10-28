@@ -96,11 +96,11 @@
 
 .hero-prompt {
   width: 100%;
-  max-width: min(640px, 100%);
+  max-width: min(760px, 100%);
   margin-top: clamp(4px, 1vw, 8px);
-  padding: clamp(14px, 2vw, 18px);
-  border: 1px solid rgba(124, 92, 255, 0.28);
-  border-radius: clamp(14px, 2vw, 16px);
+  padding: clamp(16px, 2vw, 20px);
+  border: 1px solid rgba(139, 92, 246, 0.38);
+  border-radius: 20px;
   background:
     linear-gradient(145deg, rgba(22, 28, 42, 0.92), rgba(12, 16, 26, 0.88));
   box-shadow:

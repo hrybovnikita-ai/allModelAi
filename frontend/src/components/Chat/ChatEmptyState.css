@@ -1,12 +1,19 @@
 /* Empty-chat welcome composition — motion & spacing only (no new hues). */
 
+.chat-page .chat-welcome-container {
+  width: min(calc(100% - 48px), var(--chat-welcome-max-width, 960px));
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+
+.chat-page .chat-welcome-content,
 .chat-page .chat-empty--premium {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: min(960px, 100%);
+  width: 100%;
   margin-inline: auto;
-  padding: clamp(12px, 3vh, 28px) 12px 8px;
+  padding: clamp(12px, 3vh, 28px) 0 8px;
   box-sizing: border-box;
 }
 
@@ -46,8 +53,11 @@
   animation-delay: 120ms;
 }
 
-.chat-page .chat-empty--premium .welcome-suggestion-cards {
-  margin-top: clamp(20px, 3.5vh, 32px);
+.chat-page .chat-empty--premium .welcome-suggestion-cards,
+.chat-page .chat-welcome-content .welcome-suggestion-cards {
+  width: 100%;
+  margin-top: clamp(16px, 2.5vh, 24px);
+  margin-bottom: clamp(8px, 1.5vh, 16px);
 }
 
 @keyframes chat-empty-orb-in {

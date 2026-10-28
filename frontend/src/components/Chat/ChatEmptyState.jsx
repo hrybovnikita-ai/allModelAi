@@ -1,10 +1,9 @@
 import ChatWelcomeSuggestions from './ChatWelcomeSuggestions';
-import ChatAiWorkspace from './ChatAiWorkspace';
 import { ProjectIconBadge } from './CreateProjectModal';
 import './ChatEmptyState.css';
 
 /**
- * Central empty-chat welcome composition (orb, heading, cards, workspace).
+ * Central empty-chat welcome composition (orb, heading, suggestion cards).
  */
 export default function ChatEmptyState({
   t,
@@ -13,20 +12,12 @@ export default function ChatEmptyState({
   selectedModel,
   suggestions,
   onSelectSuggestion,
-  chatHistory,
-  projects,
-  modelStatus,
-  prompt,
-  onOpenConversation,
-  onEnterProject,
-  onAnalyzeFile,
-  onAcceptImprovedPrompt,
-  selectedSlug,
 }) {
   const inProject = Boolean(activeProject && !temporaryChat);
 
   return (
-    <div className="chat-empty chat-empty--premium" data-welcome="true">
+    <div className="chat-welcome-container" data-welcome="true">
+      <div className="chat-welcome-content chat-empty chat-empty--premium">
       <div className="chat-empty-hero">
         <div className="model-orb chat-empty-orb" aria-hidden="true">
           {inProject ? (
@@ -49,23 +40,9 @@ export default function ChatEmptyState({
       </div>
 
       {!inProject && (
-        <>
-          <ChatWelcomeSuggestions items={suggestions} onSelect={onSelectSuggestion} t={t} />
-          <ChatAiWorkspace
-            t={t}
-            chatHistory={chatHistory}
-            projects={projects}
-            activeProject={activeProject}
-            modelStatus={modelStatus}
-            prompt={prompt}
-            onOpenConversation={onOpenConversation}
-            onEnterProject={onEnterProject}
-            onAnalyzeFile={onAnalyzeFile}
-            onAcceptImprovedPrompt={onAcceptImprovedPrompt}
-            selectedSlug={selectedSlug}
-          />
-        </>
+        <ChatWelcomeSuggestions items={suggestions} onSelect={onSelectSuggestion} t={t} />
       )}
+      </div>
     </div>
   );
 }

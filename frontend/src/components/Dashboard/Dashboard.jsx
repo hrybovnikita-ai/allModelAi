@@ -13,7 +13,6 @@ import './DashboardDarkViolet.css';
 import './DashboardLayout.css';
 import './DashboardResponsive.css';
 import './DashboardPremium.css';
-import DashboardSidebar from './DashboardSidebar';
 import { DASHBOARD_MORE_TOOLS, DASHBOARD_QUICK_ACTIONS } from './dashboardQuickActions';
 import AccountDeleteModal from '../AccountDeleteModal';
 import DashboardResources from './DashboardResources';
@@ -32,6 +31,8 @@ import ProSubscribeButton from '../Subscribe/ProSubscribeButton';
 import DashboardUsageChart from './DashboardUsageChart';
 import './DashboardModelLibrary.css';
 import './DashboardSaas.css';
+import './DashboardShellLayout.css';
+import './DashboardButtons.css';
 
 const modelMeta = { GPT: ['Fast', '128K context', '$'], Gemini: ['Fast', '1M context', '$'], Claude: ['Thoughtful', '200K context', '$$'], Llama: ['Flexible', '128K context', '$'] };
 
@@ -56,6 +57,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { user: routeUser, sessionVerified, retrySession } = useOutletContext();
   const { user: sessionUser, status, connectionIssue, authLoading, refresh } = useSession();
+  const [paymentSuccessNotice, setPaymentSuccessNotice] = useState('');
   const user = routeUser?.email ? routeUser : sessionUser;
   const backendReady = sessionVerified && status === AUTH_STATUS.AUTHENTICATED;
   const sessionStillChecking = authLoading || status === AUTH_STATUS.CHECKING_SESSION;
@@ -138,11 +140,11 @@ export default function Dashboard() {
     if (!user?.email || !backendReady) return;
     setAnalyticsLoad('loading');
     try {
-      const [statsResponse, projectsResponse] = await Promise.all([
-        apiFetch(`/api/analytics?email=${encodeURIComponent(user.email)}`, { skipAuthRedirect: true }),
-        apiFetch(`/api/workspace?email=${encodeURIComponent(user.email)}&type=project`, { skipAuthRedirect: true }),
+      const { fetchUserAnalytics } = await import('../../lib/userAnalyticsApi.js');
+      const [stats, projectsResponse] = await Promise.all([
+        fetchUserAnalytics(apiFetch),
+        apiFetch('/api/workspace?type=project', { skipAuthRedirect: true }),
       ]);
-      const stats = statsResponse.ok ? await statsResponse.json() : null;
       const projects = projectsResponse.ok ? await projectsResponse.json() : [];
       setAnalytics(stats);
       setRecentProjects(Array.isArray(projects) ? projects.slice(0, 3) : []);
@@ -155,6 +157,15 @@ export default function Dashboard() {
   useEffect(() => {
     void loadAnalytics();
   }, [loadAnalytics]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('payment') !== 'success') return;
+    setPaymentSuccessNotice('Payment successful — refreshing your subscription and credits.');
+    void loadSubscription();
+    void refresh({ force: true });
+    navigate({ pathname: location.pathname, search: '' }, { replace: true, state: location.state });
+  }, [location.search, location.pathname, location.state, backendReady, loadSubscription, refresh, navigate]);
 
   useEffect(() => {
     if (!backendReady) return;
@@ -216,40 +227,51 @@ export default function Dashboard() {
 
   return (
     <main className="dashboard-page dashboard-violet dashboard-page--premium">
-      <DashboardSidebar />
       <div className="dashboard-layout-main">
       <div className="dashboard-shell dashboard-shell--enter">
+      {paymentSuccessNotice && (
+        <div className="dashboard-email-notice" role="status">{paymentSuccessNotice}</div>
+      )}
       {location.state?.subscriptionActivated?.message && (
         <div className="dashboard-email-notice" role="status">{location.state.subscriptionActivated.message}</div>
       )}
       {location.state?.welcomeEmail?.sent && <div className="dashboard-email-notice" role="status">✓ Welcome email sent to {user?.email}</div>}
       {location.state?.welcomeEmail?.reason === 'delivery_failed' && <div className="dashboard-email-notice warning" role="status">Your account is ready, but the welcome email could not be delivered.</div>}
       {deleteError && !deleteModalOpen && <p role="alert">{deleteError}</p>}
-      <section className="dashboard-hero dashboard-hero--compact dashboard-card-reveal" style={{ '--dash-delay': '40ms' }}>
+      <section className="dashboard-hero dashboard-hero--compact dashboard-card-reveal dashboard-section-block" style={{ '--dash-delay': '40ms' }}>
         <div className="dashboard-hero-main">
           <p className="dashboard-eyebrow">Signed in as {user.email}</p>
           <h1>
             Welcome back, <span className="dashboard-hero-name">{firstName}</span>
           </h1>
           <p className="dashboard-hero-lede">
-            Open a chat or browse models. Billing and usage stay in the cards below.
+            Start a new conversation, route tasks with Smart Router, or explore models — subscription and usage live below.
           </p>
           <div className="dashboard-hero-cta">
-            <Link to="/chat?model=smart" className="dashboard-action-primary">Open Smart Chat</Link>
+            <Link to="/chat" className="dashboard-action-primary">New Chat</Link>
             <Link to="/explore" className="dashboard-action-secondary">Explore Models</Link>
           </div>
         </div>
       </section>
-      <section className="dashboard-quick-actions" aria-label="Quick actions">
-        {DASHBOARD_QUICK_ACTIONS.map((action) => (
-          <Link key={action.to} to={action.to} className="dashboard-quick-action">
-            <span className="dashboard-quick-action-icon" aria-hidden="true">
-              <DashboardIcon name={QUICK_ACTION_ICON[action.iconKey] || 'spark'} size={22} />
-            </span>
-            <strong>{action.label}</strong>
-            <small>{action.description}</small>
-          </Link>
-        ))}
+      <section className="dashboard-section-block" aria-labelledby="dashboard-quick-actions-title">
+        <header className="dashboard-section-head">
+          <div>
+            <p className="dashboard-eyebrow">Shortcuts</p>
+            <h2 id="dashboard-quick-actions-title">Quick actions</h2>
+          </div>
+          <p>Jump into chat, models, and workspace tools.</p>
+        </header>
+        <div className="dashboard-quick-actions">
+          {DASHBOARD_QUICK_ACTIONS.map((action) => (
+            <Link key={action.to} to={action.to} className="dashboard-quick-action">
+              <span className="dashboard-quick-action-icon" aria-hidden="true">
+                <DashboardIcon name={QUICK_ACTION_ICON[action.iconKey] || 'spark'} size={22} />
+              </span>
+              <strong>{action.label}</strong>
+              <small>{action.description}</small>
+            </Link>
+          ))}
+        </div>
       </section>
       <button type="button" className="dashboard-more-tools-toggle" aria-expanded={showMoreTools} onClick={() => setShowMoreTools((open) => !open)}>
         {showMoreTools ? 'Hide extra tools' : 'Explore all tools'}
@@ -267,12 +289,20 @@ export default function Dashboard() {
           ))}
         </section>
       ) : null}
+      <div className="dashboard-insights-grid">
       {user?.email && (
         <section
-          className="dashboard-usage dashboard-subscription-card dashboard-card-reveal"
+          className="dashboard-usage dashboard-subscription-card dashboard-card-reveal dashboard-section-block"
           style={{ '--dash-delay': '80ms' }}
+          aria-labelledby="dashboard-subscription-title"
           aria-busy={subscriptionLoad === 'loading'}
         >
+          <header className="dashboard-section-head">
+            <div>
+              <p className="dashboard-eyebrow">Billing</p>
+              <h2 id="dashboard-subscription-title">Subscription</h2>
+            </div>
+          </header>
           {subscriptionLoad === 'loading' && !creditStatus && (
             <div className="dashboard-subscription-loading" role="status">
               <div className="dashboard-skeleton-shimmer" style={{ width: '40%', marginBottom: 12 }} aria-hidden="true" />
@@ -319,7 +349,7 @@ export default function Dashboard() {
                 ) : null}
                 {!creditStatus.isOwner && creditStatus.expiresAtLabel && (
                   <div>
-                    <span>Renews/Expires</span>
+                    <span>Renewal / expiry</span>
                     <strong>{creditStatus.expiresAtLabel}</strong>
                   </div>
                 )}
@@ -347,16 +377,17 @@ export default function Dashboard() {
         </section>
       )}
       <section
-        className="personal-overview dashboard-card-reveal"
+        className="personal-overview dashboard-card-reveal dashboard-section-block"
         style={{ '--dash-delay': '120ms' }}
+        aria-labelledby="dashboard-analytics-title"
         aria-busy={analyticsLoad === 'loading'}
       >
         <div className="overview-heading">
           <div>
             <p className="dashboard-eyebrow">Analytics</p>
-            <h2>Workspace overview</h2>
+            <h2 id="dashboard-analytics-title">Workspace overview</h2>
           </div>
-          <Link to="/studio">Open analytics →</Link>
+          <Link to="/usage-analytics">Full analytics →</Link>
         </div>
         {analyticsLoad === 'loading' && !analytics ? (
           <div className="dashboard-analytics-skeleton" role="status">
@@ -431,6 +462,7 @@ export default function Dashboard() {
           )}
         </div>
       </section>
+      </div>
       <EverydayCards />
       <section className="dashboard-feature-cards" aria-label="Workspace highlights">
         <article className="dashboard-feature-card dashboard-feature-card-skills">

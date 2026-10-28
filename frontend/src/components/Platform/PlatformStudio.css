@@ -1,0 +1,43 @@
+.platform-studio {
+  min-height: 100%;
+  padding: 28px 20px 48px;
+  color: #f8fafc;
+  background: radial-gradient(circle at top, rgba(124, 58, 237, .35), transparent 42%), #07070d;
+}
+.platform-hero p { color: #c4b5fd; letter-spacing: .08em; text-transform: uppercase; font-size: .75rem; }
+.platform-hero h1 { margin: 0 0 18px; font-size: clamp(1.8rem, 3vw, 2.6rem); }
+.platform-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.platform-tabs button, .platform-card button {
+  border: 0;
+  border-radius: 9999px;
+  padding: 10px 16px;
+  background: linear-gradient(90deg, #6d28d9, #7c3aed);
+  color: white;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.platform-tabs button.active { outline: 2px solid #ddd6fe; }
+.platform-card {
+  max-width: 860px;
+  padding: 22px;
+  border: 1px solid rgba(196, 181, 253, .25);
+  border-radius: 22px;
+  background: rgba(15, 15, 25, .72);
+  backdrop-filter: blur(10px);
+}
+.platform-card input {
+  display: block;
+  width: min(100%, 360px);
+  margin: 8px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #4c1d95;
+  border-radius: 9999px;
+  background: #0b0b12;
+  color: white;
+}
+.platform-error { color: #fecaca; }
+.platform-card button:disabled { opacity: .6; cursor: wait; }
+@media (max-width: 720px) {
+  .platform-studio { padding: 18px 12px 36px; }
+}

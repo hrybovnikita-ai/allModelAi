@@ -12,6 +12,7 @@ import { DEFAULT_WAYFORPAY_CURRENCIES } from '../../lib/wayforpay';
 import { useSession } from '../Session/SessionProvider';
 import { isAuthInitializing } from '../../lib/authSessionStatus';
 import WayforpayPaymentModal from '../Checkout/WayforpayPaymentModal';
+import LemonSqueezySubscribeButton from './LemonSqueezySubscribeButton.jsx';
 import './ProSubscribeButton.css';
 
 /**
@@ -79,6 +80,22 @@ export default function ProSubscribeButton({
   }, [checkoutFallbackPath, checkoutInfo, navigate, onStarted, status, user?.email]);
 
   const label = children || 'Subscribe';
+  const useLemonSqueezy = checkoutInfo?.primaryProvider === 'lemonsqueezy'
+    && checkoutInfo?.lemonSqueezyCheckoutEnabled;
+
+  if (useLemonSqueezy) {
+    return (
+      <LemonSqueezySubscribeButton
+        className={className}
+        variant={variant}
+        variantId={checkoutInfo?.lemonSqueezyVariantId || '2308479'}
+        priceLabel={checkoutInfo?.lemonSqueezyPriceLabel || '$20.00'}
+        onStarted={onStarted}
+      >
+        {children || `Subscribe (${checkoutInfo?.lemonSqueezyPriceLabel || '$20.00'}/mo)`}
+      </LemonSqueezySubscribeButton>
+    );
+  }
 
   return (
     <>

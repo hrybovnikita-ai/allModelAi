@@ -18,9 +18,9 @@ test('design system defines shared app content width', () => {
   assert.match(css, /--app-shell-max:\s*1600px/);
 });
 
-test('dashboard violet shell uses app content width', () => {
-  const css = readFileSync(path.join(root, 'src/components/Dashboard/DashboardLayout.css'), 'utf8');
-  assert.match(css, /var\(--app-content-width/);
-  assert.match(css, /--app-shell-gutter/);
+test('dashboard shell layout is full width with responsive grids', () => {
+  const css = readFileSync(path.join(root, 'src/components/Dashboard/DashboardShellLayout.css'), 'utf8');
+  assert.match(css, /max-width: none/);
+  assert.match(css, /minmax\(0, 1fr\)/);
   assert.doesNotMatch(css, /padding:\s*0\s+5vw/);
 });

@@ -82,6 +82,11 @@ const STAGES = new Set([
   'SESSION_PROVIDER_INIT_TIMEOUT',
   'BACKEND_SESSION_EXCHANGE_BEGIN',
   'GOOGLE_PROVIDER_READY',
+  'GOOGLE_OAUTH_POPUP_OPENED',
+  'GOOGLE_POPUP_PROMISE_RESOLVED',
+  'GOOGLE_POPUP_PROMISE_REJECTED',
+  'GOOGLE_POPUP_AUTH_STATE_RECOVERED',
+  'FIREBASE_SIGNIN_COMPLETED',
 ]);
 
 /** Unified auth tracing (`localStorage.allmodelai_social_auth_debug=1` or DEV). */
@@ -147,6 +152,19 @@ export function persistSocialAuthError(errorOrMessage, code = '') {
   } catch {
     /* Safari private mode */
   }
+}
+
+export function consumeStoredSocialAuthError() {
+  try {
+    const message = sessionStorage.getItem(SOCIAL_ERROR_STORAGE_KEY);
+    if (message) {
+      sessionStorage.removeItem(SOCIAL_ERROR_STORAGE_KEY);
+      return message;
+    }
+  } catch {
+    /* ignore */
+  }
+  return '';
 }
 
 export function consumeStoredSocialAuthErrorCode() {

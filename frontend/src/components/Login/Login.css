@@ -114,7 +114,7 @@
   width: 100%;
   padding: 13px;
   border: 0;
-  border-radius: var(--radius-sm, 10px);
+  border-radius: 9999px;
   background: var(--gradient-primary, var(--primary));
   color: white;
   font: inherit;
@@ -232,7 +232,7 @@
   width: 100%;
   padding: 12px 14px;
   border: 1px solid #334155;
-  border-radius: 10px;
+  border-radius: 9999px;
   background: rgba(15, 23, 42, .82);
   color: #f1f5f9;
   font: inherit;

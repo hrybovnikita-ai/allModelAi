@@ -10,10 +10,9 @@ import {
 } from '../../lib/socialSignIn';
 import { GOOGLE_POPUP_SIGNIN_EVENT } from '../../lib/socialRedirectState.js';
 import { ensureRedirectPrerequisitesReady } from '../../lib/authRedirectPreload';
-import { authRecoveryLog, consumeStoredSocialAuthErrorCode } from '../../lib/socialAuthDiagnostics';
+import { authRecoveryLog, consumeStoredSocialAuthError, consumeStoredSocialAuthErrorCode } from '../../lib/socialAuthDiagnostics';
 import { socialError } from '../../lib/socialSession';
 import { AUTH_REDIRECT_RECOVERY_TIMEOUT_MS } from '../../lib/authSessionStatus';
-import { consumeStoredSocialAuthError } from './SocialAuthCallback.jsx';
 import { useSession } from '../Session/SessionProvider';
 import './SocialAuth.css';
 
@@ -174,5 +173,3 @@ export default function GoogleRedirectRecoveryGate() {
     </div>
   );
 }
-
-export { consumeStoredSocialAuthError };

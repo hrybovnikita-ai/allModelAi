@@ -8,11 +8,12 @@ afterEach(() => {
 });
 
 test('auth bootstrap dedupes in-flight work but does not cache null forever', async () => {
-  const source = await readFile(new URL('../src/lib/authBootstrap.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /bootstrapPromise\s*=\s*runBootstrap/);
-  assert.match(source, /bootstrapInflight/);
-  assert.match(source, /bootstrapInflight = null/);
-  assert.match(source, /fresh-login-or-popup/);
+  const bootstrap = await readFile(new URL('../src/lib/authBootstrap.js', import.meta.url), 'utf8');
+  const state = await readFile(new URL('../src/lib/authBootstrapState.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(bootstrap, /bootstrapPromise\s*=\s*runBootstrap/);
+  assert.match(bootstrap, /getAuthBootstrapInflight|setAuthBootstrapInflight/);
+  assert.match(state, /invalidateAuthBootstrap/);
+  assert.match(bootstrap, /fresh-login-or-popup/);
 });
 
 test('session provider requires server proof even during fresh-login grace', async () => {

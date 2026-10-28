@@ -29,6 +29,7 @@ export default function Admin() {
   const [aiImprovement, setAiImprovement] = useState(null);
   const [paymentReadiness, setPaymentReadiness] = useState(null);
   const [merchantRevenue, setMerchantRevenue] = useState(null);
+  const [apiPerformance, setApiPerformance] = useState(null);
 
   const adminHeaders = useCallback(
     () => ({ headers: { 'x-admin-key': key } }),
@@ -40,7 +41,7 @@ export default function Admin() {
     setLoading(true);
     setError('');
     try {
-      const [healthRes, statsRes, opsRes, providersRes, improvementRes, readinessRes, revenueRes] = await Promise.all([
+      const [healthRes, statsRes, opsRes, providersRes, improvementRes, readinessRes, revenueRes, perfRes] = await Promise.all([
         apiFetch('/api/health'),
         apiFetch('/api/admin/stats', adminHeaders()),
         apiFetch('/api/admin/ops/dashboard', adminHeaders()),
@@ -48,6 +49,7 @@ export default function Admin() {
         apiFetch('/api/admin/ai-improvement', adminHeaders()),
         apiFetch('/api/admin/payments/activation-readiness', adminHeaders()),
         apiFetch('/api/admin/payments/revenue', adminHeaders()),
+        apiFetch('/api/admin/ops/api-performance', adminHeaders()),
       ]);
       const healthData = await healthRes.json().catch(() => ({}));
       const statsData = await statsRes.json().catch(() => ({}));
@@ -56,6 +58,7 @@ export default function Admin() {
       const improvementData = await improvementRes.json().catch(() => ({}));
       const readinessData = await readinessRes.json().catch(() => ({}));
       const revenueData = await revenueRes.json().catch(() => ({}));
+      const perfData = await perfRes.json().catch(() => ({}));
 
       if (!statsRes.ok) {
         setError(statsData.message || 'Could not load admin statistics.');
@@ -71,6 +74,7 @@ export default function Admin() {
       setAiImprovement(improvementRes.ok ? improvementData : null);
       setPaymentReadiness(readinessRes.ok ? readinessData : null);
       setMerchantRevenue(revenueRes.ok ? revenueData : revenueData);
+      setApiPerformance(perfRes.ok ? perfData : null);
       if (!opsRes.ok && opsData.message) {
         setError((prev) => prev || opsData.message);
       }
@@ -137,7 +141,7 @@ export default function Admin() {
         {(stats || ops) && (
           <>
             <div className="admin-tabs" role="tablist">
-              {['overview', 'payments', 'providers', 'improvement', 'alerts'].map((id) => (
+              {['overview', 'performance', 'payments', 'providers', 'improvement', 'alerts'].map((id) => (
                 <button
                   key={id}
                   type="button"
@@ -147,9 +151,10 @@ export default function Admin() {
                   onClick={() => setTab(id)}
                 >
                   {id === 'overview' ? 'Overview'
-                    : id === 'payments' ? 'Payments'
-                      : id === 'providers' ? 'Providers'
-                        : id === 'improvement' ? 'AI improvement' : 'Alerts'}
+                    : id === 'performance' ? 'API performance'
+                      : id === 'payments' ? 'Payments'
+                        : id === 'providers' ? 'Providers'
+                          : id === 'improvement' ? 'AI improvement' : 'Alerts'}
                 </button>
               ))}
             </div>
@@ -267,6 +272,106 @@ export default function Admin() {
                     </>
                   )}
                 </section>
+              </div>
+            )}
+
+            {tab === 'performance' && (
+              <div className="admin-dashboard">
+                {!apiPerformance ? (
+                  <p>Load the dashboard with a valid admin key to view API performance.</p>
+                ) : (
+                  <>
+                    <section className="admin-panel">
+                      <h2>HTTP throughput & latency</h2>
+                      <p className="admin-muted">{apiPerformance.note}</p>
+                      <div className="admin-metrics-row">
+                        <div>
+                          <small>Requests (window)</small>
+                          <strong>{apiPerformance.http?.requestCount ?? '—'}</strong>
+                        </div>
+                        <div>
+                          <small>RPM (avg)</small>
+                          <strong>{apiPerformance.http?.requestsPerMinute ?? '—'}</strong>
+                        </div>
+                        <div>
+                          <small>Avg / P95 / P99</small>
+                          <strong>
+                            {apiPerformance.http?.avgLatencyMs ?? '—'} / {apiPerformance.http?.p95LatencyMs ?? '—'} / {apiPerformance.http?.p99LatencyMs ?? '—'} ms
+                          </strong>
+                        </div>
+                        <div>
+                          <small>Est. response volume</small>
+                          <strong>{apiPerformance.http?.estimatedResponseMegabytes ?? 0} MB</strong>
+                        </div>
+                      </div>
+                      <div className="admin-metrics-row">
+                        {Object.entries(apiPerformance.http?.statusCounts || {}).map(([code, count]) => (
+                          <div key={code}>
+                            <small>HTTP {code}</small>
+                            <strong>{count}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="admin-panel">
+                      <h2>Requests per minute</h2>
+                      <div className="admin-rpm-chart" role="img" aria-label="Requests per minute chart">
+                        {(apiPerformance.http?.rpmSeries || []).map((point) => (
+                          <div
+                            key={point.at}
+                            className="admin-rpm-bar"
+                            style={{ height: `${Math.min(100, (point.requestsPerMinute || 0) * 4)}%` }}
+                            title={`${point.requestsPerMinute} req/min`}
+                          />
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="admin-panel">
+                      <h2>Failing routes</h2>
+                      <ul className="admin-route-list">
+                        {(apiPerformance.http?.failingRoutes || []).map((row) => (
+                          <li key={row.route}>
+                            <code>{row.route}</code>
+                            {' — '}
+                            {row.errors} errors / {row.count} requests ({Math.round((row.errorRate || 0) * 100)}%)
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+
+                    <section className="admin-panel">
+                      <h2>Database & AI service</h2>
+                      <div className="admin-metrics-row">
+                        <div>
+                          <small>Postgres queries (est.)</small>
+                          <strong>{apiPerformance.postgresQueryTraffic?.queries ?? '—'}</strong>
+                        </div>
+                        <div>
+                          <small>Postgres est. egress</small>
+                          <strong>{apiPerformance.postgresQueryTraffic?.estimatedMegabytesOut ?? '—'} MB</strong>
+                        </div>
+                        <div>
+                          <small>AI Python</small>
+                          <strong>
+                            {!apiPerformance.aiPython?.configured
+                              ? 'Not configured'
+                              : apiPerformance.aiPython.ok ? `OK (${apiPerformance.aiPython.latencyMs} ms)` : 'Unreachable'}
+                          </strong>
+                        </div>
+                        <div>
+                          <small>Rate limit hits (429)</small>
+                          <strong>{apiPerformance.rateLimits?.total429 ?? 0}</strong>
+                        </div>
+                        <div>
+                          <small>Smart cache entries</small>
+                          <strong>{apiPerformance.smartCache?.entries ?? 0}</strong>
+                        </div>
+                      </div>
+                    </section>
+                  </>
+                )}
               </div>
             )}
 

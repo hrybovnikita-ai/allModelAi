@@ -43,6 +43,7 @@ function markGatewayModelBlocked({
     slug = '',
     reason = 'quota_exhausted',
     ttlMs = DEFAULT_TTL_MS,
+    blockSlug = true,
 } = {}) {
     const now = Date.now();
     pruneExpired(now);
@@ -52,7 +53,7 @@ function markGatewayModelBlocked({
     if (modelId) {
         blockedModels.set(modelId, { reason: String(reason || 'unavailable'), expiresAt, slug: slugKey || null });
     }
-    if (slugKey) {
+    if (blockSlug && slugKey) {
         blockedSlugs.set(slugKey, { reason: String(reason || 'unavailable'), expiresAt });
     }
 }
@@ -89,6 +90,22 @@ function listBlockedGatewayModels() {
     }));
 }
 
+function markOpenRouterCreditsExhausted({ ttlMs = DEFAULT_TTL_MS } = {}) {
+    markGatewayModelBlocked({
+        slug: 'openrouter',
+        gatewayModel: 'openrouter',
+        reason: 'quota_exhausted',
+        ttlMs,
+        blockSlug: true,
+    });
+}
+
+function isOpenRouterCreditsExhausted() {
+    pruneExpired();
+    return isSlugBlockedByGatewayHealth('openrouter')
+        || getGatewayBlockReason('openrouter') === 'quota_exhausted';
+}
+
 function clearGatewayModelHealthForTests() {
     blockedModels.clear();
     blockedSlugs.clear();
@@ -96,6 +113,8 @@ function clearGatewayModelHealthForTests() {
 
 module.exports = {
     markGatewayModelBlocked,
+    markOpenRouterCreditsExhausted,
+    isOpenRouterCreditsExhausted,
     isGatewayModelBlocked,
     isSlugBlockedByGatewayHealth,
     getGatewayBlockReason,

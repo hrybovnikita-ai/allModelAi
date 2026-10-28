@@ -373,27 +373,28 @@
 }
 
 .nav-auth button {
+  height: 44px;
   min-height: 44px;
-  padding: 9px 17px;
-  border-radius: var(--radius-sm, 10px);
+  padding: 0 18px;
+  border-radius: 12px;
   font: inherit;
-  font-size: clamp(0.78rem, 1vw, 0.92rem);
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  transition: transform var(--duration-fast, 120ms) ease, background var(--duration-normal, 200ms) ease, border-color var(--duration-normal, 200ms) ease;
+  transition: transform 200ms ease, background 200ms ease, border-color 200ms ease, box-shadow 200ms ease, filter 200ms ease;
 }
 
 .nav-signin {
-  border: 1px solid rgba(167, 139, 250, 0.45);
-  background: rgba(124, 92, 255, 0.1);
-  color: #f5f3ff;
+  border: 1px solid rgba(139, 92, 246, 0.55);
+  background: rgba(8, 7, 13, 0.55);
+  color: #f7f5fc;
 }
 
 .nav-signup {
-  border: 1px solid rgba(167, 139, 250, 0.65);
-  background: linear-gradient(135deg, rgba(109, 96, 232, 1), rgba(119, 105, 232, 1));
+  border: 0;
+  background: linear-gradient(135deg, #6536c4, #8b5cf6);
   color: #fff;
-  box-shadow: 0 8px 24px rgba(79, 58, 190, 0.35);
+  box-shadow: 0 10px 24px rgba(101, 54, 196, 0.35);
 }
 
 .nav-auth button:hover {
@@ -410,8 +411,8 @@
 }
 
 .nav-signin:hover {
-  background: rgba(255, 255, 255, 0.16);
-  border-color: white;
+  background: rgba(139, 92, 246, 0.18);
+  border-color: #b69aff;
 }
 
 .nav-signup:hover {

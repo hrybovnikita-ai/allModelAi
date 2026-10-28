@@ -45,7 +45,9 @@ test('OpenRouter 402 vs Google quota errors are mapped differently', () => {
 
     const google = mapGeminiHttpError(429, 'Resource has been exhausted (quota)');
     assert.equal(google.clientStatus, 429);
-    assert.match(google.message, /Gemini rate limit/i);
+    assert.match(google.message, /quota/i);
+    assert.equal(google.errorClass, 'quota_exceeded');
+    assert.equal(google.retryable, false);
     assert.equal(mapOpenRouterBillingError(429, 'Resource has been exhausted (quota)'), null);
 });
 
@@ -83,8 +85,8 @@ test('gemini chat uses Google API directly and does not call OpenRouter on quota
             messages: [{ role: 'user', text: 'Hello' }],
         });
         assert.equal(response.status, 429, JSON.stringify(response.body));
-        assert.match(response.body.message, /Gemini rate limit/i);
-        assert.equal(response.body.code, 'GEMINI_RATE_LIMITED');
+        assert.match(response.body.message, /quota/i);
+        assert.equal(response.body.code, 'GEMINI_QUOTA_EXCEEDED');
         assert.equal(calledUrls.some((u) => u.includes('openrouter.ai')), false);
         assert.equal(calledUrls.filter((u) => u.includes('generativelanguage.googleapis.com')).length, 1);
         assert.match(calledUrls[0], /gemini-3\.5-flash-lite:streamGenerateContent/);

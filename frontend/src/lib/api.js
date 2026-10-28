@@ -117,6 +117,8 @@ export async function checkChatResponse(response) {
   error.status = response.status;
   error.sessionExpired = sessionExpired;
   if (data.code) error.code = data.code;
+  if (data.error?.resetAt || data.resetAt) error.resetAt = data.error?.resetAt || data.resetAt;
+  if (data.error) error.error = data.error;
   if (isLoggerEnabled()) {
     logger.apiError('Chat request failed', {
       status: response.status,

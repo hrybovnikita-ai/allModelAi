@@ -51,9 +51,23 @@ export function resolveAuthApiUrl(path) {
   return url;
 }
 
-export async function authPost(path, body, options) {
+const AUTH_REQUEST_TIMEOUT_MS = 45_000;
+
+function authFetchSignal(options = {}) {
+  if (options.signal) return options.signal;
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(AUTH_REQUEST_TIMEOUT_MS);
+  }
+  return undefined;
+}
+
+export async function authPost(path, body, options = {}) {
   const url = resolveAuthApiUrl(path);
-  return postJson(url, body, { phase: 'auth', ...options });
+  return postJson(url, body, {
+    phase: 'auth',
+    ...options,
+    signal: authFetchSignal(options),
+  });
 }
 
 export async function authPatch(path, body, options) {

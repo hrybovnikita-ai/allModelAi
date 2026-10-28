@@ -71,7 +71,8 @@ export function resolveAuthDomainForRuntime(configuredAuthDomain, options = {}) 
   const hosted = String(options.hostedHostname || '').trim().toLowerCase();
 
   if (isLocalFirebaseDevHost(hosted)) {
-    if (isExplicitCustomAuthDomain(envDomain)) return envDomain;
+    // Popup OAuth on localhost must use *.firebaseapp.com; Vite proxies /__/auth to Firebase.
+    // A branded authDomain (all-model-ai.com) opens a cross-origin popup that cannot finish sign-in.
     if (isFirebaseAppDomain(envDomain)) return envDomain;
     if (isFirebaseAppDomain(configured)) return configured;
     return DEFAULT_FIREBASE_AUTH_DOMAIN;

@@ -440,7 +440,7 @@
 .chat-message{position:relative;animation:chat-message-enter .32s cubic-bezier(.2,.8,.2,1) both}
 .chat-message>div{min-width:0;border:0!important;background:transparent!important;box-shadow:none!important}
 .chat-message.assistant>div{padding:3px 0 0}.chat-message.assistant>div>small{display:none}
-.chat-message.assistant p{margin:0;color:#ececec;font-size:.9rem;line-height:1.75}
+.chat-message.assistant p{margin:0;color:var(--ai-text-color,#ececec);font-size:.9rem;line-height:var(--chat-line-height,1.75)}
 .chat-message.user{display:flex;justify-content:flex-end;max-width:850px;padding-left:18%}
 .chat-message.user>span{display:none}.chat-message.user>div{width:max-content;max-width:min(72%,680px);padding:11px 16px!important;border-color:color-mix(in srgb,var(--user-text-color,#8b5cf6) 82%,white)!important;border-radius:22px!important;background:var(--user-text-color,#8b5cf6)!important;box-shadow:0 8px 24px color-mix(in srgb,var(--user-text-color,#8b5cf6) 24%,transparent)}
 .chat-message.user>div>small{display:none}.chat-message.user p{margin:0;color:var(--user-bubble-text,#fff)!important;font-size:.88rem;line-height:1.55}
@@ -519,68 +519,7 @@ html[data-theme="light"] .chat-message.assistant p{color:#202123}html[data-theme
   overflow-y:visible;
 }
 
-/* The message input must remain visible regardless of optional grid rows. */
-@media (min-width:601px){
-  .chat-page .chat-composer,
-  .chat-page .chat-composer.welcome-composer,
-  .chat-page .chat-composer.conversation-composer{
-    position:fixed!important;
-    z-index:80;
-    right:0!important;
-    bottom:16px!important;
-    left:260px!important;
-    display:block!important;
-    width:min(calc(100% - 316px),860px)!important;
-    margin:0 auto!important;
-    padding:8px 0 0!important;
-    transform:none!important;
-    visibility:visible!important;
-    opacity:1!important;
-  }
-  .chat-messages{
-    padding-bottom:24px!important;
-    scroll-padding-bottom:24px!important;
-  }
-  .chat-scroll-tail{height:48px!important}
-}
-
-@media (min-width:601px) and (max-width:900px){
-  .chat-page .chat-composer,
-  .chat-page .chat-composer.welcome-composer,
-  .chat-page .chat-composer.conversation-composer{
-    left:0!important;
-    width:min(calc(100% - 40px),860px)!important;
-  }
-}
-
-@media (min-width:901px) and (max-width:1280px){
-  .chat-page .chat-composer,
-  .chat-page .chat-composer.welcome-composer,
-  .chat-page .chat-composer.conversation-composer{
-    left:240px!important;
-    width:min(calc(100% - 280px),760px)!important;
-  }
-}
-
-@media (min-width:1600px){
-  .chat-page .chat-composer,
-  .chat-page .chat-composer.welcome-composer,
-  .chat-page .chat-composer.conversation-composer{
-    left:290px!important;
-    width:min(calc(100% - 370px),1050px)!important;
-  }
-}
-
-@media (max-width:600px){
-  .chat-page .chat-composer{
-    position:relative!important;
-    z-index:60;
-    grid-row:4;
-    display:block!important;
-    visibility:visible!important;
-    opacity:1!important;
-  }
-}
+/* Composer layout: see ChatWorkspaceLayout.css (grid row, no fixed positioning). */
 
 .chat-session-recovery { max-width: 850px; margin: 0 auto 18px; display: grid; gap: 10px; }
 .chat-session-recovery label { display: grid; gap: 5px; }

@@ -8,7 +8,6 @@ import {
   browserPopupRedirectResolver,
   setPersistence,
 } from 'firebase/auth';
-import { ensureFirebaseSocialConfigLoaded } from './loadFirebaseConfig.js';
 import { getPublicAppOrigin, isHostedWebApp } from './apiBase.js';
 import { isIosTouchDevice, isMobileWebSafari } from './socialSignInEnv.js';
 import { authRecoveryLog, socialAuthDebug } from './socialAuthDiagnostics.js';
@@ -34,7 +33,8 @@ const CONFIG_ENV_KEYS = {
 };
 
 let runtimeFirebaseConfig = null;
-let auth;
+/** Firebase Auth instance (named to avoid TDZ/collision with firebase/auth exports). */
+let socialAuthInstance;
 
 function readFirebaseAuthDomainFromEnv(viteEnv) {
   return viteEnv.VITE_FIREBASE_AUTH_DOMAIN
@@ -75,8 +75,8 @@ function hostedSiteAuthDomain() {
 
 /**
  * authDomain must match where /__/auth/handler is served.
- * Production + branded local: all-model-ai.com (Vercel reverse-proxies /__/auth to Firebase).
- * Fallback: allmodelai.firebaseapp.com with the Vite /__/auth proxy on localhost.
+ * Production: all-model-ai.com (Vercel reverse-proxies /__/auth to Firebase).
+ * Local dev: allmodelai.firebaseapp.com with the Vite /__/auth proxy (never branded authDomain on localhost).
  */
 /** iOS WebKit: avoid default *.firebaseapp.com redirect URI when a custom auth host is available. */
 export function shouldPreferHostedFirebaseAuthDomain() {
@@ -93,7 +93,6 @@ export function resolveAuthDomainForRuntime(configuredAuthDomain) {
   const hosted = hostedSiteAuthDomain() || pageHost;
 
   if (isLocalFirebaseDevHost(hosted) || isLocalFirebaseDevHost(pageHost)) {
-    if (isExplicitCustomAuthDomain(envAuthDomain)) return String(envAuthDomain).trim();
     if (isFirebaseAppDomain(envAuthDomain)) return String(envAuthDomain).trim();
     if (isFirebaseAppDomain(configuredAuthDomain)) return String(configuredAuthDomain).trim();
     return DEFAULT_FIREBASE_AUTH_DOMAIN;
@@ -181,6 +180,16 @@ export function assertFirebaseOAuthEnvironment() {
   if (typeof window === 'undefined') return;
   const oauthOrigin = getFirebaseOAuthOrigin();
   if (!oauthOrigin) return;
+
+  const pageHost = String(window.location?.hostname || '').trim().toLowerCase();
+  const authDomain = getEffectiveFirebaseConfig().authDomain;
+  if (isLocalFirebaseDevHost(pageHost) && isExplicitCustomAuthDomain(readFirebaseAuthDomainFromEnv(import.meta.env || {}))) {
+    socialAuthDebug('AUTH_DOMAIN_MISMATCH', {
+      pageHost,
+      authDomain,
+      note: 'localhost uses firebaseapp.com authDomain; branded env is ignored for popup OAuth',
+    });
+  }
 
   const configuredPublic = stripPublicOrigin(getPublicAppOrigin());
   const livePublic = stripPublicOrigin(oauthOrigin);
@@ -314,11 +323,11 @@ export function getSocialAuth() {
     throw new Error('AUTH_DOMAIN_MISMATCH');
   }
 
-  if (!auth) {
+  if (!socialAuthInstance) {
     const app = existingApp || initializeApp(config, 'allmodelai-social');
-    auth = initializeSocialAuth(app);
+    socialAuthInstance = initializeSocialAuth(app);
   }
-  return auth;
+  return socialAuthInstance;
 }
 
 async function reconcileFirebaseAppAuthDomain() {
@@ -331,7 +340,7 @@ async function reconcileFirebaseAppAuthDomain() {
     expected: config.authDomain,
     actual: existingApp.options.authDomain,
   });
-  auth = null;
+  socialAuthInstance = null;
   await deleteApp(existingApp);
 }
 
@@ -347,6 +356,7 @@ export async function ensureSocialAuthReady() {
   }
 
   authReadyPromise = (async () => {
+    const { ensureFirebaseSocialConfigLoaded } = await import('./loadFirebaseConfig.js');
     await ensureFirebaseSocialConfigLoaded();
     await reconcileFirebaseAppAuthDomain();
     const instance = getSocialAuth();
@@ -392,4 +402,5 @@ export async function ensureSocialAuthReady() {
 export function resetSocialAuthReadyForTests() {
   authReadyPromise = null;
   persistenceAppliedAfterRedirect = false;
+  socialAuthInstance = null;
 }

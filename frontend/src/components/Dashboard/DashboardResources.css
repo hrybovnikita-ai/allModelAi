@@ -22,7 +22,7 @@
 .dashboard-start-guide li p { margin: 0; }
 .dashboard-workspace-banner { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-top: 28px; padding: clamp(24px, 3vw, 44px); border: 1px solid #484172; border-radius: 18px; background: radial-gradient(ellipse at top right, #44377580, transparent 65%), #19192d; }
 .dashboard-banner-links { display: flex; flex-wrap: wrap; gap: 10px; }
-.dashboard-banner-links a { padding: 13px 18px; border: 1px solid #595378; border-radius: 9px; font-size: .85rem; white-space: nowrap; }
+.dashboard-banner-links a { padding: 12px 22px; border: 1px solid #595378; border-radius: 9999px; font-size: .85rem; white-space: nowrap; min-height: 46px; display: inline-flex; align-items: center; }
 .dashboard-banner-links a:first-child { background: #6366f1; border-color: #6366f1; color: white; }
 .dashboard-footer { margin-top: 64px; padding-top: 36px; border-top: 1px solid #293348; }
 .dashboard-footer-main { display: grid; grid-template-columns: 2fr repeat(3, 1fr); gap: 32px; padding-bottom: 36px; }

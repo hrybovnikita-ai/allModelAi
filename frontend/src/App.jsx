@@ -3,6 +3,8 @@ import "./App.css";
 import { useLanguage } from "./lib/useLanguage";
 import RainbowExperience from "./components/RainbowExperience/RainbowExperience";
 import AuthPage from "./components/Login/AuthPage";
+import PlatformStudio from "./components/Platform/PlatformStudio";
+import StudioLabs from "./components/StudioLabs/StudioLabs";
 import RequireAuth from "./components/Login/RequireAuth";
 import { useLayoutEffect, useState } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
@@ -239,6 +241,8 @@ export default function App() {
       <Route path="/developer/model-diagnostics" element={<ModelDiagnostics />} />
       <Route path="/developer/ai-learning" element={<AILearningDashboard />} />
       <Route path="/knowledge" element={<KnowledgeBasePage />} />
+      <Route path="/platform" element={<PlatformStudio />} />
+      <Route path="/studio-labs" element={<StudioLabs />} />
       <Route path="/ai-files" element={<AiFilesPage />} />
       <Route path="/ai-workflows" element={<AiWorkflowsPage />} />
       <Route path="/evaluation-lab" element={<EvaluationLabPage />} />

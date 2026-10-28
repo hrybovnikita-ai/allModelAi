@@ -107,7 +107,7 @@
   min-height: 40px;
   padding: 0;
   border: 1px solid #3b4960;
-  border-radius: 10px;
+  border-radius: 9999px;
   background: transparent;
   color: #94a3b8;
   cursor: pointer;
@@ -134,7 +134,7 @@
   height: auto !important;
   padding: 9px 12px !important;
   margin-bottom: 2px;
-  border-radius: 10px !important;
+  border-radius: 9999px !important;
   font-size: 0.84rem !important;
   font-weight: 600;
 }
@@ -206,7 +206,7 @@
   min-height: 34px;
   padding: 6px 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 9999px;
   background: transparent;
   color: #cbd5e1;
   font: inherit;
@@ -414,7 +414,7 @@
   flex-shrink: 0;
   margin-bottom: 8px;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: 9999px;
   border: 1px solid rgba(139, 92, 246, 0.16);
   background: rgba(0, 0, 0, 0.28);
 }
@@ -494,8 +494,8 @@
   display: flex;
   align-items: stretch;
   gap: 2px;
-  margin-bottom: 2px;
-  border-radius: 9px;
+  margin-bottom: 4px;
+  border-radius: 9999px;
 }
 
 .sidebar-chat-item.is-active {
@@ -656,7 +656,7 @@
   margin-top: 4px;
   padding: 10px 8px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 9999px;
   background: transparent;
   color: #e2e8f0;
   text-align: left;

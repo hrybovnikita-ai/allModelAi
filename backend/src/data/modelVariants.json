@@ -1,9 +1,9 @@
 {
   "gemini": [
     {"id":"3.5-flash-lite","name":"Gemini 3.5 Flash Lite","label":"Flash-Lite","speed":"Fast","description":"Default fast text model (API-verified generateContent)","gateway":"google/gemini-2.5-flash","direct":"gemini-3.5-flash-lite"},
-    {"id":"3.1-flash-lite","name":"Gemini 3.1 Flash Lite","label":"Flash-Lite","speed":"Fast","description":"Lightweight Flash-Lite","gateway":"google/gemini-2.5-flash","direct":"gemini-3.1-flash-lite"},
+    {"id":"3.1-flash-lite","name":"Gemini 3.1 Flash Lite","label":"Flash-Lite","speed":"Fast","description":"Direct Google model id gemini-3.1-flash-lite. Google may return 503 when demand is high.","gateway":"google/gemini-2.5-flash","direct":"gemini-3.1-flash-lite"},
     {"id":"3-flash","name":"Gemini 3 Flash","label":"Flash","speed":"Fast","description":"Multimodal Flash preview","gateway":"google/gemini-2.5-flash","direct":"gemini-3-flash-preview"},
-    {"id":"3.1-pro","name":"Gemini 3.1 Pro","label":"Pro","speed":"High","description":"Pro preview — subject to quota/billing in Google AI Studio","gateway":"google/gemini-3.1-pro-preview","direct":"gemini-3.1-pro-preview"}
+    {"id":"3.1-pro","name":"Gemini 3.1 Pro","label":"Pro","speed":"High","description":"Direct id gemini-3.1-pro-preview. Requires Google quota; 429 quota is not a Working status.","gateway":"google/gemini-3.1-pro-preview","direct":"gemini-3.1-pro-preview"}
   ],
   "claude": [
     {"id":"haiku","name":"Haiku 4.5","speed":"Fast","gateway":"anthropic/claude-haiku-4.5","direct":"claude-haiku-4-5"},

@@ -5,10 +5,10 @@ import ProviderHealthPanel from './ProviderHealthPanel';
 import './ModelDiagnostics.css';
 
 function statusLabel(row) {
-    if (row.availabilityStatus === 'ok') return 'Verified OK';
-    if (row.availabilityStatus === 'error') return 'Last test failed';
-    if (row.availabilityStatus === 'blocked') return 'Not configured';
-    return 'Not tested';
+    if (row.healthStatus) return row.healthStatus;
+    if (row.availabilityStatus === 'WORKING') return 'Working';
+    if (row.availabilityStatus === 'UNCONFIGURED') return 'Missing API Key';
+    return 'Not Tested';
 }
 
 export default function ModelDiagnostics() {
@@ -75,9 +75,9 @@ export default function ModelDiagnostics() {
       <header className="model-diagnostics-head">
         <div>
           <p className="model-diagnostics-eyebrow">Developer only · Local Plus Test Mode</p>
-          <h1>AI model diagnostics</h1>
+          <h1>Model Health</h1>
           <p className="model-diagnostics-lead">
-            Run real provider smoke tests. Status stays &quot;Not tested&quot; until you run a test — catalog presence does not mean Online.
+            Developer-only live inference checks. A model shows <strong>Working</strong> only after a successful real test — never from catalog presence alone.
           </p>
         </div>
         <Link to="/chat" className="model-diagnostics-back">← Back to chat</Link>
@@ -99,6 +99,15 @@ export default function ModelDiagnostics() {
       {error && <p className="model-diagnostics-error" role="alert">{error}</p>}
       {loading && <p className="model-diagnostics-loading">Loading catalog…</p>}
 
+      {catalog?.summary && !loading && (
+        <div className="model-diagnostics-summary" role="status">
+          <span>{catalog.summary.total} models</span>
+          <span className="md-ok">{catalog.summary.working} working</span>
+          <span className="md-fail">{catalog.summary.failing} failing</span>
+          <span>{catalog.summary.notTested} not tested</span>
+        </div>
+      )}
+
       {!loading && rows.length > 0 && (
         <div className="model-diagnostics-table-wrap">
           <table className="model-diagnostics-table">
@@ -110,6 +119,7 @@ export default function ModelDiagnostics() {
                 <th>Vision</th>
                 <th>Text</th>
                 <th>Status</th>
+                <th>Latency</th>
                 <th>Last test</th>
                 <th aria-label="Actions" />
               </tr>
@@ -126,12 +136,11 @@ export default function ModelDiagnostics() {
                     <td>{row.visionSupport ? 'Yes' : 'No'}</td>
                     <td>{row.textGenerationSupport ? 'Yes' : 'No'}</td>
                     <td>{statusLabel(row)}</td>
+                    <td>{row.latencyMs != null ? `${row.latencyMs} ms` : '—'}</td>
                     <td>
                       {last ? (
                         <>
                           <span className={last.ok ? 'md-ok' : 'md-fail'}>{last.ok ? 'Pass' : 'Fail'}</span>
-                          {' · '}
-                          {last.responseTimeMs} ms
                           {last.httpStatus ? ` · HTTP ${last.httpStatus}` : ''}
                           {last.errorDescription ? (
                             <small className="model-diagnostics-err">{last.errorDescription}</small>

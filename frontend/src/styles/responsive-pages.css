@@ -292,10 +292,10 @@
 }
 
 @media (min-width: 1920px) {
-  .chat-messages,
   .chat-page .chat-composer,
   .chat-page .chat-composer.welcome-composer,
   .chat-page .chat-composer.conversation-composer {
-    width: min(calc(100% - 48px), 920px) !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 }

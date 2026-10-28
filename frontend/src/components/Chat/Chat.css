@@ -677,3 +677,6 @@ html[data-theme='light'] .chat-profile-meta small {
   color: #6b7280;
 }
 
+.chat-page { background: var(--chat-canvas, #212121); }
+html[data-code-theme="light"] .chat-message pre { background: #f4f4f5; color: #18181b; }
+

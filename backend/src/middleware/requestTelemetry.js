@@ -19,11 +19,14 @@ function requestTelemetryMiddleware(req, res, next) {
     const started = process.hrtime.bigint();
     res.on('finish', () => {
         const durationMs = Number(process.hrtime.bigint() - started) / 1e6;
+        const contentLength = Number.parseInt(String(res.getHeader('content-length') || ''), 10);
+        const responseBytes = Number.isFinite(contentLength) && contentLength >= 0 ? contentLength : 0;
         recordHttpRequest({
             method: req.method,
             path: req.originalUrl || req.url || path,
             statusCode: res.statusCode,
             durationMs,
+            responseBytes,
         });
 
         if (process.env.REQUEST_TELEMETRY_LOG === 'true' || res.statusCode >= 500) {

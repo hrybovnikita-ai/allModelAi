@@ -41,9 +41,9 @@
 .dashboard-violet .dashboard-sub-manage,
 .dashboard-violet .dashboard-subscription-actions a {
   min-height: 44px;
-  padding: 10px 16px;
+  padding: 10px 22px;
   font-size: clamp(0.8125rem, 0.78rem + 0.1vw, 0.9375rem);
-  border-radius: 10px;
+  border-radius: 9999px;
 }
 
 .dashboard-violet .dashboard-subscription-actions a {
@@ -205,7 +205,7 @@
   font-size: clamp(0.8125rem, 0.78rem + 0.08vw, 0.875rem);
   min-height: 44px;
   align-items: center;
-  border-radius: 10px;
+  border-radius: 9999px;
 }
 
 .dashboard-violet .dashboard-model-card:focus-visible {
@@ -233,10 +233,10 @@
   top: 12px;
   right: 12px;
   z-index: 1;
-  min-height: 36px;
-  padding: 6px 12px;
+  min-height: 40px;
+  padding: 8px 20px;
   border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 8px;
+  border-radius: 9999px;
   background: rgba(15, 23, 42, 0.92);
   color: #cbd5e1;
   font-size: 0.8125rem;

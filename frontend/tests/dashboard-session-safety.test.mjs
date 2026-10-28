@@ -7,9 +7,14 @@ test('dashboard secondary API calls skip unauthorized force-logout', async () =>
     new URL('../src/components/Dashboard/Dashboard.jsx', import.meta.url),
     'utf8',
   );
-  assert.match(source, /apiFetch\(`\/api\/analytics[^`]*`,\s*\{[^}]*skipAuthRedirect:\s*true/s);
-  assert.match(source, /apiFetch\(`\/api\/workspace[^`]*`,\s*\{[^}]*skipAuthRedirect:\s*true/s);
+  assert.match(source, /fetchUserAnalytics\(apiFetch\)/);
+  const analyticsApi = await readFile(
+    new URL('../src/lib/userAnalyticsApi.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(analyticsApi, /apiFetch\('\/api\/analytics',\s*\{[^}]*skipAuthRedirect:\s*true/s);
+  assert.match(source, /apiFetch\(['"]\/api\/workspace[^'"]*['"],\s*\{[^}]*skipAuthRedirect:\s*true/s);
   assert.match(source, /apiFetch\('\/api\/subscription',\s*\{\s*skipAuthRedirect:\s*true/);
   assert.match(source, /apiFetch\('\/api\/credits',\s*\{\s*skipAuthRedirect:\s*true/);
-  assert.match(source, /AbortController/);
+  assert.match(analyticsApi, /signal/);
 });

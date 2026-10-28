@@ -17,7 +17,7 @@ import {
 import { isCapacitorNative, prefersSameOriginApi } from './apiBase.js';
 import { isElectronShell } from './nativePlatform.js';
 import { confirmSession, rememberSession } from './session.js';
-import { invalidateAuthBootstrap } from './authBootstrap.js';
+import { invalidateAuthBootstrap } from './authBootstrapState.js';
 import { exchangeSocialSession, prepareSocialSession } from './socialSession.js';
 import { SOCIAL_PROVIDER_LABELS } from './socialProviders.js';
 import { authLog, describeRedirectRecoveryFailure, socialAuthDebug } from './socialAuthDiagnostics.js';
@@ -36,6 +36,10 @@ import {
   bootstrapGoogleRedirectRecovery,
   getRedirectRecoveryPromise,
 } from './googleRedirectRecovery.js';
+import {
+  awaitGooglePopupSignInResult,
+  markGooglePopupSignInBaseline,
+} from './googlePopupSignIn.js';
 import {
   clearSocialRedirectIntent,
   isGoogleRedirectRecoveryPending,
@@ -224,6 +228,7 @@ export function launchGooglePopupSignIn() {
       throw new Error('Sign-in requires a browser origin. Open AllModelAI from your site URL, not a file:// link.');
     }
     const auth = getSocialAuth();
+    markGooglePopupSignInBaseline(auth);
     const provider = providerFor(GOOGLE_PROVIDER);
     socialAuthDebug('GOOGLE_AUTH_START', {
       path: typeof window !== 'undefined' ? window.location.pathname : '',
@@ -232,6 +237,10 @@ export function launchGooglePopupSignIn() {
     });
     socialAuthDebug('GOOGLE_AUTH_STRATEGY', { mode: 'popup', syncLaunch: true });
     authLog('Launching popup synchronously (preserving Safari user activation)');
+    socialAuthDebug('GOOGLE_OAUTH_POPUP_OPENED', {
+      authDomain: getEffectiveFirebaseConfig().authDomain,
+      openerHost: typeof window !== 'undefined' ? window.location?.hostname : '',
+    });
     const popupPromise = signInWithPopup(auth, provider);
     return { auth, popupPromise };
   } catch (error) {
@@ -251,10 +260,12 @@ export async function completeGooglePopupSignIn(auth, popupPromise, name, option
   try {
     // A popup is already open from launchGooglePopupSignIn(). Never start a
     // second redirect here — that duplicates Google's OAuth tab.
+    const challengePromise = prepareBackendChallenge(options);
     let result;
     try {
-      result = await popupPromise;
+      result = await awaitGooglePopupSignInResult(auth, popupPromise);
     } catch (popupError) {
+      challengePromise.catch(() => {});
       const recovered = recoverPopupResultFromCurrentUser(auth, popupError);
       if (!recovered) {
         throw popupError;
@@ -263,7 +274,17 @@ export async function completeGooglePopupSignIn(auth, popupPromise, name, option
       result = recovered;
     }
     authLog('Popup sign-in resolved');
-    const challenge = await prepareBackendChallenge(options);
+    socialAuthDebug('FIREBASE_SIGNIN_COMPLETED', { hasUser: Boolean(result?.user?.email) });
+    let challenge;
+    try {
+      challenge = await challengePromise;
+    } catch (challengeError) {
+      socialAuthDebug('BACKEND_CHALLENGE_FAILED', {
+        code: challengeError?.code,
+        message: challengeError?.message,
+      });
+      throw challengeError;
+    }
     const user = await complete(result, { ...options, challenge });
     succeeded = true;
     clearSocialRedirectIntent();

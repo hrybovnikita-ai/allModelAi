@@ -87,3 +87,12 @@ jobs:
       - name: Build frontend
         run: npm run build
         working-directory: frontend
+
+      - name: Release readiness summary
+        if: always()
+        run: |
+          echo "commit=${GITHUB_SHA}"
+          echo "deployment=blocked_pending_owner_approval"
+          echo "visual_baselines=not_auto_approved"
+          echo "live_ai_eval=disabled"
+          echo "payments=existing_providers_only"

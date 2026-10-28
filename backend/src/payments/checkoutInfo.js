@@ -13,6 +13,7 @@ const {
 const { stripeConfigurationReport } = require('./stripeConfig');
 const { paddleConfigurationReport, isPaddleSandbox } = require('./paddleConfig');
 const { creemConfigurationReport } = require('./creemConfig');
+const { lemonSqueezyConfigurationReport } = require('./lemonSqueezyConfig');
 
 const STRIPE_TEST_MODE_BANNER = 'Stripe Test Mode — No real charges';
 const WAYFORPAY_TEST_MODE_BANNER = 'WayForPay Test Mode — No real charges';
@@ -30,6 +31,7 @@ const buildCheckoutInfo = () => {
     const paddleReport = paddleConfigurationReport();
     const paddleOn = paddleCheckoutEnabledForDeployment();
     const creemReport = creemConfigurationReport();
+    const lemonReport = lemonSqueezyConfigurationReport();
     const checkoutProviders = listAvailableCheckoutProviders();
     const wayforpayTestMode = wayforpayOn && wayforpayConfig().testMode;
     const stripeTestMode = stripeOn && isStripeTestMode();
@@ -55,7 +57,9 @@ const buildCheckoutInfo = () => {
             ? 'Stripe'
             : primaryProvider === 'paddle'
                 ? 'Paddle'
-                : null;
+                : primaryProvider === 'lemonsqueezy'
+                    ? 'Lemon Squeezy'
+                    : null;
 
     let checkoutUnavailableMessage = null;
     if (!paymentsCheckoutAvailable()) {
@@ -107,12 +111,14 @@ const buildCheckoutInfo = () => {
         wayforpayCheckoutEnabled: wayforpayCheckoutEnabledForDeployment(),
         wayforpayTestMode,
         wayforpayMockCheckout: wayforpayTestMode,
-        recurringBillingSupported: primaryProvider === 'stripe' || primaryProvider === 'paddle',
+        recurringBillingSupported: primaryProvider === 'stripe' || primaryProvider === 'paddle' || primaryProvider === 'lemonsqueezy',
         renewalNotice: primaryProvider === 'stripe'
             ? 'Subscriptions renew automatically each billing period until you cancel in the billing portal.'
             : primaryProvider === 'paddle'
                 ? 'Paddle subscriptions renew automatically each billing period until you cancel in the Paddle customer portal.'
-                : 'Each successful payment grants one month of access. Automatic card renewal is not enabled yet — renew manually before your period ends unless we enable WayForPay recurring billing.',
+                : primaryProvider === 'lemonsqueezy'
+                    ? 'Lemon Squeezy subscriptions renew automatically each billing period until you cancel in your Lemon Squeezy customer portal.'
+                    : 'Each successful payment grants one month of access. Automatic card renewal is not enabled yet — renew manually before your period ends unless we enable WayForPay recurring billing.',
         wayforpaySupportedCurrencies: wayforpayOn ? wayforpayConfig().supportedCurrencies : [],
         wayforpayDefaultCurrency: wayforpayOn ? wayforpayConfig().currency : null,
         wayforpayUsdCheckout: wayforpayOn ? wayforpayConfig().usdCheckoutEnabled : false,
@@ -126,7 +132,9 @@ const buildCheckoutInfo = () => {
                 ? 'Cards and wallets supported by Stripe.'
                 : primaryProvider === 'paddle'
                     ? 'Cards and wallets supported by Paddle secure checkout.'
-                    : null,
+                    : primaryProvider === 'lemonsqueezy'
+                        ? 'Cards and PayPal supported through Lemon Squeezy secure checkout (USD).'
+                        : null,
         checkoutProviders,
         paddleConfigured: paddleReport.ok,
         paddleCheckoutEnabled: paddleOn,
@@ -145,6 +153,12 @@ const buildCheckoutInfo = () => {
         creemMissingEnvVars: creemReport.missing,
         creemUserMessage: creemReport.userMessage,
         aiCreditsCheckoutPreviewOnly: !creemReport.checkoutEnabled,
+        lemonSqueezyConfigured: lemonReport.checkoutEnabled,
+        lemonSqueezyCheckoutEnabled: primaryProvider === 'lemonsqueezy' && lemonReport.checkoutEnabled,
+        lemonSqueezyVariantId: lemonReport.variantId,
+        lemonSqueezyPriceLabel: lemonReport.priceLabel,
+        lemonSqueezyWebhookConfigured: lemonReport.webhookConfigured,
+        lemonSqueezyMissingEnvVars: lemonReport.missing,
     };
 };
 

@@ -31,20 +31,20 @@ test('localhost keeps firebaseapp.com for Vite /__/auth proxy dev flow', async (
   }
 });
 
-test('localhost keeps branded all-model-ai.com so Google shows Continue to all-model-ai.com', () => {
+test('localhost ignores branded authDomain env so Google popup can complete via Vite /__/auth proxy', () => {
   assert.equal(
     resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {
       envAuthDomain: 'all-model-ai.com',
       hostedHostname: 'localhost',
     }),
-    'all-model-ai.com',
+    'allmodelai.firebaseapp.com',
   );
   assert.equal(
     resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {
       envAuthDomain: 'all-model-ai.com',
       hostedHostname: '127.0.0.1',
     }),
-    'all-model-ai.com',
+    'allmodelai.firebaseapp.com',
   );
 });
 

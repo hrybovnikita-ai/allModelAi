@@ -5,21 +5,47 @@ import {
 
 const byLabel = (labels) => DASHBOARD_NAV_LINKS.filter((item) => labels.includes(item.label));
 
-/** Sidebar navigation grouped by workspace area (all routes preserved). */
+const settingsItems = DASHBOARD_NAV_ACCOUNT_LINKS.filter(
+  (item) => item.label === 'Profile' || item.label === 'Settings',
+);
+
+/** Drawer / sidebar navigation groups (all routes preserved). */
 export const DASHBOARD_NAV_GROUPS = [
   {
-    id: 'account',
-    label: 'Account',
-    items: DASHBOARD_NAV_ACCOUNT_LINKS,
+    id: 'dashboard',
+    label: 'Dashboard',
+    items: byLabel(['Dashboard', 'Workspace Tools']),
   },
   {
     id: 'chat',
-    label: 'Chat & models',
+    label: 'Chat & Models',
     items: byLabel(['Chat', 'Models', 'Arena', 'Studio']),
   },
   {
-    id: 'learn',
-    label: 'Learning & labs',
+    id: 'ai-tools',
+    label: 'AI Tools',
+    items: byLabel([
+      'Power Lab',
+      'Creator Lab',
+      'Features',
+      'Control',
+      'AI Workflows',
+    ]),
+  },
+  {
+    id: 'development',
+    label: 'Development',
+    items: byLabel([
+      'Developer Toolkit',
+      'Model Toolkit',
+      'AI Platform',
+      'Website Builder',
+      'Development Studio',
+    ]),
+  },
+  {
+    id: 'learning',
+    label: 'Learning',
     items: byLabel([
       'AI Training Course',
       'AI Learning Lab',
@@ -28,25 +54,23 @@ export const DASHBOARD_NAV_GROUPS = [
     ]),
   },
   {
-    id: 'build',
-    label: 'Build & automate',
-    items: byLabel([
-      'Developer Toolkit',
-      'Workspace Tools',
-      'AI Workflows',
-      'Model Toolkit',
-      'AI Platform',
-      'Website Builder',
-    ]),
-  },
-  {
-    id: 'labs',
-    label: 'Creative labs',
-    items: byLabel(['Power Lab', 'Creator Lab', 'Features', 'Control']),
-  },
-  {
-    id: 'storage',
-    label: 'Data',
+    id: 'data',
+    label: 'Data & Storage',
     items: byLabel(['Storage Hub']),
   },
+  {
+    id: 'settings',
+    label: 'Account & Settings',
+    items: settingsItems.length ? settingsItems : byLabel(['Profile', 'Settings']),
+  },
 ];
+
+export const NAV_GROUP_ICONS = {
+  dashboard: 'layout',
+  chat: 'message',
+  'ai-tools': 'sparkles',
+  development: 'wrench',
+  learning: 'book',
+  data: 'database',
+  settings: 'settings',
+};

@@ -32,16 +32,15 @@ test('chat brand wordmark uses bold italic without changing brand color tokens',
   assert.match(chat, /--chat-bg:#080d18/);
 });
 
-test('Your AI Workspace component and empty state are wired', () => {
+test('Chat welcome omits AI Workspace strip but module remains available', () => {
   const empty = fs.readFileSync(path.join(root, 'src/components/Chat/ChatEmptyState.jsx'), 'utf8');
   const workspace = fs.readFileSync(path.join(root, 'src/components/Chat/ChatAiWorkspace.jsx'), 'utf8');
   const chat = fs.readFileSync(path.join(root, 'src/components/Chat/Chat.jsx'), 'utf8');
-  assert.match(empty, /ChatAiWorkspace/);
+  assert.doesNotMatch(empty, /ChatAiWorkspace/);
   assert.match(workspace, /\/api\/chat\/improve-prompt/);
   assert.match(workspace, /Continue Working/);
-  assert.match(workspace, /Analyze a File/);
   assert.match(chat, /ChatEmptyState/);
-  assert.match(chat, /action:\s*'arena'/);
+  assert.match(chat, /ChatWelcomeSuggestions|chooseSuggestion/);
 });
 
 test('welcome card color literals are unchanged from monochrome card palette', () => {

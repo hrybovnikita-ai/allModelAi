@@ -6,7 +6,10 @@ const {
 } = require('../chatProviderRuntime');
 const { passiveStatusForProvider } = require('./providerRequestTelemetry');
 const { slugToProviderId } = require('./providerErrorClassification');
-const { isSlugBlockedByGatewayHealth } = require('./gatewayModelHealth');
+const {
+    isSlugBlockedByGatewayHealth,
+    isOpenRouterCreditsExhausted,
+} = require('./gatewayModelHealth');
 const {
     getConversationAssignmentAsync,
     setConversationAssignmentAsync,
@@ -114,8 +117,10 @@ function isHealthExcluded(slug) {
     // Without this, qwen stays eligible after OpenRouter returns insufficient credits
     // because telemetry is recorded against provider id "openrouter", not "qwen".
     if (slugDependsOnOpenRouterPaidCredits(slug)) {
+        if (isOpenRouterCreditsExhausted()) return true;
         const openRouter = passiveStatusForProvider('openrouter', true);
         if (BAD_HEALTH.has(openRouter?.operationalStatus)) return true;
+        if (isSlugBlockedByGatewayHealth('openrouter')) return true;
     }
     return false;
 }
@@ -130,6 +135,13 @@ function listEligibleAnoninSlugs(modelAllowed, { hasVision = false, skipHealth =
         if (!skipHealth && isHealthExcluded(slug)) return false;
         return true;
     });
+}
+
+function preferDirectAnoninSlugs(eligible) {
+    const direct = eligible.filter((slug) => !slugDependsOnOpenRouterPaidCredits(slug));
+    if (direct.length) return direct;
+    if (isOpenRouterCreditsExhausted()) return [];
+    return eligible;
 }
 
 /** Last-resort backend when health filters leave no eligible Anonin targets. */
@@ -154,15 +166,19 @@ const ANONIN_EMERGENCY_SLUG_ORDER = [
 ];
 
 function pickEmergencyAnoninSlug(modelAllowed, { hasVision = false } = {}) {
+    const openRouterPaidBlocked = isOpenRouterCreditsExhausted();
     for (const slug of ANONIN_EMERGENCY_SLUG_ORDER) {
         if (EXCLUDED_SLUGS.has(slug)) continue;
+        if (openRouterPaidBlocked && slugDependsOnOpenRouterPaidCredits(slug)) continue;
+        if (isHealthExcluded(slug)) continue;
         const cap = getCapabilities(slug);
         if (hasVision && !cap?.vision) continue;
         if (!modelAllowed(slug)) continue;
         const routed = findRoutedModelWithApiKey(slug, modelAllowed);
         if (routed) return routed;
     }
-    const relaxed = listEligibleAnoninSlugs(modelAllowed, { hasVision, skipHealth: true });
+    const relaxed = listEligibleAnoninSlugs(modelAllowed, { hasVision, skipHealth: true })
+        .filter((slug) => !openRouterPaidBlocked || !slugDependsOnOpenRouterPaidCredits(slug));
     return relaxed[0] || null;
 }
 
@@ -205,7 +221,12 @@ async function resolveAnoninRouting({
         const assignment = await getConversationAssignmentAsync(connection, email, conversationId);
         if (assignment?.assigned_slug) {
             preferred = assignment.assigned_slug;
-            if (modelAllowed(preferred) && findRoutedModelWithApiKey(preferred, modelAllowed) && !isHealthExcluded(preferred)) {
+            if (
+                modelAllowed(preferred)
+                && findRoutedModelWithApiKey(preferred, modelAllowed)
+                && !isHealthExcluded(preferred)
+                && !(slugDependsOnOpenRouterPaidCredits(preferred) && isOpenRouterCreditsExhausted())
+            ) {
                 if (!hasVision || getCapabilities(preferred)?.vision) {
                     return {
                         ok: true,
@@ -219,7 +240,7 @@ async function resolveAnoninRouting({
         }
     }
 
-    let eligible = listEligibleAnoninSlugs(modelAllowed, { hasVision });
+    let eligible = preferDirectAnoninSlugs(listEligibleAnoninSlugs(modelAllowed, { hasVision }));
     if (!eligible.length) {
         const emergency = pickEmergencyAnoninSlug(modelAllowed, { hasVision });
         if (emergency) {
@@ -331,6 +352,8 @@ module.exports = {
     ANONIN_EMERGENCY_SLUG_ORDER,
     normalizeVirtualChatModelSlug,
     isAnoninVirtualSlug,
+    preferDirectAnoninSlugs,
+    isHealthExcluded,
     listEligibleAnoninSlugs,
     pickEmergencyAnoninSlug,
     pickRandomSlug,

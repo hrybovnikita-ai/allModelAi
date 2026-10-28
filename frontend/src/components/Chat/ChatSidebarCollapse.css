@@ -1,9 +1,9 @@
 /* Collapsible desktop sidebar rail (ChatGPT-style) */
 .chat-page {
-  --chat-sidebar-width: 260px;
+  --chat-sidebar-width: 272px;
   position: relative;
   grid-template-columns: var(--chat-sidebar-width) minmax(0, 1fr) !important;
-  transition: grid-template-columns 0.24s ease;
+  transition: grid-template-columns 0.2s ease;
 }
 
 .chat-page.sidebar-collapsed {
@@ -264,70 +264,6 @@ body.chat-sidebar-resizing {
   display: none;
 }
 
-/* Fixed composer offsets follow sidebar width on desktop */
-@media (min-width: 601px) {
-  .chat-page .chat-composer,
-  .chat-page .chat-composer.welcome-composer,
-  .chat-page .chat-composer.conversation-composer {
-    transition:
-      left 0.24s ease,
-      width 0.24s ease,
-      bottom 0.62s cubic-bezier(0.22, 1, 0.36, 1),
-      transform 0.62s cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 0.25s ease;
-  }
-
-  .chat-page:not(.sidebar-collapsed) .chat-composer,
-  .chat-page:not(.sidebar-collapsed) .chat-composer.welcome-composer,
-  .chat-page:not(.sidebar-collapsed) .chat-composer.conversation-composer {
-    left: var(--chat-sidebar-width) !important;
-    width: min(calc(100% - var(--chat-sidebar-width) - 56px), 860px) !important;
-  }
-
-  .chat-page.sidebar-collapsed .chat-composer,
-  .chat-page.sidebar-collapsed .chat-composer.welcome-composer,
-  .chat-page.sidebar-collapsed .chat-composer.conversation-composer {
-    left: var(--chat-sidebar-width) !important;
-    width: min(calc(100% - var(--chat-sidebar-width) - 56px), 860px) !important;
-  }
-}
-
-@media (min-width: 901px) and (max-width: 1280px) {
-  .chat-page:not(.sidebar-collapsed) {
-    --chat-sidebar-width: 240px;
-  }
-
-  .chat-page:not(.sidebar-collapsed) .chat-composer,
-  .chat-page:not(.sidebar-collapsed) .chat-composer.welcome-composer,
-  .chat-page:not(.sidebar-collapsed) .chat-composer.conversation-composer {
-    width: min(calc(100% - var(--chat-sidebar-width) - 36px), 760px) !important;
-  }
-
-  .chat-page.sidebar-collapsed .chat-composer,
-  .chat-page.sidebar-collapsed .chat-composer.welcome-composer,
-  .chat-page.sidebar-collapsed .chat-composer.conversation-composer {
-    width: min(calc(100% - var(--chat-sidebar-width) - 36px), 760px) !important;
-  }
-}
-
-@media (min-width: 1600px) {
-  .chat-page:not(.sidebar-collapsed) {
-    --chat-sidebar-width: 290px;
-  }
-
-  .chat-page:not(.sidebar-collapsed) .chat-composer,
-  .chat-page:not(.sidebar-collapsed) .chat-composer.welcome-composer,
-  .chat-page:not(.sidebar-collapsed) .chat-composer.conversation-composer {
-    width: min(calc(100% - var(--chat-sidebar-width) - 80px), 1050px) !important;
-  }
-
-  .chat-page.sidebar-collapsed .chat-composer,
-  .chat-page.sidebar-collapsed .chat-composer.welcome-composer,
-  .chat-page.sidebar-collapsed .chat-composer.conversation-composer {
-    width: min(calc(100% - var(--chat-sidebar-width) - 80px), 1050px) !important;
-  }
-}
-
 /* Tablet / mobile: drawer only — no collapsed rail */
 @media (max-width: 900px) {
   .chat-page,
@@ -375,12 +311,6 @@ body.chat-sidebar-resizing {
     pointer-events: auto;
   }
 
-  .chat-page .chat-composer,
-  .chat-page .chat-composer.welcome-composer,
-  .chat-page .chat-composer.conversation-composer {
-    left: 0 !important;
-    width: min(calc(100% - 40px), 860px) !important;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

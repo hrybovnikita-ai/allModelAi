@@ -14,7 +14,7 @@ import { syncFirebaseEmailAccountAfterRegister } from '../../lib/firebaseEmailAc
 import { validateRegistrationForm } from '../../lib/authValidation';
 import { ensureSocialAuthReady, getMissingFirebaseConfigKeys, isFirebaseSocialConfigured } from '../../lib/firebase';
 import { ensureFirebaseSocialConfigLoaded } from '../../lib/loadFirebaseConfig';
-import { consumeStoredSocialAuthError } from '../SocialAuth/GoogleRedirectRecoveryGate';
+import { consumeStoredSocialAuthError } from '../../lib/socialAuthDiagnostics';
 import {
   completeGooglePopupSignIn,
   isGoogleRedirectRecoveryPending,
@@ -115,6 +115,7 @@ function LoginForm({
     if (shouldUseRedirectSignInFirst()) {
       if (!canUseGoogleRedirectSignIn()) {
         setSocialBusy(null);
+        googleSignInClickLock.current = false;
         setError(
           socialError({ code: 'auth/web-storage-unsupported' }),
         );
@@ -159,6 +160,10 @@ function LoginForm({
         if (isBenignGoogleSignInCancellation(requestError)) {
           setError('');
           setSocialErrorCode('');
+          return;
+        }
+        if (requestError?.code === 'auth/popup-timeout') {
+          setError(socialError(requestError));
           return;
         }
         setSocialErrorCode(requestError?.code || '');

@@ -6,7 +6,25 @@ const {
     defaultFallbackChain,
     TASK_TO_CAPABILITY,
 } = require('./capabilities');
-const { findRoutedModelWithApiKey } = require('../../chatProviderRuntime');
+const { findRoutedModelWithApiKey, slugDependsOnOpenRouterPaidCredits, routedModelHasApiKey } = require('../../chatProviderRuntime');
+const { isOpenRouterCreditsExhausted, isSlugBlockedByGatewayHealth } = require('../gatewayModelHealth');
+
+const DIRECT_PREFERRED_SLUGS = ['gemini', 'groq', 'gpt-oss-groq', 'cloudflare', 'gpt-oss', 'ollama'];
+
+function hasDirectProviderAlternative(modelAllowed) {
+    return DIRECT_PREFERRED_SLUGS.some((slug) => (
+        modelAllowed(slug)
+        && !isSlugBlockedByGatewayHealth(slug)
+        && !slugDependsOnOpenRouterPaidCredits(slug)
+        && routedModelHasApiKey(slug)
+    ));
+}
+
+function avoidOpenRouterPaidSlug(slug, modelAllowed) {
+    if (!slugDependsOnOpenRouterPaidCredits(slug)) return false;
+    if (isOpenRouterCreditsExhausted()) return true;
+    return hasDirectProviderAlternative(modelAllowed);
+}
 const { findVisionRoutedModel, visionSlugAllowed } = require('../visionSupport');
 
 const { isCloudflareWorkersAiConfigured } = require('../cloudflareWorkersAiConfig');
@@ -25,7 +43,7 @@ const TASK_PICKS = {
     greeting: { slug: 'gemini', reason: 'Simple chat — fast general model.' },
     vision: { slug: 'gemini', reason: 'Multimodal vision and UI guidance.' },
     coding: { slug: 'gemini', reason: 'Strong coding and implementation support.' },
-    research: { slug: 'perplexity', reason: 'Web-backed research with sources.' },
+    research: { slug: 'gemini', reason: 'Research answered by the configured direct Gemini model.' },
     writing: { slug: 'claude', reason: 'Long-form writing and editing.' },
     document_analysis: { slug: 'claude', reason: 'Long-context document analysis.' },
     summarization: { slug: 'gpt', reason: 'Concise summarization.' },
@@ -55,16 +73,21 @@ function scoreSlugForTask(slug, taskType, preferSpeed) {
 
 function pickBestSlug(taskType, preferSpeed, modelAllowed, performanceMap = {}) {
     const preferred = TASK_PICKS[taskType]?.slug || 'gemini';
-    if (modelAllowed(preferred) && findRoutedModelWithApiKey(preferred, modelAllowed) === preferred) {
+    if (modelAllowed(preferred)
+        && !isSlugBlockedByGatewayHealth(preferred)
+        && !avoidOpenRouterPaidSlug(preferred, modelAllowed)
+        && findRoutedModelWithApiKey(preferred, modelAllowed) === preferred) {
         return preferred;
     }
     const candidates = Object.keys(require('./capabilities').MODEL_CAPABILITIES);
     const { performanceBoost } = require('./routerPolicy');
 
-    let best = preferred;
+    let best = null;
     let bestScore = -1;
     for (const slug of candidates) {
         if (!modelAllowed(slug)) continue;
+        if (isSlugBlockedByGatewayHealth(slug)) continue;
+        if (avoidOpenRouterPaidSlug(slug, modelAllowed)) continue;
         let score = scoreSlugForTask(slug, taskType, preferSpeed);
         score += performanceBoost(slug, performanceMap);
         score += healthPenaltyForSlug(slug);
@@ -73,7 +96,19 @@ function pickBestSlug(taskType, preferSpeed, modelAllowed, performanceMap = {}) 
             best = slug;
         }
     }
-    return best;
+    if (best) return best;
+    for (const slug of defaultFallbackChain(preferred)) {
+        if (!modelAllowed(slug) || isSlugBlockedByGatewayHealth(slug)) continue;
+        if (avoidOpenRouterPaidSlug(slug, modelAllowed)) continue;
+        if (findRoutedModelWithApiKey(slug, modelAllowed) === slug) return slug;
+    }
+    if (!isSlugBlockedByGatewayHealth(preferred)) return preferred;
+    for (const slug of candidates) {
+        if (!modelAllowed(slug) || isSlugBlockedByGatewayHealth(slug)) continue;
+        const routed = findRoutedModelWithApiKey(slug, modelAllowed);
+        if (routed) return routed;
+    }
+    return preferred;
 }
 
 /**
@@ -126,15 +161,21 @@ function selectSmartRoute(prompt, options = {}) {
             .filter((candidate) => visionSlugAllowed(candidate, modelAllowed))
             .slice(0, 4);
     } else {
-        const available = findRoutedModelWithApiKey(slug, modelAllowed);
+        let available = findRoutedModelWithApiKey(slug, modelAllowed);
+        if (available && isSlugBlockedByGatewayHealth(available)) available = null;
+        if (isSlugBlockedByGatewayHealth(slug)) available = null;
         fallbacks = defaultFallbackChain(slug)
-            .filter((candidate) => modelAllowed(candidate) && findRoutedModelWithApiKey(candidate, modelAllowed) === candidate)
+            .filter((candidate) => modelAllowed(candidate)
+                && !isSlugBlockedByGatewayHealth(candidate)
+                && !avoidOpenRouterPaidSlug(candidate, modelAllowed)
+                && findRoutedModelWithApiKey(candidate, modelAllowed) === candidate)
             .slice(0, 4);
 
-        if (available && available !== slug) {
+        if (avoidOpenRouterPaidSlug(slug, modelAllowed)) available = null;
+        if (available && available !== slug && !isSlugBlockedByGatewayHealth(available)) {
             reason = `${reason} (using ${displayModelName(available)} — preferred provider unavailable.)`;
             slug = available;
-        } else if (!available && fallbacks.length) {
+        } else if ((!available || isSlugBlockedByGatewayHealth(slug)) && fallbacks.length) {
             slug = fallbacks[0];
             reason = `${reason} (switched to ${displayModelName(slug)}.)`;
         }

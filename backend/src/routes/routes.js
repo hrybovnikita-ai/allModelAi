@@ -110,13 +110,17 @@ const {
     getPaymentHistory,
 } = require('../controllers/wayforpayController');
 const { createPaddleCheckout, getPaddlePublicConfig } = require('../controllers/paddleController');
+const {
+    createLemonSqueezyCheckout,
+    getLemonSqueezyPublicConfig,
+} = require('../controllers/lemonSqueezyController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { createUserRateLimitMiddleware } = require('../security/apiRateLimit');
 const expensiveUserRateLimit = createUserRateLimitMiddleware({ scope: 'expensive' });
 const { authAttemptRateLimit } = require('../authRateLimit');
 const { prepareAppGeneration, prepareWebsiteRedesign } = require('../appGeneration');
 const { health, healthDetailed, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
-const { getReady, getOpsDashboard, getOpsProviders } = require('../controllers/opsCenter');
+const { getReady, getOpsDashboard, getOpsDbTraffic, getOpsApiPerformance, getOpsProviders } = require('../controllers/opsCenter');
 const { getAccountSecurity, setAccountPassword, updateAccountProfile } = require('../accountPassword');
 const { getStorageOverview, listStorageIdea, createStorageIdea, deleteStorageIdea } = require('../controllers/storageIdeasController');
 const { getSubscriptionSummary, cancelTestSubscriptionHandler } = require('../controllers/subscriptionController');
@@ -267,6 +271,8 @@ router.get('/health', health);
 router.get('/ready', getReady);
 router.get('/health/detailed', healthDetailed);
 router.get('/admin/ops/dashboard', requireAdmin, getOpsDashboard);
+router.get('/admin/ops/db-traffic', requireAdmin, getOpsDbTraffic);
+router.get('/admin/ops/api-performance', requireAdmin, getOpsApiPerformance);
 router.get('/admin/ops/providers', requireAdmin, getOpsProviders);
 const {
     getLiveActivationReadiness,
@@ -346,6 +352,8 @@ router.post('/payments/wayforpay/test-checkout', requireAuth, completeTestWayfor
 router.get('/payments/wayforpay/status/:orderReference', requireAuth, getWayforpayPaymentStatus);
 router.get('/payments/history', requireAuth, getPaymentHistory);
 router.post('/payments/checkout', requireAuth, createCheckoutSession);
+router.post('/payments/create-checkout', requireAuth, createLemonSqueezyCheckout);
+router.get('/payments/lemonsqueezy/config', getLemonSqueezyPublicConfig);
 router.post('/payments/paddle/checkout', requireAuth, createPaddleCheckout);
 router.get('/payments/paddle/config', getPaddlePublicConfig);
 router.post('/payments/billing-portal', requireAuth, createBillingPortalSession);
@@ -509,5 +517,148 @@ router.post('/admin/users', requireAuth, requireAdmin, createUser);
 router.put('/admin/users/:id', requireAuth, requireAdmin, updateUser);
 router.patch('/admin/users/:id', requireAuth, requireAdmin, patchUser);
 router.delete('/admin/users/:id', requireAuth, requireAdmin, deleteUser);
+
+const projectExport = require('../platform/projectExport');
+const credentialVault = require('../platform/credentialVault');
+const webhookEvents = require('../platform/webhookEvents');
+const githubAssistant = require('../platform/githubAssistant');
+const qualityContracts = require('../platform/qualityContracts');
+
+function platformError(res, error) {
+    return res.status(error.status || 500).json({ message: error.message, code: error.code || 'PLATFORM_ERROR' });
+}
+
+router.get('/platform/github', requireAuth, (req, res) => {
+    res.json(githubAssistant.connectionStatus(req.user.email));
+});
+
+router.post('/platform/github/connect', requireAuth, (req, res) => {
+    try {
+        res.json(githubAssistant.beginConnect(req.user.email));
+    } catch (error) {
+        platformError(res, error);
+    }
+});
+
+router.delete('/platform/github', requireAuth, (req, res) => {
+    res.json(githubAssistant.disconnect(req.user.email));
+});
+
+router.get('/platform/github/repos', requireAuth, async (req, res) => {
+    try {
+        res.json({ repositories: await githubAssistant.listRepositories(req.user.email) });
+    } catch (error) {
+        platformError(res, error);
+    }
+});
+
+router.post('/platform/export', requireAuth, (req, res) => {
+    if (req.aborted) return res.status(499).json({ message: 'Export cancelled.' });
+    try {
+        const packed = projectExport.prepareExport(req.body?.files, { name: req.body?.name });
+        const filename = projectExport.safeDownloadName(req.body?.name);
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('X-Export-Sha256', packed.sha256);
+        res.setHeader('X-Export-Files', String(packed.files));
+        res.send(packed.zip);
+    } catch (error) {
+        platformError(res, error);
+    }
+});
+
+router.get('/platform/vault', requireAuth, requireAdmin, (req, res) => {
+    res.json({
+        credentials: credentialVault.listCredentials(),
+        note: 'Identifiers are masked. Raw keys stay in the deployment environment.',
+    });
+});
+
+router.post('/platform/vault/:provider', requireAuth, requireAdmin, (req, res) => {
+    try {
+        res.json(credentialVault.setCredentialDisabled(req.params.provider, Boolean(req.body?.disabled)));
+    } catch (error) {
+        platformError(res, error);
+    }
+});
+
+router.get('/platform/webhooks/events', requireAuth, requireAdmin, (req, res) => {
+    res.json({ events: webhookEvents.listEvents() });
+});
+
+router.post('/platform/webhooks/events', requireAuth, requireAdmin, (req, res) => {
+    const secret = String(process.env.PLATFORM_WEBHOOK_SECRET || '');
+    const payload = JSON.stringify(req.body?.payload || {});
+    const valid = webhookEvents.verifyHmacSha256({
+        secret,
+        payload,
+        signature: req.get('x-allmodelai-signature'),
+    });
+    if (!secret || !valid || !webhookEvents.assertFreshTimestamp(req.body?.timestamp)) {
+        return res.status(401).json({ message: 'Webhook signature was rejected.', code: 'WEBHOOK_SIGNATURE_INVALID' });
+    }
+    try {
+        const row = webhookEvents.rememberEvent(req.body?.eventId);
+        res.status(row.duplicate ? 200 : 202).json(row);
+    } catch (error) {
+        platformError(res, error);
+    }
+});
+
+router.get('/platform/contracts', requireAuth, (req, res) => {
+    res.json({ contracts: qualityContracts.API_CONTRACTS, visualTargets: qualityContracts.VISUAL_TARGETS });
+});
+
+router.post('/platform/quality/run', requireAuth, (req, res) => {
+    if (req.body?.live === true) {
+        return res.status(403).json({
+            message: 'Live AI quality runs are disabled unless AI_EVAL_LIVE_GENERATE is explicitly enabled by an operator.',
+            code: 'LIVE_EVAL_DISABLED',
+        });
+    }
+    res.json(qualityContracts.runMockedQualityLab());
+});
+
+const studio = require('../platform/studioFeatures');
+
+router.get('/studio/bugs', requireAuth, (req, res) => {
+    res.json({ bugs: studio.bucket(req.user.email).bugs });
+});
+router.post('/studio/bugs', requireAuth, (req, res) => {
+    try { res.status(201).json(studio.createBug(req.user.email, req.body)); } catch (error) { platformError(res, error); }
+});
+router.post('/studio/bugs/:id/status', requireAuth, (req, res) => {
+    try { res.json(studio.updateBugStatus(req.user.email, req.params.id, req.body?.status)); } catch (error) { platformError(res, error); }
+});
+router.get('/studio/schedules', requireAuth, (req, res) => {
+    res.json({ tasks: studio.bucket(req.user.email).tasks });
+});
+router.post('/studio/schedules', requireAuth, (req, res) => {
+    try { res.status(201).json(studio.createSchedule(req.user.email, req.body)); } catch (error) { platformError(res, error); }
+});
+router.post('/studio/schedules/:id/pause', requireAuth, (req, res) => {
+    const task = studio.bucket(req.user.email).tasks.find((item) => item.id === req.params.id);
+    if (!task) return res.status(404).json({ message: 'Task not found.' });
+    task.status = task.status === 'paused' ? 'active' : 'paused';
+    res.json(task);
+});
+router.post('/studio/schedules/run-due', requireAuth, (req, res) => {
+    res.json({ task: studio.claimDueTask(req.user.email) });
+});
+router.post('/studio/datasets/analyze', requireAuth, (req, res) => {
+    try { res.json(studio.analyzeCsv(req.user.email, req.body)); } catch (error) { platformError(res, error); }
+});
+router.get('/studio/config', requireAuth, requireAdmin, (req, res) => {
+    res.json({ checks: studio.configReport(), note: 'Names and presence only.' });
+});
+router.post('/studio/tools/call', requireAuth, (req, res) => {
+    try { res.json(studio.callTool(req.body)); } catch (error) { platformError(res, error); }
+});
+router.post('/studio/structured/validate', requireAuth, (req, res) => {
+    res.json(studio.validateStructured(req.body?.output, req.body?.schema));
+});
+router.post('/studio/evidence/check', requireAuth, (req, res) => {
+    res.json({ claims: studio.checkEvidence(req.body?.claims, req.body?.passages) });
+});
 
 module.exports = router;

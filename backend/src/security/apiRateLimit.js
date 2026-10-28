@@ -4,6 +4,8 @@
  */
 
 const { securityWarn } = require('./structuredLog');
+const { recordRateLimitHit } = require('../services/rateLimitStats');
+const { isPostgresConnection } = require('../db/postgresHttpReads');
 
 const memoryBuckets = new Map();
 
@@ -50,7 +52,61 @@ function rateLimitResponse(res, retryAfterSec, message) {
         code: 'RATE_LIMIT',
         message: message
             || 'This account is sending requests too quickly. Wait a moment, then retry.',
+        retryAfterSec,
     });
+}
+
+function isPremiumUserEmail(connection, email) {
+    const normalized = String(email || '').trim().toLowerCase();
+    if (!normalized) return false;
+    const owners = String(process.env.PAYMENT_OWNER_EMAILS || '')
+        .split(',')
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean);
+    if (owners.includes(normalized)) return true;
+    try {
+        if (isPostgresConnection(connection)) {
+            return false;
+        }
+        const row = connection.database.prepare(`
+            SELECT plan, status FROM subscription_details
+            WHERE lower(trim(email)) = ? AND status = 'active'
+        `).get(normalized);
+        if (!row?.plan) return false;
+        const plan = String(row.plan).toLowerCase();
+        return ['pro', 'starter', 'plus', 'unlimited', 'week', 'common'].includes(plan);
+    } catch {
+        return false;
+    }
+}
+
+async function isPremiumUserEmailAsync(connection, email) {
+    const normalized = String(email || '').trim().toLowerCase();
+    if (!normalized) return false;
+    const owners = String(process.env.PAYMENT_OWNER_EMAILS || '')
+        .split(',')
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean);
+    if (owners.includes(normalized)) return true;
+    try {
+        if (isPostgresConnection(connection)) {
+            const { queryPgPool, resolvePostgresAsyncPool } = require('../db/pgPoolQuery');
+            const pool = resolvePostgresAsyncPool(connection);
+            const result = await queryPgPool(
+                pool,
+                `SELECT plan, status FROM subscription_details
+                 WHERE lower(trim(email)) = $1 AND status = 'active'`,
+                [normalized],
+            );
+            const row = result.rows[0];
+            if (!row?.plan) return false;
+            const plan = String(row.plan).toLowerCase();
+            return ['pro', 'starter', 'plus', 'unlimited', 'week', 'common'].includes(plan);
+        }
+        return isPremiumUserEmail(connection, email);
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -85,6 +141,7 @@ function createIpRateLimitMiddleware(options = {}) {
         const cache = req.app?.locals?.cache;
         const count = await increment(cache, key, windowMs, now);
         if (count > limit) {
+            recordRateLimitHit({ kind: 'ip', scope: clientIp(req), path: req.path });
             securityWarn('rate_limit_ip', {
                 ip: clientIp(req),
                 bucket,
@@ -104,7 +161,8 @@ function createIpRateLimitMiddleware(options = {}) {
  */
 function createUserRateLimitMiddleware(options = {}) {
     const windowMs = options.windowMs || parsePositiveInt(process.env.USER_RATE_LIMIT_WINDOW_MS, 60_000);
-    const limit = options.limit || parsePositiveInt(process.env.USER_RATE_LIMIT_PER_MIN, 40);
+    const freeLimit = options.limit || parsePositiveInt(process.env.USER_RATE_LIMIT_PER_MIN, 40);
+    const premiumLimit = parsePositiveInt(process.env.USER_RATE_LIMIT_PREMIUM_PER_MIN, Math.max(freeLimit * 2, 120));
     const scope = options.scope || 'expensive';
 
     return async function userRateLimitMiddleware(req, res, next) {
@@ -115,16 +173,22 @@ function createUserRateLimitMiddleware(options = {}) {
         const email = String(req.user?.email || '').trim().toLowerCase();
         if (!email) return next();
 
+        const connection = req.app?.locals?.db;
+        const premium = await isPremiumUserEmailAsync(connection, email);
+        const limit = premium ? premiumLimit : freeLimit;
+
         const key = `rl:user:${email}:${scope}`;
         const now = Date.now();
         const cache = req.app?.locals?.cache;
         const count = await increment(cache, key, windowMs, now);
         if (count > limit) {
+            recordRateLimitHit({ kind: 'user', scope: email, path: req.path });
             securityWarn('rate_limit_user', {
                 email,
                 scope,
                 count,
                 limit,
+                premium,
                 path: req.path,
             });
             return rateLimitResponse(

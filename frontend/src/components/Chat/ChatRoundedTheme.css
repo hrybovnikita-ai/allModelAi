@@ -1,0 +1,245 @@
+/**
+ * Chat rounded UI — scoped to .chat-page (loads after other chat CSS).
+ */
+
+.chat-page {
+  --radius-pill: 9999px;
+  --radius-card: 22px;
+  --radius-message: 20px;
+  --radius-input: 24px;
+  --radius-code: 16px;
+}
+
+/* —— Sidebar navigation —— */
+.chat-page .new-chat-compact,
+.chat-page .new-temp-chat-btn,
+.chat-page .sidebar-tool-row,
+.chat-page .sidebar-project-open,
+.chat-page .sidebar-favorite-row,
+.chat-page .sidebar-settings-row,
+.chat-page .sidebar-explore-links a,
+.chat-page .sidebar-empty-projects {
+  border-radius: var(--radius-pill) !important;
+}
+
+.chat-page .new-chat-compact {
+  min-height: 44px !important;
+  padding: 10px 16px !important;
+  border: 1px solid rgba(139, 92, 246, 0.28) !important;
+  background: linear-gradient(135deg, rgba(109, 66, 204, 0.35), rgba(139, 92, 246, 0.18)) !important;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.22s ease,
+    transform 0.18s ease;
+}
+
+.chat-page .new-chat-compact:hover {
+  border-color: rgba(183, 148, 246, 0.5) !important;
+  box-shadow: 0 0 20px rgba(109, 66, 204, 0.22);
+}
+
+.chat-page .new-temp-chat-btn {
+  width: 44px;
+  min-height: 44px;
+  border-radius: var(--radius-pill) !important;
+}
+
+.chat-page .sidebar-tool-row {
+  min-height: 40px;
+  padding: 8px 12px !important;
+}
+
+.chat-page .sidebar-tool-row:hover:not(:disabled),
+.chat-page .sidebar-tool-row.is-active {
+  background: rgba(124, 92, 255, 0.16) !important;
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.28);
+}
+
+.chat-page .sidebar-search {
+  border-radius: var(--radius-pill) !important;
+  padding: 10px 14px !important;
+  border-color: rgba(139, 92, 246, 0.22) !important;
+  background: rgba(7, 7, 13, 0.55) !important;
+}
+
+.chat-page .sidebar-search:focus-within {
+  border-color: rgba(167, 139, 250, 0.55) !important;
+  box-shadow: 0 0 0 2px rgba(124, 92, 255, 0.15);
+}
+
+/* Chat history */
+.chat-page .sidebar-chat-item,
+.chat-page .chat-history-item {
+  border-radius: var(--radius-pill) !important;
+  margin-bottom: 4px;
+}
+
+.chat-page .sidebar-chat-open,
+.chat-page .chat-history-open {
+  border-radius: var(--radius-pill) !important;
+}
+
+.chat-page .sidebar-chat-item.is-active,
+.chat-page .chat-history-item.active {
+  background: rgba(124, 92, 255, 0.18) !important;
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.32);
+}
+
+.chat-page .sidebar-chat-title,
+.chat-page .chat-history-open strong {
+  font-size: 0.8125rem !important;
+  font-weight: 650 !important;
+}
+
+.chat-page .sidebar-chat-more,
+.chat-page .chat-history-more {
+  border-radius: var(--radius-pill) !important;
+}
+
+.chat-page .sidebar-chat-menu,
+.chat-page .sidebar-project-menu,
+.chat-page .chat-history-menu {
+  border-radius: var(--radius-code) !important;
+  padding: 6px !important;
+  border-color: rgba(139, 92, 246, 0.28) !important;
+  background: rgba(10, 8, 18, 0.98) !important;
+}
+
+.chat-page .sidebar-chat-menu button,
+.chat-page .sidebar-project-menu button,
+.chat-page .chat-history-menu button {
+  border-radius: var(--radius-pill) !important;
+}
+
+.chat-page .chat-history-search {
+  border-radius: var(--radius-pill) !important;
+  padding: 10px 14px !important;
+  margin-inline: 10px;
+  width: calc(100% - 20px);
+  border-color: rgba(139, 92, 246, 0.25) !important;
+  background: rgba(7, 7, 13, 0.65) !important;
+}
+
+.chat-page .chat-profile-compact {
+  border-radius: var(--radius-card);
+  padding: 10px 12px !important;
+  background: rgba(13, 11, 24, 0.65);
+  border: 1px solid rgba(139, 92, 246, 0.14);
+}
+
+.chat-page .chat-profile-signout,
+.chat-page .sidebar-rail-btn {
+  border-radius: var(--radius-pill) !important;
+}
+
+/* —— Messages —— */
+.chat-page .chat-message.user > div {
+  border-radius: var(--radius-card) !important;
+}
+
+.chat-page .chat-message.assistant:not(.thinking-message) > div {
+  border-radius: var(--radius-message);
+  padding: 4px 2px 8px;
+  min-width: 0;
+}
+
+.chat-page .chat-message.assistant .message-content,
+.chat-page .chat-message.assistant .message-stream-plain {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.chat-page .response-code-block,
+.chat-page .chat-code-block,
+.chat-page .code-block {
+  border-radius: var(--radius-code) !important;
+  overflow: hidden;
+}
+
+.chat-page .message-image-container,
+.chat-page .message-image-container .message-user-image,
+.chat-page .generated-image,
+.chat-page .generated-image-result .generated-image {
+  border-radius: 18px !important;
+}
+
+.chat-page .generated-image-actions button,
+.chat-page .file-attachment-chip,
+.chat-page .composer-attachment-chip {
+  border-radius: var(--radius-pill) !important;
+}
+
+.chat-page .web-source-card,
+.chat-page .deep-research-card,
+.chat-page .tool-result-card {
+  border-radius: var(--radius-message) !important;
+}
+
+.chat-page .context-suggestions button,
+.chat-page .chat-welcome-suggestions button,
+.chat-page .welcome-suggestion-chip {
+  border-radius: var(--radius-pill) !important;
+}
+
+.chat-page .welcome-suggestion-card {
+  border-radius: var(--radius-card) !important;
+}
+
+/* —— Composer —— */
+.chat-page .chat-composer-modern .composer-box {
+  border-radius: var(--radius-input) !important;
+  background: linear-gradient(165deg, rgba(18, 14, 32, 0.98) 0%, rgba(8, 7, 14, 0.98) 100%) !important;
+  border-color: rgba(139, 92, 246, 0.32) !important;
+}
+
+.chat-page .chat-composer-modern .composer-plus,
+.chat-page .chat-composer-modern .composer-actions button,
+.chat-page .composer-web-toggle {
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 50% !important;
+}
+
+.chat-page .chat-composer-modern .composer-actions .send-message {
+  background: linear-gradient(135deg, #6d42cc, #8b5cf6) !important;
+  border-color: transparent !important;
+  box-shadow: 0 8px 24px rgba(109, 66, 204, 0.35);
+}
+
+.chat-page .model-select-trigger,
+.chat-page .web-search-filters select,
+.chat-page .research-depth-switch button,
+.chat-page .access-mode-switch button {
+  border-radius: var(--radius-pill) !important;
+}
+
+.chat-page .composer-menu {
+  border-radius: var(--radius-code) !important;
+}
+
+.chat-page .composer-menu button {
+  border-radius: var(--radius-pill) !important;
+}
+
+/* —— Layout —— */
+.chat-page .chat-workspace {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chat-page .chat-messages {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.chat-page .chat-composer {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-page .new-chat-compact:hover {
+    transform: none;
+  }
+}
