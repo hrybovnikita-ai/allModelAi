@@ -72,7 +72,7 @@ export async function signInWithEmailPasswordAllModelAI({ email, password, remem
     try {
       auth = await ensureSocialAuthReady();
       await signInWithEmailAndPassword(auth, normalizedEmail, password);
-    } catch (firebaseError) {
+    } catch {
       if (backendError.code === 'PASSWORD_SETUP_REQUIRED') {
         throw backendError;
       }

@@ -63,7 +63,6 @@ import {
   patchAssistantMessage,
   responseBelongsToOpenChat as conversationOwnsResponse,
   shouldBootstrapOpenConversation,
-  shouldReplaceMessagesFromHistory,
   shouldShowBackgroundReplyNotice,
 } from '../../lib/chatResponseOwnership';
 import { finalizeAssistantMessage, stickerFieldsForPersist } from '../../lib/aiStickers/enhanceMessage';

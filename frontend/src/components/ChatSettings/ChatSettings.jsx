@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useOutletContext } from 'react-router-dom';
 import { LANGUAGES } from '../../lib/languages';
 import { useLanguage } from '../../lib/useLanguage';
@@ -73,7 +73,7 @@ export default function ChatSettings() {
   const photo = avatarPreview || user?.photoURL || '';
   const initial = (displayName || user?.name || user?.email || 'A').trim().charAt(0).toUpperCase();
 
-  const appearanceReady = useMemo(() => ({ current: false }), []);
+  const appearanceReady = useRef(false);
   useEffect(() => {
     const next = { ...appearance, textColor: appearance.textColor || '#8b5cf6' };
     localStorage.setItem('allmodelai_appearance', JSON.stringify(next));
@@ -92,7 +92,7 @@ export default function ChatSettings() {
     root.style.setProperty('--accent', next.accent || '#8b5cf6');
     if (appearanceReady.current) setSaved('Appearance saved on this device');
     appearanceReady.current = true;
-  }, [appearance, appearanceReady]);
+  }, [appearance]);
 
   const updateCodeAssist = (patch) => {
     const next = { ...codeAssist, ...patch };
