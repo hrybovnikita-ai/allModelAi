@@ -600,16 +600,6 @@ function LoginForm({
             </span>
             {socialBusy === 'Google' && <span className="login-social-spinner" aria-hidden="true" />}
           </button>
-          <button
-            type="button"
-            className="login-social-btn"
-            disabled={socialDisabled || !firebaseSocialReady}
-            aria-busy={socialBusy === 'GitHub'}
-            onClick={() => handleSocialSignIn('GitHub')}
-          >
-            <span>{socialBusy === 'GitHub' ? 'Connecting to GitHub…' : 'Continue with GitHub'}</span>
-            {socialBusy === 'GitHub' && <span className="login-social-spinner" aria-hidden="true" />}
-          </button>
         </div>
 
         <AuthDebugPanel />
