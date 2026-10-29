@@ -1,7 +1,9 @@
 import {
   GoogleAuthProvider,
+  GithubAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  getRedirectResult,
   signInWithCredential,
   linkWithCredential,
   sendEmailVerification,
@@ -96,6 +98,11 @@ export function providerLabel(name) {
 }
 
 function providerFor(name) {
+  if (name === 'GitHub') {
+    const provider = new GithubAuthProvider();
+    provider.addScope('user:email');
+    return provider;
+  }
   if (name === GOOGLE_PROVIDER) {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
@@ -154,6 +161,17 @@ async function completeFromFirebaseUser(firebaseUser, options) {
 }
 
 async function complete(result, options) {
+  if (result.providerId === 'github.com' || options?.provider === 'GitHub') {
+    const githubAccessToken = GithubAuthProvider.credentialFromResult(result)?.accessToken;
+    if (!githubAccessToken) {
+      throw Object.assign(new Error('GitHub authorization expired. Please sign in again.'), { code: 'INVALID_GITHUB_TOKEN' });
+    }
+    // Resolve private email on the backend, verifying the matching GitHub subject.
+    const idToken = await result.user.getIdToken(true);
+    const user = await exchangeSocialSession(idToken, { ...options, githubAccessToken });
+    invalidateAuthBootstrap();
+    return user;
+  }
   return completeFromFirebaseUser(result.user, options);
 }
 
@@ -211,7 +229,7 @@ async function beginRedirectSignIn(auth, name, options, reason) {
  * Call synchronously inside the click handler (no await before this).
  * Requires ensureSocialAuthReady() to have completed during app/login mount.
  */
-export function launchGooglePopupSignIn() {
+export function launchGooglePopupSignIn(name = GOOGLE_PROVIDER) {
   if (shouldPreferGoogleRedirectSignIn()) {
     throw Object.assign(new Error('Use redirect sign-in on this device.'), { code: 'auth/redirect-required' });
   }
@@ -229,7 +247,7 @@ export function launchGooglePopupSignIn() {
     }
     const auth = getSocialAuth();
     markGooglePopupSignInBaseline(auth);
-    const provider = providerFor(GOOGLE_PROVIDER);
+    const provider = providerFor(name);
     socialAuthDebug('GOOGLE_AUTH_START', {
       path: typeof window !== 'undefined' ? window.location.pathname : '',
       mobileSafari: isMobileWebSafari(),
@@ -251,8 +269,8 @@ export function launchGooglePopupSignIn() {
 }
 
 export async function completeGooglePopupSignIn(auth, popupPromise, name, options = {}) {
-  if (name !== GOOGLE_PROVIDER) {
-    throw new Error('Only Google sign-in is available.');
+  if (!SOCIAL_PROVIDERS.includes(name)) {
+    throw new Error('Unsupported provider.');
   }
   pendingLink = null;
   let redirected = false;
@@ -261,12 +279,17 @@ export async function completeGooglePopupSignIn(auth, popupPromise, name, option
     // A popup is already open from launchGooglePopupSignIn(). Never start a
     // second redirect here — that duplicates Google's OAuth tab.
     const challengePromise = prepareBackendChallenge(options);
+    challengePromise.catch(() => {});
     let result;
     try {
-      result = await awaitGooglePopupSignInResult(auth, popupPromise);
+      if (name === 'GitHub') {
+        result = await popupPromise;
+      } else {
+        result = await awaitGooglePopupSignInResult(auth, popupPromise);
+      }
     } catch (popupError) {
       challengePromise.catch(() => {});
-      const recovered = recoverPopupResultFromCurrentUser(auth, popupError);
+      const recovered = name === 'GitHub' ? null : recoverPopupResultFromCurrentUser(auth, popupError);
       if (!recovered) {
         throw popupError;
       }
@@ -285,7 +308,7 @@ export async function completeGooglePopupSignIn(auth, popupPromise, name, option
       });
       throw challengeError;
     }
-    const user = await complete(result, { ...options, challenge });
+    const user = await complete(result, { ...options, challenge, provider: name });
     succeeded = true;
     clearSocialRedirectIntent();
     return user;
@@ -333,7 +356,7 @@ export async function socialSignIn(name, options = {}) {
     const auth = getSocialAuth();
     return beginRedirectSignIn(auth, name, options, shouldUseRedirectSignInFirst() ? 'capacitor-native' : 'popup-unavailable');
   }
-  const { auth, popupPromise } = launchGooglePopupSignIn();
+  const { auth, popupPromise } = launchGooglePopupSignIn(name);
   let signInOutcome = null;
   try {
     signInOutcome = await completeGooglePopupSignIn(auth, popupPromise, name, options);
@@ -416,9 +439,10 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
     let redirectResult;
     try {
       // Always allow auth-state fallback on iOS WebKit; URL oauth hints are often stripped.
-      redirectResult = await consumeFirebaseRedirectResult(auth, consumer, {
-        allowAuthStateFallback: true,
-      });
+      // GitHub needs the OAuth credential; an auth-state-only result loses it.
+      redirectResult = pending.name === 'GitHub'
+        ? await getRedirectResult(auth)
+        : await consumeFirebaseRedirectResult(auth, consumer, { allowAuthStateFallback: true });
     } catch (error) {
       await applyAuthPersistenceAfterRedirectRecovery(auth).catch(() => {});
       clearSocialRedirectIntent();
@@ -457,6 +481,7 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
     }
 
     const options = {
+      provider: pending.name,
       rememberMe: pending.rememberMe !== false,
       link: Boolean(pending.link),
     };

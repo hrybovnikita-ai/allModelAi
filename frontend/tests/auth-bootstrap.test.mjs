@@ -45,10 +45,10 @@ test('social exchange establishes session atomically after POST firebase', async
   assert.match(session, /export async function establishSessionFromAuthExchange/);
 });
 
-test('login exposes explicit Retry for retryable Google network errors', async () => {
+test('login retries the selected social provider after network errors', async () => {
   const login = await readFile(new URL('../src/components/Login/Login.jsx', import.meta.url), 'utf8');
   assert.match(login, /isRetryableSocialSignInError/);
-  assert.match(login, /Retry Google sign-in/);
+  assert.match(login, /Retry \{lastSocialProvider\} sign-in/);
 });
 
 test('bootstrap can be invalidated after social exchange', async () => {

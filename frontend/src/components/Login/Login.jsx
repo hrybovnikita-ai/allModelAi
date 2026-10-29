@@ -58,6 +58,7 @@ function LoginForm({
   const [firebaseConfigChecked, setFirebaseConfigChecked] = useState(() => isFirebaseSocialConfigured());
   const [authReadyForGoogle, setAuthReadyForGoogle] = useState(false);
   const [socialErrorCode, setSocialErrorCode] = useState('');
+  const [lastSocialProvider, setLastSocialProvider] = useState('Google');
   const googleSignInClickLock = useRef(false);
   const emailSubmitLock = useRef(false);
   const [passwordSetupHint, setPasswordSetupHint] = useState(false);
@@ -111,6 +112,7 @@ function LoginForm({
     setError('');
     setSocialErrorCode('');
     setSocialBusy(provider);
+    setLastSocialProvider(provider);
 
     if (shouldUseRedirectSignInFirst()) {
       if (!canUseGoogleRedirectSignIn()) {
@@ -136,7 +138,7 @@ function LoginForm({
 
     let launched;
     try {
-      launched = launchGooglePopupSignIn();
+      launched = launchGooglePopupSignIn(provider);
     } catch (launchError) {
       setSocialBusy(null);
       googleSignInClickLock.current = false;
@@ -168,7 +170,7 @@ function LoginForm({
         }
         setSocialErrorCode(requestError?.code || '');
         if (requestError.code === 'SESSION_NOT_CONFIRMED') {
-          setError('Sign-in reached Google but your AllModelAI session could not be verified. Please try again.');
+          setError('Your AllModelAI session could not be verified. Please try again.');
         } else {
           setError(socialError(requestError));
         }
@@ -542,9 +544,9 @@ function LoginForm({
                   type="button"
                   className="login-retry-btn"
                   disabled={socialDisabled || !firebaseSocialReady}
-                  onClick={() => handleSocialSignIn('Google')}
+                  onClick={() => handleSocialSignIn(lastSocialProvider)}
                 >
-                  Retry Google sign-in
+                  Retry {lastSocialProvider} sign-in
                 </button>
               )}
             </div>
@@ -597,6 +599,16 @@ function LoginForm({
               {socialBusy === 'Google' ? 'Connecting to Google…' : 'Continue with Google'}
             </span>
             {socialBusy === 'Google' && <span className="login-social-spinner" aria-hidden="true" />}
+          </button>
+          <button
+            type="button"
+            className="login-social-btn"
+            disabled={socialDisabled || !firebaseSocialReady}
+            aria-busy={socialBusy === 'GitHub'}
+            onClick={() => handleSocialSignIn('GitHub')}
+          >
+            <span>{socialBusy === 'GitHub' ? 'Connecting to GitHub…' : 'Continue with GitHub'}</span>
+            {socialBusy === 'GitHub' && <span className="login-social-spinner" aria-hidden="true" />}
           </button>
         </div>
 

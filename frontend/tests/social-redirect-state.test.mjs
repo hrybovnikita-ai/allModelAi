@@ -108,7 +108,7 @@ test('login launches popup synchronously before awaits', async () => {
   const signIn = await readFile(new URL('../src/lib/socialSignIn.js', import.meta.url), 'utf8');
   assert.match(login, /shouldUseRedirectSignInFirst/);
   assert.match(login, /startGoogleRedirectSignIn/);
-  assert.match(login, /launchGooglePopupSignIn\(\)/);
+  assert.match(login, /launchGooglePopupSignIn\(provider\)/);
   assert.match(signIn, /export function launchGooglePopupSignIn/);
   assert.match(signIn, /signInWithPopup\(auth, provider\)/);
   assert.match(signIn, /markRedirectFlowCommitted/);

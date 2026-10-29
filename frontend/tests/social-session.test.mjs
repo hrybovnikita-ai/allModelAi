@@ -51,3 +51,19 @@ test('link intent is explicit and social dashboard navigation follows confirmed 
     /^Google sign-in was cancelled\.$/,
   );
 });
+
+test('GitHub exchange forwards OAuth token for server-side private email verification', async t => {
+  const old = globalThis.fetch;
+  t.after(() => { globalThis.fetch = old; clearAllSessionData(); });
+  let exchangeBody;
+  globalThis.fetch = async (url, options) => {
+    if (url.endsWith('/firebase')) exchangeBody = JSON.parse(options.body);
+    return Response.json({ user: { id: 1, email: 'private@example.com' } });
+  };
+  await exchangeSocialSession('firebase-token', {
+    challenge: { state: 'challenge' }, githubAccessToken: 'github-test-token',
+  });
+  assert.equal(exchangeBody.githubAccessToken, 'github-test-token');
+  assert.equal(exchangeBody.idToken, 'firebase-token');
+  assert.equal(exchangeBody.state, 'challenge');
+});

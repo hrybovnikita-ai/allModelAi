@@ -110,7 +110,8 @@ export function socialError(error) {
       'Google sign-in cannot finish in Private Browsing (Safari blocks session storage for the redirect). '
       + 'Use a regular Safari tab, or sign in with email and password.',
     'auth/email-not-verified': 'Your provider email is not verified yet. Verify it with the provider, then try again.',
-    'auth/missing-email': 'GitHub did not share an email address. In GitHub → Settings → Emails, add and verify a primary email (or allow email visibility for OAuth), then try again.',
+    'auth/missing-email': 'GitHub did not provide a verified email. Add and verify an email in GitHub Settings → Emails, then sign in again. Your email can stay private.',
+    INVALID_GITHUB_TOKEN: 'GitHub authorization expired. Please sign in again and allow access to your email address.',
     INVALID_STATE: 'Sign-in expired. Please try again.',
     VERIFIED_EMAIL_REQUIRED: 'A verified email is required from your provider.',
     IDENTITY_CONFLICT: 'This provider account is already linked to another AllModelAI user.',
