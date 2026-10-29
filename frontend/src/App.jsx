@@ -6,7 +6,7 @@ import AuthPage from "./components/Login/AuthPage";
 import PlatformStudio from "./components/Platform/PlatformStudio";
 import StudioLabs from "./components/StudioLabs/StudioLabs";
 import RequireAuth from "./components/Login/RequireAuth";
-import { useLayoutEffect, useState } from "react";
+import { lazy, Suspense, useLayoutEffect, useState } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import claudeLogo from "./assets/claude.png";
 import geminiLogo from "./assets/gemini.png";
@@ -184,6 +184,10 @@ function HomePage() {
   );
 }
 
+const ClerkAuthTestPage = import.meta.env.DEV
+  ? lazy(() => import("./components/ClerkAuthTest/ClerkAuthTestPage.jsx"))
+  : null;
+
 export default function App() {
   useLanguage();
   const { pathname } = useLocation();
@@ -194,6 +198,16 @@ export default function App() {
     <><GoogleRedirectRecoveryGate /><CommandPalette /><CookieConsent /><AuthSessionNotice /><Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/auth/callback" element={<SocialAuthCallback />} />
+      {import.meta.env.DEV && ClerkAuthTestPage ? (
+        <Route
+          path="/auth/clerk-test"
+          element={(
+            <Suspense fallback={<p>Loading Clerk test…</p>}>
+              <ClerkAuthTestPage />
+            </Suspense>
+          )}
+        />
+      ) : null}
       <Route path="/auth/:provider" element={<SocialAuthCallback />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/verify-email" element={<VerifyEmail />} />

@@ -29,6 +29,7 @@
     "stripe:sync": "node scripts/sync-stripe-publishable.js"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.85",
     "@google/genai": "^2.28.0",
     "@lemonsqueezy/lemonsqueezy.js": "^4.0.0",
     "@paddle/paddle-node-sdk": "^2.8.0",

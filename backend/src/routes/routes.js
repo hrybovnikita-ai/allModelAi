@@ -181,8 +181,10 @@ function registerAnoninChatRoutes() {
 }
 
 const socialAuth = require('../socialAuth');
+const clerkAuth = require('../clerkAuth');
 router.post('/auth/firebase/challenge', socialAuth.browserRequest, socialAuth.challenge);
 router.post('/auth/firebase', socialAuth.browserRequest, socialAuth.exchange);
+router.post('/auth/clerk/exchange', clerkAuth.browserRequest, clerkAuth.exchangeClerkSession);
 router.get('/auth/connections', socialAuth.connections);
 registerAnoninChatRoutes();
 const { cachePublicResponse } = require('../cache');
@@ -303,6 +305,7 @@ router.delete('/ai/memory', requireAuth, clearUserMemories);
 router.post('/ai/feedback', requireAuth, postResponseFeedback);
 router.get('/admin/ai-improvement', getAdminAiImprovementDashboard);
 router.get('/public/firebase-config', cachePublicResponse('allmodelai:public:firebase-web-config:v1'), getPublicFirebaseConfig);
+router.get('/public/clerk-auth', clerkAuth.getPublicClerkAuthStatus);
 router.get('/users', getPublicUsers);
 router.get('/community/users', getCommunityUsers);
 router.get('/admin/stats', getAdminStats);

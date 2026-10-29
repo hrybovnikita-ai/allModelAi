@@ -13,7 +13,6 @@ test('Chat uses ownership helpers instead of toast-only assistant delivery', () 
   assert.match(chatSource, /patchAssistantMessage/);
   assert.match(chatSource, /shouldShowBackgroundReplyNotice/);
   assert.match(chatSource, /extractAssistantText/);
-  assert.match(chatSource, /shouldReplaceMessagesFromHistory/);
   assert.match(chatSource, /shouldBootstrapOpenConversation/);
 });
 

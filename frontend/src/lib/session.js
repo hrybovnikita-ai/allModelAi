@@ -578,7 +578,10 @@ export async function performLogout() {
     let timer;
     try {
       await Promise.race([
-        import('./clientAuthReset.js').then(({ signOutFirebaseAuth }) => signOutFirebaseAuth()).catch(() => {}),
+        Promise.all([
+          import('./clientAuthReset.js').then(({ signOutFirebaseAuth }) => signOutFirebaseAuth()).catch(() => {}),
+          import('./clerkSessionExchange.js').then(({ signOutClerkClient }) => signOutClerkClient()).catch(() => {}),
+        ]),
         new Promise((resolve) => { timer = setTimeout(resolve, 3000); }),
       ]);
     } finally {

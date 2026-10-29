@@ -153,8 +153,8 @@ test('App Builder uses the verified session when browser storage is unavailable'
   const html = renderToString(h(MemoryRouter, { initialEntries: ['/app-builder'] }, h(Routes, null,
     h(Route, { element: h(Outlet, { context: { user: { name: 'Builder', email: 'builder@example.com' } } }) },
       h(Route, { path: '/app-builder', element: h(builder.default) })))));
-  assert.match(html, /Create app/);
-  assert.match(html, /Create image/);
+  assert.match(html, /AI Website Builder/);
+  assert.match(html, /Generate website/);
   assert.match(html, /sandbox="allow-scripts"/);
 });
 

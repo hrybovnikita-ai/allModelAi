@@ -1,0 +1,43 @@
+.clerk-test {
+  min-height: 100vh;
+  padding: 32px 16px 64px;
+  background: #0c0a12;
+  color: #f4f0ff;
+}
+
+.clerk-test-banner {
+  color: #c4b5fd;
+}
+
+.clerk-test-switch {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.clerk-test-switch button {
+  border: 1px solid #6d28d9;
+  background: transparent;
+  color: inherit;
+  border-radius: 8px;
+  padding: 8px 14px;
+}
+
+.clerk-test-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.clerk-test-actions button {
+  border: 0;
+  border-radius: 8px;
+  background: #7c3aed;
+  color: white;
+  padding: 10px 14px;
+}
+
+.clerk-test-actions button:disabled {
+  opacity: 0.45;
+}

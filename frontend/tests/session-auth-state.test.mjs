@@ -41,9 +41,11 @@ test('auth bootstrap clears stale redirect intent after failed recovery', () => 
 
 test('auth bootstrap deduplicates concurrent initialization', () => {
   const src = readFileSync(`${root}src/lib/authBootstrap.js`, 'utf8');
-  assert.match(src, /bootstrapInflight/);
+  const state = readFileSync(`${root}src/lib/authBootstrapState.js`, 'utf8');
+  assert.match(src, /getAuthBootstrapInflight/);
+  assert.match(src, /setAuthBootstrapInflight/);
   assert.match(src, /bootstrapAuthenticatedUser/);
-  assert.match(src, /bootstrapInflight = null/);
+  assert.match(state, /invalidateAuthBootstrap/);
 });
 
 test('navbar uses skeleton instead of checking session copy', () => {

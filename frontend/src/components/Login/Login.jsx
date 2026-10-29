@@ -4,7 +4,7 @@ import {
   confirmSession,
   rememberSession,
 } from '../../lib/session';
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
@@ -29,7 +29,13 @@ import { useSession } from '../Session/SessionProvider';
 import { isBenignGoogleSignInCancellation, isRetryableSocialSignInError, socialError } from '../../lib/socialSession';
 import AuthDebugPanel from '../SocialAuth/AuthDebugPanel';
 import GoogleSignInIcon from './GoogleSignInIcon';
+import {
+  fetchClerkAuthBackendEnabled,
+  isClerkMainAuthClientReady,
+} from '../../lib/clerkAuthConfig';
 import './Login.css';
+
+const LoginClerkSection = lazy(() => import('./LoginClerkSection.jsx'));
 
 export default function Login(props) {
   const rest = { ...props };
@@ -62,6 +68,10 @@ function LoginForm({
   const googleSignInClickLock = useRef(false);
   const emailSubmitLock = useRef(false);
   const [passwordSetupHint, setPasswordSetupHint] = useState(false);
+  const [clerkUiEnabled, setClerkUiEnabled] = useState(false);
+  const [clerkBusy, setClerkBusy] = useState(false);
+  /** 'account' = Firebase email/Google; 'clerk' = Clerk-only panel (avoids stacked duplicate Google UI). */
+  const [authMethod, setAuthMethod] = useState('account');
 
   useEffect(() => {
     if (isGoogleRedirectRecoveryPending()) {
@@ -71,6 +81,20 @@ function LoginForm({
     if (storedSocialError) {
       setError(storedSocialError);
     }
+  }, []);
+
+  useEffect(() => {
+    if (!isClerkMainAuthClientReady()) {
+      setClerkUiEnabled(false);
+      return;
+    }
+    let active = true;
+    fetchClerkAuthBackendEnabled().then((enabled) => {
+      if (active) setClerkUiEnabled(enabled);
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -226,8 +250,6 @@ function LoginForm({
       };
     }
 
-    const destination = signingUp ? '/dashboard' : returnTo;
-
     emailSubmitLock.current = true;
     try {
       let data;
@@ -266,22 +288,7 @@ function LoginForm({
       } else {
         rememberSession(sessionUser, { serverVerified: true });
       }
-      markFreshLogin();
-      await refresh({ force: true });
-
-      document.activeElement?.blur();
-      onClose?.();
-
-      setSuccessNotice(signingUp ? 'Welcome to AllModelAI!' : 'Welcome back!');
-
-      navigate(destination, {
-        replace: true,
-        state: {
-          ...returnState,
-          user: sessionUser,
-          welcomeEmail: data.welcomeEmail,
-        },
-      });
+      await finishAuthNavigation(sessionUser, data);
     } catch (requestError) {
       if (requestError.status === 401) {
         clearNativeSessionToken();
@@ -364,7 +371,38 @@ function LoginForm({
     return () => document.removeEventListener('keydown', closeWithEscape);
   }, [onClose]);
 
-  const socialDisabled = submitting || Boolean(socialBusy) || !authReadyForGoogle;
+  const finishAuthNavigation = async (sessionUser, data = {}) => {
+    markFreshLogin();
+    await refresh({ force: true });
+    document.activeElement?.blur();
+    onClose?.();
+    const destination = signingUp ? '/dashboard' : returnTo;
+    setSuccessNotice(signingUp ? 'Welcome to AllModelAI!' : 'Welcome back!');
+    navigate(destination, {
+      replace: true,
+      state: {
+        ...returnState,
+        user: sessionUser,
+        welcomeEmail: data.welcomeEmail,
+      },
+    });
+  };
+
+  const handleClerkSuccess = async ({ user: sessionUser }) => {
+    await finishAuthNavigation(sessionUser);
+  };
+
+  const socialDisabled = submitting || Boolean(socialBusy) || clerkBusy || !authReadyForGoogle;
+  const showClerkPanel = clerkUiEnabled && authMethod === 'clerk';
+  const showAccountPanel = !clerkUiEnabled || authMethod === 'account';
+
+  const selectAuthMethod = (method) => {
+    if (method === authMethod) return;
+    setError('');
+    setSuccessNotice('');
+    setClerkBusy(false);
+    setAuthMethod(method);
+  };
 
   const modalTree = (
     <div className="login-overlay" role="presentation">
@@ -374,7 +412,7 @@ function LoginForm({
         onMouseDown={onClose}
       />
       <section
-        className="login-modal"
+        className={`login-modal${clerkUiEnabled ? ' login-modal--with-clerk' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="login-title"
@@ -397,6 +435,43 @@ function LoginForm({
           {signingUp ? 'Create your account' : 'Welcome to AllModelAI'}
         </h2>
 
+        {clerkUiEnabled ? (
+          <div className="login-auth-methods" role="tablist" aria-label="Authentication method">
+            <button
+              type="button"
+              role="tab"
+              id="login-method-account"
+              aria-selected={authMethod === 'account'}
+              aria-controls="login-method-panel"
+              className={authMethod === 'account' ? 'is-active' : undefined}
+              disabled={clerkBusy || submitting || Boolean(socialBusy)}
+              onClick={() => selectAuthMethod('account')}
+            >
+              Email & Google
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="login-method-clerk"
+              aria-selected={authMethod === 'clerk'}
+              aria-controls="login-method-panel"
+              className={authMethod === 'clerk' ? 'is-active' : undefined}
+              disabled={clerkBusy || submitting || Boolean(socialBusy)}
+              onClick={() => selectAuthMethod('clerk')}
+            >
+              Clerk
+            </button>
+          </div>
+        ) : null}
+
+        <div
+          id="login-method-panel"
+          role="tabpanel"
+          aria-labelledby={showClerkPanel ? 'login-method-clerk' : 'login-method-account'}
+          className="login-method-panel"
+        >
+        {showAccountPanel ? (
+          <>
         <form className="login-form" onSubmit={handleSubmit} noValidate>
           {signingUp && (
             <label>
@@ -555,7 +630,7 @@ function LoginForm({
           <button
             className="login-submit"
             type="submit"
-            disabled={submitting || Boolean(socialBusy)}
+            disabled={submitting || Boolean(socialBusy) || clerkBusy}
             aria-busy={submitting}
           >
             {submitting
@@ -600,6 +675,55 @@ function LoginForm({
             </span>
             {socialBusy === 'Google' && <span className="login-social-spinner" aria-hidden="true" />}
           </button>
+        </div>
+          </>
+        ) : null}
+
+        {showClerkPanel ? (
+          <div className="login-clerk-panel">
+            <p className="login-clerk-intro">
+              {signingUp
+                ? 'Create an account with Clerk email/password or Google.'
+                : 'Sign in with Clerk email/password or Google.'}
+            </p>
+            <label className="login-remember login-clerk-remember">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(event) => setRememberMe(event.target.checked)}
+              />
+              Remember me
+            </label>
+            {error ? (
+              <div className="login-error-block" role="alert">
+                <p className="login-error">{error}</p>
+              </div>
+            ) : null}
+            <Suspense fallback={<p className="login-clerk-status">Loading secure sign-in…</p>}>
+              <LoginClerkSection
+                key={signingUp ? 'clerk-sign-up' : 'clerk-sign-in'}
+                signingUp={signingUp}
+                rememberMe={rememberMe}
+                disabled={submitting || Boolean(socialBusy) || clerkBusy}
+                onBusyChange={setClerkBusy}
+                onError={setError}
+                onSuccess={handleClerkSuccess}
+              />
+            </Suspense>
+            <div className="login-switch">
+              <span>
+                {signingUp ? 'Already have an account?' : 'New to AllModelAI?'}
+              </span>
+              <button
+                type="button"
+                disabled={clerkBusy}
+                onClick={() => changeMode(signingUp ? 'signin' : 'signup')}
+              >
+                {signingUp ? 'Sign in' : 'Sign up'}
+              </button>
+            </div>
+          </div>
+        ) : null}
         </div>
 
         <AuthDebugPanel />

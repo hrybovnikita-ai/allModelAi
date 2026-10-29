@@ -49,7 +49,7 @@ test('chat modes in plus menu wire to existing skill handlers', () => {
 test('composer modern css defines scrollable menu and animation', () => {
   assert.match(cssSource, /composer-menu-divider/);
   assert.match(cssSource, /overflow-y: auto/);
-  assert.match(cssSource, /--composer-radius: 28px/);
+  assert.match(cssSource, /--composer-radius: var\(--radius-input, 24px\)/);
   assert.match(cssSource, /composer-menu-in/);
   assert.match(cssSource, /prefers-reduced-motion/);
   assert.doesNotMatch(cssSource, /composer-mode-pill/);
