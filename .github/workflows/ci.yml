@@ -139,7 +139,7 @@ jobs:
         if: always()
         run: npm run qa:record
         env:
-          QA_BUILD_STATUS: ${{ failure() && 'failed' || 'passed' }}
+          QA_BUILD_STATUS: ${{ job.status == 'success' && 'passed' || 'failed' }}
 
       - name: Upload QA artifacts
         if: always()
