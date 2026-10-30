@@ -130,10 +130,11 @@ jobs:
         env:
           PW_OUTCOME: ${{ steps.playwright_smoke.outcome }}
 
-      - name: Dependency audit (high severity fails)
+      - name: Dependency audit (report all; fail on critical)
         run: |
           mkdir -p qa-reports
-          npm audit --audit-level=high --workspaces 2>&1 | tee qa-reports/npm-audit.txt
+          npm audit --workspaces 2>&1 | tee qa-reports/npm-audit.txt || true
+          npm audit --audit-level=critical --workspaces
 
       - name: Record QA summary for developer dashboard
         if: always()

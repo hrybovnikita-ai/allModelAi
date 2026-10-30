@@ -8,12 +8,12 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const chatSource = readFileSync(path.join(root, 'src/components/Chat/Chat.jsx'), 'utf8');
 const messageContentSource = readFileSync(path.join(root, 'src/components/Chat/ChatMessageContent.jsx'), 'utf8');
 
-test('Chat.jsx passes activeConversationId to ChatMessageContent in message map', () => {
+test('Chat.jsx passes activeConversationId to assistant response block in message map', () => {
   assert.match(
     chatSource,
-    /ChatMessageContent[\s\S]{0,240}?conversationId=\{activeConversationId\}/,
+    /ChatResponseBlock[\s\S]{0,400}?conversationId=\{activeConversationId\}/,
   );
-  assert.doesNotMatch(chatSource, /ChatMessageContent[\s\S]{0,240}?conversationId=\{conversationId\}/);
+  assert.doesNotMatch(chatSource, /ChatResponseBlock[\s\S]{0,240}?conversationId=\{conversationId\}/);
 });
 
 test('ChatMessageContent treats conversationId as optional prop', () => {

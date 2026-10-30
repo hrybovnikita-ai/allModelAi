@@ -32,13 +32,12 @@ test('buildStripeBillingAddress composes Stripe billing payload', () => {
 
 test('validateBillingFields requires core billing fields', () => {
   assert.match(
-    validateBillingFields({ firstName: 'A', lastName: 'B', email: 'a@b.com' }),
-    /required billing fields/,
+    validateBillingFields({ email: 'a@b.com' }),
+    /cardholder name/i,
   );
   assert.equal(
     validateBillingFields({
-      firstName: 'Alex',
-      lastName: 'Rivera',
+      cardholderName: 'Alex Rivera',
       email: 'alex@example.com',
       country: 'US',
       city: 'SF',

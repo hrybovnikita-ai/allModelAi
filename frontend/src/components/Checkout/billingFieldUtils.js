@@ -35,9 +35,9 @@ export function normalizeCountryCode(input) {
 }
 
 export function buildFullName(fields) {
-  const cardholder = String(fields.cardholderName || fields.middleName || '').trim();
+  const cardholder = String(fields.cardholderName || '').trim();
   if (cardholder) return cardholder;
-  return [fields.firstName, fields.lastName]
+  return [fields.firstName, fields.middleName, fields.lastName]
     .map((part) => String(part || '').trim())
     .filter(Boolean)
     .join(' ');
