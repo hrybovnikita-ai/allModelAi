@@ -27,20 +27,25 @@ export function isFreshGoogleSignInUser(user, baselineUid, startedAt) {
   if (!Number.isFinite(lastSignIn)) {
     return startedAt > 0 && Date.now() - startedAt < GOOGLE_POPUP_RECENT_SIGNIN_MS;
   }
-  const reference = Math.max(startedAt || 0, lastSignIn);
-  return Date.now() - reference <= GOOGLE_POPUP_RECENT_SIGNIN_MS;
+  return lastSignIn >= (startedAt || 0) - 5000
+    && lastSignIn <= Date.now() + 30000
+    && Date.now() - lastSignIn <= GOOGLE_POPUP_RECENT_SIGNIN_MS;
 }
 
-function waitForFreshAuthUser(auth, baselineUid, startedAt, timeoutMs) {
+export function waitForFreshAuthUser(auth, baselineUid, startedAt, timeoutMs, signal) {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let timer;
+    let unsubscribe = () => {};
     const finish = (handler) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       unsubscribe();
+      signal?.removeEventListener('abort', abort);
       handler();
     };
+    const abort = () => finish(() => reject(Object.assign(new Error('Sign-in wait cancelled.'), { code: 'auth/cancelled-popup-request' })));
 
     const consider = (user, source) => {
       if (!isFreshGoogleSignInUser(user, baselineUid, startedAt)) return;
@@ -52,12 +57,16 @@ function waitForFreshAuthUser(auth, baselineUid, startedAt, timeoutMs) {
     if (auth.currentUser) {
       consider(auth.currentUser, 'currentUser-immediate');
     }
+    if (settled) return;
+    if (signal?.aborted) return abort();
+    signal?.addEventListener('abort', abort, { once: true });
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    unsubscribe = onAuthStateChanged(auth, (user) => {
       consider(user, 'onAuthStateChanged');
     });
+    if (settled) { unsubscribe(); return; }
 
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       finish(() => {
         reject(Object.assign(new Error('Google sign-in timed out. Please try again.'), {
           code: 'auth/popup-timeout',
@@ -81,13 +90,15 @@ export async function awaitGooglePopupSignInResult(auth, popupPromise, options =
   );
   popupPath.catch(() => {});
 
-  const authStatePath = waitForFreshAuthUser(auth, baselineUid, startedAt, timeoutMs).then(
+  const controller = new AbortController();
+  const authStatePath = waitForFreshAuthUser(auth, baselineUid, startedAt, timeoutMs, controller.signal).then(
     (result) => ({ kind: 'authState', result }),
     (error) => ({ kind: 'authStateError', error }),
   );
   authStatePath.catch(() => {});
 
   const winner = await Promise.race([popupPath, authStatePath]);
+  controller.abort();
 
   if (winner.kind === 'popup') {
     socialAuthDebug('GOOGLE_POPUP_PROMISE_RESOLVED', { hasUser: Boolean(winner.result?.user?.email) });

@@ -10,7 +10,7 @@ const {
     listAvailableCheckoutProviders,
     stripePaymentsConfigured,
 } = require('./paymentProvider');
-const { stripeConfigurationReport } = require('./stripeConfig');
+const { stripeConfigurationReport, publishableKeyFromEnv } = require('./stripeConfig');
 const { paddleConfigurationReport, isPaddleSandbox } = require('./paddleConfig');
 const { creemConfigurationReport } = require('./creemConfig');
 const { lemonSqueezyConfigurationReport } = require('./lemonSqueezyConfig');
@@ -86,12 +86,16 @@ const buildCheckoutInfo = () => {
         liveActivationSummary = null;
     }
 
+    const stripeEmbeddedReady = primaryProvider !== 'stripe' || stripeConfig.ok;
+
     return {
         paymentMode,
         primaryProvider,
         paymentProvider: primaryProvider,
         providerDisplayName,
         checkoutAvailable: paymentsCheckoutAvailable() && !checkoutUnavailableMessage,
+        stripeEmbeddedReady,
+        stripePublishableKeyConfigured: Boolean(publishableKeyFromEnv()),
         liveActivation: liveActivationSummary,
         checkoutUnavailableMessage,
         stripeConfigured: stripeKeyPresent,

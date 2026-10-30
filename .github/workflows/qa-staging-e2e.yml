@@ -1,0 +1,58 @@
+name: QA Staging E2E (cross-browser)
+
+on:
+  schedule:
+    # Weekly Monday 06:00 UTC — full matrix; does not block PR merges.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Optional staging base URL (e.g. https://staging.example.com). Leave empty to use local Vite.'
+        required: false
+        type: string
+
+jobs:
+  staging-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - chromium
+          - firefox
+          - webkit
+          - mobile-chrome
+          - mobile-safari
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Run @staging journeys
+        working-directory: frontend
+        run: npx playwright test --project=${{ matrix.project }} --grep @staging
+        env:
+          CI: 'true'
+          PLAYWRIGHT_BASE_URL: ${{ inputs.base_url }}
+          PLAYWRIGHT_SKIP_WEBSERVER: ${{ inputs.base_url != '' && 'true' || '' }}
+
+      - name: Upload report (${{ matrix.project }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-staging-${{ matrix.project }}
+          path: frontend/playwright-report/
+          if-no-files-found: ignore

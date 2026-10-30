@@ -56,6 +56,12 @@ test('favorite prompts and chat settings persist per user', async () => {
     const savedSettings = await agent.get('/api/storage/ideas/chat-settings');
     assert.equal(savedSettings.body.routerMode, 'quality');
     assert.equal(savedSettings.body.webSearch, true);
+
+    const languageOnly = await agent.post('/api/storage/ideas/chat-settings').send({ uiLanguage: 'Russian' });
+    assert.equal(languageOnly.status, 201);
+    assert.equal(languageOnly.body.uiLanguage, 'Russian');
+    assert.equal(languageOnly.body.defaultModel, 'claude');
+    assert.equal(languageOnly.body.routerMode, 'quality');
 });
 
 test('bookmarks and attachments can be deleted', async () => {

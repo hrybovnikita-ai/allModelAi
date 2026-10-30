@@ -12,6 +12,19 @@ process.env.DB_FILE = path.join(os.tmpdir(), `allmodelai-clerk-${process.pid}-${
 
 const app = require('../app');
 
+test('Clerk identity requires the verified primary email, not another address or token claim', () => {
+  const { verifiedClerkIdentity } = require('../src/clerkAuth');
+  const user = { primaryEmailAddressId: 'primary', emailAddresses: [
+    { id: 'secondary', emailAddress: 'other@example.com', verification: { status: 'verified' } },
+    { id: 'primary', emailAddress: 'Owner@Example.com', verification: { status: 'unverified' } },
+  ] };
+  assert.throws(() => verifiedClerkIdentity('user_123', user), { code: 'CLERK_EMAIL_REQUIRED' });
+  user.emailAddresses[1].verification.status = 'verified';
+  assert.equal(verifiedClerkIdentity('user_123', user).email, 'owner@example.com');
+  user.primaryEmailAddressId = 'missing';
+  assert.throws(() => verifiedClerkIdentity('user_123', user), { code: 'CLERK_EMAIL_REQUIRED' });
+});
+
 after(() => {
   try { fs.rmSync(process.env.DB_FILE, { force: true }); } catch { /* ignore */ }
 });
@@ -154,6 +167,84 @@ test('clerk does not take over an existing Firebase email', async () => {
   assert.equal(response.status, 409);
   assert.equal(response.body.code, 'CLERK_LINK_REQUIRED');
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM social_identities WHERE subject = ?').get('clerk_user_2').count, 0);
+});
+
+test('signed-in email user can link the same verified Clerk email without a second account', async () => {
+  const db = app.locals.db.database;
+  const owner = agent();
+  const created = await owner.post('/api/auth/register').send({
+    name: 'Existing',
+    email: 'link-clerk@example.com',
+    password: 'password-ok',
+  });
+  assert.equal(created.status, 201);
+  allow('link-token', { userId: 'clerk_link_user', email: 'link-clerk@example.com', name: 'Existing' });
+  const linked = await owner
+    .post('/api/auth/clerk/exchange')
+    .set('Origin', 'http://localhost:5173')
+    .set('X-AllModelAI-Auth', '1')
+    .set('Authorization', 'Bearer link-token')
+    .send({});
+  assert.equal(linked.status, 200, JSON.stringify(linked.body));
+  assert.equal(linked.body.user.id, created.body.user.id);
+  assert.equal(linked.body.created, false);
+  assert.equal(
+    db.prepare('SELECT COUNT(*) AS count FROM users WHERE email = ?').get('link-clerk@example.com').count,
+    1,
+  );
+  const again = await owner
+    .post('/api/auth/clerk/exchange')
+    .set('Origin', 'http://localhost:5173')
+    .set('X-AllModelAI-Auth', '1')
+    .set('Authorization', 'Bearer link-token')
+    .send({});
+  assert.equal(again.status, 200);
+  assert.equal(again.body.user.id, created.body.user.id);
+});
+
+test('a different signed-in user cannot attach someone else Clerk email', async () => {
+  const owner = agent();
+  const created = await owner.post('/api/auth/register').send({
+    name: 'Owner',
+    email: 'owner-clerk@example.com',
+    password: 'password-ok',
+  });
+  assert.equal(created.status, 201);
+  const other = agent();
+  const otherUser = await other.post('/api/auth/register').send({
+    name: 'Other',
+    email: 'other-clerk@example.com',
+    password: 'password-ok',
+  });
+  assert.equal(otherUser.status, 201);
+  allow('steal-token', { userId: 'clerk_steal', email: 'owner-clerk@example.com', name: 'Owner' });
+  const stolen = await other
+    .post('/api/auth/clerk/exchange')
+    .set('Origin', 'http://localhost:5173')
+    .set('X-AllModelAI-Auth', '1')
+    .set('Authorization', 'Bearer steal-token')
+    .send({});
+  assert.equal(stolen.status, 409);
+  assert.equal(stolen.body.code, 'CLERK_LINK_REQUIRED');
+});
+
+test('signed-in user cannot link a Clerk email that does not match this account', async () => {
+  const owner = agent();
+  const created = await owner.post('/api/auth/register').send({
+    name: 'Mismatch',
+    email: 'mismatch-owner@example.com',
+    password: 'password-ok',
+  });
+  assert.equal(created.status, 201);
+  allow('mismatch-token', { userId: 'clerk_mismatch', email: 'mismatch-clerk@example.com', name: 'Mismatch' });
+  const response = await owner
+    .post('/api/auth/clerk/exchange')
+    .set('Origin', 'http://localhost:5173')
+    .set('X-AllModelAI-Auth', '1')
+    .set('Authorization', 'Bearer mismatch-token')
+    .send({});
+  assert.equal(response.status, 409);
+  assert.equal(response.body.code, 'CLERK_IDENTITY_CONFLICT');
 });
 
 test('two clerk users stay separate', async () => {

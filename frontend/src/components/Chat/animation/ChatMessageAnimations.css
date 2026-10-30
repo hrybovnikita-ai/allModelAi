@@ -1,0 +1,121 @@
+.thinking-dot-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+}
+
+.thinking-dot-slot {
+  position: relative;
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+}
+
+.thinking-dot-core {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #c4b5fd, #7547f5 55%, #5b21b6);
+  box-shadow:
+    0 0 12px rgba(117, 71, 245, 0.85),
+    0 0 24px rgba(167, 139, 250, 0.45);
+}
+
+.thinking-dot-glow {
+  position: absolute;
+  inset: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(117, 71, 245, 0.55);
+  pointer-events: none;
+}
+
+.thinking-dot-wrap {
+  position: relative;
+}
+
+.thinking-dot-label {
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.thinking-message__body {
+  padding-top: 6px;
+}
+
+.thinking-avatar--violet {
+  overflow: hidden;
+  background: #111629 !important;
+  box-shadow:
+    0 0 0 1px rgba(117, 71, 245, 0.55),
+    0 0 22px rgba(117, 71, 245, 0.35);
+}
+
+.thinking-avatar--violet img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 5px;
+  box-sizing: border-box;
+}
+
+.chat-message-animated {
+  will-change: transform, opacity;
+}
+
+.chat-message-animated--streaming .message-content {
+  min-height: 1.5em;
+}
+
+.streaming-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: #f8fafc;
+  line-height: 1.6;
+}
+
+.streaming-text__body {
+  display: inline;
+}
+
+.streaming-text__cursor,
+.message-content--streaming .stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  border-radius: 2px;
+  background: #a78bfa;
+  vertical-align: -0.14em;
+  box-shadow: 0 0 10px rgba(167, 139, 250, 0.75);
+  animation: stream-cursor-blink 0.85s ease-in-out infinite;
+}
+
+.stream-cursor--static {
+  animation: none;
+  opacity: 1;
+}
+
+@keyframes stream-cursor-blink {
+  0%, 45% { opacity: 1; }
+  55%, 100% { opacity: 0.15; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-message-animated {
+    will-change: auto;
+  }
+
+  .thinking-dot-core,
+  .thinking-dot-glow {
+    animation: none !important;
+  }
+}

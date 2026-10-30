@@ -7,9 +7,11 @@ export function isSafeHttpUrl(url) {
   }
 }
 
-export function buildCitationSourceMap(sources = []) {
+export function buildCitationSourceMap(sources) {
   const map = new Map();
-  sources.forEach((source) => {
+  const safeSources = Array.isArray(sources) ? sources : [];
+  safeSources.forEach((source) => {
+    if (!source || typeof source !== 'object') return;
     const id = Number(source.citationId ?? source.rank);
     if (!Number.isFinite(id) || id <= 0) return;
     map.set(id, source);

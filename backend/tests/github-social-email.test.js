@@ -16,6 +16,7 @@ test('private verified email resolves even when public GitHub email is null', as
     t.after(() => { global.fetch = previous; });
     const paths = [];
     global.fetch = async (url, options) => {
+        assert.ok(options.signal instanceof AbortSignal, 'GitHub requests must be bounded');
         paths.push(url);
         assert.equal(options.headers.Authorization, 'Bearer test-token');
         return Response.json(url.endsWith('/emails')
@@ -27,6 +28,14 @@ test('private verified email resolves even when public GitHub email is null', as
     assert.equal(profile.subject, '123');
     assert.ok(paths.includes('https://api.github.com/user/emails'));
     await assert.rejects(profileFromGitHubAccessToken('test-token', '456'), { code: 'INVALID_IDENTITY' });
+});
+
+test('GitHub verification requires a boolean and outages do not look like bad passwords', async (t) => {
+    assert.equal(pickGitHubSignInEmail([{ email: 'attacker@example.com', verified: 'false' }]), null);
+    const previous = global.fetch;
+    t.after(() => { global.fetch = previous; });
+    global.fetch = async () => new Response('', { status: 503 });
+    await assert.rejects(profileFromGitHubAccessToken('test-token'), { code: 'GITHUB_UNAVAILABLE', status: 503 });
 });
 
 test('unverified GitHub email cannot authenticate', async (t) => {

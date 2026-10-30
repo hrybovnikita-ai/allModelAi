@@ -45,10 +45,11 @@ test('COOP recovery ignores cancelled second popups and stale users', () => {
 test('popup completion awaits Firebase result then exchanges a backend session', async () => {
   const source = await readFile(new URL('../src/lib/socialSignIn.js', import.meta.url), 'utf8');
   assert.match(source, /GOOGLE_POPUP_COOP_RECOVERED/);
-  assert.match(source, /result = await popupPromise/);
+  assert.match(source, /awaitGooglePopupSignInResult\(auth, popupPromise\)/);
   assert.match(source, /prepareBackendChallenge\(options\)/);
   assert.match(source, /complete\(result,/);
   assert.match(source, /beginGoogleSignInFlow\(\)/);
+  assert.match(source, /forceReleaseGoogleSignInFlow/);
   const completeStart = source.indexOf('export async function completeGooglePopupSignIn');
   const completeFn = source.slice(completeStart, source.indexOf('export function isAuthCallbackRoute'));
   assert.match(completeFn, /A popup is already open/);

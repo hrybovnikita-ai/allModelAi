@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { Component, memo, useMemo } from 'react';
 import ChatCodeBlock from './ChatCodeBlock';
+import StreamingText from './animation/StreamingText.jsx';
 import { buildCitationSourceMap, isSafeHttpUrl, scrollToSourceCard, splitCitationSegments } from '../../lib/citationLinks.js';
 import { splitRichTextSegments } from '../../lib/chatMessageLinks.js';
 import { splitMessageParts } from '../../lib/splitMessageParts.js';
@@ -157,15 +158,18 @@ function TextBlock({ value, citationMap }) {
   return elements;
 }
 
-export default function ChatMessageContent({ text, streaming, citationSources, conversationId = null }) {
-  const citationMap = useMemo(() => buildCitationSourceMap(citationSources), [citationSources]);
+function ChatMessageContentInner({ text, streaming, citationSources, conversationId = null }) {
+  const citationMap = useMemo(
+    () => buildCitationSourceMap(citationSources),
+    [citationSources],
+  );
   const parts = useMemo(() => splitMessageParts(String(text || '')), [text]);
   const raw = String(text || '');
 
   return (
     <div className={`message-content${streaming ? ' message-content--streaming' : ''}`}>
       {streaming ? (
-        <p className="message-stream-plain">{raw}</p>
+        <StreamingText text={raw} active />
       ) : (
         parts.map((part, index) => (
           part.type === 'code'
@@ -181,7 +185,42 @@ export default function ChatMessageContent({ text, streaming, citationSources, c
             : part.value.trim() && <TextBlock value={part.value} citationMap={citationMap} key={`text-${index}`} />
         ))
       )}
-      {streaming && <i className="stream-cursor" aria-hidden="true" />}
     </div>
   );
 }
+
+class ChatMessageContentBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error) {
+    console.error('[chat] message render failed', error);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <p className="chat-message-render-fallback" role="alert">
+          This message could not be displayed. The rest of the conversation is still available.
+        </p>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function ChatMessageContent(props) {
+  return (
+    <ChatMessageContentBoundary>
+      <ChatMessageContentInner {...props} />
+    </ChatMessageContentBoundary>
+  );
+}
+
+export default memo(ChatMessageContent);

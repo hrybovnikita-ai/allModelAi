@@ -9,7 +9,9 @@ import './VideoGenerationPanel.css';
 import { useLanguage } from '../../lib/useLanguage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams, useOutletContext } from 'react-router-dom';
-import ChatMessageContent from './ChatMessageContent';
+import ChatResponseBlock from './ChatResponseBlock';
+import ChatMessageShell from './animation/ChatMessageShell.jsx';
+import './animation/ChatMessageAnimations.css';
 import { dashboardModels } from '../../data/dashboardModels';
 import {
   markModelOnline,
@@ -1493,7 +1495,23 @@ export default function Chat() {
     } else {
       container.scrollTop = container.scrollHeight;
     }
-  }, [messages, isSending]);
+  }, [messages, isSending, isStreamingResponse]);
+
+  const lastAssistantStreamLength = useMemo(() => {
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return 0;
+    return String(last.text || last.content || '').length;
+  }, [messages]);
+
+  useEffect(() => {
+    const container = messagesContainer.current;
+    if (!container || !stickToBottomRef.current || !isSending) return;
+    if (typeof container.scrollTo === 'function') {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    } else {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [lastAssistantStreamLength, isSending]);
 
   useEffect(() => {
     if (!user?.email || isGuest) return;
@@ -3703,13 +3721,20 @@ export default function Chat() {
             const filePending = message.generatingFile && isSending && index === messages.length - 1;
             const imagePending = message.generatingImage && isSending && index === messages.length - 1;
             const messageImage = message.role === 'user' ? message.image || message.imageUrl : null;
+            const isLastMessage = index === messages.length - 1;
+            const isPendingAssistant = message.role === 'assistant' && !String(text).trim() && !messageImage && !messageHasVideoReference(message) && !message.imageUrl && !(message.images?.length) && !message.deepResearchClarification && !(message.webSearchStatus || message.webSearching);
+            const waitingForFirstToken = isPendingAssistant && isSending && isLastMessage;
+            const generationStopped = message.role === 'assistant'
+              && isLastMessage
+              && !isSending
+              && message.status === 'streaming'
+              && Boolean(String(text).trim());
             const activelyStreaming = message.role === 'assistant'
-              && index === messages.length - 1
+              && isLastMessage
               && isSending
+              && message.status !== 'error'
               && (message.status === 'streaming' || isStreamingResponse)
               && Boolean(String(text).trim());
-            const isPendingAssistant = message.role === 'assistant' && !text && !messageImage && !messageHasVideoReference(message) && !message.imageUrl && !(message.images?.length) && !message.deepResearchClarification && !(message.webSearchStatus || message.webSearching);
-            if (isPendingAssistant && isSending && index === messages.length - 1) return null;
             if (isPendingAssistant && !isSending) {
               text = 'No response was received from the model. Tap Regenerate or send your message again.';
             }
@@ -3719,7 +3744,15 @@ export default function Chat() {
             const historicalError = message.role === 'assistant' && (message.status === 'error' || !activelyStreaming)
               ? historicalProviderErrorPresentation(text, { ollamaConfigured: modelIsOnline('ollama') })
               : { kind: null, notice: null };
-            return <article className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}${historicalError.kind ? ' historical-provider-error' : ''}`} key={message.id || `${message.role}-${index}`}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : message.deepResearch ? <DeepResearchMessageBlock message={message} onClarifyStart={(answers) => handleDeepResearchClarification(index, answers, false)} onClarifySkip={() => handleDeepResearchClarification(index, null, true)} onStopResearch={stopGenerating} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1)); }} /> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} sources={message.webSearchPreviewSources || message.webSources || []} error={message.webSearchError} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1), null, { forceWebSearch: true }); }} /> : null}{message.role === 'assistant' && message.recoveryNotice ? <p className="chat-recovery-notice" role="status">{message.recoveryNotice}</p> : null}{historicalError.notice ? <p className="chat-historical-error-notice" role="note">{historicalError.notice}</p> : null}{text && (message.role === 'assistant' ? filePending ? <p role="status">Creating your file...</p> : imagePending ? <div className="image-gen-status" role="status" aria-live="polite"><span className="image-gen-status__spinner" aria-hidden="true" /><b>{message.imageStatusLabel || 'Generating image…'}</b></div> : generatedFile ? <FileCard file={generatedFile} conversationId={activeConversationId} temporary={temporaryChat} /> : <><ChatMessageContent text={text} streaming={activelyStreaming} citationSources={message.webSources} conversationId={activeConversationId} />{aiStickersEnabled && message.aiSticker && !activelyStreaming && <ChatAiSticker sticker={message.aiSticker} />}</> : <p>{text}</p>)}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
+            const showAssistantResponseBlock = message.role === 'assistant'
+              && !filePending
+              && !imagePending
+              && !generatedFile
+              && !message.deepResearch
+              && !(message.webSearchStatus || message.webSearching);
+            return <ChatMessageShell key={message.id || `${message.role}-${index}`} asAssistant={message.role === 'assistant'} className={`chat-message ${message.role} ${activelyStreaming ? 'streaming-response' : ''}${historicalError.kind ? ' historical-provider-error' : ''}`} entrance={false} streaming={activelyStreaming}><span>{message.role === 'user' ? (user.name?.charAt(0) || 'U') : <img src={messageModel.image} alt={`${messageModel.name} logo`} />}</span><div><small>{message.role === 'user' ? 'You' : messageModel.name}</small>{messageImage && <div className="message-image-container"><img className="message-user-image" src={messageImage} alt="Uploaded screenshot" onClick={() => setPreviewModalImage(messageImage)} title="Click to view full size" /><span className="image-zoom-badge" onClick={() => setPreviewModalImage(messageImage)}>🔍 Zoom</span></div>}{editing ? <div className="inline-message-editor"><textarea autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingMessageIndex(null); setEditDraft(''); } if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); saveEditedMessage(); } }} /><div><span>The original version will be saved as a branch.</span><button type="button" onClick={() => { setEditingMessageIndex(null); setEditDraft(''); }}>{t("Cancel")}</button><button type="button" disabled={!editDraft.trim()} onClick={saveEditedMessage}>Save &amp; resend</button></div></div> : message.deepResearch ? <DeepResearchMessageBlock message={message} onClarifyStart={(answers) => handleDeepResearchClarification(index, answers, false)} onClarifySkip={() => handleDeepResearchClarification(index, null, true)} onStopResearch={stopGenerating} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1)); }} /> : (message.webSearchStatus || message.webSearching) ? <WebSearchStatus status={message.webSearchStatus || 'searching'} count={message.webSearchCount} deepResearch={message.deepResearch} label={message.deepResearchLabel} sources={message.webSearchPreviewSources || message.webSources || []} error={message.webSearchError} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1), null, { forceWebSearch: true }); }} /> : null}{message.role === 'assistant' && message.recoveryNotice ? <p className="chat-recovery-notice" role="status">{message.recoveryNotice}</p> : null}{historicalError.notice ? <p className="chat-historical-error-notice" role="note">{historicalError.notice}</p> : null}{(message.role === 'assistant'
+              ? (filePending ? <p role="status">Creating your file...</p> : imagePending ? <div className="image-gen-status" role="status" aria-live="polite"><span className="image-gen-status__spinner" aria-hidden="true" /><b>{message.imageStatusLabel || 'Generating image…'}</b></div> : generatedFile ? <FileCard file={generatedFile} conversationId={activeConversationId} temporary={temporaryChat} /> : showAssistantResponseBlock ? <ChatResponseBlock text={text} streaming={activelyStreaming} waitingForFirstToken={waitingForFirstToken} status={message.status} generationStopped={generationStopped} citationSources={message.webSources} conversationId={activeConversationId} thinkingLabel={t('Thinking')} stickerSlot={aiStickersEnabled && message.aiSticker && !activelyStreaming ? <ChatAiSticker sticker={message.aiSticker} /> : null} /> : (text ? <p>{text}</p> : null))
+              : (text ? <p>{text}</p> : null))}{message.webSearchUnavailable && <WebSources unavailable sources={[]} complete={false} deepResearch={message.deepResearch} />}
 {message.webSources?.length > 0 && <WebSources sources={message.webSources} complete={message.webSearchComplete} deepResearch={message.deepResearch} retrievedAt={message.webSearchRetrievedAt} onRetry={() => { const prev = messages[index - 1]; if (prev?.role === 'user') sendMessage(null, prev.text || prev.content, messages.slice(0, index - 1), null, { forceWebSearch: true }); }} />}{message.knowledgeSources?.length > 0 && <KnowledgeSourceChips sources={message.knowledgeSources} onSourceClick={() => navigate('/knowledge')} />}{(message.imageUrl || message.images?.length) && message.role !== 'user' && <GeneratedImageCard message={message} onPreview={setPreviewModalImage} onDownloadError={setChatError} showUpscale={Boolean(message.upscaleSupported)} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceImage: true, quality: message.imageQuality || imageGenerationQuality || 'hd', aspectRatio: message.imageAspect || imageGenerationAspect || '1:1', imageCount: message.requestedImageCount || imageGenerationCount || 1 }); }} onUpscaleComplete={(patch) => setMessages((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)))} />}{messageHasPlayableVideo(message) && message.role !== 'user' && <GeneratedVideoCard message={normalizeVideoMessage(message)} onDownloadError={setChatError} onRegenerate={() => { const previous = messages.slice(0, index).reverse().find((item) => item.role === 'user'); if (!previous) return; const cutIndex = messages.slice(0, index).findLastIndex((item) => item.role === 'user'); sendMessage(null, previous.content || previous.text, messages.slice(0, cutIndex), null, { forceVideo: true, aspectRatio: message.videoAspect || '16:9', resolution: message.videoResolution || '720p' }); }} />}{text && !activelyStreaming && !editing && (
               <MessageActions
                 role={message.role}
@@ -3784,24 +3817,8 @@ export default function Chat() {
               />
             )}
             </div>
-           </article>
+           </ChatMessageShell>
             })}
-          {isSending && !messages.some((message) => message.webSearching || message.webSearchStatus) && (() => {
-            const last = messages[messages.length - 1];
-            const lastAssistantText = last?.role === 'assistant'
-              ? String(last.text || last.content || '').trim()
-              : '';
-            if (lastAssistantText) return null;
-            return (
-              <article className="chat-message assistant thinking-message">
-                <span className="thinking-avatar" aria-hidden="true"><i /></span>
-                <div>
-                  <small>{selectedModel.name}</small>
-                  <p className="typing-indicator"><b>Thinking<span className="thinking-dots"><i /><i /><i /></span></b></p>
-                </div>
-              </article>
-            );
-          })()}
           {historyLoadError && !chatError && (
             <div className="chat-api-error" role="alert">
               <span>{historyLoadError}</span>

@@ -24,13 +24,24 @@ async function registerUserPostgresAsync(connection, { safeName, normalizedEmail
         if (row) {
             return { conflict: true, existing: row };
         }
-        const inserted = await queryPgClient(
-            client,
-            `INSERT INTO users (name, email, password_hash, email_verified)
-             VALUES ($1, $2, $3, $4)
-             RETURNING id`,
-            [safeName, normalizedEmail, passwordHash, verifiedFlag],
-        );
+        let inserted;
+        try {
+            inserted = await queryPgClient(
+                client,
+                `INSERT INTO users (name, email, password_hash, email_verified)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING id`,
+                [safeName, normalizedEmail, passwordHash, verifiedFlag],
+            );
+        } catch (error) {
+            if (error.code !== '23505') throw error;
+            const raced = await queryPgClient(
+                client,
+                `SELECT id, password_hash AS "passwordHash" FROM users WHERE lower(trim(email)) = $1`,
+                [normalizedEmail],
+            );
+            return { conflict: true, existing: raced.rows[0] || { id: null, passwordHash: null } };
+        }
         const id = inserted.rows[0].id;
         return { id, name: safeName, email: normalizedEmail, passwordHash, emailVerified: Boolean(emailVerified) };
     });

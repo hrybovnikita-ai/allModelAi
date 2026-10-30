@@ -10,7 +10,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { authPost } from '../../lib/authApi';
 import { signInWithEmailPasswordAllModelAI } from '../../lib/emailPasswordSignIn';
-import { syncFirebaseEmailAccountAfterRegister } from '../../lib/firebaseEmailAccount';
 import { validateRegistrationForm } from '../../lib/authValidation';
 import { ensureSocialAuthReady, getMissingFirebaseConfigKeys, isFirebaseSocialConfigured } from '../../lib/firebase';
 import { ensureFirebaseSocialConfigLoaded } from '../../lib/loadFirebaseConfig';
@@ -23,8 +22,10 @@ import {
   shouldUseRedirectSignInFirst,
   startGoogleRedirectSignIn,
 } from '../../lib/socialSignIn';
+import { forceReleaseGoogleSignInFlow } from '../../lib/socialRedirectState';
 import { canUseGoogleRedirectSignIn } from '../../lib/storageAvailability';
 import { markFreshLogin } from '../../lib/session';
+import { clearPendingCheckout, safeCheckoutReturnPath } from '../../lib/pendingCheckout';
 import { useSession } from '../Session/SessionProvider';
 import { isBenignGoogleSignInCancellation, isRetryableSocialSignInError, socialError } from '../../lib/socialSession';
 import AuthDebugPanel from '../SocialAuth/AuthDebugPanel';
@@ -81,6 +82,28 @@ function LoginForm({
     if (storedSocialError) {
       setError(storedSocialError);
     }
+  }, []);
+
+  // Safety net: never leave "Connecting to Google…" or the module OAuth lock stuck.
+  useEffect(() => {
+    if (!socialBusy) return undefined;
+    const timer = window.setTimeout(() => {
+      forceReleaseGoogleSignInFlow('login-ui-timeout');
+      setSocialBusy(null);
+      googleSignInClickLock.current = false;
+      setSocialErrorCode('auth/popup-timeout');
+      setError(
+        socialError({
+          code: 'auth/popup-timeout',
+          message: 'Sign-in is taking too long. Close any open provider windows and try again.',
+        }),
+      );
+    }, 125_000);
+    return () => window.clearTimeout(timer);
+  }, [socialBusy]);
+
+  useEffect(() => () => {
+    googleSignInClickLock.current = false;
   }, []);
 
   useEffect(() => {
@@ -150,7 +173,14 @@ function LoginForm({
       void (async () => {
         try {
           await startGoogleRedirectSignIn(provider, { rememberMe }, 'ios-safari');
+          // Still mounted ⇒ redirect did not navigate; unlock so the user can retry.
+          window.setTimeout(() => {
+            forceReleaseGoogleSignInFlow('redirect-still-mounted');
+            setSocialBusy(null);
+            googleSignInClickLock.current = false;
+          }, 6000);
         } catch (requestError) {
+          forceReleaseGoogleSignInFlow('redirect-ui-error');
           setSocialErrorCode(requestError?.code || '');
           setError(socialError(requestError));
           setSocialBusy(null);
@@ -164,6 +194,7 @@ function LoginForm({
     try {
       launched = launchGooglePopupSignIn(provider);
     } catch (launchError) {
+      forceReleaseGoogleSignInFlow('popup-ui-launch-error');
       setSocialBusy(null);
       googleSignInClickLock.current = false;
       setSocialErrorCode(launchError?.code || '');
@@ -183,6 +214,7 @@ function LoginForm({
         await navigateAfterSocialLogin(outcome, { navigate, replaceDashboard: true });
         onClose?.();
       } catch (requestError) {
+        forceReleaseGoogleSignInFlow('popup-ui-error');
         if (isBenignGoogleSignInCancellation(requestError)) {
           setError('');
           setSocialErrorCode('');
@@ -257,7 +289,6 @@ function LoginForm({
 
       if (signingUp) {
         ({ data } = await authPost('register', payload));
-        await syncFirebaseEmailAccountAfterRegister(payload.email, payload.password);
       } else {
         const outcome = await signInWithEmailPasswordAllModelAI({
           email: payload.email,
@@ -376,7 +407,9 @@ function LoginForm({
     await refresh({ force: true });
     document.activeElement?.blur();
     onClose?.();
-    const destination = signingUp ? '/dashboard' : returnTo;
+    const checkoutDestination = safeCheckoutReturnPath(returnTo);
+    const destination = checkoutDestination || (signingUp ? '/dashboard' : returnTo);
+    if (checkoutDestination) clearPendingCheckout();
     setSuccessNotice(signingUp ? 'Welcome to AllModelAI!' : 'Welcome back!');
     navigate(destination, {
       replace: true,
@@ -708,6 +741,7 @@ function LoginForm({
                 onBusyChange={setClerkBusy}
                 onError={setError}
                 onSuccess={handleClerkSuccess}
+                onUseExistingAccount={() => selectAuthMethod('account')}
               />
             </Suspense>
             <div className="login-switch">

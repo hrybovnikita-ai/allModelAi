@@ -41,9 +41,21 @@ test('clerk login section uses compact appearance without stacking under google'
   const css = await readFile(new URL('../src/components/Login/LoginClerkSection.css', import.meta.url), 'utf8');
   const appearance = await readFile(new URL('../src/lib/clerkAuthConfig.js', import.meta.url), 'utf8');
   assert.match(section, /clerkAuthAppearance/);
+  assert.match(section, /clerkAuthLocalization/);
+  assert.match(section, /isPermanentClerkExchangeFailure/);
+  assert.match(section, /permanentFailure/);
   assert.match(css, /max-width:\s*100%/);
+  assert.match(css, /login-clerk-password-hint/);
   assert.match(appearance, /header:\s*\{\s*display:\s*'none'/);
   assert.match(appearance, /footer:\s*\{\s*display:\s*'none'/);
+});
+
+test('settings connected accounts can link Clerk after an existing AllModelAI session', async () => {
+  const connections = await readFile(new URL('../src/components/Settings/SocialConnections.jsx', import.meta.url), 'utf8');
+  const clerkConnect = await readFile(new URL('../src/components/Settings/ClerkConnect.jsx', import.meta.url), 'utf8');
+  assert.match(connections, /ClerkConnect/);
+  assert.match(clerkConnect, /exchangeClerkSessionForAllModelAI/);
+  assert.match(clerkConnect, /Connect Clerk/);
 });
 
 test('clerk session exchange uses the backend exchange route', async () => {

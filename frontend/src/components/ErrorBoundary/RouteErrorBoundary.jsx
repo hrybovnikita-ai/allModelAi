@@ -1,4 +1,4 @@
-import { Component } from 'react';
+import { Component, Fragment } from 'react';
 import { isAuthDebugPanelEnabled } from '../../lib/authDebugPanel.js';
 import { readStoredSessionUser } from '../../lib/session.js';
 
@@ -13,7 +13,7 @@ function safeAuthDebugSnapshot() {
 export default class RouteErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { error: null, componentStack: '' };
+    this.state = { error: null, componentStack: '', recoveryKey: 0 };
   }
 
   static getDerivedStateFromError(error) {
@@ -34,6 +34,9 @@ export default class RouteErrorBoundary extends Component {
         <main className="dashboard-page auth-recovery-panel" role="alert">
           <h1>Something went wrong</h1>
           <p>{debug ? (error?.message || 'This page could not be loaded.') : 'This page could not be loaded. Please refresh or try again.'}</p>
+          {!debug && error?.message ? (
+            <p className="settings-field-hint">If this happened after changing language, use Try again to reset your language preference on this device.</p>
+          ) : null}
           {debug && (
             <details open className="auth-debug-panel">
               <summary>Debug details (authdebug=1)</summary>
@@ -45,7 +48,16 @@ export default class RouteErrorBoundary extends Component {
           <button
             type="button"
             onClick={() => {
-              this.setState({ error: null, componentStack: '' });
+              try {
+                this.props.recoverFromError?.();
+              } catch (recoverError) {
+                console.error('[AllModelAI] Route error recovery failed', recoverError);
+              }
+              this.setState((current) => ({
+                error: null,
+                componentStack: '',
+                recoveryKey: current.recoveryKey + 1,
+              }));
               this.props.onRetry?.();
             }}
           >
@@ -54,6 +66,7 @@ export default class RouteErrorBoundary extends Component {
         </main>
       );
     }
-    return this.props.children;
+    const { recoveryKey } = this.state;
+    return <Fragment key={recoveryKey}>{this.props.children}</Fragment>;
   }
 }

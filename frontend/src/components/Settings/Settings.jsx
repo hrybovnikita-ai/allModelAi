@@ -15,6 +15,8 @@ import {
   persistResponseLanguagePreference,
   readResponsePrefs,
 } from '../../lib/responseLanguagePrefs';
+import { getLanguageRevision, persistUiLanguage, sanitizeStoredLanguagePreferences } from '../../lib/languagePreference';
+import RouteErrorBoundary from '../ErrorBoundary/RouteErrorBoundary.jsx';
 import { createStorageIdea, fetchStorageIdea } from '../../lib/storageIdeas';
 import { updateAccountProfile } from '../../lib/accountSecurity.js';
 import UserMemorySettings from './UserMemorySettings';
@@ -23,13 +25,18 @@ import DeveloperModeSettings from './DeveloperModeSettings';
 import PlatformRoadmapPanel from './PlatformRoadmapPanel';
 import './Settings.css';
 
-export default function Settings() {
+function SettingsPage() {
   const navigate = useNavigate();
   const { language: selectedLanguage, setLanguage, t } = useLanguage();
   const outletContext = useOutletContext();
   const { user: sessionUser, refresh } = useSession();
   const user = outletContext?.user?.email ? outletContext.user : sessionUser;
-  const savedProfile = JSON.parse(localStorage.getItem('allmodelai_profile') || '{}');
+  let savedProfile = {};
+  try {
+    savedProfile = JSON.parse(localStorage.getItem('allmodelai_profile') || '{}') || {};
+  } catch {
+    savedProfile = {};
+  }
   const [profile, setProfile] = useState({
     name: savedProfile.name || user?.name || '',
     avatar: savedProfile.avatar || user?.avatar || '',
@@ -38,7 +45,7 @@ export default function Settings() {
   const [notice, setNotice] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [pendingLanguage, setPendingLanguage] = useState(null);
+  const [languageStatus, setLanguageStatus] = useState('');
   const [responseLanguage, setResponseLanguage] = useState(
     () => readResponsePrefs().responseLanguage || DEFAULT_RESPONSE_PREFS.responseLanguage,
   );
@@ -53,21 +60,23 @@ export default function Settings() {
   }, [user]);
 
   useEffect(() => {
+    if (!user?.email) return undefined;
     let active = true;
     (async () => {
       try {
         const remote = await fetchStorageIdea('chat-settings');
-        if (!active || !remote?.responseLanguage) return;
-        setResponseLanguage(remote.responseLanguage);
-        await persistResponseLanguagePreference(remote.responseLanguage);
+        if (!active || !remote) return;
+        if (remote.responseLanguage) {
+          setResponseLanguage(remote.responseLanguage);
+        }
       } catch {
-        /* offline or unsigned — local prefs only */
+        /* offline — local prefs only */
       }
     })();
     return () => {
       active = false;
     };
-  }, []);
+  }, [user?.email]);
 
   useEffect(() => {
     const hash = typeof window !== 'undefined' ? window.location.hash : '';
@@ -85,23 +94,27 @@ export default function Settings() {
   const changeLanguage = (event) => {
     const language = event.target.value;
     if (language === selectedLanguage.name) return;
-    setPendingLanguage(language);
-  };
-
-  const confirmLanguage = () => {
-    const language = pendingLanguage;
-    setPendingLanguage(null);
-    if (!language) return;
-    const nextProfile = { ...profile, language };
-    setProfile(nextProfile);
-    localStorage.setItem('allmodelai_profile', JSON.stringify(nextProfile));
-    setLanguage(language);
-    setNotice('notice');
-  };
-
-  const cancelLanguage = () => {
-    setPendingLanguage(null);
-    setNotice('');
+    let revision;
+    try {
+      ({ revision } = setLanguage(language));
+    } catch (languageError) {
+      console.error('[AllModelAI] Language change failed', languageError);
+      setLanguageStatus('Could not apply that language. Try again or reset in Try again recovery.');
+      return;
+    }
+    setProfile((current) => ({ ...current, language }));
+    setLanguageStatus('Saving language…');
+    setSaveError('');
+    void persistUiLanguage(language, revision)
+      .then((result) => {
+        if (getLanguageRevision() !== revision) return;
+        if (result?.skipped) return;
+        setLanguageStatus(`${language} saved for this account.`);
+      })
+      .catch(() => {
+        if (getLanguageRevision() !== revision) return;
+        setLanguageStatus(`${language} is saved on this device. Account sync failed.`);
+      });
   };
 
   const saveProfile = async (event) => {
@@ -173,6 +186,7 @@ export default function Settings() {
           selectedLanguage={selectedLanguage.name}
           languages={LANGUAGES}
           onLanguageChange={changeLanguage}
+          languageStatus={languageStatus}
           responseLanguage={responseLanguage}
           responseLanguageOptions={RESPONSE_LANGUAGE_OPTIONS}
           onResponseLanguageChange={(event) => setResponseLanguage(event.target.value)}
@@ -246,25 +260,14 @@ export default function Settings() {
         <button className="settings-logout" type="button" onClick={logout}>{t('logout')}</button>
       </section>
 
-      {pendingLanguage && (
-        <div className="settings-modal-backdrop" onClick={cancelLanguage}>
-          <section
-            className="settings-modal"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="language-confirm-title"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <span className="settings-modal-icon">🌐</span>
-            <h2 id="language-confirm-title">{t('confirmTitle')}</h2>
-            <p className="settings-modal-text">{t('confirmText')}</p>
-            <div className="settings-modal-actions">
-              <button type="button" className="settings-modal-no" onClick={cancelLanguage}>{t('no')}</button>
-              <button type="button" className="settings-modal-yes" onClick={confirmLanguage}>{t('yes')}</button>
-            </div>
-          </section>
-        </div>
-      )}
     </main>
+  );
+}
+
+export default function Settings() {
+  return (
+    <RouteErrorBoundary recoverFromError={() => sanitizeStoredLanguagePreferences()}>
+      <SettingsPage />
+    </RouteErrorBoundary>
   );
 }

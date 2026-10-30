@@ -2,18 +2,6 @@ import { Link } from 'react-router-dom';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { IconCheck, IconLock, IconShield } from './CheckoutIcons';
 
-function planBlurb(summary) {
-  if (!summary) return 'Premium AI access with monthly request allowance.';
-  const limit = summary.requestLimit?.toLocaleString?.() || summary.requestLimit;
-  if (summary.slug === 'starter' || summary.name === 'Starter') {
-    return `Core AI models, ${limit} requests per month, and email support.`;
-  }
-  if (summary.slug === 'unlimited' || summary.name === 'Unlimited') {
-    return `All connected providers, ${limit} requests per month, image generation, and dedicated support.`;
-  }
-  return `Premium AI models, ${limit} requests per month, image generation, and priority routing.`;
-}
-
 function formatUsd(summary, priceLabel) {
   if (summary?.amountDisplay != null) return `$${summary.amountDisplay}`;
   if (!priceLabel || priceLabel === '—') return '—';
@@ -27,13 +15,9 @@ export default function CheckoutSummaryCard({
   isDeveloper,
   summary,
   priceLabel,
-  providerLabel = 'Stripe',
-  backHref = '/',
+  backHref = '/pricing',
 }) {
   const planName = isDeveloper ? 'Developer' : (summary?.name || 'Pro');
-  const headline = isDeveloper
-    ? 'Activate AllModelAI Developer'
-    : `Subscribe to AllModelAI ${planName}`;
   const intervalLabel = summary?.interval === 'year' ? 'year' : 'month';
   const displayAmount = isDeveloper ? '$0.00' : formatUsd(summary, priceLabel);
 
@@ -48,71 +32,57 @@ export default function CheckoutSummaryCard({
       </div>
 
       <p className="checkout-summary-kicker">Subscription</p>
-      <h1 className="checkout-summary-headline">{headline}</h1>
+      <h1 className="checkout-summary-headline">Complete your subscription</h1>
 
       {!isDeveloper && (
-        <p className="checkout-summary-hero-price">
-          <strong>{displayAmount}</strong>
-          <span> / {intervalLabel}</span>
-        </p>
+        <>
+          <p className="checkout-summary-plan-name">AllModelAI {planName}</p>
+          <p className="checkout-summary-hero-price">
+            <strong>{displayAmount}</strong>
+            <span> / {intervalLabel}</span>
+          </p>
+        </>
+      )}
+
+      {isDeveloper && (
+        <p className="checkout-summary-plan-name">Developer access</p>
       )}
 
       <article className="checkout-order-card">
-        <header className="checkout-order-card__head">
-          <div>
-            <small>Selected plan</small>
-            <strong>AllModelAI {planName}</strong>
-          </div>
-          <div className="checkout-order-card__price">
-            <strong>{displayAmount}</strong>
-            <span>/{intervalLabel}</span>
-          </div>
-        </header>
+        {!isDeveloper && (
+          <>
+            <h2 className="checkout-benefits-title">Included benefits</h2>
+            <ul className="checkout-summary-list checkout-summary-list--premium">
+              {(summary?.features || []).map((perk) => (
+                <li key={perk}>
+                  <IconCheck className="checkout-feature-icon" aria-hidden="true" />
+                  <span>{perk}</span>
+                </li>
+              ))}
+            </ul>
 
-        <p className="checkout-order-card__blurb">{planBlurb(summary)}</p>
-
-        <ul className="checkout-summary-list checkout-summary-list--premium">
-          {(summary?.features || []).map((perk) => (
-            <li key={perk}>
-              <IconCheck className="checkout-feature-icon" />
-              <span>{perk}</span>
-            </li>
-          ))}
-        </ul>
-
-        {!isDeveloper && summary && (
-          <dl className="checkout-totals">
-            <div>
-              <dt>Subtotal</dt>
-              <dd>{displayAmount}</dd>
-            </div>
-            <div>
-              <dt>Tax</dt>
-              <dd>Calculated by Stripe if applicable</dd>
-            </div>
-            <div className="checkout-totals__due">
-              <dt>Total due today</dt>
-              <dd>{displayAmount}</dd>
-            </div>
-            <div>
-              <dt>Currency</dt>
-              <dd>USD</dd>
-            </div>
-            <div>
-              <dt>Billing</dt>
-              <dd>{intervalLabel === 'year' ? 'Yearly' : 'Monthly'} · renews until canceled</dd>
-            </div>
-            <div>
-              <dt>Processor</dt>
-              <dd>{providerLabel}</dd>
-            </div>
-          </dl>
+            <dl className="checkout-totals">
+              <div>
+                <dt>Subtotal</dt>
+                <dd>{displayAmount}</dd>
+              </div>
+              <div>
+                <dt>Tax</dt>
+                <dd>Calculated at checkout if applicable</dd>
+              </div>
+              <div className="checkout-totals__due">
+                <dt>Total due today</dt>
+                <dd>{displayAmount}</dd>
+              </div>
+            </dl>
+          </>
         )}
       </article>
 
       <ul className="checkout-trust-list checkout-trust-list--summary">
-        <li><IconLock className="checkout-trust-icon" /> Encrypted checkout</li>
-        <li><IconShield className="checkout-trust-icon" /> Cancel anytime in billing portal</li>
+        <li><IconLock className="checkout-trust-icon" /> Secure payment</li>
+        <li><IconShield className="checkout-trust-icon" /> Cancel anytime</li>
+        <li>Subscription renews automatically until you cancel</li>
       </ul>
     </aside>
   );

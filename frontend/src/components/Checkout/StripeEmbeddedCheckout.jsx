@@ -11,8 +11,8 @@ import './StripeEmbeddedCheckout.css';
 export const stripeCheckoutAppearance = {
   theme: 'night',
   variables: {
-    colorPrimary: '#818cf8',
-    colorBackground: '#0f1424',
+    colorPrimary: '#7547f5',
+    colorBackground: '#111629',
     colorText: '#f1f5f9',
     colorTextSecondary: '#94a3b8',
     colorDanger: '#f87171',

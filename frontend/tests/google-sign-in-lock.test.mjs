@@ -4,6 +4,8 @@ import { afterEach, test } from 'node:test';
 import {
   beginGoogleSignInFlow,
   endGoogleSignInFlow,
+  forceReleaseGoogleSignInFlow,
+  GOOGLE_SIGNIN_FLOW_MAX_MS,
   isGoogleSignInFlowActive,
   markGooglePopupSignInEnded,
   markGooglePopupSignInStarted,
@@ -29,6 +31,29 @@ test('popup active flag blocks a second sign-in flow', () => {
   assert.equal(beginGoogleSignInFlow(), false);
   markGooglePopupSignInEnded();
   assert.equal(beginGoogleSignInFlow(), true);
+  endGoogleSignInFlow();
+});
+
+test('forceReleaseGoogleSignInFlow clears stale popup and flow locks', () => {
+  assert.equal(beginGoogleSignInFlow(), true);
+  markGooglePopupSignInStarted();
+  assert.equal(isGoogleSignInFlowActive(), true);
+  forceReleaseGoogleSignInFlow('test');
+  assert.equal(isGoogleSignInFlowActive(), false);
+  assert.equal(beginGoogleSignInFlow(), true);
+  endGoogleSignInFlow();
+});
+
+test('stale OAuth lock auto-releases after GOOGLE_SIGNIN_FLOW_MAX_MS', () => {
+  assert.ok(GOOGLE_SIGNIN_FLOW_MAX_MS >= 120_000);
+  assert.equal(beginGoogleSignInFlow(), true);
+  const originalNow = Date.now;
+  Date.now = () => originalNow() + GOOGLE_SIGNIN_FLOW_MAX_MS + 1;
+  try {
+    assert.equal(beginGoogleSignInFlow(), true);
+  } finally {
+    Date.now = originalNow;
+  }
   endGoogleSignInFlow();
 });
 

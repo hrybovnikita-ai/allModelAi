@@ -7,11 +7,24 @@ import {
 } from './session.js';
 
 const CLERK_LINK_MESSAGE =
-  'An AllModelAI account already uses this email. Sign in with your existing method (email/password or Google), then link Clerk from Settings when available.';
+  'An AllModelAI account already uses this email. Sign in with email or Google, then connect Clerk in Settings → Connected accounts.';
 
 function clerkExchangeErrorMessage(error) {
   if (error?.code === 'CLERK_LINK_REQUIRED') return CLERK_LINK_MESSAGE;
+  if (error?.code === 'CLERK_IDENTITY_CONFLICT') {
+    return 'This Clerk account could not be matched to AllModelAI. Sign in with email or Google, then try Clerk again.';
+  }
   return error?.message || 'Clerk sign-in could not be connected to AllModelAI.';
+}
+
+/** Permanent failures must not be retried automatically. */
+export function isPermanentClerkExchangeFailure(error) {
+  const status = Number(error?.status);
+  const code = error?.code;
+  return status === 409
+    || code === 'CLERK_LINK_REQUIRED'
+    || code === 'CLERK_IDENTITY_CONFLICT'
+    || code === 'CLERK_EMAIL_REQUIRED';
 }
 
 /**

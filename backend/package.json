@@ -8,6 +8,7 @@
     "dev": "node --watch --watch-path=.env --watch-path=server.js --watch-path=localApp.js --watch-path=app.js --watch-path=src server.js",
     "dev:stable": "node server.js",
     "test": "node tests/run-all.js",
+    "test:critical": "node scripts/run-critical-tests.js",
     "check-password": "node scripts/check-password.js",
     "auth:config-check": "node scripts/auth-config-check.js",
     "auth:check-user": "node scripts/auth-check-user.js",

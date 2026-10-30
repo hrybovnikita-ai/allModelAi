@@ -58,6 +58,16 @@ async function exchangeSocialAuthAsync(connection, {
 }) {
     const pool = resolvePostgresAsyncPool(connection);
     return withPgTransaction(pool, async (client) => {
+        // Serialize concurrent first sign-ins for an identity/email across Render
+        // workers. Consistent lock order avoids deadlocks when linking accounts.
+        const lockKeys = [
+            `social-identity:${profile.provider}:${profile.subject}`,
+            `social-email:${canonicalEmail}`,
+            ...(pending.intent === 'link' ? [`social-user:${pending.user_id}`] : []),
+        ].sort();
+        for (const key of lockKeys) {
+            await queryPgClient(client, 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [key]);
+        }
         const deleted = await queryPgClient(
             client,
             'DELETE FROM social_auth_challenges WHERE state_hash = $1 AND expires_at > $2',
@@ -94,14 +104,7 @@ async function exchangeSocialAuthAsync(connection, {
                 [canonicalEmail],
             );
             if (existing.rows[0]) {
-                userId = existing.rows[0].id;
-                if (profile.name && (!existing.rows[0].name || existing.rows[0].name === profile.email.split('@')[0])) {
-                    await queryPgClient(
-                        client,
-                        'UPDATE users SET name = $1 WHERE id = $2',
-                        [profile.name, userId],
-                    );
-                }
+                return { error: { status: 409, code: 'ACCOUNT_LINK_REQUIRED', message: 'Sign in to your existing account, then connect this provider in Settings. Use Forgot password if you need to recover access.' } };
             } else {
                 const inserted = await queryPgClient(
                     client,

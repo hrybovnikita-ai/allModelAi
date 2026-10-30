@@ -1,14 +1,15 @@
 export const BILLING_FIELD_INITIAL = {
-  firstName: '',
-  lastName: '',
-  middleName: '',
+  cardholderName: '',
   email: '',
   country: '',
   city: '',
   streetAddress: '',
-  apartment: '',
   postalCode: '',
   stateRegion: '',
+  apartment: '',
+  firstName: '',
+  lastName: '',
+  middleName: '',
 };
 
 const COUNTRY_ALIASES = {
@@ -34,7 +35,9 @@ export function normalizeCountryCode(input) {
 }
 
 export function buildFullName(fields) {
-  return [fields.firstName, fields.middleName, fields.lastName]
+  const cardholder = String(fields.cardholderName || fields.middleName || '').trim();
+  if (cardholder) return cardholder;
+  return [fields.firstName, fields.lastName]
     .map((part) => String(part || '').trim())
     .filter(Boolean)
     .join(' ');
@@ -59,10 +62,18 @@ export function buildStripeBillingAddress(fields) {
 }
 
 export function validateBillingFields(fields) {
-  const required = ['firstName', 'lastName', 'email', 'country', 'city', 'streetAddress', 'postalCode'];
+  const required = ['cardholderName', 'email', 'country', 'city', 'streetAddress', 'postalCode'];
+  const labels = {
+    cardholderName: 'cardholder name',
+    email: 'email',
+    country: 'country',
+    city: 'city',
+    streetAddress: 'billing address',
+    postalCode: 'postal code',
+  };
   for (const key of required) {
     if (!String(fields[key] || '').trim()) {
-      return `Complete all required billing fields (${key.replace(/([A-Z])/g, ' $1').toLowerCase()}).`;
+      return `Enter your ${labels[key]}.`;
     }
   }
   if (!String(fields.email).includes('@')) {

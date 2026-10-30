@@ -14,6 +14,10 @@ const map = buildCitationSourceMap([
 ]);
 assert.equal(map.get(2)?.url, 'https://example.com/doc');
 assert.equal(map.has(99), false);
+assert.equal(buildCitationSourceMap(null).size, 0);
+assert.equal(buildCitationSourceMap(undefined).size, 0);
+assert.equal(buildCitationSourceMap([]).size, 0);
+assert.equal(buildCitationSourceMap([null, { rank: 1, url: 'https://example.com' }]).get(1)?.url, 'https://example.com');
 
 const segments = splitCitationSegments('Text [1] and [2][3] end');
 assert.deepEqual(segments, ['Text ', '[1]', ' and ', '[2]', '[3]', ' end']);

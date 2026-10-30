@@ -4,6 +4,7 @@ const {
     runModelDiagnosticTest,
 } = require('../services/modelDiagnosticsService');
 const { isStripeTestMode } = require('../payments/stripeMode');
+const { loadQaLastRun } = require('../services/qaStatusService');
 
 const getModelDiagnosticsCatalog = (req, res) => {
     if (!assertPlusTestDiagnosticsAccess(req, res)) return undefined;
@@ -12,6 +13,7 @@ const getModelDiagnosticsCatalog = (req, res) => {
         ...catalog,
         stripeTestMode: isStripeTestMode(),
         billableTestNotice: 'Each test sends a short prompt to the real provider and may consume quota.',
+        qa: loadQaLastRun(),
     });
 };
 

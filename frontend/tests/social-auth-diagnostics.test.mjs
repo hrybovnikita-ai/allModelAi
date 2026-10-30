@@ -19,3 +19,9 @@ test('socialError maps REDIRECT_RESULT_MISSING without technical overlay text', 
   assert.match(message, /try again/i);
   assert.doesNotMatch(message, /Unhandled/i);
 });
+
+test('socialError maps verified-email requirement without GitHub-specific copy', () => {
+  const message = socialError({ code: 'VERIFIED_EMAIL_REQUIRED' });
+  assert.match(message, /Verify an email/i);
+  assert.doesNotMatch(message, /GitHub/i);
+});

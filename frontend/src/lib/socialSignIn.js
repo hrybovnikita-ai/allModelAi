@@ -1,9 +1,7 @@
 import {
   GoogleAuthProvider,
-  GithubAuthProvider,
   signInWithPopup,
   signInWithRedirect,
-  getRedirectResult,
   signInWithCredential,
   linkWithCredential,
   sendEmailVerification,
@@ -53,8 +51,10 @@ import {
   persistRedirectIntent,
   reconcileStaleRedirectIntent,
   isGooglePopupSignInActive,
+  isGoogleSignInFlowActive,
   beginGoogleSignInFlow,
   endGoogleSignInFlow,
+  forceReleaseGoogleSignInFlow,
   shouldAttemptGoogleRedirectRecovery,
 } from './socialRedirectState.js';
 import { assertGoogleRedirectStorageAvailable, canUseGoogleRedirectSignIn } from './storageAvailability.js';
@@ -98,11 +98,6 @@ export function providerLabel(name) {
 }
 
 function providerFor(name) {
-  if (name === 'GitHub') {
-    const provider = new GithubAuthProvider();
-    provider.addScope('user:email');
-    return provider;
-  }
   if (name === GOOGLE_PROVIDER) {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
@@ -161,17 +156,6 @@ async function completeFromFirebaseUser(firebaseUser, options) {
 }
 
 async function complete(result, options) {
-  if (result.providerId === 'github.com' || options?.provider === 'GitHub') {
-    const githubAccessToken = GithubAuthProvider.credentialFromResult(result)?.accessToken;
-    if (!githubAccessToken) {
-      throw Object.assign(new Error('GitHub authorization expired. Please sign in again.'), { code: 'INVALID_GITHUB_TOKEN' });
-    }
-    // Resolve private email on the backend, verifying the matching GitHub subject.
-    const idToken = await result.user.getIdToken(true);
-    const user = await exchangeSocialSession(idToken, { ...options, githubAccessToken });
-    invalidateAuthBootstrap();
-    return user;
-  }
   return completeFromFirebaseUser(result.user, options);
 }
 
@@ -218,9 +202,19 @@ async function beginRedirectSignIn(auth, name, options, reason) {
     markRedirectFlowCommitted();
     authLog('Redirect flow committed — starting signInWithRedirect', { reason });
     await signInWithRedirect(auth, providerFor(name));
+    // Rare: Firebase resolves without navigating. Do not leave the OAuth lock stuck.
+    if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        if (isGoogleSignInFlowActive() && !isGoogleRedirectRecoveryPending()) {
+          forceReleaseGoogleSignInFlow('redirect-did-not-navigate');
+          clearSocialRedirectIntent();
+        }
+      }, 8000);
+    }
     return { redirected: true };
   } catch (error) {
-    endGoogleSignInFlow();
+    forceReleaseGoogleSignInFlow('redirect-start-failed');
+    clearSocialRedirectIntent();
     throw error;
   }
 }
@@ -262,14 +256,13 @@ export function launchGooglePopupSignIn(name = GOOGLE_PROVIDER) {
     const popupPromise = signInWithPopup(auth, provider);
     return { auth, popupPromise };
   } catch (error) {
-    endGoogleSignInFlow();
-    markGooglePopupSignInEnded();
+    forceReleaseGoogleSignInFlow('popup-launch-failed');
     throw error;
   }
 }
 
 export async function completeGooglePopupSignIn(auth, popupPromise, name, options = {}) {
-  if (!SOCIAL_PROVIDERS.includes(name)) {
+  if (!SOCIAL_PROVIDERS.includes(name) || name !== GOOGLE_PROVIDER) {
     throw new Error('Unsupported provider.');
   }
   pendingLink = null;
@@ -282,14 +275,10 @@ export async function completeGooglePopupSignIn(auth, popupPromise, name, option
     challengePromise.catch(() => {});
     let result;
     try {
-      if (name === 'GitHub') {
-        result = await popupPromise;
-      } else {
-        result = await awaitGooglePopupSignInResult(auth, popupPromise);
-      }
+      result = await awaitGooglePopupSignInResult(auth, popupPromise);
     } catch (popupError) {
       challengePromise.catch(() => {});
-      const recovered = name === 'GitHub' ? null : recoverPopupResultFromCurrentUser(auth, popupError);
+      const recovered = recoverPopupResultFromCurrentUser(auth, popupError);
       if (!recovered) {
         throw popupError;
       }
@@ -336,12 +325,13 @@ export async function completeGooglePopupSignIn(auth, popupPromise, name, option
     }
     throw error;
   } finally {
-    markGooglePopupSignInEnded();
     if (!redirected) {
-      endGoogleSignInFlow();
+      forceReleaseGoogleSignInFlow(succeeded ? 'popup-complete' : 'popup-finished');
       if (!succeeded && !peekRedirectIntent()) {
         await signOut(auth).catch(() => {});
       }
+    } else {
+      markGooglePopupSignInEnded();
     }
   }
 }
@@ -439,10 +429,7 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
     let redirectResult;
     try {
       // Always allow auth-state fallback on iOS WebKit; URL oauth hints are often stripped.
-      // GitHub needs the OAuth credential; an auth-state-only result loses it.
-      redirectResult = pending.name === 'GitHub'
-        ? await getRedirectResult(auth)
-        : await consumeFirebaseRedirectResult(auth, consumer, { allowAuthStateFallback: true });
+      redirectResult = await consumeFirebaseRedirectResult(auth, consumer, { allowAuthStateFallback: true });
     } catch (error) {
       await applyAuthPersistenceAfterRedirectRecovery(auth).catch(() => {});
       clearSocialRedirectIntent();

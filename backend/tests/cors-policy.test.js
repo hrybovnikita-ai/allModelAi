@@ -71,15 +71,14 @@ test('allows production AllModelAI Vercel origin with credentials', async () => 
     assert.match(String(response.headers.vary || ''), /Origin/i);
 });
 
-test('allows AllModelAI Vercel preview deployments over HTTPS', async () => {
+test('preview-looking domains require explicit configuration', async () => {
     const preview = 'https://all-model-ai-git-main-example.vercel.app';
     assert.equal(isAllModelAiVercelProjectOrigin(preview), true);
     const response = await request(app)
         .get('/api/health')
         .set('Origin', preview);
     assert.equal(response.status, 200);
-    assert.equal(response.headers['access-control-allow-origin'], preview);
-    assert.equal(response.headers['access-control-allow-credentials'], 'true');
+    assert.equal(response.headers['access-control-allow-origin'], undefined);
 });
 
 test('OPTIONS preflight returns CORS headers for credentialed API calls', async () => {
@@ -105,13 +104,13 @@ test('OPTIONS preflight returns CORS headers for credentialed API calls', async 
     assert.match(allowHeaders, /authorization/);
 });
 
-test('allows opaque null Origin for Electron-style desktop clients', async () => {
+test('opaque origins cannot grant themselves credentialed CORS with a client header', async () => {
     const response = await request(app)
         .get('/api/health')
         .set('Origin', 'null')
         .set('X-AllModelAI-Client', 'electron');
     assert.equal(response.status, 200);
-    assert.equal(response.headers['access-control-allow-origin'], 'null');
+    assert.equal(response.headers['access-control-allow-origin'], undefined);
 });
 
 test('rejects arbitrary untrusted browser origins', async () => {
@@ -124,6 +123,12 @@ test('rejects arbitrary untrusted browser origins', async () => {
     assert.equal(response.status, 200);
     assert.equal(response.headers['access-control-allow-origin'], undefined);
     assert.notEqual(response.headers['access-control-allow-origin'], '*');
+});
+
+test('an Electron header does not authorize an untrusted web origin', async () => {
+    const response = await request(app).get('/api/auth/session')
+        .set('Origin', 'https://evil.example').set('X-AllModelAI-Client', 'electron');
+    assert.equal(response.headers['access-control-allow-origin'], undefined);
 });
 
 test('rejects unrelated vercel.app origins', () => {

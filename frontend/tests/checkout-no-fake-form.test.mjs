@@ -10,6 +10,7 @@ const checkoutSource = readFileSync(join(root, 'src/components/Checkout/Checkout
 test('Checkout does not import MockCheckoutForm for unconfigured payments', () => {
   assert.doesNotMatch(checkoutSource, /import MockCheckoutForm/);
   assert.match(checkoutSource, /Secure payment form is not available yet/);
+  assert.match(checkoutSource, /CheckoutPaymentUnavailable/);
   assert.match(checkoutSource, /showTestModeBanner=\{Boolean\(checkoutInfo\?\.showTestModeBanner\)\}/);
 });
 

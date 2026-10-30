@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import CardBrandBadges from './CardBrandBadges';
+import PaymentMethodBadges from './PaymentMethodBadges';
 import PaymentButton from './PaymentButton';
 import StripeEmbeddedCheckout from './StripeEmbeddedCheckout';
 import SubscriptionBillingFields from './SubscriptionBillingFields';
@@ -27,9 +27,10 @@ export default function ProductionStripeCheckoutForm({
   showTestModeBanner = false,
   secureCheckoutLabel = 'Secure payment',
   emailLocked = false,
-  appearance = 'light',
+  appearance = 'night',
 }) {
   const confirmRef = useRef(null);
+  const payLockedRef = useRef(false);
   const [fields, setFields] = useState(() => ({ ...BILLING_FIELD_INITIAL, email: defaultEmail }));
   const [fieldError, setFieldError] = useState('');
   const [payBusy, setPayBusy] = useState(false);
@@ -55,7 +56,7 @@ export default function ProductionStripeCheckoutForm({
   const testModeLabel = showTestModeBanner ? STRIPE_TEST_MODE_BANNER : '';
 
   const handleSubscribe = useCallback(async () => {
-    if (disabled || payBusy || stripeLoading) return;
+    if (disabled || payBusy || stripeLoading || payLockedRef.current) return;
     const validationMessage = validateBillingFields(fields);
     if (validationMessage) {
       setFieldError(validationMessage);
@@ -65,6 +66,7 @@ export default function ProductionStripeCheckoutForm({
       setFieldError(stripeLoadError || 'Secure payment form is still loading. Please wait.');
       return;
     }
+    payLockedRef.current = true;
     setPayBusy(true);
     setFieldError('');
     try {
@@ -75,6 +77,7 @@ export default function ProductionStripeCheckoutForm({
       }
       await confirm();
     } finally {
+      payLockedRef.current = false;
       setPayBusy(false);
     }
   }, [
@@ -103,8 +106,8 @@ export default function ProductionStripeCheckoutForm({
       <fieldset className="mock-checkout-fieldset mock-checkout-fieldset--payment" disabled={disabled || payBusy}>
         <legend className="mock-checkout-legend">Payment method</legend>
         <div className="production-stripe-checkout__brands">
-          <p className="production-stripe-checkout__brands-label">Supported cards</p>
-          <CardBrandBadges className="production-stripe-checkout__badges" />
+          <p className="production-stripe-checkout__brands-label">Accepted methods</p>
+          <PaymentMethodBadges showPayPal={false} className="production-stripe-checkout__badges" />
         </div>
         <p className="production-stripe-checkout__pe-hint">
           Card number, expiration date, and security code are collected in Stripe&apos;s secure fields.
@@ -166,11 +169,11 @@ export default function ProductionStripeCheckoutForm({
         disabled={disabled || !stripeReady}
         onClick={() => { void handleSubscribe(); }}
       >
-        {payLabel}
+        {payLabel || 'Subscribe'}
       </PaymentButton>
 
-      <p className="checkout-stripe-secure-note">
-        Premium access is granted only after Stripe confirms your subscription on our servers.
+      <p className="checkout-trust-inline">
+        Secure payment · Cancel anytime · Renews monthly until canceled
       </p>
     </div>
   );

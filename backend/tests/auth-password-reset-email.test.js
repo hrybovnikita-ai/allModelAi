@@ -104,6 +104,18 @@ test('expired password reset token is rejected', async () => {
   assert.match(confirmed.body.message, /invalid or has expired/i);
 });
 
+test('concurrent reset submissions consume the token once and revoke the old session', async () => {
+  const agent = request.agent(app);
+  const email = 'concurrent-reset@example.com';
+  const registered = await agent.post('/api/auth/register').send({ name: 'Reset', email, password: 'InitialPassword1!' });
+  assert.equal(registered.status, 201);
+  const requested = await request(app).post('/api/auth/password-reset/request').send({ email });
+  const responses = await Promise.all(['NewPasswordOne1!', 'NewPasswordTwo2!'].map(password =>
+    request(app).post('/api/auth/password-reset/confirm').send({ token: requested.body.token, password })));
+  assert.deepEqual(responses.map(response => response.status).sort(), [200, 400]);
+  assert.equal((await agent.get('/api/auth/session')).body.user, null);
+});
+
 test('google-only login without password stays generic then enroll works', async () => {
   const admin = require('../src/firebaseAdmin');
   const verified = new Map();

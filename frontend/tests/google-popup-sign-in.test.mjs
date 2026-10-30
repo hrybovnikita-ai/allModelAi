@@ -4,7 +4,24 @@ import {
   GOOGLE_POPUP_RECENT_SIGNIN_MS,
   isFreshGoogleSignInUser,
   resetGooglePopupSignInBaselineForTests,
+  waitForFreshAuthUser,
+  awaitGooglePopupSignInResult,
 } from '../src/lib/googlePopupSignIn.js';
+
+test('already available fresh Firebase user recovers without a TDZ error', async () => {
+  const user = { uid: 'fresh', email: 'fresh@example.com', metadata: { lastSignInTime: new Date().toISOString() } };
+  const result = await waitForFreshAuthUser({ currentUser: user }, null, Date.now(), 20);
+  assert.equal(result.user, user);
+  resetGooglePopupSignInBaselineForTests();
+  const popup = await awaitGooglePopupSignInResult({ currentUser: user }, new Promise(() => {}), { timeoutMs: 20 });
+  assert.equal(popup.user, user);
+});
+
+test('cancelled auth-state waits reject without subscribing to Firebase', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(waitForFreshAuthUser({ currentUser: null }, null, Date.now(), 20, controller.signal), { code: 'auth/cancelled-popup-request' });
+});
 
 test('isFreshGoogleSignInUser rejects stale baseline uid', () => {
   resetGooglePopupSignInBaselineForTests();
@@ -49,6 +66,12 @@ test('isFreshGoogleSignInUser rejects sign-in older than recovery window', () =>
     ),
     false,
   );
+});
+
+test('starting a popup does not make an old Firebase user fresh', () => {
+  assert.equal(isFreshGoogleSignInUser({ uid: 'old', email: 'old@example.com', metadata: {
+    lastSignInTime: new Date(Date.now() - 3600000).toISOString(),
+  } }, null, Date.now()), false);
 });
 
 test('launchGooglePopupSignIn does not read auth before const auth (TDZ)', async () => {

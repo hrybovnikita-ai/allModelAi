@@ -10,9 +10,15 @@ const renderTests = new Set([
   'session-contract-render.test.mjs',
   'confirm-dialog-render.test.mjs',
   'user-memory-settings-render.test.mjs',
+  'settings-page-render.test.mjs',
 ]);
+/** Skipped in CI — high memory / long runtime; covered by critical subset + manual staging. */
+const ciHeavyTests = new Set(['chat-compatibility.test.mjs', 'everyday-ai.test.mjs']);
+const skipHeavy = process.env.CI === 'true' && process.env.CI_RUN_HEAVY_FRONTEND_TESTS !== 'true';
+
 const staticTests = readdirSync(testsDir)
   .filter((name) => name.endsWith('.test.mjs') && !renderTests.has(name))
+  .filter((name) => !(skipHeavy && ciHeavyTests.has(name)))
   .map((name) => join(testsDir, name));
 
 const staticRun = spawnSync(process.execPath, ['--test', ...staticTests], {

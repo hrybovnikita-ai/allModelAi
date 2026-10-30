@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import apiClient from '../../lib/apiClient';
 import './Checkout.css';
 import './CheckoutProduction.css';
-import './CheckoutDemo.css';
 import './CheckoutPremium.css';
 import './CheckoutStripeLayout.css';
-import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
+import './CheckoutTheme.css';
 import { fetchCheckoutInfo, fetchCheckoutPlan, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
+import { fetchPaymentConfig } from '../../lib/paymentConfig';
+import { savePendingCheckout } from '../../lib/pendingCheckout';
 import { DEFAULT_WAYFORPAY_CURRENCIES } from '../../lib/wayforpay';
 import WayforpayPaymentModal from './WayforpayPaymentModal';
 import { useSession } from '../Session/SessionProvider';
@@ -16,7 +17,7 @@ import ProductionStripeCheckoutForm from './ProductionStripeCheckoutForm';
 import CheckoutSummaryCard from './CheckoutSummaryCard';
 import PaymentFormCard from './PaymentFormCard';
 import PaymentButton from './PaymentButton';
-import CheckoutAiCreditPackages from './CheckoutAiCreditPackages';
+import CheckoutPaymentUnavailable from './CheckoutPaymentUnavailable';
 import PaddleCheckoutButton from './PaddleCheckoutButton';
 import {
   openStripeBillingPortal,
@@ -95,26 +96,32 @@ export default function Checkout() {
   const showTestBanner = Boolean(checkoutInfo?.showTestModeBanner)
     || (ownerTestCheckout && checkoutInfo?.wayforpayTestMode);
   const testBannerText = checkoutInfo?.testModeBannerText || TEST_MODE_BANNER;
-  const providerLabel = useStripeProduction
-    ? 'Stripe'
-    : (checkoutInfo?.providerDisplayName || 'Payment provider');
-
   const summary = isDeveloper ? DEVELOPER_FALLBACK : planQuote;
   const priceLabel = summary
     ? (Number(summary.amountDisplay) === 0 ? '$0' : `$${summary.amountDisplay}`)
     : '—';
-  const payAmountLabel = summary?.amountDisplay
-    ? `$${summary.amountDisplay}`
-    : priceLabel;
+  const applyCheckoutInfo = useCallback((info) => {
+    if (!info) return;
+    setCheckoutInfo(info);
+    if (info?.wayforpayDefaultCurrency) {
+      setWayforpayCurrency(info.wayforpayDefaultCurrency);
+    }
+  }, []);
 
   useEffect(() => {
-    fetchCheckoutInfo().then((info) => {
-      setCheckoutInfo(info);
-      if (info?.wayforpayDefaultCurrency) {
-        setWayforpayCurrency(info.wayforpayDefaultCurrency);
-      }
-    });
-  }, []);
+    fetchCheckoutInfo().then(applyCheckoutInfo);
+  }, [applyCheckoutInfo]);
+
+  useEffect(() => {
+    if (sessionStatus !== 'authenticated') return undefined;
+    let cancelled = false;
+    fetchPaymentConfig()
+      .then((config) => {
+        if (!cancelled && config) applyCheckoutInfo(config);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [sessionStatus, applyCheckoutInfo]);
 
   useEffect(() => {
     if (sessionStatus !== 'authenticated') {
@@ -151,10 +158,10 @@ export default function Checkout() {
     if (isDeveloper) return undefined;
     if (isAuthInitializing(sessionStatus)) return undefined;
     if (sessionStatus === 'authenticated') return undefined;
-    const returnPath = `${location.pathname || '/checkout/pro'}${location.search || ''}`;
+    const returnPath = savePendingCheckout(planSlug) || `/checkout?plan=${encodeURIComponent(planSlug)}`;
     navigate('/login', { replace: true, state: { from: returnPath } });
     return undefined;
-  }, [sessionStatus, isDeveloper, navigate, location.pathname]);
+  }, [sessionStatus, isDeveloper, navigate, planSlug]);
 
   const returnModel = searchParams.get('returnModel');
   const checkoutReturnUrl = useMemo(() => {
@@ -311,49 +318,45 @@ export default function Checkout() {
 
   const canceled = location.pathname.endsWith('/cancel') || new URLSearchParams(location.search).get('canceled') === '1';
   const sessionReady = sessionStatus === 'authenticated';
+  const stripeSetupHint = useMemo(() => {
+    if (paymentProvider !== 'stripe') return '';
+    const missing = checkoutInfo?.stripeConfiguration?.missingEnvVars;
+    if (!Array.isArray(missing) || !missing.length) return '';
+    if (import.meta.env.DEV) {
+      return 'Local fix: set STRIPE_PUBLISHABLE_KEY=pk_test_… in backend/.env (same Stripe account as STRIPE_SECRET_KEY), then run `npm run stripe:sync` in the backend folder and restart the API.';
+    }
+    return 'Ask your administrator to set STRIPE_PUBLISHABLE_KEY and STRIPE_SECRET_KEY on the server (Render/Vercel env).';
+  }, [paymentProvider, checkoutInfo?.stripeConfiguration?.missingEnvVars]);
+
+  const showPaymentUnavailable = !isDeveloper
+    && !activePlanConflict
+    && !useStripeProduction
+    && !usePaddlePrimary
+    && !(paymentsAvailable && paymentProvider === 'wayforpay');
+
+  const subscribeLabel = summary?.amountDisplay
+    ? `Subscribe — $${summary.amountDisplay}/${summary?.interval === 'year' ? 'year' : 'month'}`
+    : 'Subscribe';
 
   return (
-    <main className={`checkout-page checkout-page--premium${useStripeProduction ? ' checkout-page--stripe-layout' : ' checkout-page--mock'}`}>
-      {!useStripeProduction && (
-        <header className="checkout-header">
-          <nav className="checkout-nav checkout-nav--premium" aria-label="Checkout">
-            <Link className="checkout-brand" to="/">
-              <AllModelAILogoMark />
-              <span>AllModelAI</span>
-            </Link>
-            <div className="checkout-nav-links">
-              <Link to="/">Home</Link>
-              <Link to="/pricing">Pricing</Link>
-              <Link to="/dashboard">Dashboard</Link>
-            </div>
-          </nav>
-        </header>
-      )}
-
+    <main className="checkout-page checkout-page--premium checkout-page--stripe-layout checkout-page--unified">
       {showTestBanner && (
         <p className="checkout-test-mode-banner checkout-test-mode-banner--prominent" role="status">{testBannerText}</p>
       )}
 
-      <section className={`checkout-layout ${useStripeProduction ? 'checkout-layout--cursor' : 'checkout-layout--split'}`}>
+      <section className="checkout-layout checkout-layout--cursor checkout-layout--split">
         <CheckoutSummaryCard
           isDeveloper={isDeveloper}
           summary={summary}
           priceLabel={priceLabel}
-          providerLabel={providerLabel}
           backHref="/pricing"
         />
 
-        <PaymentFormCard light={useStripeProduction}>
+        <PaymentFormCard>
           {canceled && (
             <div className="checkout-state checkout-state--cancel" role="status">
               <p>Payment wasn&apos;t completed.</p>
               <p className="checkout-state-sub">Your account was not charged.</p>
-            </div>
-          )}
-
-          {!paymentsAvailable && !isDeveloper && (
-            <div className="checkout-state checkout-state--unavailable" role="alert">
-              <p>{checkoutInfo?.checkoutUnavailableMessage || 'Payments are temporarily unavailable.'}</p>
             </div>
           )}
 
@@ -433,12 +436,12 @@ export default function Checkout() {
                     stripeAutoLoadRef.current = false;
                     void startStripeCheckout();
                   }}
-                  payLabel={`Subscribe — ${payAmountLabel}/month`}
+                  payLabel={subscribeLabel}
                   processingLabel="Processing payment…"
                   showStripeTestCardHint={Boolean(checkoutInfo?.showStripeTestCardHint)}
                   showTestModeBanner={Boolean(checkoutInfo?.showTestModeBanner)}
                   secureCheckoutLabel={checkoutInfo?.secureCheckoutLabel || 'Secure payment'}
-                  appearance="light"
+                  appearance="night"
                 />
               ) : !usePaddlePrimary && paymentsAvailable && paymentProvider === 'wayforpay' ? (
                 <div className="checkout-wayforpay-alt checkout-wayforpay-alt--primary">
@@ -458,22 +461,18 @@ export default function Checkout() {
                     {wayforpayTestFlow ? 'Open test checkout' : 'Continue with WayForPay'}
                   </PaymentButton>
                 </div>
-              ) : !usePaddlePrimary && !paymentsAvailable ? (
-                <div className="checkout-state checkout-state--unavailable" role="alert">
-                  <p>Secure payment form is not available yet.</p>
-                  <p className="checkout-state-sub">
-                    {checkoutInfo?.checkoutUnavailableMessage
-                      || checkoutInfo?.liveActivation?.liveChargesBlockedReason
-                      || 'The server has not finished configuring a payment provider. Card fields are intentionally hidden so this page cannot look like a real charge.'}
-                  </p>
-                  {checkoutInfo?.liveActivation?.manualVerificationRequired?.length > 0 && (
-                    <ul className="checkout-activation-checklist">
-                      {checkoutInfo.liveActivation.manualVerificationRequired.map((item) => (
-                        <li key={item.id}>{item.label}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+              ) : showPaymentUnavailable ? (
+                <CheckoutPaymentUnavailable
+                  message="Secure payment form is not available yet."
+                  detail={
+                    checkoutInfo?.checkoutUnavailableMessage
+                    || checkoutInfo?.stripeCheckoutBlockedMessage
+                    || 'Finish payment provider setup on the server. Subscriptions activate only after verified webhooks.'
+                  }
+                  setupHint={stripeSetupHint}
+                  testModeLabel={showTestBanner ? testBannerText : ''}
+                  showPayPal={false}
+                />
               ) : null}
 
               {showPaddleAlternate && (
@@ -489,37 +488,16 @@ export default function Checkout() {
                 <p className="checkout-signin-hint" role="note">Sign in to complete subscription.</p>
               )}
 
-              {checkoutInfo?.renewalNotice && (
-                <p className="checkout-renewal-note" role="note">{checkoutInfo.renewalNotice}</p>
-              )}
-
-              {!useStripeProduction && paymentsAvailable && paymentProvider === 'wayforpay' && (
-                <small className="checkout-disclaimer checkout-disclaimer--left checkout-disclaimer--premium">
-                  WayForPay checkout opens on their secure page. Premium access is granted only after the server verifies payment.
-                </small>
-              )}
-
-              {!paymentsAvailable && (
-                <small className="checkout-disclaimer checkout-disclaimer--left checkout-disclaimer--premium">
-                  No demo card form is shown while payments are unconfigured. Real Stripe or WayForPay checkout appears only when the backend is ready.
-                </small>
-              )}
             </>
           )}
 
           {!isDeveloper && canceled && (
-            <button type="button" className="checkout-link-button" onClick={() => navigate(`/checkout/${planSlug}`)}>
+            <button type="button" className="checkout-link-button" onClick={() => navigate(`/checkout?plan=${encodeURIComponent(planSlug)}`)}>
               Try again
             </button>
           )}
         </PaymentFormCard>
       </section>
-
-      <CheckoutAiCreditPackages
-        sessionReady={sessionReady}
-        showTestBanner={showTestBanner}
-        testBannerText={testBannerText}
-      />
 
       <WayforpayPaymentModal
         open={wayforpayModalOpen}

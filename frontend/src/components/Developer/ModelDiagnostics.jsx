@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 import ProviderHealthPanel from './ProviderHealthPanel';
+import QaStatusPanel from './QaStatusPanel';
 import './ModelDiagnostics.css';
 
 function statusLabel(row) {
@@ -93,6 +94,8 @@ export default function ModelDiagnostics() {
         <input type="checkbox" checked={confirmBillable} onChange={(e) => setConfirmBillable(e.target.checked)} />
         I understand each test sends a short prompt to the real provider and may use billable quota.
       </label>
+
+      <QaStatusPanel qa={catalog?.qa} />
 
       <ProviderHealthPanel />
 

@@ -58,47 +58,40 @@ after(() => {
     fs.rmSync(process.env.DB_FILE, { force: true });
 });
 
-test('Firebase password token links to existing Google account and can persist backend hash', async () => {
-    const email = 'dual-firebase@example.com';
-    const googleKey = `g-${email}`;
-    verified.set(googleKey, {
-        uid: `firebase-${googleKey}`,
-        auth_time: Math.floor(Date.now() / 1000),
-        email,
-        email_verified: true,
-        name: 'Dual User',
-        firebase: { sign_in_provider: 'google.com', identities: { 'google.com': [googleKey] } },
-    });
+test('Firebase password exchange never persists an unverified client-supplied password', async () => {
     const agent = request.agent(app);
-    const googleChallenge = await postSocial(agent, '/api/auth/firebase/challenge', { intent: 'login' });
-    const google = await postSocial(agent, '/api/auth/firebase', {
-        idToken: googleKey,
-        state: googleChallenge.body.state,
-        intent: 'login',
-    });
-    assert.equal(google.status, 200);
-    const userId = google.body.user.id;
-
-    const blocked = await request(app).post('/api/auth/login').send({
-        email,
-        password: 'AllModelPass1!',
-    });
-    assert.equal(blocked.status, 401);
-    assert.equal(blocked.body.code, 'PASSWORD_SETUP_REQUIRED');
-
-    const exchanged = await firebasePasswordLogin(request.agent(app), email, {
-        passwordSync: 'AllModelPass1!',
-    });
-    assert.equal(exchanged.status, 200);
-    assert.equal(exchanged.body.user.id, userId);
-
-    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
-    assert.ok(row?.password_hash, 'password hash should persist after Firebase password exchange');
-
-    const backendLogin = await request(app).post('/api/auth/login').send({
-        email,
-        password: 'AllModelPass1!',
-    });
-    assert.equal(backendLogin.status, 200);
-    assert.equal(backendLogin.body.user.id, userId);
+    const email = 'firebase-only@example.com';
+    const result = await firebasePasswordLogin(agent, email, { passwordSync: 'ArbitraryWrongPassword1!' });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(result.body.user.id);
+    assert.equal(row.password_hash, null);
+    const rejected = await request(app).post('/api/auth/login').send({ email, password: 'ArbitraryWrongPassword1!' });
+    assert.equal(rejected.status, 401);
+    assert.equal((await agent.get('/api/auth/session')).body.user.id, result.body.user.id);
 });
+
+test('Firebase password cannot implicitly take over an existing account', async () => {
+    const email = 'existing-local@example.com';
+    const owner = await request(app).post('/api/auth/register').send({ name: 'Owner', email, password: 'OriginalPassword1!' });
+    assert.equal(owner.status, 201);
+    const before = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(owner.body.user.id).password_hash;
+    const result = await firebasePasswordLogin(request.agent(app), email, { passwordSync: 'WrongPassword1!' });
+    assert.equal(result.status, 409);
+    assert.equal(result.body.code, 'ACCOUNT_LINK_REQUIRED');
+    assert.equal(db.prepare('SELECT password_hash FROM users WHERE id = ?').get(owner.body.user.id).password_hash, before);
+});
+
+test('a local password reset takes precedence over an already linked Firebase password', async () => {
+    const email = 'reset-precedence@example.com';
+    const first = await firebasePasswordLogin(request.agent(app), email);
+    assert.equal(first.status, 200);
+    const { hashPassword } = require('../src/password');
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(await hashPassword('NewLocalPassword1!'), first.body.user.id);
+    const agent = request.agent(app);
+    const oldFirebase = await firebasePasswordLogin(agent, email);
+    assert.equal(oldFirebase.status, 401);
+    assert.equal((await agent.get('/api/auth/session')).body.user, null);
+    const current = await request(app).post('/api/auth/login').send({ email, password: 'NewLocalPassword1!' });
+    assert.equal(current.status, 200);
+});
+

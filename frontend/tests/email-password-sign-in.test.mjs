@@ -7,7 +7,7 @@ test('email password sign-in tries backend then Firebase fallback', async () => 
   assert.match(source, /authPost\('login'/);
   assert.match(source, /signInWithEmailAndPassword/);
   assert.match(source, /exchangeSocialSession/);
-  assert.match(source, /passwordSync/);
+  assert.doesNotMatch(source, /passwordSync/);
   assert.match(source, /PASSWORD_SETUP_REQUIRED/);
   assert.match(source, /isGoogleOnlyPasswordSetup\(backendError\)/);
   assert.match(source, /INVALID_LOGIN_CREDENTIALS/);
@@ -30,9 +30,9 @@ test('password linking uses EmailAuthProvider after explicit Settings confirmati
   assert.doesNotMatch(social, /enrollPendingEmailPasswordAfterSocialLogin/);
 });
 
-test('login form wires unified email password sign-in and Firebase register mirror', async () => {
+test('registration does not await or create a second Firebase password account', async () => {
   const login = await readFile(new URL('../src/components/Login/Login.jsx', import.meta.url), 'utf8');
   assert.match(login, /signInWithEmailPasswordAllModelAI/);
-  assert.match(login, /syncFirebaseEmailAccountAfterRegister/);
+  assert.doesNotMatch(login, /syncFirebaseEmailAccountAfterRegister/);
   assert.match(login, /passwordSetupHint/);
 });

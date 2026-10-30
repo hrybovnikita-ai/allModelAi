@@ -24,5 +24,9 @@ venv/
 .idea/
 
 .runtime/
+.playwright-browsers/
+qa-reports/
+frontend/playwright-report/
+frontend/test-results/
 HOME-ACCESS.txt
 frontend/tmp-prod.js

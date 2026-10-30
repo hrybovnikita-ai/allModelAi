@@ -29,6 +29,7 @@ import AiMemoryPage from "./components/Memory/AiMemoryPage";
 import ModelDetails from "./components/ModelDetails/ModelDetails";
 import Chat from "./components/Chat/Chat";
 import Checkout from "./components/Checkout/Checkout";
+import CheckoutCreditsPage from "./components/Checkout/CheckoutCreditsPage";
 import CheckoutSuccess from "./components/Checkout/CheckoutSuccess";
 import CheckoutCancel from "./components/Checkout/CheckoutCancel";
 import SocialAuthCallback from "./components/SocialAuth/SocialAuthCallback";
@@ -235,6 +236,7 @@ export default function App() {
       <Route path="/payment/success" element={<CheckoutSuccess />} />
       <Route path="/payment/cancelled" element={<CheckoutCancel />} />
       <Route path="/checkout" element={<Checkout />} />
+      <Route path="/checkout/credits" element={<CheckoutCreditsPage />} />
       <Route path="/checkout/starter" element={<Checkout />} />
       <Route path="/checkout/pro" element={<Checkout />} />
       <Route path="/checkout/unlimited" element={<Checkout />} />

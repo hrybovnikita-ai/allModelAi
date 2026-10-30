@@ -47,7 +47,6 @@ export async function exchangeSocialSession(idToken, {
   challenge,
   githubAccessToken,
   githubEmail,
-  passwordSync,
 } = {}) {
   const intent = link ? 'link' : 'login';
   const { state } = challenge || await prepareSocialSession({ link });
@@ -55,9 +54,6 @@ export async function exchangeSocialSession(idToken, {
   if (idToken) body.idToken = idToken;
   if (githubAccessToken) body.githubAccessToken = githubAccessToken;
   if (githubEmail) body.githubEmail = githubEmail;
-  if (typeof passwordSync === 'string' && passwordSync.length > 0) {
-    body.passwordSync = passwordSync;
-  }
   if (!body.idToken && !body.githubAccessToken) {
     throw Object.assign(new Error('Could not complete social sign-in. Please retry.'), { code: 'SOCIAL_AUTH_FAILED' });
   }
@@ -110,10 +106,9 @@ export function socialError(error) {
       'Google sign-in cannot finish in Private Browsing (Safari blocks session storage for the redirect). '
       + 'Use a regular Safari tab, or sign in with email and password.',
     'auth/email-not-verified': 'Your provider email is not verified yet. Verify it with the provider, then try again.',
-    'auth/missing-email': 'GitHub did not provide a verified email. Add and verify an email in GitHub Settings → Emails, then sign in again. Your email can stay private.',
-    INVALID_GITHUB_TOKEN: 'GitHub authorization expired. Please sign in again and allow access to your email address.',
     INVALID_STATE: 'Sign-in expired. Please try again.',
-    VERIFIED_EMAIL_REQUIRED: 'A verified email is required from your provider.',
+    VERIFIED_EMAIL_REQUIRED: 'Verify an email with your sign-in provider, then retry.',
+    ACCOUNT_LINK_REQUIRED: 'Sign in to your existing account, then connect this provider in Settings. Use Forgot password if you need to recover access.',
     IDENTITY_CONFLICT: 'This provider account is already linked to another AllModelAI user.',
     SESSION_CHANGED: 'Your session changed. Sign in again and retry linking.',
     SOCIAL_AUTH_FAILED: 'We could not complete sign-in. Please try again.',
@@ -133,6 +128,5 @@ export function socialError(error) {
   if (error.code && messages[error.code]) return messages[error.code];
   const providerHint = String(error.message || '');
   if (/apple/i.test(providerHint)) return "We couldn't complete Apple sign-in. Please try again.";
-  if (/github/i.test(providerHint)) return 'GitHub authentication failed. Please try again.';
   return error.message || 'Social sign-in failed. Please retry.';
 }

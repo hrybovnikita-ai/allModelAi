@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { socialSignIn, finishSocialLink, cancelSocialLink } from '../../lib/socialSignIn';
 import { firebaseProviderId, SOCIAL_PROVIDER_LABELS } from '../../lib/socialProviders';
 import { socialError } from '../../lib/socialSession';
 import { apiFetch } from '../../lib/api';
+
+const ClerkConnect = lazy(() => import('./ClerkConnect.jsx'));
 
 export default function SocialConnections() {
   const [connected, setConnected] = useState([]);
@@ -35,8 +37,17 @@ export default function SocialConnections() {
     <h2>Connected accounts</h2>
     <p>Connect a provider to sign in to this same account and keep your conversations and subscription.</p>
     <div className="login-socials">{SOCIAL_PROVIDER_LABELS.map(name => <button type="button" key={name} disabled={busy || connected.includes(firebaseProviderId(name))} onClick={() => { cancelSocialLink(); setNeedsOriginal(false); setSelected(name); }}>{name}{connected.includes(firebaseProviderId(name)) ? ' ? Connected' : ''}</button>)}</div>
-    {selected && <div role="group" aria-label="Confirm account linking"><p>Allow your {selected} identity to sign in to this AllModelAI account? Only connect an identity you own.</p><button type="button" disabled={busy} onClick={() => connect()}>{busy ? 'Connecting?' : `Confirm and open ${selected}`}</button><button type="button" disabled={busy} onClick={() => { cancelSocialLink(); setSelected(null); setNeedsOriginal(false); }}>Cancel</button></div>}
+    {selected && <div role="group" aria-label="Confirm account linking"><p>Allow your {selected} identity to sign in to this AllModelAI account? Only connect an identity you own.</p><button type="button" disabled={busy} onClick={() => connect()}>{busy ? 'Connecting…' : `Confirm and open ${selected}`}</button><button type="button" disabled={busy} onClick={() => { cancelSocialLink(); setSelected(null); setNeedsOriginal(false); }}>Cancel</button></div>}
     {needsOriginal && <div role="group" aria-label="Verify original provider"><p>Firebase already knows this email under another provider. Verify that original provider to finish connecting {selected}.</p>{SOCIAL_PROVIDER_LABELS.filter(name => name !== selected).map(name => <button key={name} type="button" disabled={busy} onClick={() => connect(name)}>Verify with {name}</button>)}</div>}
+    <Suspense fallback={null}>
+      <ClerkConnect
+        connected={connected}
+        onLinked={() => {
+          setConnected((items) => [...new Set([...items, 'clerk'])]);
+          setNotice('Clerk is now connected to this AllModelAI account.');
+        }}
+      />
+    </Suspense>
     {notice && <p role="status">{notice}</p>}
   </div></section>;
 }

@@ -15,6 +15,7 @@ function wrapPoolWithTransaction(basePool) {
                     if (/^BEGIN$/i.test(text.trim())) return { rowCount: 0, rows: [] };
                     if (/^COMMIT$/i.test(text.trim())) return { rowCount: 0, rows: [] };
                     if (/^ROLLBACK$/i.test(text.trim())) return { rowCount: 0, rows: [] };
+                    if (/^SELECT pg_advisory_xact_lock\(/.test(text)) return { rowCount: 1, rows: [{}] };
                     return query(configOrText, values);
                 },
                 release: () => {},

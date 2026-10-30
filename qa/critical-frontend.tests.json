@@ -1,0 +1,30 @@
+{
+  "description": "Frontend unit/regression tests for auth, checkout, chat citations, and session contracts.",
+  "files": [
+    "auth-validation.test.mjs",
+    "email-password-sign-in.test.mjs",
+    "google-popup-sign-in.test.mjs",
+    "auth-api.test.mjs",
+    "auth-bootstrap.test.mjs",
+    "session-auth-state.test.mjs",
+    "session-unauthorized-guard.test.mjs",
+    "clerk-session-exchange.test.mjs",
+    "clerk-login.test.mjs",
+    "client-auth-reset.test.mjs",
+    "pending-checkout.test.mjs",
+    "checkout-routing.test.mjs",
+    "pro-subscription.test.mjs",
+    "citation-links.test.mjs",
+    "chat-response-block.test.mjs",
+    "split-message-parts.test.mjs",
+    "parse-code-fence.test.mjs",
+    "chat-sse.test.mjs",
+    "vision-chat.test.mjs",
+    "ui-language.test.mjs",
+    "chat-animation.test.mjs",
+    "require-auth-guard.test.mjs",
+    "oauth-coop-headers.test.mjs",
+    "settings-page-render.test.mjs",
+    "qa-critical-manifest.test.mjs"
+  ]
+}

@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import {
   coerceProductionAuthDomain,
   FIREBASE_CUSTOM_AUTH_HOST,
+  firebaseAuthHandlerUrl,
   resolveAuthDomainForRuntime,
 } from '../src/lib/firebaseAuthDomain.js';
 
@@ -31,7 +32,7 @@ test('localhost keeps firebaseapp.com for Vite /__/auth proxy dev flow', async (
   }
 });
 
-test('localhost ignores branded authDomain env so Google popup can complete via Vite /__/auth proxy', () => {
+test('localhost defaults to firebaseapp.com for Vite /__/auth proxy when branded flag is off', () => {
   assert.equal(
     resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {
       envAuthDomain: 'all-model-ai.com',
@@ -45,6 +46,21 @@ test('localhost ignores branded authDomain env so Google popup can complete via 
       hostedHostname: '127.0.0.1',
     }),
     'allmodelai.firebaseapp.com',
+  );
+});
+
+test('localhost uses branded authDomain when VITE_FIREBASE_BRANDED_AUTH_ON_LOCALHOST is enabled', () => {
+  assert.equal(
+    resolveAuthDomainForRuntime('allmodelai.firebaseapp.com', {
+      envAuthDomain: 'all-model-ai.com',
+      hostedHostname: 'localhost',
+      brandedAuthOnLocalhost: true,
+    }),
+    FIREBASE_CUSTOM_AUTH_HOST,
+  );
+  assert.equal(
+    firebaseAuthHandlerUrl(FIREBASE_CUSTOM_AUTH_HOST),
+    'https://all-model-ai.com/__/auth/handler',
   );
 });
 

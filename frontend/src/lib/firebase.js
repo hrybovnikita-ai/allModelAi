@@ -67,6 +67,14 @@ export function isCustomAuthDomainEnabled() {
   return import.meta.env?.VITE_FIREBASE_CUSTOM_AUTH_DOMAIN === 'true';
 }
 
+/**
+ * When true on localhost, use the branded authDomain (e.g. all-model-ai.com) so Google shows
+ * "Continue to all-model-ai.com". Popup auth runs on the production /__/auth proxy; revert by unsetting this flag.
+ */
+export function isBrandedAuthOnLocalhostEnabled() {
+  return String(import.meta.env?.VITE_FIREBASE_BRANDED_AUTH_ON_LOCALHOST || '').trim().toLowerCase() === 'true';
+}
+
 /** Page hostname for OAuth authDomain coercion (not the API host). */
 function hostedSiteAuthDomain() {
   if (typeof window === 'undefined' || !isHostedWebApp()) return '';
@@ -76,7 +84,8 @@ function hostedSiteAuthDomain() {
 /**
  * authDomain must match where /__/auth/handler is served.
  * Production: all-model-ai.com (Vercel reverse-proxies /__/auth to Firebase).
- * Local dev: allmodelai.firebaseapp.com with the Vite /__/auth proxy (never branded authDomain on localhost).
+ * Local dev (default): allmodelai.firebaseapp.com + Vite /__/auth proxy.
+ * Local dev (opt-in VITE_FIREBASE_BRANDED_AUTH_ON_LOCALHOST=true): all-model-ai.com popup handler.
  */
 /** iOS WebKit: avoid default *.firebaseapp.com redirect URI when a custom auth host is available. */
 export function shouldPreferHostedFirebaseAuthDomain() {
@@ -91,33 +100,16 @@ export function resolveAuthDomainForRuntime(configuredAuthDomain) {
   const envAuthDomain = readFirebaseAuthDomainFromEnv(viteEnv);
   const pageHost = typeof window !== 'undefined' ? window.location?.hostname : '';
   const hosted = hostedSiteAuthDomain() || pageHost;
-
-  if (isLocalFirebaseDevHost(hosted) || isLocalFirebaseDevHost(pageHost)) {
-    if (isFirebaseAppDomain(envAuthDomain)) return String(envAuthDomain).trim();
-    if (isFirebaseAppDomain(configuredAuthDomain)) return String(configuredAuthDomain).trim();
-    return DEFAULT_FIREBASE_AUTH_DOMAIN;
-  }
-
-  if (isExplicitCustomAuthDomain(envAuthDomain)) {
-    return String(envAuthDomain).trim();
-  }
   const customAuth = isCustomAuthDomainEnabled();
   const onProductionSite = isFirebaseAuthProxyHostname(hosted);
-
-  if (shouldPreferHostedFirebaseAuthDomain() && hosted) {
-    return resolveAuthDomainCore(configuredAuthDomain, {
-      envAuthDomain,
-      customAuthDomainEnabled: customAuth || onProductionSite,
-      hostedHostname: hosted,
-      preferHostedAuthDomainWhenProxied: customAuth,
-    });
-  }
+  const brandedAuthOnLocalhost = isBrandedAuthOnLocalhostEnabled();
 
   return resolveAuthDomainCore(configuredAuthDomain, {
     envAuthDomain,
     customAuthDomainEnabled: customAuth || onProductionSite,
-    hostedHostname: hosted,
+    hostedHostname: hosted || pageHost,
     preferHostedAuthDomainWhenProxied: customAuth,
+    brandedAuthOnLocalhost,
   });
 }
 
@@ -183,11 +175,12 @@ export function assertFirebaseOAuthEnvironment() {
 
   const pageHost = String(window.location?.hostname || '').trim().toLowerCase();
   const authDomain = getEffectiveFirebaseConfig().authDomain;
-  if (isLocalFirebaseDevHost(pageHost) && isExplicitCustomAuthDomain(readFirebaseAuthDomainFromEnv(import.meta.env || {}))) {
-    socialAuthDebug('AUTH_DOMAIN_MISMATCH', {
+  if (isLocalFirebaseDevHost(pageHost) && isBrandedAuthOnLocalhostEnabled() && isExplicitCustomAuthDomain(authDomain)) {
+    socialAuthDebug('LOCALHOST_BRANDED_OAUTH', {
       pageHost,
       authDomain,
-      note: 'localhost uses firebaseapp.com authDomain; branded env is ignored for popup OAuth',
+      handler: `https://${authDomain}/__/auth/handler`,
+      note: 'Ensure localhost is in Firebase Authorized domains and COOP allows popups.',
     });
   }
 

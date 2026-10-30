@@ -1,8 +1,9 @@
 const { setSession } = require('./controllers/controllers');
 const { browserRequest } = require('./socialAuth');
 const { isPostgresConnection } = require('./db/postgresHttpReads');
-const { queryPgClient, resolvePostgresAsyncPool, withPgTransaction } = require('./db/pgPoolQuery');
+const { queryPgClient, queryPgPool, resolvePostgresAsyncPool, withPgTransaction } = require('./db/pgPoolQuery');
 const { activateSubscription } = require('./billing/subscriptions');
+const { hashToken, readSessionToken } = require('./sessionAuth');
 
 const PROVIDER = 'clerk';
 
@@ -47,15 +48,18 @@ async function verifyClerkToken(req, token) {
     error.code = 'CLERK_SESSION_INVALID';
     throw error;
   }
-  let email = String(claims.email || claims.primary_email_address || '').trim().toLowerCase();
-  let name = String(claims.name || '').trim();
-  if (!email) {
-    const { clerkClient } = require('@clerk/express');
-    const user = await clerkClient.users.getUser(userId);
-    email = String(user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || '').trim().toLowerCase();
-    name = name || [user?.firstName, user?.lastName].filter(Boolean).join(' ');
-  }
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  // Token templates may contain an unverified email. Resolve the current,
+  // verified primary address from Clerk before creating an app identity.
+  const { clerkClient } = require('@clerk/express');
+  const user = await clerkClient.users.getUser(userId);
+  return verifiedClerkIdentity(userId, user);
+}
+
+function verifiedClerkIdentity(userId, user) {
+  const primary = user?.emailAddresses?.find((entry) => entry.id === user.primaryEmailAddressId);
+  const email = String(primary?.emailAddress || '').trim().toLowerCase();
+  const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
+  if (primary?.verification?.status !== 'verified' || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     const error = new Error('A verified email is required from Clerk.');
     error.status = 403;
     error.code = 'CLERK_EMAIL_REQUIRED';
@@ -73,7 +77,34 @@ function publicClerkUser(row) {
   };
 }
 
-function resolveSqliteIdentity(database, identity) {
+function linkRequiredError() {
+  const error = new Error('An AllModelAI account already uses this email. Sign in with email or Google, then connect Clerk in Settings → Connected accounts.');
+  error.status = 409;
+  error.code = 'CLERK_LINK_REQUIRED';
+  return error;
+}
+
+function identityConflictError(message) {
+  const error = new Error(message || 'This Clerk identity is already connected to another AllModelAI account.');
+  error.status = 409;
+  error.code = 'CLERK_IDENTITY_CONFLICT';
+  return error;
+}
+
+function emailsMatch(left, right) {
+  return String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase();
+}
+
+function assertCanAttachClerk(sessionUser, identity, sessionUserId) {
+  if (sessionUserId == null || Number(sessionUser.id) !== Number(sessionUserId)) {
+    throw linkRequiredError();
+  }
+  if (!emailsMatch(sessionUser.email, identity.email)) {
+    throw identityConflictError('Clerk email must match this signed-in AllModelAI account.');
+  }
+}
+
+function resolveSqliteIdentity(database, identity, sessionUserId) {
   return database.transaction(() => {
     const linked = database.prepare(
       'SELECT user_id FROM social_identities WHERE provider = ? AND subject = ?',
@@ -82,35 +113,62 @@ function resolveSqliteIdentity(database, identity) {
       const user = database.prepare(
         'SELECT id, name, email, role FROM users WHERE id = ?',
       ).get(linked.user_id);
-      if (!user) {
-        const error = new Error('Clerk account mapping is invalid.');
-        error.status = 409;
-        error.code = 'CLERK_IDENTITY_CONFLICT';
-        throw error;
+      if (!user) throw identityConflictError('Clerk account mapping is invalid.');
+      if (sessionUserId != null && Number(user.id) !== Number(sessionUserId)) {
+        throw identityConflictError();
       }
       return { user, created: false };
     }
     const existingEmail = database.prepare(
-      'SELECT id FROM users WHERE lower(trim(email)) = ?',
+      'SELECT id, name, email, role FROM users WHERE lower(trim(email)) = ?',
     ).get(identity.email);
     if (existingEmail) {
-      const error = new Error('An AllModelAI account already uses this email. Linking requires proof of both sign-in methods.');
-      error.status = 409;
-      error.code = 'CLERK_LINK_REQUIRED';
-      throw error;
+      assertCanAttachClerk(existingEmail, identity, sessionUserId);
+      const other = database.prepare(
+        'SELECT subject FROM social_identities WHERE user_id = ? AND provider = ?',
+      ).get(existingEmail.id, PROVIDER);
+      if (other && other.subject !== identity.userId) throw identityConflictError();
+      database.prepare(
+        'INSERT INTO social_identities (provider, subject, user_id) VALUES (?, ?, ?) ON CONFLICT(provider, subject) DO NOTHING',
+      ).run(PROVIDER, identity.userId, existingEmail.id);
+      return { user: existingEmail, created: false, linked: true };
+    }
+    if (sessionUserId != null) {
+      throw identityConflictError('Clerk email must match this signed-in AllModelAI account.');
     }
     const id = Number(database.prepare(
       'INSERT INTO users (name, email, password_hash, email_verified, role) VALUES (?, ?, NULL, 1, ?)',
     ).run(identity.name.slice(0, 100), identity.email, 'user').lastInsertRowid);
     database.prepare(
-      'INSERT INTO social_identities (provider, subject, user_id) VALUES (?, ?, ?)',
+      'INSERT INTO social_identities (provider, subject, user_id) VALUES (?, ?, ?) ON CONFLICT(provider, subject) DO NOTHING',
     ).run(PROVIDER, identity.userId, id);
     const user = database.prepare('SELECT id, name, email, role FROM users WHERE id = ?').get(id);
     return { user, created: true };
   }).immediate();
 }
 
-async function resolvePostgresIdentity(connection, identity) {
+async function authenticatedUserId(req) {
+  const token = readSessionToken(req);
+  if (!token) return null;
+  const connection = req.app.locals.db;
+  const tokenHash = hashToken(token);
+  const now = Date.now();
+  if (isPostgresConnection(connection)) {
+    const pool = resolvePostgresAsyncPool(connection);
+    if (!pool) return null;
+    const result = await queryPgPool(
+      pool,
+      'SELECT user_id FROM auth_sessions WHERE token_hash = $1 AND expires_at > $2',
+      [tokenHash, now],
+    );
+    return result.rows[0]?.user_id ?? null;
+  }
+  return connection.database.prepare(
+    'SELECT user_id FROM auth_sessions WHERE token_hash = ? AND expires_at > ?',
+  ).get(tokenHash, now)?.user_id ?? null;
+}
+
+async function resolvePostgresIdentity(connection, identity, sessionUserId) {
   const pool = resolvePostgresAsyncPool(connection);
   if (!pool) {
     const error = new Error('Clerk account storage is unavailable.');
@@ -130,24 +188,37 @@ async function resolvePostgresIdentity(connection, identity) {
         'SELECT id, name, email, role FROM users WHERE id = $1',
         [linked.rows[0].user_id],
       );
-      if (!user.rows[0]) {
-        const error = new Error('Clerk account mapping is invalid.');
-        error.status = 409;
-        error.code = 'CLERK_IDENTITY_CONFLICT';
-        throw error;
+      if (!user.rows[0]) throw identityConflictError('Clerk account mapping is invalid.');
+      if (sessionUserId != null && Number(user.rows[0].id) !== Number(sessionUserId)) {
+        throw identityConflictError();
       }
       return { user: user.rows[0], created: false };
     }
     const existingEmail = await queryPgClient(
       client,
-      'SELECT id FROM users WHERE lower(trim(email)) = $1',
+      'SELECT id, name, email, role FROM users WHERE lower(trim(email)) = $1',
       [identity.email],
     );
     if (existingEmail.rows[0]) {
-      const error = new Error('An AllModelAI account already uses this email. Linking requires proof of both sign-in methods.');
-      error.status = 409;
-      error.code = 'CLERK_LINK_REQUIRED';
-      throw error;
+      const row = existingEmail.rows[0];
+      assertCanAttachClerk(row, identity, sessionUserId);
+      const other = await queryPgClient(
+        client,
+        'SELECT subject FROM social_identities WHERE user_id = $1 AND provider = $2',
+        [row.id, PROVIDER],
+      );
+      if (other.rows[0] && other.rows[0].subject !== identity.userId) throw identityConflictError();
+      await queryPgClient(
+        client,
+        `INSERT INTO social_identities (provider, subject, user_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (provider, subject) DO NOTHING`,
+        [PROVIDER, identity.userId, row.id],
+      );
+      return { user: row, created: false, linked: true };
+    }
+    if (sessionUserId != null) {
+      throw identityConflictError('Clerk email must match this signed-in AllModelAI account.');
     }
     const inserted = await queryPgClient(
       client,
@@ -156,7 +227,9 @@ async function resolvePostgresIdentity(connection, identity) {
     );
     await queryPgClient(
       client,
-      'INSERT INTO social_identities (provider, subject, user_id) VALUES ($1, $2, $3)',
+      `INSERT INTO social_identities (provider, subject, user_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (provider, subject) DO NOTHING`,
       [PROVIDER, identity.userId, inserted.rows[0].id],
     );
     return { user: inserted.rows[0], created: true };
@@ -183,11 +256,12 @@ async function exchangeClerkSession(req, res) {
   }
 
   const connection = req.app.locals.db;
+  const sessionUserId = await authenticatedUserId(req);
   let resolved;
   try {
     resolved = isPostgresConnection(connection)
-      ? await resolvePostgresIdentity(connection, identity)
-      : resolveSqliteIdentity(connection.database, identity);
+      ? await resolvePostgresIdentity(connection, identity, sessionUserId)
+      : resolveSqliteIdentity(connection.database, identity, sessionUserId);
   } catch (error) {
     if (error.code === 'CLERK_LINK_REQUIRED' || error.code === 'CLERK_IDENTITY_CONFLICT') {
       return res.status(error.status).json({ code: error.code, message: error.message });
@@ -227,6 +301,7 @@ async function exchangeClerkSession(req, res) {
   return res.status(200).json({
     user: publicClerkUser(resolved.user),
     created: resolved.created,
+    linked: Boolean(resolved.linked),
   });
 }
 
@@ -237,6 +312,7 @@ function getPublicClerkAuthStatus(_req, res) {
 }
 
 module.exports = {
+  verifiedClerkIdentity,
   browserRequest,
   exchangeClerkSession,
   getPublicClerkAuthStatus,

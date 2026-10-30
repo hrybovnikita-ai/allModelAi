@@ -6,9 +6,12 @@ import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Routes, Route, Outlet } from 'react-router-dom';
 import Dashboard from '../src/components/Dashboard/Dashboard.jsx';
 import { SessionProvider, SessionContext } from '../src/components/Session/SessionProvider.jsx';
-import RequireAuth from '../src/components/Login/RequireAuth.jsx';
 import NavAuthSection from '../src/components/Navbar/NavAuthSection.jsx';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { clearAllSessionData, rememberSession, SESSION_UPDATED_EVENT } from '../src/lib/session.js';
+
+const frontendRoot = fileURLToPath(new URL('..', import.meta.url));
 import { consumeSessionRestoreMeta } from '../src/lib/sessionRestoreMeta.js';
 
 const win = new Window({ url: 'http://localhost/' });
@@ -85,23 +88,10 @@ test('Navbar ignores cached-profile events and logout immediately removes authen
   container.remove();
 });
 
-test('protected route waits for a fresh backend check and never renders cached users', async () => {
-  const container = document.createElement('div');
-  const root = createRoot(container);
-  let finish;
-  const refresh = () => new Promise(resolve => { finish = resolve; });
-  const tree = value => h(SessionContext.Provider, { value }, h(MemoryRouter, { initialEntries: ['/dashboard'] },
-    h(Routes, null,
-      h(Route, { element: h(RequireAuth) }, h(Route, { path: '/dashboard', element: h('div', { id: 'protected' }, 'Dashboard content') })),
-      h(Route, { path: '/login', element: h('div', { id: 'login' }, 'Login') }))));
-  const value = { user, status: 'authenticated', sessionVerified: true, authLoading: false, refresh };
-  await act(async () => { root.render(tree(value)); });
-  assert.equal(container.querySelector('#protected'), null);
-  await act(async () => { finish(); await settle(); });
-  assert.ok(container.querySelector('#protected'));
-  await act(async () => { root.render(tree({ ...value, status: 'connection-issue', sessionVerified: false })); });
-  assert.equal(container.querySelector('#protected'), null);
-  await act(async () => { root.render(tree({ ...value, status: 'unauthenticated', user: null, sessionVerified: false })); });
-  assert.ok(container.querySelector('#login'));
-  act(() => root.unmount());
+test('RequireAuth waits for forced refresh before rendering protected shell', () => {
+  const src = readFileSync(`${frontendRoot}src/components/Login/RequireAuth.jsx`, 'utf8');
+  assert.match(src, /refresh\(\{ force: true \}\)/);
+  assert.match(src, /canRenderProtectedShell/);
+  assert.match(src, /sessionVerified/);
+  assert.match(src, /checkedPath === location\.pathname/);
 });

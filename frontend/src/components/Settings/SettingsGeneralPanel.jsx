@@ -28,6 +28,7 @@ export default function SettingsGeneralPanel({
   selectedLanguage,
   languages,
   onLanguageChange,
+  languageStatus = '',
   responseLanguage,
   responseLanguageOptions,
   onResponseLanguageChange,
@@ -51,12 +52,13 @@ export default function SettingsGeneralPanel({
       <div className="settings-fields">
         <label>
           Language
-          <select value={selectedLanguage} onChange={onLanguageChange}>
+          <select value={selectedLanguage} onChange={onLanguageChange} aria-label="Interface language">
             {languages.map((language) => (
-              <option key={language.name} value={language.name}>{language.native}</option>
+              <option key={language.code} value={language.name}>{language.native}</option>
             ))}
           </select>
         </label>
+        {languageStatus ? <p className="settings-field-hint" role="status">{languageStatus}</p> : null}
         <label>
           Appearance
           <select value={theme} onChange={(event) => changeTheme(event.target.value)}>

@@ -30,9 +30,9 @@ test('checkout page does not mix WayForPay and Stripe copy', () => {
 });
 
 test('pricing paid plans navigate to dedicated checkout paths', () => {
-  assert.match(pricingSource, /\/checkout\/starter/);
-  assert.match(pricingSource, /\/checkout\/pro/);
-  assert.match(pricingSource, /\/checkout\/unlimited/);
+  assert.match(pricingSource, /\/checkout\?plan=starter/);
+  assert.match(pricingSource, /\/checkout\?plan=pro/);
+  assert.match(pricingSource, /\/checkout\?plan=unlimited/);
   assert.match(pricingSource, /onSelect/);
   assert.match(pricingSource, /AI Credits/);
   assert.match(pricingSource, /Buy Credits/);
@@ -45,7 +45,7 @@ test('Stripe checkout uses embedded Custom Checkout (Checkout Session)', () => {
   assert.match(stripeCheckoutSource, /billingDetails: 'never'/);
   assert.match(checkoutSource, /\/api\/payments\/checkout/);
   assert.match(checkoutSource, /ProductionStripeCheckoutForm/);
-  assert.match(productionStripeSource, /CardBrandBadges/);
+  assert.match(productionStripeSource, /PaymentMethodBadges/);
   assert.match(productionStripeSource, /Payment method/);
   assert.doesNotMatch(checkoutSource, /Load Stripe payment form/);
   assert.doesNotMatch(checkoutSource, /\/api\/payments\/create-intent/);

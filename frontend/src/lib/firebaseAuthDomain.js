@@ -45,6 +45,35 @@ export function isExplicitCustomAuthDomain(domain) {
   return isUsableFirebaseConfigValue(trimmed) && !isFirebaseAppDomain(trimmed);
 }
 
+/** HTTPS origin serving Firebase /__/auth/handler for the given authDomain. */
+export function firebaseAuthHandlerOrigin(authDomain) {
+  const domain = String(authDomain || '').trim();
+  if (!domain) return '';
+  return `https://${domain}`;
+}
+
+export function firebaseAuthHandlerUrl(authDomain) {
+  const origin = firebaseAuthHandlerOrigin(authDomain);
+  return origin ? `${origin}/__/auth/handler` : '';
+}
+
+/**
+ * Branded custom auth host for localhost when explicitly enabled (see VITE_FIREBASE_BRANDED_AUTH_ON_LOCALHOST).
+ * @param {string} envDomain
+ * @param {string} configured
+ */
+export function resolveLocalhostBrandedAuthDomain(envDomain, configured) {
+  const env = String(envDomain || '').trim();
+  const cfg = String(configured || '').trim();
+  if (env === FIREBASE_CUSTOM_AUTH_HOST || env === FIREBASE_AUTH_SUBDOMAIN_HOST) {
+    return FIREBASE_CUSTOM_AUTH_HOST;
+  }
+  if (isExplicitCustomAuthDomain(env)) return env;
+  if (cfg === FIREBASE_AUTH_SUBDOMAIN_HOST) return FIREBASE_CUSTOM_AUTH_HOST;
+  if (isExplicitCustomAuthDomain(cfg)) return cfg;
+  return FIREBASE_CUSTOM_AUTH_HOST;
+}
+
 /**
  * Last-line guard: on the live AllModelAI site, never initialize Firebase Auth with
  * *.firebaseapp.com. Use the apex so Google shows "Continue to all-model-ai.com".
@@ -63,7 +92,7 @@ export function coerceProductionAuthDomain(authDomain, hostedHostname) {
 
 /**
  * @param {string} configuredAuthDomain
- * @param {{ envAuthDomain?: string, customAuthDomainEnabled?: boolean, hostedHostname?: string, preferHostedAuthDomainWhenProxied?: boolean }} [options]
+ * @param {{ envAuthDomain?: string, customAuthDomainEnabled?: boolean, hostedHostname?: string, preferHostedAuthDomainWhenProxied?: boolean, brandedAuthOnLocalhost?: boolean }} [options]
  */
 export function resolveAuthDomainForRuntime(configuredAuthDomain, options = {}) {
   const configured = String(configuredAuthDomain || '').trim();
@@ -71,8 +100,12 @@ export function resolveAuthDomainForRuntime(configuredAuthDomain, options = {}) 
   const hosted = String(options.hostedHostname || '').trim().toLowerCase();
 
   if (isLocalFirebaseDevHost(hosted)) {
-    // Popup OAuth on localhost must use *.firebaseapp.com; Vite proxies /__/auth to Firebase.
-    // A branded authDomain (all-model-ai.com) opens a cross-origin popup that cannot finish sign-in.
+    if (options.brandedAuthOnLocalhost === true) {
+      // Popup opens https://all-model-ai.com/__/auth/handler (Vercel proxy → Firebase).
+      // Requires localhost in Firebase Authorized domains and Google redirect URI for the branded handler.
+      return resolveLocalhostBrandedAuthDomain(envDomain, configured);
+    }
+    // Default: same-origin popup via Vite /__/auth → allmodelai.firebaseapp.com (legacy dev flow).
     if (isFirebaseAppDomain(envDomain)) return envDomain;
     if (isFirebaseAppDomain(configured)) return configured;
     return DEFAULT_FIREBASE_AUTH_DOMAIN;

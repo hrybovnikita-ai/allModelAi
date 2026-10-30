@@ -2,6 +2,8 @@ import { ClerkProvider, Show, SignIn, SignOutButton, SignUp, UserButton, useAuth
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { authGet } from '../../lib/authApi';
+import { clerkAuthLocalization } from '../../lib/clerkAuthConfig.js';
+import { CLERK_PASSWORD_HINT } from '../../lib/clerkPasswordPolicy.js';
 import { clerkPublishableKey, isClerkPublishableKeyConfigured } from '../../lib/clerkTestConfig';
 import { exchangeClerkSessionForAllModelAI } from '../../lib/clerkSessionExchange.js';
 import './ClerkAuthTestPage.css';
@@ -48,6 +50,7 @@ function ClerkSessionPanel() {
           <button type="button" role="tab" aria-selected={panel === 'sign-up'} onClick={() => setPanel('sign-up')}>Sign up</button>
         </div>
         <p>Email and Google appear when they are enabled in the Clerk dashboard.</p>
+        {panel === 'sign-up' ? <p className="clerk-test-password-hint">{CLERK_PASSWORD_HINT}</p> : null}
         {panel === 'sign-in' ? <SignIn routing="hash" /> : <SignUp routing="hash" />}
       </Show>
       <Show when="signed-in">
@@ -80,7 +83,7 @@ export default function ClerkAuthTestPage() {
     );
   }
   return (
-    <ClerkProvider publishableKey={publishableKey}>
+    <ClerkProvider publishableKey={publishableKey} localization={clerkAuthLocalization()}>
       <ClerkSessionPanel />
     </ClerkProvider>
   );

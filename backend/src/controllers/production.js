@@ -440,12 +440,8 @@ const requestPasswordReset = async (req, res) => {
         }
     }
 
-    const message = delivery.sent
-        ? 'If the account exists, check your email for a password reset link.'
-        : genericMessage;
-
     return res.json({
-        message,
+        message: genericMessage,
         emailDeliveryConfigured: emailConfigured,
         ...(shouldExposeAccountTokenInResponse({ emailDeliveryConfigured: emailConfigured })
             ? { token: secret }
@@ -477,18 +473,9 @@ const confirmPasswordReset = async (req, res) => {
     }
 
     const passwordHash = await hashPassword(validation.newPassword);
-    if (isPostgresConnection(connection)) {
-        await updateUserPasswordAsync(connection, passwordHash, {
-            email: row.email,
-            revokeSessions: true,
-        });
-        await deleteAccountTokenAsync(connection, hashValue(token));
-    } else {
-        connection.database.transaction(() => {
-            connection.database.prepare('UPDATE users SET password_hash=?, email_verified=1 WHERE lower(email)=lower(?)').run(passwordHash, row.email);
-            connection.database.prepare('DELETE FROM auth_sessions WHERE user_id IN (SELECT id FROM users WHERE lower(email)=lower(?))').run(row.email);
-            connection.database.prepare('DELETE FROM account_tokens WHERE token_hash=?').run(hashValue(token));
-        })();
+    const { consumePasswordReset } = require('../passwordResetStore');
+    if (!await consumePasswordReset(connection, hashValue(token), passwordHash)) {
+        return res.status(400).json({ message: 'This reset link is invalid or has expired. Request a new one.' });
     }
     try {
         const { refreshCachedAuthUser } = require('../accountPassword');

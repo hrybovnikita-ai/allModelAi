@@ -138,12 +138,11 @@ function isElectronDesktopRequest(req) {
 }
 
 function isAllowedOrigin(origin, req) {
-    if (!origin || origin === 'null') return true;
-    if (isElectronDesktopRequest(req)) return true;
+    if (!origin) return true;
+    if (origin === 'null') return false;
     const normalized = normalizeOrigin(origin);
     if (isNativeAppOrigin(normalized)) return true;
     if (isAllModelAiProductionWebOrigin(normalized)) return true;
-    if (isAllModelAiVercelProjectOrigin(normalized)) return true;
     if (configuredOrigins().includes(normalized)) return true;
     if (isLocalNetworkDevOrigin(normalized)) return true;
     const host = String(req?.get?.('x-forwarded-host') || req?.get?.('host') || '').split(',')[0].trim();
@@ -154,12 +153,8 @@ function createCredentialedCorsMiddleware() {
     return (req, res, next) => {
         cors({
             origin: (requestOrigin, callback) => {
-                if (!requestOrigin || requestOrigin === 'null') {
+                if (!requestOrigin) {
                     callback(null, true);
-                    return;
-                }
-                if (isElectronDesktopRequest(req)) {
-                    callback(null, requestOrigin);
                     return;
                 }
                 if (isAllowedOrigin(requestOrigin, req)) {

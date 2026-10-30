@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AiCreditsPurchaseModal from './AiCreditsPurchaseModal';
-import ProSubscribeButton from '../Subscribe/ProSubscribeButton';
 import { PRO_SUBSCRIPTION_PRICE_LABEL } from '../../lib/proSubscription';
+import { checkoutPathForPlan, savePendingCheckout } from '../../lib/pendingCheckout';
+import { isAuthInitializing } from '../../lib/authSessionStatus';
+import { useSession } from '../Session/SessionProvider';
 import './Pricing.css';
 
 /** Verified subscription catalog — amounts must match backend/src/billing/plans.js */
 const PLANS = [
   {
     slug: 'starter',
-    path: '/checkout/starter',
+    path: '/checkout?plan=starter',
     tier: 'Starter',
     price: '$5',
     desc: 'Core AI models for everyday work',
@@ -24,7 +26,7 @@ const PLANS = [
   },
   {
     slug: 'pro',
-    path: '/checkout/pro',
+    path: '/checkout?plan=pro',
     tier: 'Pro',
     price: PRO_SUBSCRIPTION_PRICE_LABEL,
     desc: 'Premium models, image generation, and priority routing',
@@ -37,11 +39,10 @@ const PLANS = [
     ],
     cta: 'Subscribe',
     featured: true,
-    proSubscribe: true,
   },
   {
     slug: 'unlimited',
-    path: '/checkout/unlimited',
+    path: '/checkout?plan=unlimited',
     tier: 'Unlimited',
     price: '$30',
     desc: 'All connected providers with the highest routing priority',
@@ -74,11 +75,10 @@ const AI_CREDITS_PLAN = {
   creditsCard: true,
 };
 
-function PricingCard({ plan, onSelect, onCreditsOpen }) {
+function PricingCard({ plan, onSelect, onCreditsOpen, authBusy = false }) {
   const handleKeyDown = (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      if (plan.proSubscribe) return;
       if (plan.creditsCard) onCreditsOpen();
       else onSelect(plan.path);
     }
@@ -86,13 +86,11 @@ function PricingCard({ plan, onSelect, onCreditsOpen }) {
 
   const handleActivate = (event) => {
     event.stopPropagation();
-    if (plan.proSubscribe) return;
     if (plan.creditsCard) onCreditsOpen();
     else onSelect(plan.path);
   };
 
   const handleCardActivate = () => {
-    if (plan.proSubscribe) return;
     if (plan.creditsCard) onCreditsOpen();
     else onSelect(plan.path);
   };
@@ -120,27 +118,32 @@ function PricingCard({ plan, onSelect, onCreditsOpen }) {
           <li key={item}>{item}</li>
         ))}
       </ul>
-      {plan.proSubscribe ? (
-        <ProSubscribeButton
-          variant="violet"
-          className="pro-subscribe-btn--pill pricing-pro-subscribe"
+      {plan.creditsCard ? (
+        <button
+          className={[
+            'pricing-btn',
+            'pricing-btn-pill',
+            'credits-btn',
+          ].filter(Boolean).join(' ')}
+          type="button"
+          onClick={handleActivate}
         >
           {plan.cta}
-        </ProSubscribeButton>
+        </button>
       ) : (
         <button
           className={[
             'pricing-btn',
             'pricing-btn-pill',
             plan.featured ? 'featured-btn' : '',
-            plan.creditsCard ? 'credits-btn' : '',
-            !plan.featured && !plan.creditsCard && plan.slug === 'starter' ? 'starter-btn' : '',
-            !plan.featured && !plan.creditsCard && plan.slug === 'unlimited' ? 'unlimited-btn' : '',
+            plan.slug === 'starter' ? 'starter-btn' : '',
+            plan.slug === 'unlimited' ? 'unlimited-btn' : '',
           ].filter(Boolean).join(' ')}
           type="button"
+          disabled={authBusy}
           onClick={handleActivate}
         >
-          {plan.cta}
+          {authBusy ? 'Checking account…' : plan.cta}
         </button>
       )}
     </article>
@@ -149,7 +152,22 @@ function PricingCard({ plan, onSelect, onCreditsOpen }) {
 
 export default function Pricing() {
   const navigate = useNavigate();
+  const { status, user } = useSession();
   const [creditsModalOpen, setCreditsModalOpen] = useState(false);
+  const authBusy = isAuthInitializing(status);
+
+  const openPlanCheckout = (path) => {
+    const plan = new URL(path, 'https://all-model-ai.local').searchParams.get('plan');
+    const checkoutPath = checkoutPathForPlan(plan);
+    if (!checkoutPath) return;
+    if (authBusy) return;
+    if (status === 'authenticated' && user?.email) {
+      navigate(checkoutPath);
+      return;
+    }
+    savePendingCheckout(plan);
+    navigate('/login', { state: { from: checkoutPath } });
+  };
 
   return (
     <section id="pricing" className="pricing-section">
@@ -162,13 +180,14 @@ export default function Pricing() {
           <PricingCard
             key={plan.slug}
             plan={plan}
-            onSelect={(path) => navigate(path)}
+            onSelect={openPlanCheckout}
             onCreditsOpen={() => setCreditsModalOpen(true)}
+            authBusy={authBusy}
           />
         ))}
         <PricingCard
           plan={AI_CREDITS_PLAN}
-          onSelect={(path) => navigate(path)}
+          onSelect={openPlanCheckout}
           onCreditsOpen={() => setCreditsModalOpen(true)}
         />
       </div>

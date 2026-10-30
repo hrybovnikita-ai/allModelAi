@@ -13,10 +13,11 @@ test('Pro subscription constants match WayForPay Pro product', () => {
   assert.match(source, /ba5962ea4be5f/);
 });
 
-test('Pricing uses ProSubscribeButton for Pro plan', () => {
+test('Pricing sends paid plans through authenticated checkout', () => {
   const pricing = readFileSync(join(root, 'src/components/Pricing/Pricing.jsx'), 'utf8');
-  assert.match(pricing, /ProSubscribeButton/);
-  assert.match(pricing, /proSubscribe: true/);
+  assert.match(pricing, /savePendingCheckout/);
+  assert.match(pricing, /\/checkout\?plan=pro/);
+  assert.doesNotMatch(pricing, /proSubscribe: true/);
 });
 
 test('Dashboard paid models use ProSubscribeButton not raw checkout link', () => {

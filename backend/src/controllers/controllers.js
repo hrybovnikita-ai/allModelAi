@@ -594,7 +594,19 @@ const registerUser = async (req, res) => {
             }).immediate();
         }
     } catch (error) {
-        if (!error.code?.startsWith('SQLITE_CONSTRAINT')) throw error;
+        const pgUnique = error.code === '23505' || error.code === 'SQLITE_CONSTRAINT_UNIQUE';
+        const sqliteConstraint = typeof error.code === 'string' && error.code.startsWith('SQLITE_CONSTRAINT');
+        if (!pgUnique && !sqliteConstraint) throw error;
+        // Concurrent register for the same email — re-read the winning row as a conflict.
+        let raced = null;
+        if (isPostgresConnection(connection)) {
+            raced = await findUserByNormalizedEmailAsync(connection, normalizedEmail);
+        } else {
+            raced = connection.database.prepare(
+                'SELECT id, password_hash AS passwordHash FROM users WHERE lower(trim(email)) = ?',
+            ).get(normalizedEmail);
+        }
+        newUser = { conflict: true, existing: raced || { id: null, passwordHash: null } };
     }
     if (newUser?.conflict) {
         const { existing } = newUser;
@@ -1211,6 +1223,7 @@ const {
     listWorkspaceItemRows,
 } = require('../db/postgresHttpReads');
 const {
+    findUserByNormalizedEmailAsync,
     registerUserPostgresAsync,
     userHasSocialIdentityAsync,
     getPasswordHashByUserIdAsync,
@@ -1870,6 +1883,14 @@ const createCheckoutSession = async (req, res) => {
     const session = await stripe.checkout.sessions.create(sessionParams, { idempotencyKey });
     const publishableKey = publishableKeyFromEnv();
     if (embedded) {
+        if (!publishableKey) {
+            return res.status(503).json({
+                message: stripeConfig.message || 'Stripe publishable key is not configured on the server.',
+                userMessage: stripeConfig.userMessage,
+                code: 'STRIPE_INCOMPLETE_CONFIG',
+                missingEnvVars: stripeConfig.missing,
+            });
+        }
         return res.status(201).json({
             clientSecret: session.client_secret,
             sessionId: session.id,
@@ -3025,10 +3046,11 @@ async function createChatResponseImpl(req, res) {
         }
     }
     const { classifyChatIntent } = require('../services/chatIntent');
+    const { buildCodingResponseInstruction } = require('../services/codingResponseGuide');
     const chatIntent = classifyChatIntent(latestPrompt);
     const codeRequested = chatIntent.coding;
     const codeFirstInstruction = codeRequested
-        ? ' The user requested code. Start the answer immediately with the complete runnable code in a fenced Markdown block using the correct language tag. Do not write an introduction before the code. Never promise code later in the answer. After the closing fence, add concise setup and usage instructions.'
+        ? buildCodingResponseInstruction(latestPrompt)
         : ' Do not output programming code, scripts, or pseudo-code unless the user explicitly asked to write, fix, implement, or debug code. Mentioning a programming language alone is not a request for code. For book, course, website, or resource questions, answer in prose with lists and links from provided web sources — not sample programs.';
     const recommendationInstruction = (chatIntent.recommendation || chatIntent.webSearch) && !codeRequested
         ? ' For recommendations, use numbered or bulleted lists with short descriptions. Prefer markdown links [label](url) and/or inline [n] citations using ONLY URLs from the web source list. Never invent URLs.'

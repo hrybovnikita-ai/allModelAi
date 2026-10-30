@@ -142,10 +142,13 @@ export function hasActiveRedirectPendingFlag() {
 }
 
 const REDIRECT_RECOVERY_WINDOW_MS = 180000;
+/** Max time a Google OAuth lock may stay held before auto-release (popup timeout is 120s). */
+export const GOOGLE_SIGNIN_FLOW_MAX_MS = 125_000;
 let redirectIntentReconcileBlocked = false;
 let googlePopupSignInActive = false;
 /** Synchronous guard: one Google OAuth flow (popup or redirect) at a time. */
 let googleSignInFlowActive = false;
+let googleSignInFlowStartedAt = 0;
 
 export const GOOGLE_POPUP_SIGNIN_EVENT = 'allmodelai-google-popup-signin';
 
@@ -157,28 +160,69 @@ export function isGoogleSignInFlowActive() {
   return googleSignInFlowActive || googlePopupSignInActive;
 }
 
+function isGoogleSignInFlowStale() {
+  if (!googleSignInFlowActive && !googlePopupSignInActive) return false;
+  // First observation without a timestamp: start the TTL clock, do not treat as stale yet.
+  if (!googleSignInFlowStartedAt) {
+    googleSignInFlowStartedAt = Date.now();
+    return false;
+  }
+  return Date.now() - googleSignInFlowStartedAt > GOOGLE_SIGNIN_FLOW_MAX_MS;
+}
+
+/**
+ * Force-clear popup/redirect locks after cancel, timeout, navigation, or a stuck flow.
+ * Safe to call repeatedly.
+ */
+export function forceReleaseGoogleSignInFlow(reason = 'manual') {
+  const wasActive = googleSignInFlowActive || googlePopupSignInActive;
+  googleSignInFlowActive = false;
+  googleSignInFlowStartedAt = 0;
+  if (googlePopupSignInActive) {
+    googlePopupSignInActive = false;
+    setRedirectIntentReconcileBlocked(false);
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent(GOOGLE_POPUP_SIGNIN_EVENT, { detail: { active: false, reason } }));
+    }
+  } else {
+    setRedirectIntentReconcileBlocked(false);
+  }
+  if (wasActive && typeof console !== 'undefined' && console.debug) {
+    console.debug('[AllModelAI:Auth] Released Google sign-in flow lock', { reason });
+  }
+}
+
 /** @returns {boolean} true when this caller may start OAuth */
 export function beginGoogleSignInFlow() {
   if (googleSignInFlowActive || googlePopupSignInActive) {
-    return false;
+    if (isGoogleSignInFlowStale()) {
+      forceReleaseGoogleSignInFlow('stale-flow-ttl');
+    } else {
+      return false;
+    }
   }
   googleSignInFlowActive = true;
+  googleSignInFlowStartedAt = Date.now();
   return true;
 }
 
 export function endGoogleSignInFlow() {
   googleSignInFlowActive = false;
+  if (!googlePopupSignInActive) {
+    googleSignInFlowStartedAt = 0;
+  }
 }
 
 export function resetGoogleSignInFlowForTests() {
-  googleSignInFlowActive = false;
-  googlePopupSignInActive = false;
-  redirectIntentReconcileBlocked = false;
+  forceReleaseGoogleSignInFlow('test-reset');
 }
 
 /** Desktop/Android popup flow — must not run redirect recovery or getRedirectResult in parallel. */
 export function markGooglePopupSignInStarted() {
   googlePopupSignInActive = true;
+  if (!googleSignInFlowStartedAt) {
+    googleSignInFlowStartedAt = Date.now();
+  }
   setRedirectIntentReconcileBlocked(true);
   clearSocialRedirectIntent();
   void import('./authBootstrap.js').then(({ invalidateAuthBootstrap }) => {

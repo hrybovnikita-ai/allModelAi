@@ -182,9 +182,9 @@ function registerAnoninChatRoutes() {
 
 const socialAuth = require('../socialAuth');
 const clerkAuth = require('../clerkAuth');
-router.post('/auth/firebase/challenge', socialAuth.browserRequest, socialAuth.challenge);
-router.post('/auth/firebase', socialAuth.browserRequest, socialAuth.exchange);
-router.post('/auth/clerk/exchange', clerkAuth.browserRequest, clerkAuth.exchangeClerkSession);
+router.post('/auth/firebase/challenge', socialAuth.browserRequest, authAttemptRateLimit('social-challenge', { limit: 120 }), socialAuth.challenge);
+router.post('/auth/firebase', socialAuth.browserRequest, authAttemptRateLimit('social-exchange', { limit: 120 }), socialAuth.exchange);
+router.post('/auth/clerk/exchange', clerkAuth.browserRequest, authAttemptRateLimit('clerk-exchange', { limit: 120 }), clerkAuth.exchangeClerkSession);
 router.get('/auth/connections', socialAuth.connections);
 registerAnoninChatRoutes();
 const { cachePublicResponse } = require('../cache');

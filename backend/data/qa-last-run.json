@@ -1,0 +1,16 @@
+{
+  "recordedAt": null,
+  "source": "template",
+  "note": "Updated by scripts/record-qa-summary.mjs in CI or locally after test runs.",
+  "buildStatus": "unknown",
+  "suites": {
+    "backendCritical": { "total": 0, "passed": 0, "failed": 0, "skipped": 0 },
+    "frontendCritical": { "total": 0, "passed": 0, "failed": 0, "skipped": 0 },
+    "playwrightSmoke": { "total": 0, "passed": 0, "failed": 0, "skipped": 0 }
+  },
+  "authentication": {
+    "status": "not_run",
+    "details": []
+  },
+  "failures": []
+}

@@ -4,6 +4,7 @@ import {
   isClerkPublishableKeyConfigured,
   isClerkTestRouteEnabled,
 } from './clerkTestConfig.js';
+import { clerkAuthPasswordLocalization } from './clerkPasswordPolicy.js';
 
 export {
   CLERK_TEST_PATH,
@@ -19,6 +20,11 @@ export function isClerkMainAuthEnvEnabled(env = import.meta.env || {}) {
 
 export function isClerkMainAuthClientReady(env = import.meta.env || {}) {
   return isClerkMainAuthEnvEnabled(env) && isClerkPublishableKeyConfigured(env);
+}
+
+/** Localization overrides for Clerk embedded auth (password hints stay simple; Clerk API still validates). */
+export function clerkAuthLocalization() {
+  return clerkAuthPasswordLocalization();
 }
 
 /** Compact dark/violet styling for Clerk embedded in the AllModelAI modal. */

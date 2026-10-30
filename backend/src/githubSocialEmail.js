@@ -7,14 +7,14 @@ function normalizeEntryEmail(entry) {
 function pickGitHubSignInEmail(entries) {
     if (!Array.isArray(entries) || entries.length === 0) return null;
 
-    const primaryVerified = entries.find((entry) => entry?.primary && entry?.verified);
+    const primaryVerified = entries.find((entry) => entry?.primary === true && entry?.verified === true);
     if (primaryVerified) {
         const email = normalizeEntryEmail(primaryVerified);
         if (email.length <= 254 && EMAIL_RE.test(email)) return email;
     }
 
     for (const entry of entries) {
-        if (!entry?.verified) continue;
+        if (entry?.verified !== true) continue;
         const email = normalizeEntryEmail(entry);
         if (email.length <= 254 && EMAIL_RE.test(email)) return email;
     }
@@ -24,6 +24,7 @@ function pickGitHubSignInEmail(entries) {
 
 async function githubGet(accessToken, path) {
     const response = await fetch(`https://api.github.com${path}`, {
+        signal: AbortSignal.timeout(10000),
         headers: {
             Accept: 'application/vnd.github+json',
             Authorization: `Bearer ${accessToken}`,
@@ -32,6 +33,9 @@ async function githubGet(accessToken, path) {
         },
     });
     if (!response.ok) {
+        if (response.status === 429 || response.status >= 500) {
+            throw Object.assign(new Error('GitHub is temporarily unavailable. Please retry.'), { status: 503, code: 'GITHUB_UNAVAILABLE' });
+        }
         const err = Object.assign(new Error('GitHub credentials are invalid or expired. Sign in again.'), { status: 401, code: 'INVALID_GITHUB_TOKEN' });
         throw err;
     }

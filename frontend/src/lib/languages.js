@@ -578,9 +578,22 @@ const STRINGS = {
 
 const RTL_CODES = ["ar", "ar-EG"];
 
+function translationText(value) {
+  return typeof value === 'string' && value.trim() ? value : '';
+}
+
 export const translate = (key, code, values = {}) => {
-  const text = CHAT_STRINGS[code]?.[key] || INTERFACE_STRINGS[code]?.[key] || STRINGS[key]?.[code] || INTERFACE_STRINGS.en[key] || STRINGS[key]?.en || key;
-  return text.replace(/\{(\w+)\}/g, (match, name) => String(values[name] ?? match));
+  if (typeof key !== 'string' || !key.trim()) return ' ';
+  const lookup = key;
+  const text = translationText(CHAT_STRINGS[code]?.[lookup])
+    || translationText(INTERFACE_STRINGS[code]?.[lookup])
+    || translationText(STRINGS[lookup]?.[code])
+    || translationText(INTERFACE_STRINGS.en?.[lookup])
+    || translationText(STRINGS[lookup]?.en)
+    || translationText(lookup)
+    || ' ';
+  const slots = values && typeof values === 'object' ? values : {};
+  return text.replace(/\{(\w+)\}/g, (match, name) => String(slots[name] ?? match));
 };
 
 export const isRtlLanguage = (code) => RTL_CODES.includes(code);
@@ -588,7 +601,9 @@ export const isRtlLanguage = (code) => RTL_CODES.includes(code);
 // Applies the chosen language to the document and returns its metadata.
 export const applyLanguage = (name) => {
   const language = LANGUAGES.find((item) => item.name === name || item.code === name) || LANGUAGES[0];
-  document.documentElement.lang = language.code;
-  document.documentElement.dir = isRtlLanguage(language.code) ? "rtl" : "ltr";
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = language.code;
+    document.documentElement.dir = isRtlLanguage(language.code) ? 'rtl' : 'ltr';
+  }
   return language;
 };

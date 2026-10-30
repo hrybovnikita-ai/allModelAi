@@ -29,6 +29,7 @@ import {
 import { socialAuthDebug } from '../../lib/socialAuthDiagnostics.js';
 import { COOKIE_CONSENT_UPDATED_EVENT } from '../../lib/cookieConsent.js';
 import { startFirebaseAuthSessionSync } from '../../lib/firebaseAuthSync.js';
+import { hydrateUiLanguageFromAccount, resetLanguageHydration } from '../../lib/languagePreference.js';
 
 export const SessionContext = createContext(null);
 
@@ -254,6 +255,7 @@ export function SessionProvider({ children }) {
   useEffect(() => subscribeSessionCleared(() => {
     revision.current += 1;
     refreshInFlight.current = null;
+    resetLanguageHydration();
     setState({
       status: AUTH_STATUS.UNAUTHENTICATED,
       user: null,
@@ -261,6 +263,19 @@ export function SessionProvider({ children }) {
       connectionIssue: null,
     });
   }), []);
+
+  useEffect(() => {
+    if (state.status !== AUTH_STATUS.AUTHENTICATED || !state.sessionVerified || !state.user?.email) {
+      return undefined;
+    }
+    let cancelled = false;
+    void hydrateUiLanguageFromAccount(state.user.email).catch(() => {
+      if (!cancelled) return null;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [state.status, state.sessionVerified, state.user?.email]);
 
   useEffect(() => {
     const onPopupSignIn = (event) => {

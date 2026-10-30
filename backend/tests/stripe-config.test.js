@@ -33,6 +33,34 @@ test('stripeConfigurationReport lists missing env vars without exposing secrets'
     }
 });
 
+test('publishableKeyFromEnv accepts pk_* in deprecated STRIPE_API_KEY name', () => {
+    const prev = {
+        pub: process.env.STRIPE_PUBLISHABLE_KEY,
+        api: process.env.STRIPE_API_KEY,
+        mode: process.env.STRIPE_MODE,
+        secret: process.env.STRIPE_SECRET_KEY,
+    };
+    delete process.env.STRIPE_PUBLISHABLE_KEY;
+    delete process.env.VITE_STRIPE_PUBLISHABLE_KEY;
+    process.env.STRIPE_API_KEY = 'pk_test_alias_only_not_real';
+    process.env.STRIPE_SECRET_KEY = 'sk_test_placeholder_not_real';
+    process.env.STRIPE_MODE = 'test';
+    try {
+        assert.equal(publishableKeyFromEnv(), 'pk_test_alias_only_not_real');
+        const report = stripeConfigurationReport();
+        assert.equal(report.ok, true);
+    } finally {
+        if (prev.pub) process.env.STRIPE_PUBLISHABLE_KEY = prev.pub;
+        else delete process.env.STRIPE_PUBLISHABLE_KEY;
+        if (prev.api) process.env.STRIPE_API_KEY = prev.api;
+        else delete process.env.STRIPE_API_KEY;
+        if (prev.secret) process.env.STRIPE_SECRET_KEY = prev.secret;
+        else delete process.env.STRIPE_SECRET_KEY;
+        if (prev.mode) process.env.STRIPE_MODE = prev.mode;
+        else delete process.env.STRIPE_MODE;
+    }
+});
+
 test('stripeConfigurationReport ok when test keys and publishable key are set', () => {
     const prev = {
         secret: process.env.STRIPE_SECRET_KEY,

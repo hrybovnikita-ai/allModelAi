@@ -17,14 +17,14 @@ export default function SocialAuthCallback() {
       try {
         if (!peekRedirectIntent()) {
           if (!active) return;
-          setError('No pending Google sign-in was found. Try again from the login page.');
+          setError('No pending social sign-in was found. Try again from the login page.');
           return;
         }
         setMessage('Authenticating with your provider…');
         const user = await awaitGoogleRedirectRecovery('SocialAuthCallback');
         if (!active) return;
         if (!user) {
-          setError('Google sign-in could not be completed. Try again from the login page.');
+          setError('Social sign-in could not be completed. Try again from the login page.');
           return;
         }
         setMessage('Signing you in…');

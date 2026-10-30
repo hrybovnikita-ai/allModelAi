@@ -5,6 +5,12 @@
   color: #f4f0ff;
 }
 
+.clerk-test-password-hint {
+  margin: 0 0 12px;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
 .clerk-test-banner {
   color: #c4b5fd;
 }

@@ -1,5 +1,26 @@
 import { parseFenceHeader } from './parseCodeFence.js';
 
+const TRAILING_PROSE_RE = /\n{2,}((?:#{1,3} |\*\*(?:How|Suggested|Next)|How to run|How it works|Suggested improvements|Как |Як |Що ).[\s\S]*)$/;
+
+/** If a model leaves the explanation inside a fence, render that tail as text. */
+function detachTrailingExplanation(code, language) {
+  if (/^(md|markdown|text)$/i.test(String(language || ''))) {
+    return { code, trailing: '' };
+  }
+  const match = String(code || '').match(TRAILING_PROSE_RE);
+  if (!match || match.index < 8) return { code, trailing: '' };
+  return {
+    code: code.slice(0, match.index).replace(/\n$/, ''),
+    trailing: `\n\n${match[1]}`,
+  };
+}
+
+function pushCodePart(parts, language, filename, rawCode) {
+  const { code, trailing } = detachTrailingExplanation(rawCode, language);
+  parts.push({ type: 'code', language, filename, value: code });
+  if (trailing.trim()) parts.push({ type: 'text', value: trailing });
+}
+
 /**
  * Split assistant Markdown into text + fenced code parts.
  * Preserves newlines and indentation inside fences.
@@ -17,9 +38,8 @@ export function splitMessageParts(text) {
       parts.push({ type: 'text', value: source.slice(lastIndex, match.index) });
     }
     const { language, filename } = parseFenceHeader(match[1]);
-    // Keep internal newlines; only trim a single trailing newline from the fence closer.
     const code = String(match[2] || '').replace(/\r\n/g, '\n').replace(/\n$/, '');
-    parts.push({ type: 'code', language, filename, value: code });
+    pushCodePart(parts, language, filename, code);
     lastIndex = codePattern.lastIndex;
   }
 
@@ -31,12 +51,7 @@ export function splitMessageParts(text) {
       const beforeFence = remainder.slice(0, fenceIndex);
       if (beforeFence) parts.push({ type: 'text', value: beforeFence });
       const { language, filename } = parseFenceHeader(openFence[1]);
-      parts.push({
-        type: 'code',
-        language,
-        filename,
-        value: String(openFence[2] || '').replace(/\r\n/g, '\n'),
-      });
+      pushCodePart(parts, language, filename, String(openFence[2] || '').replace(/\r\n/g, '\n'));
     } else {
       parts.push({ type: 'text', value: remainder });
     }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { IconLock, IconShield } from './CheckoutIcons';
-import CardBrandBadges from './CardBrandBadges';
+import PaymentMethodBadges from './PaymentMethodBadges';
 import PaymentButton from './PaymentButton';
 import SubscriptionBillingFields from './SubscriptionBillingFields';
 import { BILLING_FIELD_INITIAL } from './billingFieldUtils';
@@ -62,7 +62,7 @@ export default function MockCheckoutForm({
   }, []);
 
   const formComplete = useMemo(() => {
-    const billingKeys = ['firstName', 'lastName', 'country', 'city', 'streetAddress', 'postalCode', 'email'];
+    const billingKeys = ['firstName', 'lastName', 'middleName', 'country', 'city', 'streetAddress', 'postalCode', 'email', 'dateOfBirth'];
     if (!billingKeys.every((key) => String(fields[key]).trim())) return false;
     if (!fields.email.includes('@')) return false;
     if (!demoPreview) return true;
@@ -92,8 +92,6 @@ export default function MockCheckoutForm({
     navigate('/dashboard', { replace: true });
   };
 
-  const payLabel = `Subscribe — ${priceLabel} / ${interval}`;
-
   return (
     <>
       <form id={formId} className="mock-checkout-form" onSubmit={handleSubmit} noValidate>
@@ -102,15 +100,15 @@ export default function MockCheckoutForm({
           onChange={onFieldChange}
           disabled={disabled || submitting}
           testModeLabel={testModeLabel}
-          secureLabel="Demo"
+          secureLabel="Secure payment"
         />
 
         {demoPreview && (
-          <fieldset className="mock-checkout-fieldset" disabled={disabled || submitting}>
-            <legend className="mock-checkout-legend">Payment details (demo only)</legend>
+          <fieldset className="mock-checkout-fieldset mock-checkout-fieldset--payment" disabled={disabled || submitting}>
+            <legend className="mock-checkout-legend">Card details</legend>
             <div className="production-stripe-checkout__brands">
-              <p className="production-stripe-checkout__brands-label">Supported cards (visual)</p>
-              <CardBrandBadges />
+              <p className="production-stripe-checkout__brands-label">Accepted methods</p>
+              <PaymentMethodBadges />
             </div>
             <label className="mock-checkout-field mock-checkout-field--card">
               <span className="mock-checkout-label-row">
@@ -166,12 +164,16 @@ export default function MockCheckoutForm({
           loadingLabel="Processing payment…"
           disabled={disabled || !formComplete}
         >
-          {payLabel}
+          Subscribe
         </PaymentButton>
 
         <ul className="checkout-trust-list mock-checkout-trust">
-          <li><IconShield className="checkout-trust-icon" /> {demoPreview ? 'Demo Preview — no subscription is created' : 'Preview layout only'}</li>
-          <li><IconLock className="checkout-trust-icon" /> Live billing uses Stripe secure fields when configured</li>
+          <li><IconLock className="checkout-trust-icon" /> Secure payment</li>
+          <li><IconShield className="checkout-trust-icon" /> Cancel anytime</li>
+          <li>Subscription renews automatically until you cancel</li>
+          {demoPreview ? (
+            <li className="mock-checkout-trust-note">Live charges activate when Stripe is configured on the server.</li>
+          ) : null}
         </ul>
       </form>
 

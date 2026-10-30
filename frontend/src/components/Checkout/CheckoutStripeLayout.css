@@ -7,8 +7,23 @@
     linear-gradient(165deg, #05070f 0%, #0b1220 42%, #12101f 100%);
 }
 
-.checkout-page--stripe-layout .checkout-header {
+.checkout-page--stripe-layout:not(.checkout-page--unified) .checkout-header {
   display: none;
+}
+
+.checkout-page--unified .payment-form-card--light,
+.checkout-page--unified .payment-form-card {
+  border: 1px solid rgba(124, 92, 255, 0.22);
+  background: rgba(8, 11, 22, 0.72);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(167, 139, 250, 0.08) inset,
+    0 0 40px rgba(99, 102, 241, 0.08);
+}
+
+.checkout-page--unified .mock-checkout-trust-note {
+  color: #94a3b8;
+  font-size: 0.78rem;
 }
 
 .checkout-layout--cursor {
@@ -174,7 +189,7 @@
   gap: 10px;
 }
 
-.checkout-summary-panel--cursor .checkout-summary-list li {
+.checkout-summary-panel--cursor .checkout-summary-list:not(.checkout-summary-list--premium) li {
   display: grid;
   grid-template-columns: 18px 1fr;
   gap: 10px;
@@ -182,6 +197,22 @@
   color: #cbd5e1;
   font-size: 0.9rem;
   line-height: 1.4;
+}
+
+.checkout-summary-plan-name {
+  margin: 8px 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.checkout-benefits-title {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #a78bfa;
 }
 
 .checkout-totals {

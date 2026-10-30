@@ -8,8 +8,27 @@ const { stripeUserMessageFromReport } = require('./stripeUserMessages');
 
 const envTrim = (name) => String(process.env[name] || '').trim();
 
+function isPublishableKey(value) {
+    const key = String(value || '').trim();
+    return key.startsWith('pk_test_') || key.startsWith('pk_live_');
+}
+
+/**
+ * Resolve Stripe publishable key from env (never logs the value).
+ * Accepts deprecated misnamed vars when they clearly hold a pk_* key.
+ */
 function publishableKeyFromEnv() {
-    return envTrim('STRIPE_PUBLISHABLE_KEY') || envTrim('VITE_STRIPE_PUBLISHABLE_KEY');
+    const candidates = [
+        envTrim('STRIPE_PUBLISHABLE_KEY'),
+        envTrim('VITE_STRIPE_PUBLISHABLE_KEY'),
+        envTrim('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY'),
+        envTrim('STRIPE_API_KEY'),
+        envTrim('STRIPE_PUBLIC_KEY'),
+    ];
+    for (const candidate of candidates) {
+        if (isPublishableKey(candidate)) return candidate;
+    }
+    return '';
 }
 
 /**

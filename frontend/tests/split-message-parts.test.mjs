@@ -43,3 +43,30 @@ test('accepts language tag without newline before code', () => {
   assert.match(code.value, /def hello\(\):/);
   assert.match(code.value, /\n {4}return 1/);
 });
+
+test('keeps explanation after a closed python fence', () => {
+  const text = 'Intro\n```python\nprint(1)\n```\n\n### How to run\npython game.py\n';
+  const parts = splitMessageParts(text);
+  assert.equal(parts.filter((part) => part.type === 'code').length, 1);
+  assert.match(parts.filter((part) => part.type === 'text').map((part) => part.value).join('\n'), /How to run/);
+  assert.match(parts.filter((part) => part.type === 'text').map((part) => part.value).join('\n'), /python game.py/);
+});
+
+test('pulls a heading left inside an unclosed fence into text', () => {
+  const text = '```python\nprint("ship")\n\n### How it works\nThe loop moves the player.\n';
+  const parts = splitMessageParts(text);
+  const code = parts.find((part) => part.type === 'code');
+  const textPart = parts.filter((part) => part.type === 'text').map((part) => part.value).join('\n');
+  assert.match(code.value, /print\("ship"\)/);
+  assert.doesNotMatch(code.value, /How it works/);
+  assert.match(textPart, /How it works/);
+});
+
+test('keeps two separate code blocks', () => {
+  const text = '```html\n<div></div>\n```\n```css\nbody{}\n```\nDone';
+  const codes = splitMessageParts(text).filter((part) => part.type === 'code');
+  assert.equal(codes.length, 2);
+  assert.equal(codes[0].language, 'html');
+  assert.equal(codes[1].language, 'css');
+});
+

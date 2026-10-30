@@ -301,12 +301,28 @@ const createStorageIdea = async (req, res) => {
     }
 
     if (idea === 'chat-settings') {
+        const existing = isPostgresConnection(connection)
+            ? parseJson((await pgQuery(connection, 'SELECT settings FROM storage_chat_settings WHERE email = $1', [email])).rows[0]?.settings, {})
+            : parseJson(database.prepare('SELECT settings FROM storage_chat_settings WHERE email = ?').get(email)?.settings, {});
+        const pickString = (key, fallback, max) => (
+            Object.prototype.hasOwnProperty.call(req.body || {}, key)
+                ? String(req.body[key] ?? fallback).slice(0, max)
+                : String(existing[key] ?? fallback).slice(0, max)
+        );
+        const uiLanguage = Object.prototype.hasOwnProperty.call(req.body || {}, 'uiLanguage')
+            ? String(req.body.uiLanguage || '').trim().slice(0, 40)
+            : String(existing.uiLanguage || '').trim().slice(0, 40);
         const settings = {
-            defaultModel: String(req.body.defaultModel || 'smart').slice(0, 64),
-            temperature: Math.max(0, Math.min(Number(req.body.temperature) || 0.7, 2)),
-            webSearch: Boolean(req.body.webSearch),
-            routerMode: String(req.body.routerMode || 'balanced').slice(0, 32),
-            responseLanguage: String(req.body.responseLanguage || 'auto').slice(0, 16),
+            defaultModel: pickString('defaultModel', 'smart', 64),
+            temperature: Object.prototype.hasOwnProperty.call(req.body || {}, 'temperature')
+                ? Math.max(0, Math.min(Number(req.body.temperature) || 0.7, 2))
+                : Math.max(0, Math.min(Number(existing.temperature) || 0.7, 2)),
+            webSearch: Object.prototype.hasOwnProperty.call(req.body || {}, 'webSearch')
+                ? Boolean(req.body.webSearch)
+                : Boolean(existing.webSearch),
+            routerMode: pickString('routerMode', 'balanced', 32),
+            responseLanguage: pickString('responseLanguage', 'auto', 16),
+            ...(uiLanguage ? { uiLanguage } : {}),
         };
         if (isPostgresConnection(connection)) {
             await pgQuery(connection, `INSERT INTO storage_chat_settings (email, settings, updated_at) VALUES ($1, $2, $3)

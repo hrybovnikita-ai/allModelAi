@@ -65,7 +65,7 @@ test('invalid, expired, revoked, stale, unsupported and unverified tokens cannot
     assert.equal(guest.body.user, null);
   }
 });
-test('verified provider email links to existing password account and preserves data', async () => {
+test('email collision requires explicit authenticated linking and preserves data', async () => {
   const owner = request.agent(app);
   const email = 'owner-social@example.com';
   const created = await owner.post('/api/auth/register').send({ name: 'Existing Owner', email, password: 'original-password' });
@@ -84,7 +84,10 @@ test('verified provider email links to existing password account and preserves d
   `).run('pro', new Date().toISOString(), email);
   const beforeHistory = (await owner.get('/api/chat/history')).body;
   const providerToken = token('existing-provider', { email });
-  const linked = await login(request.agent(app), providerToken);
+  const collision = await login(request.agent(app), providerToken);
+  assert.equal(collision.status, 409);
+  assert.equal(collision.body.code, 'ACCOUNT_LINK_REQUIRED');
+  const linked = await login(owner, providerToken, { intent: 'link' });
   assert.equal(linked.status, 200, JSON.stringify(linked.body));
   assert.equal(linked.body.user.id, id);
   assert.equal(db.prepare('SELECT password_hash FROM users WHERE id = ?').get(id).password_hash, password);
@@ -117,12 +120,25 @@ test('parallel provider sign-ins create only one user and one identity', async (
 test('password registration racing social registration cannot overwrite the social account', async () => {
   const value = token('race-password');
   const results = await Promise.all([
-    request(app).post('/api/auth/login').send({ name: 'Password', email: 'race-password@example.com', password: 'must-not-overwrite' }),
+    request(app).post('/api/auth/register').send({ name: 'Password', email: 'race-password@example.com', password: 'must-not-overwrite' }),
     login(request.agent(app), value),
   ]);
   assert.equal(db.prepare('SELECT count(*) AS n FROM users WHERE email = ?').get('race-password@example.com').n, 1);
-  assert.ok(results.some((result) => result.status === 200));
-  assert.ok(results.every((result) => [200, 401, 409].includes(result.status)));
+  assert.ok(results.some((result) => result.status === 200 || result.status === 201));
+  assert.ok(results.every((result) => [200, 201, 401, 409].includes(result.status)));
+});
+
+test('GitHub ID token without access token and without email returns GITHUB_ACCESS_TOKEN_REQUIRED', async () => {
+  const agent = request.agent(app);
+  const idToken = token('github-no-email', {
+    email: null,
+    email_verified: false,
+    firebase: { sign_in_provider: 'github.com', identities: { 'github.com': ['gh-no-email'] } },
+  });
+  const result = await login(agent, idToken);
+  assert.equal(result.status, 403, JSON.stringify(result.body));
+  assert.equal(result.body.code, 'GITHUB_ACCESS_TOKEN_REQUIRED');
+  assert.match(result.body.message || '', /email/i);
 });
 test('CSRF origin, custom header, cookie binding and one-time challenge are enforced', async () => {
   assert.equal((await request(app).post('/api/auth/firebase/challenge').send({})).status, 403);

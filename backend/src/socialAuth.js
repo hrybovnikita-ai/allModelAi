@@ -69,7 +69,7 @@ async function challenge(req, res) {
         await insertSocialChallengeAsync(connection, {
             stateHash: hash(state),
             intent: link ? 'link' : 'login',
-            sessionHash: link ? hash(req.cookies.allmodelai_session) : null,
+            sessionHash: link ? hash(readSessionToken(req)) : null,
             userId: link ? owner : null,
             expiresAt,
         });
@@ -77,7 +77,7 @@ async function challenge(req, res) {
         const db = connection.database;
         db.prepare('DELETE FROM social_auth_challenges WHERE expires_at < ?').run(Date.now());
         db.prepare('INSERT INTO social_auth_challenges (state_hash, intent, session_hash, user_id, expires_at) VALUES (?, ?, ?, ?, ?)')
-            .run(hash(state), link ? 'link' : 'login', link ? hash(req.cookies.allmodelai_session) : null, link ? owner : null, expiresAt);
+            .run(hash(state), link ? 'link' : 'login', link ? hash(readSessionToken(req)) : null, link ? owner : null, expiresAt);
     }
     res.cookie(stateCookie, state, { ...sessionCookieOptions(req), maxAge: 300000 });
     return res.json({ state });
@@ -118,54 +118,6 @@ function profileFromClaims(claims) {
         return passwordIdentity(claims);
     }
     return identity(claims);
-}
-
-async function maybePersistPasswordSyncFromExchange(req, connection, user, profile) {
-    if (profile?.provider !== 'password' || !user?.id || !user?.email) {
-        return;
-    }
-    const passwordSync = typeof req.body.passwordSync === 'string' ? req.body.passwordSync : '';
-    if (!passwordSync || passwordSync.length > 1024) {
-        return;
-    }
-    const { validatePasswordEnrollmentInput } = require('./authHelpers');
-    const { hashPassword } = require('./password');
-    const { loadAuthUserByEmailAsync } = require('./authUser');
-    const { isValidPasswordHashFormat } = require('./authPasswordHash');
-    const { updateUserPasswordAsync } = require('./db/postgresHttpProduction');
-    const { refreshCachedAuthUser } = require('./accountPassword');
-
-    const validation = validatePasswordEnrollmentInput(
-        { newPassword: passwordSync, confirmPassword: passwordSync },
-        { passwordEnabled: false },
-    );
-    if (!validation.ok) {
-        return;
-    }
-
-    const normalizedEmail = normalizeLoginEmail(user.email);
-    const existing = await loadAuthUserByEmailAsync(connection, normalizedEmail);
-    if (existing?.passwordHash && isValidPasswordHashFormat(existing.passwordHash)) {
-        return;
-    }
-
-    const nextHash = await hashPassword(validation.newPassword);
-    if (!isValidPasswordHashFormat(nextHash)) {
-        return;
-    }
-
-    if (isPostgresConnection(connection)) {
-        await updateUserPasswordAsync(connection, nextHash, {
-            userId: user.id,
-            email: normalizedEmail,
-            revokeSessions: false,
-        });
-    } else {
-        connection.database
-            .prepare('UPDATE users SET password_hash = ?, email_verified = 1 WHERE id = ?')
-            .run(nextHash, user.id);
-    }
-    await refreshCachedAuthUser(connection, normalizedEmail);
 }
 
 function githubSubjectFromClaims(claims) {
@@ -213,7 +165,7 @@ async function exchange(req, res) {
 
         let profile;
         let firebaseUid = null;
-        let passwordProviderLogin = false;
+
         if (idToken) {
             const claims = await admin.verifySocialToken(idToken);
             firebaseUid = claims.sub || claims.user_id || null;
@@ -221,11 +173,21 @@ async function exchange(req, res) {
             if (pending.intent === 'link' && provider === 'password') {
                 throw fail(400, 'INVALID_REQUEST', 'Set your AllModelAI password in Settings or Forgot password instead of linking email this way.');
             }
-            passwordProviderLogin = provider === 'password';
+
             if (provider === 'github.com' && githubAccessToken) {
-                profile = await githubSocialEmail.profileFromGitHubAccessToken(githubAccessToken, githubSubjectFromClaims(claims));
+                assertRecentFirebaseLogin(claims);
+                const subject = githubSubjectFromClaims(claims);
+                if (!subject) throw fail(401, 'INVALID_IDENTITY', 'GitHub identity could not be verified.');
+                profile = await githubSocialEmail.profileFromGitHubAccessToken(githubAccessToken, subject);
             } else if (provider === 'github.com' && claimsNeedGitHubEmailResolution(claims)) {
-                throw fail(403, 'VERIFIED_EMAIL_REQUIRED', 'GitHub did not share a verified email. Try signing in again.');
+                // Firebase often omits private GitHub emails from the ID token. Without the
+                // OAuth access token we cannot call GET /user/emails — do not conflate that
+                // with "GitHub has no verified email".
+                throw fail(
+                    403,
+                    'GITHUB_ACCESS_TOKEN_REQUIRED',
+                    'GitHub sign-in needs email access. Sign in again and allow AllModelAI to read your GitHub email address (it can stay private).',
+                );
             } else {
                 profile = profileFromClaims(claims);
             }
@@ -238,7 +200,7 @@ async function exchange(req, res) {
         if (isPostgresConnection(connection)) {
             if (pending.intent === 'link') {
                 const owner = await sessionOwner(req);
-                if (owner !== pending.user_id || hash(req.cookies.allmodelai_session || '') !== pending.session_hash) {
+                if (owner !== pending.user_id || hash(readSessionToken(req) || '') !== pending.session_hash) {
                     throw fail(401, 'SESSION_CHANGED', 'Your session changed. Sign in and confirm linking again.');
                 }
             }
@@ -257,7 +219,7 @@ async function exchange(req, res) {
             result = db.transaction(() => {
                 if (pending.intent === 'link') {
                     const ownerSync = db.prepare('SELECT user_id FROM auth_sessions WHERE token_hash = ? AND expires_at > ?').get(hashToken(readSessionToken(req) || ''), Date.now())?.user_id;
-                    if (ownerSync !== pending.user_id || hash(req.cookies.allmodelai_session || '') !== pending.session_hash) {
+                    if (ownerSync !== pending.user_id || hash(readSessionToken(req) || '') !== pending.session_hash) {
                         throw fail(401, 'SESSION_CHANGED', 'Your session changed. Sign in and confirm linking again.');
                     }
                 }
@@ -276,10 +238,7 @@ async function exchange(req, res) {
                         'SELECT id, name FROM users WHERE lower(trim(email)) = ?',
                     ).get(canonicalEmail);
                     if (existing) {
-                        id = existing.id;
-                        if (profile.name && (!existing.name || existing.name === profile.email.split('@')[0])) {
-                            db.prepare('UPDATE users SET name = ? WHERE id = ?').run(profile.name, id);
-                        }
+                        throw fail(409, 'ACCOUNT_LINK_REQUIRED', 'Sign in to your existing account, then connect this provider in Settings. Use Forgot password if you need to recover access.');
                     } else {
                         id = Number(db.prepare('INSERT INTO users (name, email, avatar_url, email_verified) VALUES (?, ?, ?, 1)').run(profile.name, canonicalEmail, profile.avatar).lastInsertRowid);
                     }
@@ -300,20 +259,20 @@ async function exchange(req, res) {
             }
         }
 
-        if (passwordProviderLogin && result?.user) {
-            await maybePersistPasswordSyncFromExchange(req, connection, result.user, profile);
-        }
-
-        let sessionToken;
-        if (result.createSession) {
-            sessionToken = await setSession(req, res, result.user, req.body.rememberMe !== false);
-        }
-
         let stored;
         if (isPostgresConnection(connection)) {
             stored = await getStoredUserForCacheAsync(connection, result.user.id);
         } else {
             stored = connection.database.prepare('SELECT id, name, email, password_hash AS passwordHash FROM users WHERE id = ?').get(result.user.id);
+        }
+        // A local password reset must not be bypassed using an older Firebase
+        // password. Firebase remains a bridge only for password-less accounts.
+        if (profile.provider === 'password' && stored?.passwordHash) {
+            throw fail(401, 'INVALID_CREDENTIALS', 'Sign in with your AllModelAI password or use Forgot password.');
+        }
+        let sessionToken;
+        if (result.createSession) {
+            sessionToken = await setSession(req, res, result.user, req.body.rememberMe !== false);
         }
         const index = users.findIndex((user) => user.id === result.user.id);
         if (index < 0) users.push(stored);

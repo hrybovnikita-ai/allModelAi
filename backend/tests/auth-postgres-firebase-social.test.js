@@ -88,7 +88,7 @@ test('postgres firebase exchange uses valid email_verified SQL and creates sessi
     }
 });
 
-test('postgres firebase links verified email to an existing password account', async () => {
+test('postgres firebase refuses implicit linking by verified email', async () => {
     const email = 'existing-google@example.com';
     const mockPool = createPostgresHttpMockPool({
         id: 50,
@@ -112,9 +112,9 @@ test('postgres firebase links verified email to an existing password account', a
             state: challenge.body.state,
             intent: 'login',
         });
-        assert.equal(exchange.status, 200, JSON.stringify(exchange.body));
-        assert.equal(exchange.body.user.id, 50);
-        assert.equal(exchange.body.user.email, email);
+        assert.equal(exchange.status, 409, JSON.stringify(exchange.body));
+        assert.equal(exchange.body.code, 'ACCOUNT_LINK_REQUIRED');
+        assert.ok(!exchange.headers['set-cookie']?.some((cookie) => cookie.startsWith('allmodelai_session=')));
     } finally {
         admin.verifySocialToken = originalVerify;
         db.restore();

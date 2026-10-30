@@ -100,7 +100,6 @@ export async function signInWithEmailPasswordAllModelAI({ email, password, remem
       const user = await exchangeSocialSession(idToken, {
         rememberMe,
         challenge,
-        passwordSync: password,
       });
       return { channel: 'firebase', data: { user, message: 'Signed in successfully' }, user };
     } finally {

@@ -98,6 +98,24 @@
   letter-spacing: 0.04em;
 }
 
+.mock-checkout-field input[type="date"] {
+  color-scheme: dark;
+}
+
+.checkout-trust-inline {
+  margin: 14px 0 0;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.mock-checkout-field input:focus-visible {
+  outline: 2px solid #7547f5;
+  outline-offset: 2px;
+  border-color: rgba(167, 139, 250, 0.55);
+}
+
 .mock-checkout-field input {
   width: 100%;
   box-sizing: border-box;

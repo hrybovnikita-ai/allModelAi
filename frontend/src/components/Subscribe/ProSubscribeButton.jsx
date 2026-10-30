@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import apiClient from '../../lib/apiClient';
 import { fetchCheckoutInfo } from '../../lib/paymentCheckoutInfo';
 import { buildProCheckoutPath } from '../../lib/modelEntitlements';
+import { savePendingCheckout } from '../../lib/pendingCheckout';
 import {
   PRO_SUBSCRIPTION_PLAN_KEY,
   PRO_SUBSCRIPTION_PRICE_LABEL,
@@ -52,6 +53,7 @@ export default function ProSubscribeButton({
     event?.stopPropagation?.();
     if (isAuthInitializing(status)) return;
     if (!user?.email) {
+      savePendingCheckout('pro');
       navigate('/login', { state: { from: checkoutFallbackPath } });
       return;
     }
