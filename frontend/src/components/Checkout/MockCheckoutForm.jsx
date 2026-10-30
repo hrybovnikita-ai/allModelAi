@@ -94,7 +94,14 @@ export default function MockCheckoutForm({
 
   return (
     <>
-      <form id={formId} className="mock-checkout-form" onSubmit={handleSubmit} noValidate>
+      <form
+        id={formId}
+        className="mock-checkout-form"
+        onSubmit={handleSubmit}
+        noValidate
+        data-plan-price={priceLabel}
+        data-plan-interval={interval}
+      >
         <SubscriptionBillingFields
           fields={fields}
           onChange={onFieldChange}

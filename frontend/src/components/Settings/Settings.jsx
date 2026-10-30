@@ -31,12 +31,13 @@ function SettingsPage() {
   const outletContext = useOutletContext();
   const { user: sessionUser, refresh } = useSession();
   const user = outletContext?.user?.email ? outletContext.user : sessionUser;
-  let savedProfile = {};
-  try {
-    savedProfile = JSON.parse(localStorage.getItem('allmodelai_profile') || '{}') || {};
-  } catch {
-    savedProfile = {};
-  }
+  const savedProfile = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('allmodelai_profile') || '{}') || {};
+    } catch {
+      return {};
+    }
+  })();
   const [profile, setProfile] = useState({
     name: savedProfile.name || user?.name || '',
     avatar: savedProfile.avatar || user?.avatar || '',
