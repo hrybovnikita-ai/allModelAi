@@ -22,4 +22,4 @@ EXPOSE 5050
 HEALTHCHECK --interval=30s --timeout=8s --start-period=20s --retries=3 \
     CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||5050)+'/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "server.js"]
+CMD ["npm", "run", "start"]
