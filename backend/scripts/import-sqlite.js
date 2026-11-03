@@ -11,6 +11,7 @@ const {
     buildEmailDryRunReport,
     classifyUser,
 } = require('./import-sqlite-lib');
+const { upsertSqliteUser } = require('./sqlite-user-backfill');
 
 require('./load-backend-env').loadBackendEnv();
 
@@ -53,20 +54,7 @@ function loadRelatedData(sqlite, selected) {
 }
 
 async function insertUser(client, user) {
-    await client.query(`
-        INSERT INTO users (
-            id, name, email, password_hash, email_verified, role, avatar_url
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (id) DO NOTHING
-    `, [
-        user.id,
-        user.name,
-        user.email,
-        user.password_hash,
-        user.email_verified ?? 0,
-        user.role ?? 'user',
-        user.avatar_url ?? null,
-    ]);
+    await upsertSqliteUser(client, user);
 }
 
 async function insertSubscriptionDetails(client, row) {

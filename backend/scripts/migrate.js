@@ -6,6 +6,7 @@ require('./load-backend-env').loadBackendEnv();
 
 const { resolveDatabaseUrl } = require('../src/db/provider');
 const { createPgPool, formatSafePgFailure } = require('../src/db/pgConfig');
+const { backfillSqliteUsersToPostgres } = require('./sqlite-user-backfill');
 
 const migrationsDir = path.join(__dirname, '..', 'migrations');
 
@@ -68,6 +69,8 @@ async function main() {
             throw new Error('Migration finished but public.users is missing.');
         }
 
+        const backfill = await backfillSqliteUsersToPostgres(pool);
+
         console.log(JSON.stringify({
             status: 'ok',
             engine: 'postgres',
@@ -75,6 +78,7 @@ async function main() {
             migrationsAppliedThisRun: ran,
             totalMigrations: files.length,
             usersTable: true,
+            sqliteUserBackfill: backfill,
         }, null, 2));
     } finally {
         await pool.end();

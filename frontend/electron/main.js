@@ -5,8 +5,8 @@ import { app, BrowserWindow, shell, ipcMain, nativeTheme } from 'electron';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const isDev = process.env.ELECTRON_DEV === '1';
-const DEFAULT_DEV_PORT = 5173;
-const DEV_PORT_FALLBACKS = [5173, 5174, 5175];
+const DEFAULT_DEV_PORT = 5174;
+const DEV_PORT_FALLBACKS = [5174, 5173, 5175];
 const PRODUCTION_LIVE_URL = (
   process.env.ELECTRON_LOAD_URL
   || process.env.ALLMODELAI_ELECTRON_URL

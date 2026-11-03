@@ -129,7 +129,7 @@ export default defineConfig(({ mode }) => {
   ],
   server: {
     host: '0.0.0.0',
-    port: 5173,
+    port: Number(env.VITE_DEV_PORT) || 5174,
     strictPort: true,
     cors: true,
     headers: oauthCoopHeaders,

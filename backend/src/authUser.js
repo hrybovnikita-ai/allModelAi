@@ -17,7 +17,7 @@ const AUTH_USER_BY_EMAIL_PG = `
             id,
             name,
             email,
-            password_hash,
+            password_hash AS "passwordHash",
             avatar_url,
             email_verified
         FROM users
