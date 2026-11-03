@@ -14,6 +14,7 @@ import './styles/home-premium-polish.css';
 import './styles/home-premium-next.css';
 import './styles/style.css';
 import './styles/platform-shell.css';
+import './styles/liquid-glass.css';
 
 import { installNativeFetchInterceptor } from './lib/nativeFetch.js';
 import { startRedirectPrerequisitesPreload } from './lib/authRedirectPreload.js';

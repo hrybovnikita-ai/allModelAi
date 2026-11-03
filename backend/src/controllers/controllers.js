@@ -2641,7 +2641,13 @@ async function createChatResponseImpl(req, res) {
         }
         anoninExecution = anoninResult;
         routeDecision.model = anoninResult.slug;
-        routeDecision.reason = 'Anonin Model selected a backend provider for this turn.';
+        if (anoninResult.emergencyGeminiFallback) {
+            routeDecision.reason = 'Anonin emergency path: OpenRouter Gemini fallback (eligible pool was empty).';
+        } else if (anoninResult.routingKind === 'assigned') {
+            routeDecision.reason = `Anonin reused assigned backend (${anoninResult.backendSlug}).`;
+        } else {
+            routeDecision.reason = `Anonin selected backend provider (${anoninResult.backendSlug}).`;
+        }
         routeDecision.displayName = 'Anonin Model';
         routeDecision.category = routeDecision.category || 'anonin';
     }
@@ -2671,9 +2677,10 @@ async function createChatResponseImpl(req, res) {
     if (
         requestedModel === ANONIN_SLUG
         && anoninFallbackGateway
+        && anoninExecution?.useOpenRouterFallback === true
+        && anoninExecution?.routingKind === 'emergency'
         && providerModels[routedModel]
         && !isOpenRouterCreditsExhausted()
-        && !slugDependsOnOpenRouterPaidCredits(routedModel)
     ) {
         providerModels[routedModel] = anoninFallbackGateway;
     }
@@ -3909,6 +3916,22 @@ async function createChatResponseImpl(req, res) {
                                     ? 'unsupported_model'
                                     : classified.errorClass,
                             blockSlug: !geminiVariantQuota,
+                        });
+                    } else if (
+                        classified.errorClass === 'rate_limited'
+                        || groqMapped?.code === 'GROQ_RATE_LIMITED'
+                        || geminiMapped?.errorClass === 'rate_limited'
+                    ) {
+                        const { markGatewayModelBlocked, ttlMsForReason } = require('../services/gatewayModelHealth');
+                        const cooldownModelId = (routedModel === 'groq' || isGptOssGroqSlug(routedModel))
+                            ? resolveGroqDirectModel(selectedVariant, routedModel)
+                            : normalizeOpenRouterGatewayModel(providerModels[routedModel], routedModel);
+                        markGatewayModelBlocked({
+                            gatewayModel: cooldownModelId,
+                            slug: '',
+                            reason: 'rate_limited',
+                            ttlMs: ttlMsForReason('rate_limited'),
+                            blockSlug: false,
                         });
                     }
                 } catch (telemetryError) {

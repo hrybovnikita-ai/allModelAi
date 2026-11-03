@@ -98,6 +98,7 @@ import './ChatMobileLayout.css';
 import './ChatRoundedTheme.css';
 import './ChatWorkspaceLayout.css';
 import './ChatModelSelector.css';
+import './ChatSurface.css';
 import './AnoninMessageReveal.css';
 import {
   IconArrowRight,

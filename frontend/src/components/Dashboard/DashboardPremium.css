@@ -3,7 +3,7 @@
  */
 
 .dashboard-page--premium {
-  --dash-bg: #07070d;
+  --dash-bg: #000000;
   --dash-panel: #0d0c18;
   --dash-card: rgba(13, 12, 24, 0.82);
   --dash-purple: #6d42cc;
@@ -15,10 +15,8 @@
   --dash-line: rgba(139, 92, 246, 0.22);
   --dash-glow: rgba(109, 66, 204, 0.28);
   font-size: var(--dash-body);
-  background-color: var(--dash-bg);
-  background-image:
-    radial-gradient(ellipse 70% 45% at 72% 0%, rgba(109, 66, 204, 0.18), transparent 55%),
-    radial-gradient(ellipse 50% 40% at 8% 85%, rgba(99, 102, 241, 0.1), transparent 60%);
+  background: #000000;
+  background-image: none;
 }
 
 .dashboard-page--premium.dashboard-violet {
@@ -614,7 +612,7 @@
 
 .dashboard-page--premium .dashboard-code-section {
   border-color: var(--dash-line) !important;
-  background: linear-gradient(155deg, rgba(13, 12, 24, 0.92), rgba(7, 7, 13, 0.95)) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
 }
 
 .dashboard-page--premium .dashboard-code-section > div > span {

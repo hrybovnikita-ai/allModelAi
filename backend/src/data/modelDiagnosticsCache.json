@@ -1,0 +1,538 @@
+{
+  "updatedAt": "2026-11-03T10:47:18.414Z",
+  "entries": {
+    "model-audit@local:anonin:pool": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:40:27.552Z",
+      "responseTimeMs": 861,
+      "httpStatus": 200,
+      "errorDescription": "Probe via gemini/3.5-flash-lite (gemini)",
+      "routeMode": "gemini",
+      "preview": "AllModelAI model test OK"
+    },
+    "model-audit@local:gemini:3.5-flash-lite": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:40:31.360Z",
+      "responseTimeMs": 595,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "gemini",
+      "preview": "AllModelAI model test OK"
+    },
+    "model-audit@local:gemini:3.1-flash-lite": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:40:38.219Z",
+      "responseTimeMs": 3644,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "gemini",
+      "preview": "AllModelAI model test OK"
+    },
+    "model-audit@local:gemini:3-flash": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:40:42.394Z",
+      "responseTimeMs": 962,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "gemini",
+      "preview": "All"
+    },
+    "model-audit@local:gemini:3.1-pro": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:40:45.916Z",
+      "responseTimeMs": 311,
+      "httpStatus": 429,
+      "errorDescription": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. ",
+      "routeMode": "gemini",
+      "preview": ""
+    },
+    "model-audit@local:claude:haiku": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:43:35.740Z",
+      "responseTimeMs": 443,
+      "httpStatus": 401,
+      "errorDescription": "invalid x-api-key",
+      "routeMode": "claude",
+      "preview": ""
+    },
+    "model-audit@local:claude:sonnet": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:43:39.179Z",
+      "responseTimeMs": 233,
+      "httpStatus": 401,
+      "errorDescription": "invalid x-api-key",
+      "routeMode": "claude",
+      "preview": ""
+    },
+    "model-audit@local:claude:opus": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:43:42.622Z",
+      "responseTimeMs": 241,
+      "httpStatus": 401,
+      "errorDescription": "invalid x-api-key",
+      "routeMode": "claude",
+      "preview": ""
+    },
+    "model-audit@local:gpt:mini": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:00.890Z",
+      "responseTimeMs": 1479,
+      "httpStatus": 429,
+      "errorDescription": "You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.",
+      "routeMode": "openai",
+      "preview": ""
+    },
+    "model-audit@local:gpt:nano": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:04.499Z",
+      "responseTimeMs": 396,
+      "httpStatus": 404,
+      "errorDescription": "The model `gpt-4.1-nano` has been deprecated, learn more here: https://platform.openai.com/docs/deprecations",
+      "routeMode": "openai",
+      "preview": ""
+    },
+    "model-audit@local:gpt:full": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:08.269Z",
+      "responseTimeMs": 568,
+      "httpStatus": 429,
+      "errorDescription": "You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.",
+      "routeMode": "openai",
+      "preview": ""
+    },
+    "model-audit@local:llama:3.3": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:11.522Z",
+      "responseTimeMs": 42,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:llama:scout": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:14.782Z",
+      "responseTimeMs": 45,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:llama:maverick": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:18.038Z",
+      "responseTimeMs": 50,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:grok:4.3": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:21.294Z",
+      "responseTimeMs": 45,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:grok:4.6": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:24.547Z",
+      "responseTimeMs": 50,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:groq:70b": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:27.804Z",
+      "responseTimeMs": 46,
+      "httpStatus": 400,
+      "errorDescription": "groq/llama-3.3-70b-versatile is not a valid model ID",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:groq:8b": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:31.049Z",
+      "responseTimeMs": 37,
+      "httpStatus": 400,
+      "errorDescription": "groq/llama-3.1-8b-instant is not a valid model ID",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:groq:70b-31": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:34.295Z",
+      "responseTimeMs": 43,
+      "httpStatus": 400,
+      "errorDescription": "groq/llama-3.1-70b-versatile is not a valid model ID",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:gpt-oss-groq:120b": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:37.555Z",
+      "responseTimeMs": 47,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:copilot:mini": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:41.072Z",
+      "responseTimeMs": 306,
+      "httpStatus": 429,
+      "errorDescription": "You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.",
+      "routeMode": "openai",
+      "preview": ""
+    },
+    "model-audit@local:copilot:full": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:44.597Z",
+      "responseTimeMs": 318,
+      "httpStatus": 429,
+      "errorDescription": "You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.",
+      "routeMode": "openai",
+      "preview": ""
+    },
+    "model-audit@local:perplexity:sonar": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:48.225Z",
+      "responseTimeMs": 423,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:perplexity:pro": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:51.473Z",
+      "responseTimeMs": 38,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:perplexity:reasoning": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:54.741Z",
+      "responseTimeMs": 62,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:kimi:k2": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:41:57.984Z",
+      "responseTimeMs": 42,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:kimi:k2.5": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:42:01.222Z",
+      "responseTimeMs": 37,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:deepseek:flash": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:42:04.854Z",
+      "responseTimeMs": 424,
+      "httpStatus": 401,
+      "errorDescription": "Authentication Fails, Your api key: ****4772 is invalid (request_id: 31491cfa-a892-467a-bfb9-7bc139184db3)",
+      "routeMode": "openai_compat",
+      "preview": ""
+    },
+    "model-audit@local:deepseek:pro": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:42:08.355Z",
+      "responseTimeMs": 294,
+      "httpStatus": 401,
+      "errorDescription": "Authentication Fails, Your api key: ****4772 is invalid (request_id: f9d04ef2-d536-4e43-aff4-3921f4e9d508)",
+      "routeMode": "openai_compat",
+      "preview": ""
+    },
+    "model-audit@local:mistral:small": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:42:11.829Z",
+      "responseTimeMs": 271,
+      "httpStatus": 429,
+      "errorDescription": "Rate limit exceeded",
+      "routeMode": "openai_compat",
+      "preview": ""
+    },
+    "model-audit@local:mistral:large": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:42:15.150Z",
+      "responseTimeMs": 106,
+      "httpStatus": 403,
+      "errorDescription": "This model is not available in your subscription tier",
+      "routeMode": "openai_compat",
+      "preview": ""
+    },
+    "model-audit@local:qwen:3": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:42:18.441Z",
+      "responseTimeMs": 84,
+      "httpStatus": 404,
+      "errorDescription": "Qwen3 235B A22B was deprecated on Oct 9, 2026. We recommend migrating to Qwen3.7 Plus (openrouter.ai/qwen/qwen3.7-plus).",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:qwen:coder": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:42:21.731Z",
+      "responseTimeMs": 45,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:cohere:a": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:42:24.977Z",
+      "responseTimeMs": 43,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:cohere:r-plus": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:42:28.237Z",
+      "responseTimeMs": 45,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:cloudflare:70b": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:42:31.999Z",
+      "responseTimeMs": 547,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "cloudflare",
+      "preview": "AllModelAI model test OK"
+    },
+    "model-audit@local:cloudflare:8b": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:42:35.608Z",
+      "responseTimeMs": 398,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "cloudflare",
+      "preview": "AllModelAI model test OK"
+    },
+    "model-audit@local:gpt-oss:20b": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:42:38.902Z",
+      "responseTimeMs": 91,
+      "httpStatus": 400,
+      "errorDescription": "@cf/openai/gpt-oss-20b is not a valid model ID",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:nemotron:ultra": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:42:42.865Z",
+      "responseTimeMs": 759,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "openrouter",
+      "preview": "AllModelAI model test OK"
+    },
+    "model-audit@local:deepseek-r1:r1": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:42:46.109Z",
+      "responseTimeMs": 40,
+      "httpStatus": 404,
+      "errorDescription": "This model is unavailable for free. The paid version is available now - use this slug instead: deepseek/deepseek-r1-0528",
+      "routeMode": "openrouter",
+      "preview": ""
+    },
+    "model-audit@local:ollama:gemma4-31b": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:42:49.896Z",
+      "responseTimeMs": 573,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "openai_compat",
+      "preview": "AllModelAI model test OK"
+    },
+    "model-audit@local:ollama:gpt-oss-20b": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:42:54.343Z",
+      "responseTimeMs": 1236,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "openai_compat",
+      "preview": "AllModelAI model test OK"
+    },
+    "model-audit@local:ollama:gpt-oss-120b": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:42:58.168Z",
+      "responseTimeMs": 610,
+      "httpStatus": 200,
+      "errorDescription": "Test failed",
+      "routeMode": "openai_compat",
+      "preview": ""
+    },
+    "model-audit@local:ollama:deepseek-v4.1-flash": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:43:01.609Z",
+      "responseTimeMs": 226,
+      "httpStatus": 402,
+      "errorDescription": "this model is not included in your free usage, add usage credits to pay as you go: https://ollama.com/settings or upgrade for included usage: https://ollama.com/upgrade. Try gemma4:31b-cloud, which is in the Free plan. (ref: 815d5232-b944-4",
+      "routeMode": "openai_compat",
+      "preview": ""
+    },
+    "model-audit@local:ollama:nemotron-3-nano-30b": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:43:06.085Z",
+      "responseTimeMs": 1266,
+      "httpStatus": 200,
+      "errorDescription": "Test failed",
+      "routeMode": "openai_compat",
+      "preview": ""
+    },
+    "model-audit@local:ollama:glm-5.3-flash": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:43:09.527Z",
+      "responseTimeMs": 232,
+      "httpStatus": 402,
+      "errorDescription": "this model is not included in your free usage, add usage credits to pay as you go: https://ollama.com/settings or upgrade for included usage: https://ollama.com/upgrade. Try gemma4:31b-cloud, which is in the Free plan. (ref: 0b984feb-9a2b-4",
+      "routeMode": "openai_compat",
+      "preview": ""
+    },
+    "model-audit@local:ollama:mistral-large-4": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:43:12.963Z",
+      "responseTimeMs": 232,
+      "httpStatus": 402,
+      "errorDescription": "this model is not included in your free usage, add usage credits to pay as you go: https://ollama.com/settings or upgrade for included usage: https://ollama.com/upgrade. Try gemma4:31b-cloud, which is in the Free plan. (ref: 9d0d3f41-2083-4",
+      "routeMode": "openai_compat",
+      "preview": ""
+    },
+    "router-free-test@local:anonin:pool": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:46:23.127Z",
+      "responseTimeMs": 611,
+      "httpStatus": 200,
+      "errorDescription": "Probe via gemini/3.5-flash-lite (gemini)",
+      "routeMode": "gemini",
+      "preview": "AllModelAI model test OK",
+      "verifiedModelId": "gemini-3.5-flash-lite"
+    },
+    "router-free-test@local:gemini:3.5-flash-lite": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:46:27.186Z",
+      "responseTimeMs": 850,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "gemini",
+      "preview": "AllModelAI model test OK",
+      "verifiedModelId": "gemini-3.5-flash-lite"
+    },
+    "router-free-test@local:gemini:3.1-flash-lite": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:46:31.075Z",
+      "responseTimeMs": 679,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "gemini",
+      "preview": "AllModelAI model test OK",
+      "verifiedModelId": "gemini-3.1-flash-lite"
+    },
+    "router-free-test@local:gemini:3-flash": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:46:38.358Z",
+      "responseTimeMs": 4074,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "gemini",
+      "preview": "AllModel",
+      "verifiedModelId": "gemini-3-flash-preview"
+    },
+    "router-free-test@local:groq:8b": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:46:41.807Z",
+      "responseTimeMs": 238,
+      "httpStatus": 400,
+      "errorDescription": "groq/llama-3.1-8b-instant is not a valid model ID",
+      "routeMode": "openrouter",
+      "preview": "",
+      "verifiedModelId": ""
+    },
+    "router-free-test@local:cloudflare:70b": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:46:45.480Z",
+      "responseTimeMs": 465,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "cloudflare",
+      "preview": "AllModelAI model test OK",
+      "verifiedModelId": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+    },
+    "router-free-test@local:cloudflare:8b": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:46:48.938Z",
+      "responseTimeMs": 253,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "cloudflare",
+      "preview": "AllModelAI model test OK",
+      "verifiedModelId": "@cf/meta/llama-3.1-8b-instruct"
+    },
+    "router-free-test@local:nemotron:ultra": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:46:55.962Z",
+      "responseTimeMs": 3820,
+      "httpStatus": 200,
+      "errorDescription": "Test failed",
+      "routeMode": "openrouter",
+      "preview": "",
+      "verifiedModelId": ""
+    },
+    "router-free-test@local:deepseek-r1:r1": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:46:59.214Z",
+      "responseTimeMs": 46,
+      "httpStatus": 404,
+      "errorDescription": "This model is unavailable for free. The paid version is available now - use this slug instead: deepseek/deepseek-r1-0528",
+      "routeMode": "openrouter",
+      "preview": "",
+      "verifiedModelId": ""
+    },
+    "router-free-test@local:ollama:gemma4-31b": {
+      "ok": true,
+      "testedAt": "2026-11-03T10:47:02.981Z",
+      "responseTimeMs": 564,
+      "httpStatus": 200,
+      "errorDescription": "",
+      "routeMode": "openai_compat",
+      "preview": "AllModelAI model test OK",
+      "verifiedModelId": "gemma4:31b"
+    },
+    "t:groq:8b": {
+      "ok": false,
+      "testedAt": "2026-11-03T10:47:18.412Z",
+      "responseTimeMs": 158,
+      "httpStatus": 402,
+      "errorDescription": "Insufficient credits. This account never purchased credits. Make sure your key is on the correct account or org, and if so, purchase more at https://openrouter.ai/settings/credits",
+      "routeMode": "openrouter",
+      "preview": "",
+      "verifiedModelId": ""
+    }
+  }
+}

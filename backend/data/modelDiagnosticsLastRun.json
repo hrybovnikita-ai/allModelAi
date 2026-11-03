@@ -1,0 +1,116 @@
+{
+  "email": "router-free-test@local",
+  "ranAt": "2026-11-03T10:47:02.982Z",
+  "report": [
+    {
+      "slug": "anonin",
+      "variantId": "pool",
+      "displayName": "Anonin Model",
+      "modelIdentifier": "Eligible: gpt, claude, gemini, perplexity, deepseek, llama…",
+      "healthStatus": "Working",
+      "httpStatus": 200,
+      "error": "Probe via gemini/3.5-flash-lite (gemini)",
+      "ok": true,
+      "latencyMs": 611
+    },
+    {
+      "slug": "gemini",
+      "variantId": "3.5-flash-lite",
+      "displayName": "Gemini 3.5 Flash Lite",
+      "modelIdentifier": "gemini-3.5-flash-lite",
+      "healthStatus": "Working",
+      "httpStatus": 200,
+      "error": "",
+      "ok": true,
+      "latencyMs": 850
+    },
+    {
+      "slug": "gemini",
+      "variantId": "3.1-flash-lite",
+      "displayName": "Gemini 3.1 Flash Lite",
+      "modelIdentifier": "gemini-3.1-flash-lite",
+      "healthStatus": "Working",
+      "httpStatus": 200,
+      "error": "",
+      "ok": true,
+      "latencyMs": 679
+    },
+    {
+      "slug": "gemini",
+      "variantId": "3-flash",
+      "displayName": "Gemini 3 Flash",
+      "modelIdentifier": "gemini-3-flash-preview",
+      "healthStatus": "Working",
+      "httpStatus": 200,
+      "error": "",
+      "ok": true,
+      "latencyMs": 4074
+    },
+    {
+      "slug": "groq",
+      "variantId": "8b",
+      "displayName": "Llama 3.1 8B Instant",
+      "modelIdentifier": "groq/llama-3.1-8b-instant",
+      "healthStatus": "Failed",
+      "httpStatus": 400,
+      "error": "groq/llama-3.1-8b-instant is not a valid model ID",
+      "ok": false,
+      "latencyMs": 238
+    },
+    {
+      "slug": "cloudflare",
+      "variantId": "70b",
+      "displayName": "Llama 3.3 70B",
+      "modelIdentifier": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      "healthStatus": "Working",
+      "httpStatus": 200,
+      "error": "",
+      "ok": true,
+      "latencyMs": 465
+    },
+    {
+      "slug": "cloudflare",
+      "variantId": "8b",
+      "displayName": "Llama 3.1 8B",
+      "modelIdentifier": "@cf/meta/llama-3.1-8b-instruct",
+      "healthStatus": "Working",
+      "httpStatus": 200,
+      "error": "",
+      "ok": true,
+      "latencyMs": 253
+    },
+    {
+      "slug": "nemotron",
+      "variantId": "ultra",
+      "displayName": "NVIDIA Nemotron 3 Ultra",
+      "modelIdentifier": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "healthStatus": "Failed",
+      "httpStatus": 200,
+      "error": "Test failed",
+      "ok": false,
+      "latencyMs": 3820
+    },
+    {
+      "slug": "deepseek-r1",
+      "variantId": "r1",
+      "displayName": "DeepSeek R1",
+      "modelIdentifier": "deepseek/deepseek-r1-0528:free",
+      "healthStatus": "Failed",
+      "httpStatus": 404,
+      "error": "This model is unavailable for free. The paid version is available now - use this slug instead: deepseek/deepseek-r1-0528",
+      "ok": false,
+      "latencyMs": 46
+    },
+    {
+      "slug": "ollama",
+      "variantId": "gemma4-31b",
+      "displayName": "Gemma 4 31B",
+      "modelIdentifier": "gemma4:31b",
+      "healthStatus": "Working",
+      "httpStatus": 200,
+      "error": "",
+      "ok": true,
+      "latencyMs": 564
+    }
+  ]
+}

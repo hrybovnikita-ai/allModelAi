@@ -25,7 +25,7 @@ test('Groq direct API never receives groq/ OpenRouter model prefix', () => {
     );
     assert.equal(
         resolveGroqOpenRouterGateway({ direct: 'llama-3.3-70b-versatile' }),
-        'groq/llama-3.3-70b-versatile',
+        'meta-llama/llama-3.3-70b-instruct',
     );
 });
 
@@ -41,14 +41,14 @@ test('Model health labels require successful inference for Working', () => {
     );
     assert.equal(
         classifyModelHealthStatus({ availabilityStatus: 'WORKING', lastTest: null, routeMode: 'openai' }),
-        'Not Tested',
+        'Untested',
     );
     assert.equal(
         classifyModelHealthStatus({
             availabilityStatus: 'INVALID_MODEL',
             lastTest: { ok: false, httpStatus: 404, errorDescription: 'model not found' },
         }),
-        'Invalid Model ID',
+        'Failed',
     );
 });
 

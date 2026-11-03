@@ -1,5 +1,6 @@
-const { readFileSync } = require('node:fs');
+const { readFileSync, writeFileSync, existsSync, mkdirSync } = require('node:fs');
 const { join } = require('node:path');
+const { applyModelDiagnosticToRouterHealth } = require('./modelRouteHealth');
 const { getOpenRouterApiKey } = require('../openRouterConfig');
 const { MODEL_CAPABILITIES } = require('./smartRouter2/capabilities');
 const {
@@ -38,6 +39,33 @@ const PROVIDER_LABELS = {
 const lastResults = new Map();
 const lastRunByUser = new Map();
 const MIN_TEST_INTERVAL_MS = 3000;
+const DIAGNOSTICS_CACHE_PATH = join(__dirname, '../data/modelDiagnosticsCache.json');
+
+function loadDiagnosticsCache() {
+    try {
+        if (!existsSync(DIAGNOSTICS_CACHE_PATH)) return;
+        const raw = JSON.parse(readFileSync(DIAGNOSTICS_CACHE_PATH, 'utf8'));
+        const entries = raw?.entries && typeof raw.entries === 'object' ? raw.entries : {};
+        for (const [key, value] of Object.entries(entries)) {
+            if (value && typeof value === 'object') lastResults.set(key, value);
+        }
+    } catch {
+        /* ignore corrupt cache */
+    }
+}
+
+function persistDiagnosticsCache() {
+    try {
+        const dir = join(__dirname, '../data');
+        mkdirSync(dir, { recursive: true });
+        const entries = Object.fromEntries(lastResults.entries());
+        writeFileSync(DIAGNOSTICS_CACHE_PATH, JSON.stringify({ updatedAt: new Date().toISOString(), entries }, null, 2));
+    } catch {
+        /* non-fatal */
+    }
+}
+
+loadDiagnosticsCache();
 
 const envTrim = (name) => String(process.env[name] || '').trim();
 const openRouterKey = () => getOpenRouterApiKey();
@@ -50,7 +78,9 @@ const { isCloudflareWorkersAiConfigured } = require('./cloudflareWorkersAiConfig
 const cloudflareReady = () => isCloudflareWorkersAiConfigured();
 
 function sanitizeError(body, status) {
-    const msg = String(body?.error?.message || body?.message || body?.errors?.[0]?.message || '').slice(0, 240);
+    let msg = String(body?.error?.message || body?.message || body?.errors?.[0]?.message || '').slice(0, 240);
+    msg = msg.replace(/api key:\s*\*+\d+/gi, 'api key: [redacted]');
+    msg = msg.replace(/sk-[a-zA-Z0-9_-]{8,}/g, '[redacted]');
     return { status, message: msg || (status ? `HTTP ${status}` : 'Request failed') };
 }
 
@@ -196,17 +226,37 @@ function pickRoute(slug, variant) {
             if (gateway) return { mode: 'openrouter', model: v.gateway, providerModel: v.gateway };
             return { mode: 'blocked', reason: 'Missing Kimi or OpenRouter API configuration' };
         case 'cloudflare':
+        case 'gpt-oss':
             if (cloudflareReady()) return { mode: 'cloudflare', model: v.direct, providerModel: v.direct };
             if (gateway) return { mode: 'openrouter', model: v.gateway, providerModel: v.gateway };
             return { mode: 'blocked', reason: 'Missing Cloudflare or OpenRouter API configuration' };
+        case 'ollama': {
+            const {
+                isOllamaCloudConfigured,
+                ollamaCloudChatCompletionsUrl,
+                resolveOllamaCloudModel,
+            } = require('./ollama/ollamaCloudConfig');
+            if (isOllamaCloudConfigured()) {
+                const modelId = resolveOllamaCloudModel(v);
+                return {
+                    mode: 'openai_compat',
+                    url: ollamaCloudChatCompletionsUrl(),
+                    model: modelId,
+                    providerModel: modelId,
+                    key: envTrim('OLLAMA_API_KEY'),
+                };
+            }
+            if (gateway) return { mode: 'openrouter', model: v.gateway, providerModel: v.gateway };
+            return { mode: 'blocked', reason: 'Missing Ollama or OpenRouter API configuration' };
+        }
         case 'groq':
         case 'gpt-oss-groq': {
             const {
-                shouldUseGroqDirect,
                 resolveGroqDirectModel,
+                resolveGroqOpenRouterGateway,
                 isGroqConfigured,
             } = require('./groqChat');
-            if (isGroqConfigured() && shouldUseGroqDirect(slug)) {
+            if (isGroqConfigured()) {
                 const modelId = resolveGroqDirectModel(v, slug);
                 return {
                     mode: 'groq',
@@ -215,7 +265,12 @@ function pickRoute(slug, variant) {
                     key: envTrim('GROQ_API_KEY'),
                 };
             }
-            if (gateway) return { mode: 'openrouter', model: v.gateway, providerModel: v.gateway };
+            if (gateway) {
+                const orModel = slug === 'groq' || slug === 'gpt-oss-groq'
+                    ? resolveGroqOpenRouterGateway(v)
+                    : v.gateway;
+                return { mode: 'openrouter', model: orModel, providerModel: orModel };
+            }
             return { mode: 'blocked', reason: 'Missing Groq or OpenRouter API configuration' };
         }
         default:
@@ -354,11 +409,14 @@ function buildCatalogRow(slug, variant, email) {
     if (route.mode === 'blocked') availabilityStatus = 'UNCONFIGURED';
     else if (last?.ok) availabilityStatus = 'WORKING';
     else if (last && !last.ok) {
-        const code = Number(last.status) || 0;
+        const code = Number(last.httpStatus ?? last.status) || 0;
+        const errMsg = String(last.errorDescription || last.message || '').toLowerCase();
         if (code === 404) availabilityStatus = 'INVALID_MODEL';
         else if (code === 401 || code === 403) availabilityStatus = 'ACCESS_DENIED';
-        else if (code === 429) availabilityStatus = last.message?.toLowerCase().includes('quota') ? 'QUOTA_EXCEEDED' : 'RATE_LIMITED';
-        else if (code >= 500 || code === 408) availabilityStatus = 'TEMPORARILY_UNAVAILABLE';
+        else if (code === 402) availabilityStatus = 'QUOTA_EXCEEDED';
+        else if (code === 429) {
+            availabilityStatus = /quota|billing|credit|plan/i.test(errMsg) ? 'QUOTA_EXCEEDED' : 'RATE_LIMITED';
+        } else if (code >= 500 || code === 408) availabilityStatus = 'TEMPORARILY_UNAVAILABLE';
         else availabilityStatus = 'FAILED';
     }
 
@@ -367,25 +425,70 @@ function buildCatalogRow(slug, variant, email) {
         lastTest: last,
         routeMode: route.mode,
     });
+    const modelId = route.providerModel || route.model || variant.gateway || variant.direct || slug;
+    const { getGatewayModelBlock } = require('./gatewayModelHealth');
+    const { isSlugVerifiedWorking } = require('./verifiedInferenceHealth');
+    const block = modelId ? getGatewayModelBlock(modelId) : null;
 
     return {
         slug,
         variantId: variant.id,
         displayName: variant.name,
         provider: PROVIDER_LABELS[slug] || slug,
-        modelIdentifier: route.providerModel || route.model || variant.gateway || variant.direct || slug,
+        modelIdentifier: modelId,
         routeMode: route.mode,
         visionSupport: caps.vision,
         textGenerationSupport: caps.text,
         availabilityStatus,
         healthStatus,
+        routerVerified: isSlugVerifiedWorking(slug),
+        routerCooldown: block?.temporary
+            ? { reason: block.reason, until: new Date(block.expiresAt).toISOString() }
+            : null,
         latencyMs: last?.responseTimeMs ?? null,
         lastTest: last || null,
     };
 }
 
+function buildAnoninCatalogRow(email) {
+    const { listEligibleAnoninSlugs } = require('./anoninService');
+    const eligible = listEligibleAnoninSlugs(() => true);
+    const cacheKey = resultKey(email, 'anonin', 'pool');
+    const last = lastResults.get(cacheKey);
+    const routeMode = eligible.length ? 'anonin_pool' : 'blocked';
+    const availabilityStatus = !eligible.length
+        ? 'UNCONFIGURED'
+        : (last?.ok ? 'WORKING' : (last ? 'FAILED' : 'NOT_TESTED'));
+    const healthStatus = classifyModelHealthStatus({
+        availabilityStatus,
+        lastTest: last,
+        routeMode,
+    });
+    return {
+        slug: 'anonin',
+        variantId: 'pool',
+        displayName: 'Anonin Model',
+        provider: last?.ok
+            ? `Backend probe (${last.routeMode || 'direct'})`
+            : 'Multi-provider pool',
+        modelIdentifier: last?.ok
+            ? (last.errorDescription || 'Pool probe OK')
+            : (eligible.length
+                ? `Eligible: ${eligible.slice(0, 6).join(', ')}${eligible.length > 6 ? '…' : ''}`
+                : 'No eligible backends'),
+        routeMode,
+        visionSupport: false,
+        textGenerationSupport: true,
+        availabilityStatus,
+        healthStatus,
+        latencyMs: last?.responseTimeMs ?? null,
+        lastTest: last || null,
+        priority: true,
+    };
+}
+
 function buildModelDiagnosticsCatalog(email) {
-    const rows = [];
+    const rows = [buildAnoninCatalogRow(email)];
     for (const [slug, variants] of Object.entries(modelVariants)) {
         for (const variant of variants) {
             rows.push(buildCatalogRow(slug, variant, email));
@@ -396,6 +499,57 @@ function buildModelDiagnosticsCatalog(email) {
         summary: summarizeModelHealthRows(rows),
         generatedAt: new Date().toISOString(),
     };
+}
+
+async function executeProviderDiagnostic({ slug, variant, route }) {
+    let result;
+    let routeUsed = route.mode;
+    try {
+        result = await invokeProvider(route);
+        const orKey = openRouterKey();
+        if (!result.ok && !result.blocked && orKey) {
+            const billing = isBillingOrQuotaFailure(result.status, result.message);
+            const capacity = isTransientCapacityFailure(result.status, result.message);
+            if (billing || capacity) {
+                if ((slug === 'gpt' || slug === 'copilot') && route.mode === 'openai') {
+                    const retry = await invokeProvider({
+                        mode: 'openrouter',
+                        model: variant.gateway,
+                        providerModel: variant.gateway,
+                    });
+                    if (retry.ok) {
+                        result = retry;
+                        routeUsed = 'openrouter';
+                    }
+                } else if (slug === 'gemini' && route.mode === 'gemini') {
+                    const retry = await invokeProvider({
+                        mode: 'openrouter',
+                        model: variant.gateway,
+                        providerModel: variant.gateway,
+                    });
+                    if (retry.ok) {
+                        result = retry;
+                        routeUsed = 'openrouter';
+                    }
+                }
+            }
+        }
+        if (!result.ok && !result.blocked && orKey && slug === 'claude' && route.mode === 'claude'
+            && (result.status === 401 || result.status === 403)) {
+            const retry = await invokeProvider({
+                mode: 'openrouter',
+                model: variant.gateway,
+                providerModel: variant.gateway,
+            });
+            if (retry.ok) {
+                result = retry;
+                routeUsed = 'openrouter';
+            }
+        }
+    } catch (error) {
+        result = { ok: false, status: 0, message: error.message };
+    }
+    return { result, routeUsed };
 }
 
 async function runModelDiagnosticTest({ email, slug, variantId, confirmBillable }) {
@@ -420,6 +574,75 @@ async function runModelDiagnosticTest({ email, slug, variantId, confirmBillable 
     }
     lastRunByUser.set(normalizedEmail, now);
 
+    if (slug === 'anonin') {
+        const { listEligibleAnoninSlugs } = require('./anoninService');
+        const priority = ['gemini', 'claude', 'gpt', 'groq', 'mistral', 'deepseek'];
+        const eligible = listEligibleAnoninSlugs(() => true);
+        const started = Date.now();
+        if (!eligible.length) {
+            const lastTest = {
+                ok: false,
+                testedAt: new Date().toISOString(),
+                responseTimeMs: Date.now() - started,
+                httpStatus: 503,
+                errorDescription: 'No eligible Anonin backends (missing keys or gateway health).',
+                routeMode: 'anonin_pool',
+                preview: '',
+            };
+            lastResults.set(resultKey(normalizedEmail, 'anonin', 'pool'), lastTest);
+            persistDiagnosticsCache();
+            return {
+                ok: false,
+                status: 503,
+                slug: 'anonin',
+                variantId: 'pool',
+                lastTest,
+                model: buildAnoninCatalogRow(normalizedEmail),
+            };
+        }
+        const probeSlug = priority.find((s) => eligible.includes(s) && modelVariants[s]?.length)
+            || eligible.find((s) => modelVariants[s]?.length)
+            || eligible[0];
+        const probeVariant = modelVariants[probeSlug]?.[0];
+        const route = pickRoute(probeSlug, probeVariant);
+        const { result, routeUsed } = await executeProviderDiagnostic({
+            slug: probeSlug,
+            variant: probeVariant,
+            route,
+        });
+        const responseTimeMs = Date.now() - started;
+        const lastTest = {
+            ok: Boolean(result.ok),
+            testedAt: new Date().toISOString(),
+            responseTimeMs,
+            httpStatus: result.status || (result.ok ? 200 : 0),
+            errorDescription: result.ok
+                ? `Probe via ${probeSlug}/${probeVariant.id} (${routeUsed})`
+                : (result.message || 'Anonin pool probe failed'),
+            routeMode: routeUsed,
+            preview: result.textPreview || '',
+            verifiedModelId: result.ok ? (route.providerModel || route.model) : '',
+        };
+        applyModelDiagnosticToRouterHealth({
+            slug: probeSlug,
+            variantId: probeVariant.id,
+            route: { ...route, mode: routeUsed },
+            ok: result.ok,
+            status: lastTest.httpStatus,
+            message: lastTest.errorDescription,
+        });
+        lastResults.set(resultKey(normalizedEmail, 'anonin', 'pool'), lastTest);
+        persistDiagnosticsCache();
+        return {
+            ok: result.ok,
+            status: result.ok ? 200 : (result.status || 502),
+            slug: 'anonin',
+            variantId: 'pool',
+            lastTest,
+            model: buildAnoninCatalogRow(normalizedEmail),
+        };
+    }
+
     const variants = modelVariants[slug];
     if (!variants?.length) {
         return { ok: false, status: 404, message: 'Unknown model slug.' };
@@ -427,33 +650,7 @@ async function runModelDiagnosticTest({ email, slug, variantId, confirmBillable 
     const variant = variants.find((v) => v.id === variantId) || variants[0];
     const route = pickRoute(slug, variant);
     const started = Date.now();
-    let result;
-    let routeUsed = route.mode;
-    try {
-        result = await invokeProvider(route);
-        const orKey = openRouterKey();
-        if (!result.ok && !result.blocked && orKey) {
-            const billing = isBillingOrQuotaFailure(result.status, result.message);
-            const capacity = isTransientCapacityFailure(result.status, result.message);
-            if (billing || capacity) {
-                if ((slug === 'gpt' || slug === 'copilot') && route.mode === 'openai') {
-                    const retry = await invokeProvider({ mode: 'openrouter', model: variant.gateway, providerModel: variant.gateway });
-                    if (retry.ok) {
-                        result = retry;
-                        routeUsed = 'openrouter';
-                    }
-                } else if (slug === 'gemini' && route.mode === 'gemini') {
-                    const retry = await invokeProvider({ mode: 'openrouter', model: variant.gateway, providerModel: variant.gateway });
-                    if (retry.ok) {
-                        result = retry;
-                        routeUsed = 'openrouter';
-                    }
-                }
-            }
-        }
-    } catch (error) {
-        result = { ok: false, status: 0, message: error.message };
-    }
+    const { result, routeUsed } = await executeProviderDiagnostic({ slug, variant, route });
     const responseTimeMs = Date.now() - started;
     const lastTest = {
         ok: Boolean(result.ok),
@@ -463,8 +660,18 @@ async function runModelDiagnosticTest({ email, slug, variantId, confirmBillable 
         errorDescription: result.ok ? '' : (result.message || 'Test failed'),
         routeMode: routeUsed,
         preview: result.textPreview || '',
+        verifiedModelId: result.ok ? (route.providerModel || route.model) : '',
     };
+    applyModelDiagnosticToRouterHealth({
+        slug,
+        variantId: variant.id,
+        route: { ...route, mode: routeUsed, providerModel: route.providerModel || route.model },
+        ok: result.ok,
+        status: lastTest.httpStatus,
+        message: lastTest.errorDescription,
+    });
     lastResults.set(resultKey(normalizedEmail, slug, variant.id), lastTest);
+    persistDiagnosticsCache();
     return {
         ok: result.ok,
         status: result.ok ? 200 : (result.status || 502),
@@ -475,7 +682,12 @@ async function runModelDiagnosticTest({ email, slug, variantId, confirmBillable 
     };
 }
 
+function pickRouteForHealthCheck(slug, variant) {
+    return pickRoute(slug, variant);
+}
+
 module.exports = {
     buildModelDiagnosticsCatalog,
     runModelDiagnosticTest,
+    pickRouteForHealthCheck,
 };

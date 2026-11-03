@@ -6,10 +6,10 @@ import QaStatusPanel from './QaStatusPanel';
 import './ModelDiagnostics.css';
 
 function statusLabel(row) {
-    if (row.healthStatus) return row.healthStatus;
-    if (row.availabilityStatus === 'WORKING') return 'Working';
-    if (row.availabilityStatus === 'UNCONFIGURED') return 'Missing API Key';
-    return 'Not Tested';
+  if (row.healthStatus) return row.healthStatus;
+  if (row.availabilityStatus === 'WORKING') return 'Working';
+  if (row.availabilityStatus === 'UNCONFIGURED') return 'Not Configured';
+  return 'Untested';
 }
 
 export default function ModelDiagnostics() {
@@ -122,6 +122,7 @@ export default function ModelDiagnostics() {
                 <th>Vision</th>
                 <th>Text</th>
                 <th>Status</th>
+                <th>Router</th>
                 <th>Latency</th>
                 <th>Last test</th>
                 <th aria-label="Actions" />
@@ -139,6 +140,14 @@ export default function ModelDiagnostics() {
                     <td>{row.visionSupport ? 'Yes' : 'No'}</td>
                     <td>{row.textGenerationSupport ? 'Yes' : 'No'}</td>
                     <td>{statusLabel(row)}</td>
+                    <td>
+                      {row.routerVerified ? <span className="md-ok">Verified</span> : '—'}
+                      {row.routerCooldown ? (
+                        <small className="model-diagnostics-err">
+                          Cooldown ({row.routerCooldown.reason}) until {new Date(row.routerCooldown.until).toLocaleTimeString()}
+                        </small>
+                      ) : null}
+                    </td>
                     <td>{row.latencyMs != null ? `${row.latencyMs} ms` : '—'}</td>
                     <td>
                       {last ? (
@@ -157,7 +166,7 @@ export default function ModelDiagnostics() {
                       <button
                         type="button"
                         className="model-diagnostics-test-btn"
-                        disabled={testingKey === key || row.availabilityStatus === 'blocked'}
+                        disabled={testingKey === key || row.availabilityStatus === 'UNCONFIGURED'}
                         onClick={() => runTest(row)}
                       >
                         {testingKey === key ? 'Testing…' : 'Test model'}

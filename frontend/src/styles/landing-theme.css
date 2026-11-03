@@ -1,0 +1,117 @@
+/* Landing sections after the header and model selector. */
+
+.home-surface {
+  background: #000000;
+  color: #fff;
+}
+
+.home-surface .rainbow-card,
+.home-surface .everyday-card-grid > a,
+.home-surface .about-card,
+.home-surface .workflow-section,
+.home-surface .workflow-step,
+.home-surface .user-card,
+.home-surface .comment-card,
+.home-surface .sticker,
+.home-surface .pricing-card,
+.home-surface .footer {
+  background: rgba(16, 13, 24, 0.92);
+  background-image: none;
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  border-radius: 18px;
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px);
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 180ms ease, background 200ms ease;
+}
+
+.home-surface .rainbow-card:hover,
+.home-surface .everyday-card-grid > a:hover,
+.home-surface .about-card:hover,
+.home-surface .user-card:hover,
+.home-surface .comment-card:hover,
+.home-surface .sticker:hover,
+.home-surface .pricing-card:hover {
+  border-color: #8B5CF6;
+  background: #31175B;
+  box-shadow: 0 14px 32px rgba(124, 58, 237, 0.28);
+  transform: translateY(-2px);
+}
+
+.home-surface .rainbow-card::before,
+.home-surface .rainbow-orb,
+.home-surface .pricing-card::before,
+.home-surface .pricing-card:nth-child(1),
+.home-surface .pricing-card:nth-child(2),
+.home-surface .pricing-card:nth-child(3),
+.home-surface .pricing-card:nth-child(4) {
+  background: none;
+  border-top-color: rgba(167, 139, 250, 0.28);
+}
+
+.home-surface .rainbow-eyebrow,
+.home-surface .rainbow-number,
+.home-surface .price-desc,
+.home-surface .about-card p,
+.home-surface .user-card p,
+.home-surface .comment-card p,
+.home-surface .footer p,
+.home-surface .footer a {
+  color: #A78BFA;
+}
+
+.home-surface .pricing-card button,
+.home-surface .pricing-card a,
+.home-surface .footer button,
+.home-surface .rainbow-action {
+  border-radius: 15px;
+  background: #7C3AED;
+  color: #fff;
+  border: 0;
+  transition: background 200ms ease, box-shadow 200ms ease;
+}
+
+.home-surface .pricing-card button:hover,
+.home-surface .pricing-card a:hover,
+.home-surface .footer button:hover {
+  background: #8B5CF6;
+  box-shadow: 0 8px 22px rgba(124, 58, 237, 0.35);
+}
+
+.home-surface .featured-badge,
+.home-surface .pricing-tier,
+.home-surface .rainbow-retry-link {
+  border-radius: 10px;
+  background: #31175B;
+  color: #A78BFA;
+  border: 1px solid #7C3AED;
+}
+
+.home-surface .pricing-card.featured {
+  border-color: #8B5CF6;
+  box-shadow: 0 0 0 1px #8B5CF6, 0 16px 36px rgba(49, 23, 91, 0.45);
+}
+
+.home-surface .footer {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+@media (max-width: 767px) {
+  .home-surface .rainbow-cards,
+  .home-surface .everyday-card-grid,
+  .home-surface .pricing-grid,
+  .home-surface .users-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-surface .rainbow-card,
+  .home-surface .pricing-card,
+  .home-surface .about-card {
+    transition: none;
+  }
+}

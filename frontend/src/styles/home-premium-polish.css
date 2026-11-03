@@ -44,11 +44,8 @@
 
 /* —— Atmosphere —— */
 .home-surface {
-  background-color: var(--ama-deep-black, var(--bg-primary));
-  background-image:
-    radial-gradient(ellipse 70% 45% at 50% -8%, rgba(101, 72, 201, 0.16), transparent 58%),
-    radial-gradient(ellipse 40% 30% at 95% 12%, rgba(156, 118, 245, 0.07), transparent 55%),
-    radial-gradient(ellipse 35% 28% at 5% 40%, rgba(17, 24, 44, 0.9), transparent 60%);
+  background: #000000;
+  background-image: none;
 }
 
 .home-surface .home-layout {
@@ -67,11 +64,8 @@
 
 /* —— Hero polish —— */
 .home-surface .header {
-  background:
-    radial-gradient(ellipse 78% 52% at 50% -12%, rgba(101, 72, 201, 0.22), transparent 56%),
-    radial-gradient(circle at 88% 36%, rgba(156, 118, 245, 0.1), transparent 40%),
-    radial-gradient(circle at 10% 90%, rgba(17, 24, 44, 0.85), transparent 36%),
-    var(--ama-deep-black, #080910);
+  background: #000000;
+  background-image: none;
 }
 
 .home-surface .header-content h1 {
@@ -80,9 +74,10 @@
 }
 
 .home-surface .header-content h1 span {
-  background: linear-gradient(115deg, #b49aff 0%, #9c76f5 38%, #69a9ff 72%, #60e0d0 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  color: #8B5CF6;
 }
 
 .home-surface .hero-prompt {

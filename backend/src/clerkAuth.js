@@ -17,7 +17,7 @@ function authorizedParties() {
     .map((item) => item.trim())
     .filter(Boolean);
   if (configured.length) return configured;
-  return ['http://localhost:5173', 'https://all-model-ai.com'];
+  return ['http://localhost:5175', 'http://localhost:5173', 'https://all-model-ai.com'];
 }
 
 function bearerToken(req) {

@@ -73,6 +73,8 @@ function LoginForm({
   const [clerkBusy, setClerkBusy] = useState(false);
   /** 'account' = Firebase email/Google; 'clerk' = Clerk-only panel (avoids stacked duplicate Google UI). */
   const [authMethod, setAuthMethod] = useState('account');
+  const [clerkLinkPending, setClerkLinkPending] = useState(false);
+  const [resumeClerkLink, setResumeClerkLink] = useState(false);
 
   useEffect(() => {
     if (isGoogleRedirectRecoveryPending()) {
@@ -211,6 +213,11 @@ function LoginForm({
         document.activeElement?.blur();
         markFreshLogin();
         await refresh({ force: true, silent: true });
+        if (clerkLinkPending) {
+          setResumeClerkLink(true);
+          setAuthMethod('clerk');
+          return;
+        }
         await navigateAfterSocialLogin(outcome, { navigate, replaceDashboard: true });
         onClose?.();
       } catch (requestError) {
@@ -319,6 +326,11 @@ function LoginForm({
       } else {
         rememberSession(sessionUser, { serverVerified: true });
       }
+      if (clerkLinkPending) {
+        setResumeClerkLink(true);
+        setAuthMethod('clerk');
+        return;
+      }
       await finishAuthNavigation(sessionUser, data);
     } catch (requestError) {
       if (requestError.status === 401) {
@@ -426,7 +438,7 @@ function LoginForm({
   };
 
   const socialDisabled = submitting || Boolean(socialBusy) || clerkBusy || !authReadyForGoogle;
-  const showClerkPanel = clerkUiEnabled && authMethod === 'clerk';
+  const showClerkPanel = clerkUiEnabled && (authMethod === 'clerk' || clerkLinkPending);
   const showAccountPanel = !clerkUiEnabled || authMethod === 'account';
 
   const selectAuthMethod = (method) => {
@@ -714,6 +726,8 @@ function LoginForm({
 
         {showClerkPanel ? (
           <div className="login-clerk-panel">
+            {authMethod === 'clerk' ? (
+            <>
             <p className="login-clerk-intro">
               {signingUp
                 ? 'Create an account with Clerk email/password or Google.'
@@ -732,18 +746,29 @@ function LoginForm({
                 <p className="login-error">{error}</p>
               </div>
             ) : null}
+            </>
+            ) : (
+              <p className="login-hint">Sign in with the existing email or Google account. Clerk links only after that sign-in.</p>
+            )}
             <Suspense fallback={<p className="login-clerk-status">Loading secure sign-in…</p>}>
               <LoginClerkSection
                 key={signingUp ? 'clerk-sign-up' : 'clerk-sign-in'}
                 signingUp={signingUp}
                 rememberMe={rememberMe}
                 disabled={submitting || Boolean(socialBusy) || clerkBusy}
+                resumeLink={resumeClerkLink}
+                hidden={clerkLinkPending && authMethod !== 'clerk'}
                 onBusyChange={setClerkBusy}
                 onError={setError}
                 onSuccess={handleClerkSuccess}
-                onUseExistingAccount={() => selectAuthMethod('account')}
+                onLinkRequired={() => {
+                  setClerkLinkPending(true);
+                  setError('');
+                  selectAuthMethod('account');
+                }}
               />
             </Suspense>
+            {authMethod === 'clerk' ? (
             <div className="login-switch">
               <span>
                 {signingUp ? 'Already have an account?' : 'New to AllModelAI?'}
@@ -756,6 +781,7 @@ function LoginForm({
                 {signingUp ? 'Sign in' : 'Sign up'}
               </button>
             </div>
+            ) : null}
           </div>
         ) : null}
         </div>

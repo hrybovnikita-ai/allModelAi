@@ -15,27 +15,38 @@
 
 .login-clerk-recovery {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   margin: 0;
-  color: #fecaca;
+  padding: 14px;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  border-radius: 15px;
+  background: #100D18;
+  color: #fff;
   font-size: 0.86rem;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .login-clerk-recovery-btn {
   justify-self: start;
+  min-height: 44px;
   padding: 10px 14px;
   border: 0;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: 15px;
+  background: #7C3AED;
   color: #fff;
   font: inherit;
   cursor: pointer;
+  transition: background 200ms ease, box-shadow 200ms ease;
+}
+
+.login-clerk-recovery-btn:hover {
+  background: #8B5CF6;
+  box-shadow: 0 8px 22px rgba(124, 58, 237, 0.35);
 }
 
 .login-clerk-status {
   margin: 0;
-  color: #94a3b8;
+  color: #A78BFA;
   font-size: 0.85rem;
   line-height: 1.45;
   text-align: center;
@@ -70,10 +81,75 @@
 .login-clerk .cl-socialButtons,
 .login-clerk .cl-socialButtonsBlockButton,
 .login-clerk .cl-formButtonPrimary,
-.login-clerk .cl-formFieldInput {
+.login-clerk .cl-formFieldInput,
+.login-clerk .cl-socialButtonsBlockButton {
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box;
+}
+
+.login-clerk .cl-formFieldLabel,
+.login-clerk .cl-dividerText {
+  color: #A78BFA !important;
+}
+
+.login-clerk .cl-formFieldInput {
+  min-height: 48px !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(167, 139, 250, 0.35) !important;
+  background: rgba(0, 0, 0, 0.55) !important;
+  color: #fff !important;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.login-clerk .cl-formFieldInput:focus {
+  border-color: #7C3AED !important;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.22) !important;
+}
+
+.login-clerk .cl-formButtonPrimary,
+.login-clerk .cl-socialButtonsBlockButton {
+  min-height: 48px !important;
+  border-radius: 15px !important;
+  box-shadow: none !important;
+  transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.login-clerk .cl-formButtonPrimary {
+  background: #7C3AED !important;
+  color: #fff !important;
+}
+
+.login-clerk .cl-formButtonPrimary:hover {
+  background: #8B5CF6 !important;
+  box-shadow: 0 8px 22px rgba(124, 58, 237, 0.35) !important;
+}
+
+.login-clerk .cl-socialButtonsBlockButton {
+  border: 1px solid rgba(167, 139, 250, 0.35) !important;
+  background: rgba(0, 0, 0, 0.45) !important;
+  color: #fff !important;
+}
+
+.login-clerk .cl-socialButtonsBlockButton:hover {
+  border-color: #A78BFA !important;
+  background: rgba(124, 58, 237, 0.18) !important;
+}
+
+.login-clerk .cl-dividerLine {
+  background: rgba(167, 139, 250, 0.28) !important;
+}
+
+.login-clerk-status {
+  animation: login-clerk-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes login-clerk-pulse {
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-clerk-status { animation: none; }
 }
 
 .login-clerk .cl-socialButtons {

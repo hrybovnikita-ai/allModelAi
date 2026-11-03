@@ -19,7 +19,6 @@ export default function ModelsSection({ models, selectedModel, setSelectedModel 
               key={key}
               className={`model-card ${selectedModel === key ? "active" : ""}`}
               onClick={() => setSelectedModel(key)}
-              style={selectedModel === key ? { borderColor: model.color } : {}}
             >
               <div className="model-icon">
                 <img src={model.logo} alt={model.name} />

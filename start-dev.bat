@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-echo [AllModelAI] Dev mode: backend :5050 + Vite :5173
+echo [AllModelAI] Dev mode: backend :5050 + Vite :5175
 echo.
 
 where node >nul 2>&1

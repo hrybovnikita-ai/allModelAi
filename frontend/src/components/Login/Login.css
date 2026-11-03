@@ -2,9 +2,9 @@
   position: fixed;
   inset: 0;
   z-index: 9999;
-  display: grid;
-  place-items: center;
-  align-items: safe center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 20px;
   pointer-events: auto;
   isolation: isolate;
@@ -419,4 +419,122 @@
   .login-divider { margin: 16px 0 12px; }
 }
 
-.login-form input[type="checkbox"] { width: auto; margin-right: 8px; accent-color: #818cf8; }
+.login-form input[type="checkbox"] { width: auto; margin-right: 8px; accent-color: #8B5CF6; }
+
+.login-backdrop-layer {
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(16px);
+}
+
+.login-modal {
+  margin: auto;
+  border-radius: 18px;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  background: rgba(0, 0, 0, 0.72);
+  background-image: none;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 36px rgba(124, 58, 237, 0.22);
+  color: #fff;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.login-eyebrow,
+.login-intro,
+.login-switch,
+.login-form label > span:first-child {
+  color: #A78BFA;
+}
+
+.login-auth-methods {
+  border-radius: 15px;
+  border-color: rgba(167, 139, 250, 0.28);
+  background: #100D18;
+}
+
+.login-auth-methods button {
+  border-radius: 12px;
+  color: #A78BFA;
+  transition: background 200ms ease, color 180ms ease;
+}
+
+.login-auth-methods button.is-active,
+.login-auth-methods button.active {
+  background: #7C3AED;
+  color: #fff;
+}
+
+.login-form {
+  gap: 14px;
+}
+
+.login-form input:not([type="checkbox"]) {
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  background: rgba(0, 0, 0, 0.45);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.login-form input:focus {
+  border-color: #8B5CF6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.22);
+}
+
+.password-toggle {
+  border-radius: 10px;
+  color: #A78BFA;
+}
+
+.login-forgot,
+.login-switch button,
+.login-inline-action {
+  color: #A78BFA;
+}
+
+.login-submit,
+.login-social-btn,
+.login-guest,
+.login-actions button,
+.login-retry-btn {
+  min-height: 48px;
+  border-radius: 15px;
+  background: #7C3AED;
+  border-color: transparent;
+  color: #fff;
+  transition: background 200ms ease, box-shadow 200ms ease, transform 180ms ease;
+}
+
+.login-submit:hover:not(:disabled),
+.login-social-btn:hover:not(:disabled),
+.login-guest:hover {
+  background: #8B5CF6;
+  box-shadow: 0 8px 22px rgba(124, 58, 237, 0.35);
+  filter: none;
+}
+
+.login-error,
+.login-success,
+.login-hint {
+  min-height: 40px;
+  margin: 0;
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+
+.login-error {
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(49, 23, 91, 0.55);
+  color: #fecaca;
+}
+
+.login-success {
+  border-color: rgba(167, 139, 250, 0.45);
+  background: #31175B;
+  color: #fff;
+}
+
+@media (max-width: 480px) {
+  .login-overlay { padding: 12px; }
+  .login-modal { padding: 22px 16px; border-radius: 18px; }
+  .login-auth-methods { grid-template-columns: 1fr; }
+}

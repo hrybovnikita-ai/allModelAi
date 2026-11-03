@@ -7,6 +7,15 @@
  */
 
 const DEFAULT_TTL_MS = Number(process.env.GATEWAY_MODEL_HEALTH_TTL_MS) || 60 * 60 * 1000;
+const RATE_LIMIT_COOLDOWN_MS = Number(process.env.GATEWAY_RATE_LIMIT_COOLDOWN_MS) || 120_000;
+const DEGRADED_COOLDOWN_MS = Number(process.env.GATEWAY_DEGRADED_COOLDOWN_MS) || 180_000;
+
+function ttlMsForReason(reason = '') {
+    const key = String(reason || '').trim().toLowerCase();
+    if (key === 'rate_limited') return RATE_LIMIT_COOLDOWN_MS;
+    if (key === 'degraded' || key === 'temporarily_unavailable') return DEGRADED_COOLDOWN_MS;
+    return DEFAULT_TTL_MS;
+}
 
 /** @type {Map<string, { reason: string, expiresAt: number, slug: string|null }>} */
 const blockedModels = new Map();
@@ -42,12 +51,15 @@ function markGatewayModelBlocked({
     gatewayModel = '',
     slug = '',
     reason = 'quota_exhausted',
-    ttlMs = DEFAULT_TTL_MS,
+    ttlMs,
     blockSlug = true,
 } = {}) {
     const now = Date.now();
     pruneExpired(now);
-    const expiresAt = now + Math.max(60_000, Number(ttlMs) || DEFAULT_TTL_MS);
+    const resolvedTtl = Number.isFinite(Number(ttlMs)) && Number(ttlMs) > 0
+        ? Number(ttlMs)
+        : ttlMsForReason(reason);
+    const expiresAt = now + Math.max(30_000, resolvedTtl);
     const modelId = normalizeModelId(gatewayModel);
     const slugKey = normalizeSlug(slug);
     if (modelId) {
@@ -63,6 +75,21 @@ function isGatewayModelBlocked(gatewayModel) {
     const modelId = normalizeModelId(gatewayModel);
     if (!modelId) return false;
     return blockedModels.has(modelId);
+}
+
+function getGatewayModelBlock(gatewayModel) {
+    pruneExpired();
+    const modelId = normalizeModelId(gatewayModel);
+    if (!modelId) return null;
+    const row = blockedModels.get(modelId);
+    if (!row) return null;
+    return {
+        modelId,
+        reason: row.reason,
+        expiresAt: row.expiresAt,
+        slug: row.slug,
+        temporary: row.reason === 'rate_limited' || row.reason === 'degraded' || row.reason === 'temporarily_unavailable',
+    };
 }
 
 function isSlugBlockedByGatewayHealth(slug) {
@@ -111,13 +138,25 @@ function clearGatewayModelHealthForTests() {
     blockedSlugs.clear();
 }
 
+function clearGatewayModelBlock({ gatewayModel = '', slug = '' } = {}) {
+    pruneExpired();
+    const modelId = normalizeModelId(gatewayModel);
+    const slugKey = normalizeSlug(slug);
+    if (modelId) blockedModels.delete(modelId);
+    if (slugKey) blockedSlugs.delete(slugKey);
+}
+
 module.exports = {
     markGatewayModelBlocked,
     markOpenRouterCreditsExhausted,
     isOpenRouterCreditsExhausted,
     isGatewayModelBlocked,
+    getGatewayModelBlock,
     isSlugBlockedByGatewayHealth,
     getGatewayBlockReason,
     listBlockedGatewayModels,
+    clearGatewayModelBlock,
     clearGatewayModelHealthForTests,
+    ttlMsForReason,
+    RATE_LIMIT_COOLDOWN_MS,
 };

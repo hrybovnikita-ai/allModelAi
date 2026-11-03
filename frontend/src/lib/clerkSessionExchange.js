@@ -7,7 +7,7 @@ import {
 } from './session.js';
 
 const CLERK_LINK_MESSAGE =
-  'An AllModelAI account already uses this email. Sign in with email or Google, then connect Clerk in Settings → Connected accounts.';
+  'This email already has an AllModelAI account. Sign in with that email or Google to link Clerk. Accounts are not combined until you sign in.';
 
 function clerkExchangeErrorMessage(error) {
   if (error?.code === 'CLERK_LINK_REQUIRED') return CLERK_LINK_MESSAGE;

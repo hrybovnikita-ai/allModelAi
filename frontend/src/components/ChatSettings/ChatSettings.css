@@ -12,16 +12,26 @@
 .settings-top,
 .settings-frame {
   width: 100%;
-  max-width: 1800px;
+  max-width: 1040px;
   margin-inline: auto;
   box-sizing: border-box;
 }
 
 .settings-top {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 16px;
-  margin-bottom: 20px;
+  min-height: 64px;
+  margin-bottom: 16px;
+}
+
+.settings-top-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .settings-top h1 {
@@ -44,15 +54,14 @@
 }
 
 .settings-save {
-  margin-left: auto;
   color: #c4b5fd;
   font-size: 14px;
 }
 
 .settings-frame {
   display: grid;
-  grid-template-columns: 240px minmax(520px, 1fr) minmax(280px, 340px);
-  gap: 24px;
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: 16px;
   align-items: start;
 }
 
@@ -270,12 +279,8 @@
 .settings-error { color: #fecaca; font-size: 14px; }
 
 @media (max-width: 1439px) {
-  .settings-frame {
-    grid-template-columns: 240px minmax(0, 1fr);
-  }
   .settings-preview {
     position: static;
-    grid-column: 1 / -1;
   }
 }
 
@@ -285,6 +290,8 @@
 }
 
 @media (max-width: 767px) {
+  .settings-top { align-items: flex-start; flex-wrap: wrap; }
+  .settings-top-actions { width: 100%; justify-content: space-between; }
   .settings-nav {
     display: flex;
     gap: 8px;
@@ -294,4 +301,150 @@
   .settings-nav button { flex: 0 0 auto; }
   .settings-row { flex-direction: column; align-items: stretch; }
   .settings-top { flex-wrap: wrap; }
+}
+
+.chat-settings-page {
+  background: #000;
+}
+
+.settings-frame {
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.settings-nav,
+.settings-panel,
+.settings-preview {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(16px);
+}
+
+.settings-nav {
+  width: auto;
+  padding: 10px;
+  gap: 4px;
+}
+
+.settings-nav-search input {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font: inherit;
+}
+
+.settings-nav button {
+  border-radius: 14px;
+  background: transparent;
+  transition: background 180ms ease, color 180ms ease;
+}
+
+.settings-nav button:hover {
+  background: rgba(139, 92, 246, 0.16);
+}
+
+.settings-nav button.active {
+  background: #8b5cf6;
+}
+
+.settings-panel {
+  animation: settings-in 200ms ease;
+}
+
+@keyframes settings-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.settings-panel {
+  padding: 20px 22px 22px;
+}
+
+.settings-panel h1 {
+  margin: 0 0 14px;
+  font-size: 1.35rem;
+}
+
+.settings-panel label {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+}
+
+.settings-row {
+  margin: 0 0 8px;
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.profile-card {
+  margin: 0 0 16px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.profile-avatar {
+  width: 64px;
+  height: 64px;
+  flex-basis: 64px;
+  font-size: 22px;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.settings-actions button,
+.file-trigger,
+.settings-panel > button {
+  min-height: 40px;
+  border-radius: 14px;
+}
+
+.settings-preview {
+  margin-top: 18px;
+  padding: 14px;
+}
+
+.settings-preview h2 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.settings-save:not(:empty) {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.45);
+}
+
+.settings-preview {
+  margin-top: 16px;
+  padding: 14px;
+}
+
+.swatches button.active {
+  box-shadow: 0 0 0 2px #fff;
+}
+
+@media (max-width: 1023px) {
+  .settings-nav { width: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-panel { animation: none; }
 }

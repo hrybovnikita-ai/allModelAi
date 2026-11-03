@@ -14,7 +14,7 @@ test('clerk exchange maps link-required conflicts to a safe message', async () =
     const { exchangeClerkSessionForAllModelAI } = await import('../src/lib/clerkSessionExchange.js');
     await assert.rejects(
       () => exchangeClerkSessionForAllModelAI(async () => 'token', { rememberMe: true }),
-      (error) => error.code === 'CLERK_LINK_REQUIRED' && /Connected accounts/i.test(error.message),
+      (error) => error.code === 'CLERK_LINK_REQUIRED' && /not combined until you sign in/i.test(error.message),
     );
   } finally {
     globalThis.fetch = originalFetch;

@@ -12,18 +12,26 @@ function ClerkAutoExchange({
   signingUp,
   rememberMe,
   disabled,
+  resumeLink,
   onBusyChange,
   onError,
   onSuccess,
-  onUseExistingAccount,
+  onLinkRequired,
 }) {
   const { getToken, isSignedIn, isLoaded } = useAuth();
   const { signOut } = useClerk();
   const exchangeStarted = useRef(false);
   const permanentFailure = useRef(false);
+  const resumeSeen = useRef(false);
   const [exchangeError, setExchangeError] = useState('');
+  const [linkOffer, setLinkOffer] = useState(false);
 
   useEffect(() => {
+    if (resumeLink && !resumeSeen.current) {
+      resumeSeen.current = true;
+      exchangeStarted.current = false;
+      permanentFailure.current = false;
+    }
     if (!isLoaded || !isSignedIn || disabled || exchangeStarted.current || permanentFailure.current) {
       return;
     }
@@ -37,7 +45,12 @@ function ClerkAutoExchange({
         await onSuccess?.(outcome);
       } catch (error) {
         const message = error?.message || 'Clerk sign-in could not be completed.';
-        if (isPermanentClerkExchangeFailure(error)) {
+        if (error?.code === 'CLERK_LINK_REQUIRED') {
+          permanentFailure.current = true;
+          setLinkOffer(true);
+          setExchangeError('');
+          onLinkRequired?.();
+        } else if (isPermanentClerkExchangeFailure(error)) {
           permanentFailure.current = true;
           setExchangeError(message);
         } else {
@@ -55,12 +68,29 @@ function ClerkAutoExchange({
     isSignedIn,
     onBusyChange,
     onError,
+    onLinkRequired,
     onSuccess,
     rememberMe,
+    resumeLink,
   ]);
 
   if (!isLoaded) {
     return <p className="login-clerk-status" role="status">Loading secure sign-in…</p>;
+  }
+
+  if (linkOffer && !resumeLink) {
+    return (
+      <div className="login-clerk-recovery" role="status">
+        <p>This email already belongs to an AllModelAI account. Sign in with that email or Google. Clerk is linked only after that sign-in, not from the email match alone.</p>
+        <button
+          type="button"
+          className="login-clerk-recovery-btn"
+          onClick={() => onLinkRequired?.()}
+        >
+          Continue with email or Google
+        </button>
+      </div>
+    );
   }
 
   if (exchangeError) {
@@ -72,19 +102,19 @@ function ClerkAutoExchange({
           className="login-clerk-recovery-btn"
           onClick={() => {
             void signOut().catch(() => {});
-            onUseExistingAccount?.();
+            onLinkRequired?.();
           }}
         >
-          Sign in with email or Google, then connect Clerk in Settings
+          Use email or Google instead
         </button>
       </div>
     );
   }
 
-  if (isSignedIn) {
+  if (isSignedIn || resumeLink) {
     return (
       <p className="login-clerk-status" role="status">
-        Connecting AllModelAI session…
+        {resumeLink ? 'Linking Clerk to your signed-in account…' : 'Connecting AllModelAI session…'}
       </p>
     );
   }
@@ -110,23 +140,26 @@ export default function LoginClerkSection({
   signingUp,
   rememberMe,
   disabled,
+  resumeLink = false,
+  hidden = false,
   onBusyChange,
   onError,
   onSuccess,
-  onUseExistingAccount,
+  onLinkRequired,
 }) {
   const publishableKey = clerkPublishableKey();
   return (
     <ClerkProvider publishableKey={publishableKey} localization={clerkAuthLocalization()}>
-      <div className="login-clerk" aria-busy={disabled || undefined}>
+      <div className="login-clerk" hidden={hidden || undefined} aria-busy={disabled || undefined}>
         <ClerkAutoExchange
           signingUp={signingUp}
           rememberMe={rememberMe}
           disabled={disabled}
+          resumeLink={resumeLink}
           onBusyChange={onBusyChange}
           onError={onError}
           onSuccess={onSuccess}
-          onUseExistingAccount={onUseExistingAccount}
+          onLinkRequired={onLinkRequired}
         />
       </div>
     </ClerkProvider>

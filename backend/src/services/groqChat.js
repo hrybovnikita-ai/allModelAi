@@ -41,7 +41,7 @@ function shouldUseGroqDirect(routedModel) {
     if (!isGroqConfigured()) return false;
     if (slug === GPT_OSS_GROQ_SLUG) return true;
     if (slug !== 'groq') return false;
-    if (envTrim('GROQ_PROVIDER') === 'openrouter') return false;
+    if (envTrim('GROQ_USE_OPENROUTER') === '1') return false;
     return true;
 }
 
@@ -71,12 +71,21 @@ function resolveGroqDirectModel(selectedVariant, routedModel = 'groq') {
     return fromEnv || DEFAULT_GROQ_MODEL;
 }
 
-/** OpenRouter / gateway ids use the groq/ prefix; GroqCloud direct API does not. */
+/** OpenRouter fallback ids (GroqCloud direct API uses unprefixed ids). */
+const GROQ_OPENROUTER_MODEL_MAP = Object.freeze({
+    'llama-3.3-70b-versatile': 'meta-llama/llama-3.3-70b-instruct',
+    'llama-3.1-8b-instant': 'meta-llama/llama-3.1-8b-instruct',
+    'llama-3.1-70b-versatile': 'meta-llama/llama-3.1-70b-instruct',
+});
+
 function resolveGroqOpenRouterGateway(selectedVariant) {
     const gateway = String(selectedVariant?.gateway || '').trim();
-    if (gateway) return gateway;
     const direct = stripGroqApiModelPrefix(selectedVariant?.direct || envTrim('GROQ_MODEL') || DEFAULT_GROQ_MODEL);
-    return direct.startsWith('groq/') ? direct : `groq/${direct}`;
+    const fromGateway = stripGroqApiModelPrefix(gateway);
+    const key = fromGateway || direct;
+    if (GROQ_OPENROUTER_MODEL_MAP[key]) return GROQ_OPENROUTER_MODEL_MAP[key];
+    if (gateway && !gateway.startsWith('groq/')) return gateway;
+    return GROQ_OPENROUTER_MODEL_MAP[direct] || 'meta-llama/llama-3.1-8b-instruct';
 }
 
 function mapGroqHttpError(status, detail = '') {

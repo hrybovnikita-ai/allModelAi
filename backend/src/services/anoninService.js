@@ -10,6 +10,9 @@ const {
     isSlugBlockedByGatewayHealth,
     isOpenRouterCreditsExhausted,
 } = require('./gatewayModelHealth');
+const { isSlugDefaultRouteBlocked } = require('./modelRouteHealth');
+const { pickRouteForHealthCheck } = require('./modelDiagnosticsService');
+const { isSlugVerifiedWorking } = require('./verifiedInferenceHealth');
 const {
     getConversationAssignmentAsync,
     setConversationAssignmentAsync,
@@ -107,6 +110,7 @@ function buildIdentityLabels(slug, gatewayModelId) {
 
 function isHealthExcluded(slug) {
     if (isSlugBlockedByGatewayHealth(slug)) return true;
+    if (isSlugDefaultRouteBlocked(pickRouteForHealthCheck, slug)) return true;
     const cap = getCapabilities(slug);
     if (!cap) return true;
     const providerId = slugToProviderId(cap.provider) || cap.provider;
@@ -138,6 +142,10 @@ function listEligibleAnoninSlugs(modelAllowed, { hasVision = false, skipHealth =
 }
 
 function preferDirectAnoninSlugs(eligible) {
+    const verifiedDirect = eligible.filter((slug) => (
+        !slugDependsOnOpenRouterPaidCredits(slug) && isSlugVerifiedWorking(slug)
+    ));
+    if (verifiedDirect.length) return verifiedDirect;
     const direct = eligible.filter((slug) => !slugDependsOnOpenRouterPaidCredits(slug));
     if (direct.length) return direct;
     if (isOpenRouterCreditsExhausted()) return [];
@@ -234,17 +242,26 @@ async function resolveAnoninRouting({
                         strategy: assignment.strategy || strategy,
                         reusedAssignment: true,
                         fallbackFrom: null,
+                        routingKind: 'assigned',
+                        useOpenRouterFallback: false,
+                        emergencyGeminiFallback: false,
+                        backendSlug: preferred,
                     };
                 }
             }
         }
     }
 
+    let routingKind = 'eligible';
+    let useOpenRouterFallback = false;
     let eligible = preferDirectAnoninSlugs(listEligibleAnoninSlugs(modelAllowed, { hasVision }));
     if (!eligible.length) {
         const emergency = pickEmergencyAnoninSlug(modelAllowed, { hasVision });
         if (emergency) {
             eligible = [emergency];
+            routingKind = 'emergency';
+            const fallbackGateway = String(process.env.ANONIN_FALLBACK_OPENROUTER_MODEL || process.env.ANONIN_OPENROUTER_MODEL || '').trim();
+            useOpenRouterFallback = Boolean(fallbackGateway) && emergency === 'gemini';
         } else {
             return {
                 ok: false,
@@ -313,12 +330,20 @@ async function resolveAnoninRouting({
         await setConversationAssignmentAsync(connection, email, conversationId, slug, strategy);
     }
 
+    if (strategy === 'smart' && routingKind === 'eligible') {
+        routingKind = 'smart';
+    }
+
     return {
         ok: true,
         slug,
         strategy,
         reusedAssignment: false,
         fallbackFrom,
+        routingKind,
+        useOpenRouterFallback,
+        emergencyGeminiFallback: routingKind === 'emergency' && slug === 'gemini' && useOpenRouterFallback,
+        backendSlug: slug,
     };
 }
 

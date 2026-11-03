@@ -285,7 +285,7 @@ export function getApiBase() {
   return '';
 }
 
-const VITE_LAN_DEV_PORTS = new Set(['5173', '5174', '4173']);
+const VITE_LAN_DEV_PORTS = new Set(['5173', '5174', '5175', '4173']);
 
 /** True when Vite dev server should keep relative /api paths (local proxy). */
 export function isViteDevServerHost(location = typeof window !== 'undefined' ? window.location : null) {

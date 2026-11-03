@@ -43,6 +43,11 @@ function ChatResponseBlockInner({
             aria-busy="true"
           >
             <ThinkingDot label={thinkingLabel} />
+            <div className="chat-skeleton" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
           </motion.div>
         ) : null}
 

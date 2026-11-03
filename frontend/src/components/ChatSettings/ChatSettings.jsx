@@ -51,6 +51,7 @@ export default function ChatSettings() {
   const { user } = useOutletContext() || {};
   const { language, setLanguage, t } = useLanguage();
   const [section, setSection] = useState('profile');
+  const [navQuery, setNavQuery] = useState('');
   const [query, setQuery] = useState('');
   const [pendingLang, setPendingLang] = useState(null);
   const [saved, setSaved] = useState('');
@@ -135,6 +136,17 @@ export default function ChatSettings() {
 
   if (!user) return <Navigate to="/" replace />;
 
+  const visibleSections = SECTIONS.filter(([, label]) => label.toLowerCase().includes(navQuery.trim().toLowerCase()));
+  const preview = (section === 'appearance' || section === 'colors') ? (
+    <aside className="settings-preview">
+      <h2>{t('previewTitle')}</h2>
+      <div className="preview-stage" style={{ background: appearance.chatBackground || '#000', fontSize: `${appearance.fontSize || 16}px`, lineHeight: appearance.lineHeight || 1.6 }}>
+        <div className="preview-ai"><p style={{ color: appearance.aiTextColor || '#ececec' }}>{t('previewHello')}</p></div>
+        <div className="preview-user"><p style={{ background: appearance.textColor, color: contrast(appearance.textColor) }}>{t('previewPrompt')}</p></div>
+      </div>
+    </aside>
+  ) : null;
+
   return (
     <main className="chat-settings-page settings-shell">
       <header className="settings-top">
@@ -142,17 +154,22 @@ export default function ChatSettings() {
           <h1>{t('settings')}</h1>
           <p>Personalize your AllModelAI workspace</p>
         </div>
-        <Link to="/chat" className="back-to-chat">← {t('backChat')}</Link>
-        <span className="settings-save">{saved}</span>
+        <div className="settings-top-actions">
+          <span className="settings-save">{saved}</span>
+          <Link to="/chat" className="back-to-chat">← {t('backChat')}</Link>
+        </div>
       </header>
       <div className="settings-frame">
         <nav className="settings-nav" aria-label="Settings categories">
-          <span>NAVIGATION</span>
-          {SECTIONS.map(([id, label]) => (
+          <label className="settings-nav-search">
+            <span className="visually-hidden">Search settings</span>
+            <input value={navQuery} onChange={(event) => setNavQuery(event.target.value)} placeholder="Search" />
+          </label>
+          {visibleSections.map(([id, label]) => (
             <button key={id} type="button" className={section === id ? 'active' : ''} aria-current={section === id ? 'page' : undefined} onClick={() => setSection(id)}>{label}</button>
           ))}
         </nav>
-        <section className="settings-panel">
+        <section className="settings-panel" key={section}>
           {section === 'profile' && (
             <>
               <h1>My Profile</h1>
@@ -226,6 +243,7 @@ export default function ChatSettings() {
                 </select>
               </label>
               <SwitchRow label="Reduced animations" description="Limits motion in the interface." checked={Boolean(appearance.reducedMotion)} onChange={(value) => setAppearance((current) => ({ ...current, reducedMotion: value }))} />
+              {preview}
               <button type="button" onClick={() => { if (window.confirm('Reset appearance and colors on this device? Chat history stays unchanged.')) setAppearance({ theme: 'dark', textColor: '#8b5cf6', inputColor: '#262626', aiTextColor: '#ececec', chatBackground: '', accent: '#8b5cf6', density: 'comfortable', reducedMotion: false, fontSize: 16, lineHeight: 1.6, fontFamily: 'inherit', codeTheme: 'dark' }); }}>Reset appearance</button>
             </>
           )}
@@ -238,6 +256,7 @@ export default function ChatSettings() {
               <label>Chat background<input type="color" value={appearance.chatBackground || '#212121'} onChange={(event) => setAppearance((current) => ({ ...current, chatBackground: event.target.value }))} /></label>
               <label>Font size<input type="range" min="14" max="20" value={appearance.fontSize || 16} onChange={(event) => setAppearance((current) => ({ ...current, fontSize: Number(event.target.value) }))} /></label>
               <label>Line spacing<input type="range" min="1.3" max="2" step="0.1" value={appearance.lineHeight || 1.6} onChange={(event) => setAppearance((current) => ({ ...current, lineHeight: Number(event.target.value) }))} /></label>
+              {preview}
               <label>Code theme
                 <select value={appearance.codeTheme || 'dark'} onChange={(event) => setAppearance((current) => ({ ...current, codeTheme: event.target.value }))}>
                   <option value="dark">Dark</option>
@@ -307,15 +326,6 @@ export default function ChatSettings() {
             </>
           )}
         </section>
-        <aside className="settings-preview">
-          <h2>{t('previewTitle')}</h2>
-          <p>{t('autoSaved')}</p>
-          <div className="preview-stage" style={{ background: appearance.chatBackground || '#111118', fontSize: `${appearance.fontSize || 16}px`, lineHeight: appearance.lineHeight || 1.6 }}>
-            <div className="preview-ai"><p style={{ color: appearance.aiTextColor || '#ececec' }}>{t('previewHello')}</p><pre className={appearance.codeTheme === 'light' ? 'light' : ''}>print("hello")</pre></div>
-            <div className="preview-user"><p style={{ background: appearance.textColor, color: contrast(appearance.textColor) }}>{t('previewPrompt')}</p></div>
-            <div className="preview-composer"><span>{t('messagePlaceholder')}</span><b>↑</b></div>
-          </div>
-        </aside>
       </div>
       {pendingLang && <LanguageDialog onConfirm={() => { setLanguage(pendingLang); setPendingLang(null); }} onCancel={() => setPendingLang(null)} />}
     </main>

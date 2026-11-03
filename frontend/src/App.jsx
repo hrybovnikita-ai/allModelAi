@@ -92,6 +92,7 @@ import CodeWorkspacePage from "./components/CodeWorkspace/CodeWorkspacePage";
 import AILearningDashboard from "./components/Developer/AILearningDashboard";
 import StorageHub from "./components/StorageHub/StorageHub";
 import VoiceStudio from "./components/VoiceStudio/VoiceStudio";
+import "./styles/landing-theme.css";
 
 function HomePage() {
   const [selectedModel, setSelectedModel] = useState("claude");

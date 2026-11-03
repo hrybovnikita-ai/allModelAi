@@ -29,6 +29,9 @@ const { findVisionRoutedModel, visionSlugAllowed } = require('../visionSupport')
 
 const { isCloudflareWorkersAiConfigured } = require('../cloudflareWorkersAiConfig');
 const { healthPenaltyForSlug } = require('../providerHealthHints');
+const { isSlugDefaultRouteBlocked } = require('../modelRouteHealth');
+const { pickRouteForHealthCheck } = require('../modelDiagnosticsService');
+const { verifiedBoostForSlug, isFreeFirstSlug } = require('../verifiedInferenceHealth');
 
 const MODE_OVERRIDES = {
     economy: {
@@ -71,10 +74,15 @@ function scoreSlugForTask(slug, taskType, preferSpeed) {
     return score;
 }
 
+function slugRouteHealthy(slug) {
+    return !isSlugBlockedByGatewayHealth(slug)
+        && !isSlugDefaultRouteBlocked(pickRouteForHealthCheck, slug);
+}
+
 function pickBestSlug(taskType, preferSpeed, modelAllowed, performanceMap = {}) {
     const preferred = TASK_PICKS[taskType]?.slug || 'gemini';
     if (modelAllowed(preferred)
-        && !isSlugBlockedByGatewayHealth(preferred)
+        && slugRouteHealthy(preferred)
         && !avoidOpenRouterPaidSlug(preferred, modelAllowed)
         && findRoutedModelWithApiKey(preferred, modelAllowed) === preferred) {
         return preferred;
@@ -86,11 +94,15 @@ function pickBestSlug(taskType, preferSpeed, modelAllowed, performanceMap = {}) 
     let bestScore = -1;
     for (const slug of candidates) {
         if (!modelAllowed(slug)) continue;
-        if (isSlugBlockedByGatewayHealth(slug)) continue;
+        if (!slugRouteHealthy(slug)) continue;
         if (avoidOpenRouterPaidSlug(slug, modelAllowed)) continue;
         let score = scoreSlugForTask(slug, taskType, preferSpeed);
         score += performanceBoost(slug, performanceMap);
         score += healthPenaltyForSlug(slug);
+        score += verifiedBoostForSlug(slug);
+        if (isFreeFirstSlug(slug) && avoidOpenRouterPaidSlug(slug, modelAllowed)) {
+            score += 2;
+        }
         if (score > bestScore && findRoutedModelWithApiKey(slug, modelAllowed) === slug) {
             bestScore = score;
             best = slug;
@@ -98,13 +110,13 @@ function pickBestSlug(taskType, preferSpeed, modelAllowed, performanceMap = {}) 
     }
     if (best) return best;
     for (const slug of defaultFallbackChain(preferred)) {
-        if (!modelAllowed(slug) || isSlugBlockedByGatewayHealth(slug)) continue;
+        if (!modelAllowed(slug) || !slugRouteHealthy(slug)) continue;
         if (avoidOpenRouterPaidSlug(slug, modelAllowed)) continue;
         if (findRoutedModelWithApiKey(slug, modelAllowed) === slug) return slug;
     }
-    if (!isSlugBlockedByGatewayHealth(preferred)) return preferred;
+    if (slugRouteHealthy(preferred)) return preferred;
     for (const slug of candidates) {
-        if (!modelAllowed(slug) || isSlugBlockedByGatewayHealth(slug)) continue;
+        if (!modelAllowed(slug) || !slugRouteHealthy(slug)) continue;
         const routed = findRoutedModelWithApiKey(slug, modelAllowed);
         if (routed) return routed;
     }
@@ -166,7 +178,7 @@ function selectSmartRoute(prompt, options = {}) {
         if (isSlugBlockedByGatewayHealth(slug)) available = null;
         fallbacks = defaultFallbackChain(slug)
             .filter((candidate) => modelAllowed(candidate)
-                && !isSlugBlockedByGatewayHealth(candidate)
+                && slugRouteHealthy(candidate)
                 && !avoidOpenRouterPaidSlug(candidate, modelAllowed)
                 && findRoutedModelWithApiKey(candidate, modelAllowed) === candidate)
             .slice(0, 4);

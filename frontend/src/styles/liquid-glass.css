@@ -1,0 +1,150 @@
+/**
+ * Liquid Glass — black canvas, violet accent, translucent panels.
+ * Loaded last so it overrides earlier visual layers without changing markup.
+ */
+
+:root {
+  --lg-accent: #8B5CF6;
+  --lg-glass: rgba(255, 255, 255, 0.055);
+  --lg-glass-strong: rgba(18, 18, 18, 0.72);
+  --lg-line: rgba(255, 255, 255, 0.14);
+  --lg-line-accent: rgba(139, 92, 246, 0.45);
+  --lg-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --lg-radius: 18px;
+}
+
+html,
+body,
+#root,
+.app,
+.home-surface,
+.dashboard-page,
+.dashboard-page--premium {
+  background: #000000;
+  background-image: none;
+  color: #fff;
+}
+
+.header,
+.home-surface .header {
+  background: #000000;
+  background-image: none;
+}
+
+.header::before,
+.home-surface .header::before {
+  display: none;
+}
+
+.navbar,
+.fg-nav-glass {
+  position: sticky;
+  top: 0;
+  background: rgba(0, 0, 0, 0.62);
+  border-bottom: 1px solid var(--lg-line);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.navbar {
+  position: fixed;
+}
+
+.nav-links a:hover,
+.fg-nav a:hover,
+.dashboard-sidebar-link:hover {
+  color: #fff;
+}
+
+.nav-cta,
+.nav-links a.nav-link-feature,
+.dashboard-action-primary {
+  background: var(--lg-accent);
+  color: #fff;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease;
+}
+
+.nav-cta:hover,
+.dashboard-action-primary:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.35);
+}
+
+.home-surface .model-card,
+.home-surface .version-card,
+.home-surface .model-details,
+.pricing-card,
+.about-card,
+.sticker,
+.user-card,
+.dashboard-page--premium .overview-grid article,
+.dashboard-page--premium .dashboard-usage,
+.dashboard-page--premium .personal-overview,
+.dashboard-page--premium .dashboard-feature-card,
+.dashboard-page--premium .dashboard-grid article,
+.dashboard-page--premium .dashboard-code-section,
+.dashboard-sidebar {
+  background: var(--lg-glass);
+  border: 1px solid var(--lg-line);
+  border-radius: var(--lg-radius);
+  box-shadow: var(--lg-shadow);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.home-surface .model-card:hover,
+.home-surface .version-card:hover,
+.dashboard-page--premium .dashboard-feature-card:hover,
+.dashboard-page--premium .overview-grid article:hover {
+  border-color: var(--lg-line-accent);
+  transform: translateY(-2px);
+}
+
+input,
+textarea,
+select,
+button,
+.modal,
+dialog,
+[role="dialog"] {
+  border-radius: 18px;
+}
+
+.menu-toggle {
+  border-radius: 16px;
+  border: 1px solid var(--lg-line);
+  background: var(--lg-glass);
+}
+
+@media (max-width: 860px) {
+  .navbar {
+    padding-inline: 16px;
+  }
+
+  .nav-links {
+    gap: 12px;
+  }
+
+  .header {
+    padding-top: max(88px, calc(76px + var(--safe-top, 0px)));
+  }
+
+  .dashboard-layout-main {
+    padding-inline: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-cta,
+  .hero-prompt-send,
+  .dashboard-action-primary,
+  .home-surface .model-card,
+  .home-surface .version-card {
+    transition: none;
+    transform: none;
+  }
+}

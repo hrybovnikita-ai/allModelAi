@@ -3,12 +3,12 @@
  */
 :root {
   /* Surfaces (aligned with Dark Violet / App.css) */
-  --background: #05070a;
-  --surface: #101016;
-  --surface-elevated: #15151d;
-  --surface-hover: #1b1b26;
-  --surface-glass: rgba(16, 16, 22, 0.72);
-  --surface-glass-strong: rgba(12, 14, 24, 0.88);
+  --background: #000000;
+  --surface: #0a0a0a;
+  --surface-elevated: #111111;
+  --surface-hover: #161616;
+  --surface-glass: rgba(255, 255, 255, 0.06);
+  --surface-glass-strong: rgba(12, 12, 12, 0.72);
   --border: rgba(148, 163, 184, 0.12);
   --border-strong: rgba(124, 92, 255, 0.22);
   --border-active: rgba(157, 123, 255, 0.55);
@@ -22,20 +22,20 @@
   --text-muted: #8b8b9a;
 
   /* Homepage palette (from existing Header / hero) */
-  --bg-primary: #080910;
+  --bg-primary: #000000;
   --bg-secondary: #0e1224;
   --bg-hero-grid: rgba(255, 255, 255, 0.035);
   --cyan-accent: #60e0d0;
   --cyan-soft: rgba(0, 155, 165, 0.15);
   --lavender: #b49aff;
-  --violet: #9c76f5;
+  --violet: #8B5CF6;
   --hero-gradient: linear-gradient(115deg, #c4b5fd 0%, #b49aff 18%, #9c76f5 42%, #7c6cf0 68%, #6366f1 88%, #60e0d0 100%);
   --gradient-violet-purple: linear-gradient(135deg, #6548c9 0%, #9c76f5 52%, #b49aff 100%);
   --gradient-purple-indigo: linear-gradient(125deg, #7c5cff 0%, #6366f1 55%, #4f46e5 100%);
   --gradient-ambient: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(124, 92, 255, 0.2), transparent 55%);
 
   /* Premium reference accents (borders / hover / glow — not large fills) */
-  --ama-deep-black: #080910;
+  --ama-deep-black: #000000;
   --ama-dark-blue: #11182c;
   --ama-dark-navy: #0e1224;
   --ama-purple: #6548c9;
@@ -44,8 +44,8 @@
   --ama-white: #f6f5ff;
 
   /* Brand purple (unchanged core token) */
-  --purple: #7c5cff;
-  --purple-soft: #9d7bff;
+  --purple: #8B5CF6;
+  --purple-soft: #a78bfa;
   --purple-glow: rgba(124, 92, 255, 0.24);
   --purple-glow-soft: rgba(124, 92, 255, 0.12);
   --gradient-primary: linear-gradient(135deg, #6548c9 0%, #7c5cff 48%, #9c76f5 100%);
@@ -58,9 +58,9 @@
 
   /* Radius */
   --radius-xs: 8px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
+  --radius-sm: 16px;
+  --radius-md: 18px;
+  --radius-lg: 20px;
   --radius-xl: 22px;
   --radius-2xl: 26px;
   --radius-pill: 9999px;
