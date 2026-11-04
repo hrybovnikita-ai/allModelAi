@@ -103,19 +103,27 @@ export default defineConfig(({ mode }) => {
         ],
       },
       workbox: {
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [
-          /^\/api(\/|$)/,
-          /^\/auth(\/|$)/,
-          /^\/__\/auth(\/|$)/,
-          /\/session(\/|$|\?)/,
-          /\/models(\/|$|\?)/,
-        ],
+        // Activate the new worker without waiting for every old tab to close.
+        // Otherwise a successful deploy keeps serving the precached shell.
+        skipWaiting: true,
+        clientsClaim: true,
         cleanupOutdatedCaches: true,
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}'],
-        globIgnores: ['**/og-image.png', '**/gold_dragon_allModelAi*.png'],
+        navigateFallback: null,
+        // Do not precache index.html. Navigation is NetworkFirst so
+        // /dashboard and /chat pick up the new CSS/JS after each deploy.
+        globPatterns: ['**/*.{js,css,ico,png,svg,woff,woff2,webmanifest}'],
+        globIgnores: ['**/og-image.png', '**/gold_dragon_allModelAi*.png', '**/index.html'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'pages',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 16, maxAgeSeconds: 60 * 60 },
+            },
+          },
           {
             urlPattern: API_PATH_PATTERN,
             handler: 'NetworkOnly',
