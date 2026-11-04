@@ -13,6 +13,7 @@ const {
     categorizeHttpStatus,
     categorizeFetchError,
     shouldTryFallback,
+    ERROR_CATEGORIES,
 } = require('./smartRouter2/fallbacks');
 
 const DEFAULT_TIMEOUT_MS = Math.min(
@@ -84,7 +85,13 @@ function validateGatewayRequest({ url, method = 'GET', provider }) {
     const allowed = PROVIDER_ALLOWLIST[resolvedProvider];
     if (allowed?.length && parsed) {
         const host = parsed.hostname.toLowerCase();
-        const hostOk = allowed.some((entry) => host === entry || host.endsWith(`.${entry}`));
+        const matches = (id) => {
+            const list = PROVIDER_ALLOWLIST[id];
+            return Array.isArray(list) && list.some((entry) => host === entry || host.endsWith(`.${entry}`));
+        };
+        // Model slug (gemini, gpt, …) may be served by another allowlisted host such as OpenRouter.
+        const inferred = inferProviderFromUrl(url);
+        const hostOk = matches(resolvedProvider) || (inferred !== 'unknown' && matches(inferred));
         if (!hostOk) errors.push('host_not_allowed_for_provider');
     }
     const verb = String(method || 'GET').toUpperCase();
@@ -133,6 +140,15 @@ function syntheticProviderResponse({ timedOut = false, message = '' } = {}) {
 
 function isRetryableHttpStatus(status) {
     const category = categorizeHttpStatus(Number(status) || 0);
+    // Router handles provider fallback; gateway retries only transient server/network faults.
+    if (category === ERROR_CATEGORIES.rate_limit || category === ERROR_CATEGORIES.timeout) {
+        return false;
+    }
+    return shouldTryFallback(category);
+}
+
+function isRetryableFetchError({ timedOut, category }) {
+    if (timedOut || category === ERROR_CATEGORIES.timeout) return false;
     return shouldTryFallback(category);
 }
 
@@ -288,7 +304,7 @@ async function gatewayFetch({
                 category,
             });
 
-            if (shouldTryFallback(category) && attempt < maxAttempts) {
+            if (isRetryableFetchError({ timedOut, category }) && attempt < maxAttempts) {
                 await sleep(280 * (2 ** (attempt - 1)));
                 continue;
             }
