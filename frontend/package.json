@@ -43,6 +43,7 @@
     "allmodelai": "file:..",
     "axios": "^1.12.2",
     "firebase": "^12.19.0",
+    "lucide-react": "^1.68.0",
     "pdfjs-dist": "^6.3.289",
     "prism-react-renderer": "^2.4.1",
     "prismjs": "^1.30.0",
