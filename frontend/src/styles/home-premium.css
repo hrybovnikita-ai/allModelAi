@@ -128,8 +128,8 @@
   line-height: 1.65;
 }
 
-/* Footer */
-.footer {
+/* Footer (legacy; premium footer in Footer.css) */
+.footer:not(.footer--premium) {
   margin-top: clamp(48px, 6vw, 80px);
   padding-block: clamp(48px, 6vw, 80px) clamp(24px, 3vw, 32px);
   padding-inline: max(var(--page-gutter, 20px), var(--safe-left)) max(var(--page-gutter, 20px), var(--safe-right));
@@ -137,7 +137,7 @@
   border-top: 1px solid var(--border-strong);
 }
 
-.footer-content {
+.footer:not(.footer--premium) .footer-content {
   max-width: var(--ama-container-ultra);
   margin-inline: auto;
 }

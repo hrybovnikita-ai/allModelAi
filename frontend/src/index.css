@@ -1,7 +1,7 @@
 :root {
   --text: #e2e8f0;
   --text-h: #f8fafc;
-  --bg: #05070a;
+  --bg: #050505;
   --border: #e5e4e7;
   --code-bg: #f4f3ec;
   --accent: #6366f1;
@@ -32,7 +32,7 @@
 
 body {
   margin: 0;
-  background: #05070a;
+  background: #050505;
 }
 
 #root {

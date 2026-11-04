@@ -1,0 +1,246 @@
+/**
+ * Senior responsive layer — mobile-first, content breakpoints, overflow safety.
+ * Visual tokens unchanged; loads after responsive.css / responsive-pages.css.
+ */
+
+:root {
+  --ama-fluid-xs: clamp(0.72rem, 0.68rem + 0.2vw, 0.78rem);
+  --ama-fluid-sm: clamp(0.82rem, 0.78rem + 0.25vw, 0.92rem);
+  --ama-fluid-base: clamp(0.94rem, 0.88rem + 0.3vw, 1rem);
+  --ama-fluid-lg: clamp(1.15rem, 1rem + 0.8vw, 1.35rem);
+  --ama-fluid-xl: clamp(1.45rem, 1.1rem + 1.6vw, 2rem);
+  --ama-fluid-2xl: clamp(1.85rem, 1.4rem + 2.2vw, 2.75rem);
+  --ama-space-section: clamp(40px, 6vw, 88px);
+  --app-content-width: min(100% - 2 * var(--page-gutter, 24px), 1600px);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--ama-violet, #7535f5) 35%, transparent);
+}
+
+/* Overflow safety — flex/grid children */
+.home-layout,
+.container,
+.dashboard-shell,
+.dashboard-page,
+.upgrade-page,
+.checkout-page,
+.chat-page,
+.chat-main,
+.chat-workspace,
+.studio-page,
+.python-ai-lab-page,
+.settings-page,
+.discover-ama-inner {
+  min-width: 0;
+}
+
+/* Fluid section rhythm (landing + hubs) */
+.home-layout > * {
+  scroll-margin-top: calc(72px + var(--safe-top, 0px));
+}
+
+/* Responsive 4 → 2 → 1 grid utility (opt-in via class on containers) */
+.ama-grid-adaptive {
+  display: grid;
+  gap: clamp(12px, 2vw, 20px);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 600px) {
+  .ama-grid-adaptive {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1100px) {
+  .ama-grid-adaptive {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Tables — horizontal scroll on narrow viewports */
+.table-scroll,
+.dashboard-table-wrap,
+.payment-order-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+@media (max-width: 767px) {
+  :is(.dashboard-page, .checkout-page, .settings-page, .upgrade-page) table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Touch + focus */
+:where(a, button, input, select, textarea, summary, [role='button']):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ama-cyan, #49c8ff) 70%, white);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .nav-links a,
+  .login-switch button,
+  .forgot-link,
+  .upgrade-page__nav a {
+    min-height: var(--touch-target, 44px);
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/* Mobile nav drawer polish */
+@media (max-width: 1023px) {
+  .navbar .nav-links.is-open {
+    animation: nav-drawer-in 280ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    border-radius: clamp(14px, 3vw, 18px);
+    box-shadow:
+      0 24px 64px rgba(0, 0, 0, 0.55),
+      0 0 40px color-mix(in srgb, var(--ama-violet, #7535f5) 12%, transparent);
+  }
+}
+
+@keyframes nav-drawer-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Chat — align drawer breakpoint with sidebar collapse (900px) */
+@media (max-width: 900px) {
+  .chat-page .sidebar-toggle {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--touch-target, 44px);
+    min-height: var(--touch-target, 44px);
+  }
+
+  .chat-page .sidebar-backdrop.visible {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    border: 0;
+    background: rgba(5, 5, 5, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .chat-page .chat-sidebar.open {
+    z-index: 100;
+  }
+
+  .chat-page .message-image-container img,
+  .chat-page .message-user-image {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* Laptop / desktop content width */
+@media (min-width: 1280px) {
+  .home-layout,
+  .container:not(.chat-page) {
+    width: min(100%, var(--app-content-width));
+    margin-inline: auto;
+  }
+}
+
+@media (min-width: 1920px) {
+  :root {
+    --app-content-width: min(100% - 2 * var(--page-gutter, 48px), 1720px);
+  }
+}
+
+@media (min-width: 2560px) {
+  :root {
+    --app-content-width: min(100% - 2 * var(--page-gutter, 64px), 1840px);
+  }
+
+  .chat-message {
+    max-width: min(1080px, 68vw);
+  }
+}
+
+/* Mobile performance — lighter glass blur (keeps look, saves GPU) */
+@media (max-width: 767px) {
+  .navbar,
+  .login-modal,
+  .forgot-page .forgot-shell,
+  .discover-ama-feature,
+  .footer--premium .footer-shell-inner,
+  .upgrade-plan-card,
+  .pricing-card,
+  .hero-prompt {
+    backdrop-filter: blur(14px) saturate(150%);
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+  }
+
+  .login-modal::before,
+  .footer--premium .footer-shell-border,
+  .hero-aura-sweep {
+    animation-duration: 28s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navbar .nav-links.is-open {
+    animation: none;
+  }
+
+  .login-modal::before,
+  .footer--premium .footer-shell-border,
+  .hero-ambient-drift,
+  .discover-ama-cta {
+    animation: none !important;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Auth + checkout on very small phones (320px) */
+@media (max-width: 360px) {
+  .login-modal,
+  .forgot-page .forgot-shell {
+    padding: clamp(18px, 5vw, 24px);
+  }
+
+  .navbar {
+    padding-inline: max(12px, var(--safe-left)) max(12px, var(--safe-right));
+  }
+
+  .nav-auth button {
+    padding-inline: 12px;
+    font-size: 0.78rem;
+  }
+}
+
+/* Landscape phones — reduce vertical chrome */
+@media (max-height: 520px) and (max-width: 900px) {
+  .login-overlay {
+    align-items: flex-start;
+    padding-top: max(8px, var(--safe-top));
+  }
+
+  .login-modal {
+    max-height: min(calc(100dvh - 16px), calc(100svh - 16px));
+  }
+}

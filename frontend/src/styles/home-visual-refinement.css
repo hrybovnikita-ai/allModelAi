@@ -29,18 +29,7 @@
   line-height: 1.15;
 }
 
-/* Hero prompt — layered glass */
-.home-surface .hero-prompt {
-  background: rgba(18, 22, 32, 0.78);
-  box-shadow: var(--shadow-md), var(--home-glass-highlight);
-}
-
 @supports ((-webkit-backdrop-filter: blur(12px)) or (backdrop-filter: blur(12px))) {
-  .home-surface .hero-prompt {
-    -webkit-backdrop-filter: blur(14px) saturate(1.15);
-    backdrop-filter: blur(14px) saturate(1.15);
-  }
-
   .home-surface .demo-answer {
     -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);

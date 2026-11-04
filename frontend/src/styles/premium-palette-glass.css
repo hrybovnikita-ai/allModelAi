@@ -1,0 +1,236 @@
+/**
+ * Sitewide glass + motion using the 19-color tokens.
+ * Visual only — does not change layout structure or behavior.
+ */
+:root {
+  --glass-panel: color-mix(in srgb, var(--ama-dark-blue) 72%, transparent);
+  --glass-border-soft: color-mix(in srgb, var(--ama-light-violet) 28%, transparent);
+  --motion-ui: 260ms;
+  --glow-violet: 0 0 28px color-mix(in srgb, var(--ama-violet) 35%, transparent);
+}
+
+body {
+  background: var(--ama-black);
+  color: var(--ama-white);
+}
+
+.glass-panel,
+.dashboard-card,
+.pricing-card,
+.settings-card,
+.checkout-order-card,
+.chat-sidebar,
+.nav-shell,
+header.site-header,
+.payment-form-card:not(.payment-form-card--light) {
+  background: var(--glass-panel);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 18px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition:
+    transform var(--motion-ui) ease,
+    border-color var(--motion-ui) ease,
+    box-shadow var(--motion-ui) ease;
+}
+
+.pricing-card:hover,
+.dashboard-card:hover,
+.settings-card:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--ama-light-violet) 55%, transparent);
+  box-shadow: var(--glow-violet), 0 22px 48px rgba(0, 0, 0, 0.4);
+}
+
+button:not(.pricing-btn):not(.pricing-btn-pill):not(.pricing-pro-subscribe),
+.pro-subscribe-btn:not(.pricing-pro-subscribe),
+.pay-button,
+.mock-checkout-submit,
+input,
+textarea,
+select {
+  border-radius: 14px;
+  transition:
+    background var(--motion-ui) ease,
+    border-color var(--motion-ui) ease,
+    box-shadow var(--motion-ui) ease,
+    transform var(--motion-ui) ease;
+}
+
+.pro-subscribe-btn--violet:not(.pricing-pro-subscribe),
+.pay-button,
+.mock-checkout-submit {
+  background: linear-gradient(135deg, var(--ama-light-violet), var(--ama-violet));
+  box-shadow: var(--glow-violet);
+}
+
+.pro-subscribe-btn--violet:hover:not(:disabled),
+.pay-button:hover:not(:disabled),
+.mock-checkout-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 0 36px color-mix(in srgb, var(--ama-light-violet) 45%, transparent);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--ama-light-violet);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ama-violet) 28%, transparent);
+}
+
+/* Accent helpers for badges / status — use sparingly */
+/* Pricing CTAs share the Pro Subscribe pill shape. Colors stay on each button. */
+.home-surface .pricing-btn,
+.home-surface .pricing-btn-pill,
+.pricing-card .pricing-btn,
+.pricing-card .pricing-btn-pill {
+  border-radius: 9999px;
+}
+
+/* Selective accents on real chrome — pricing button fills are untouched. */
+.chat-sidebar .sidebar-nav-link.active,
+.dashboard-nav a.active,
+.settings-nav button.active {
+  color: var(--ama-white);
+  border-color: color-mix(in srgb, var(--ama-cyan) 45%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--ama-blue) 25%, transparent);
+}
+
+.home-layout .model-card:nth-child(3n + 1) { border-color: color-mix(in srgb, var(--ama-violet) 45%, transparent); }
+.home-layout .model-card:nth-child(3n + 2) { border-color: color-mix(in srgb, var(--ama-cyan) 40%, transparent); }
+.home-layout .model-card:nth-child(3n) { border-color: color-mix(in srgb, var(--ama-gold) 42%, transparent); }
+
+.home-layout .everyday-card-grid > a:nth-child(4n + 1) h3 { color: var(--ama-light-violet); }
+.home-layout .everyday-card-grid > a:nth-child(4n + 2) h3 { color: var(--ama-cyan); }
+.home-layout .everyday-card-grid > a:nth-child(4n + 3) h3 { color: var(--ama-lime); }
+.home-layout .everyday-card-grid > a:nth-child(4n) h3 { color: var(--ama-coral); }
+
+.about-card:nth-child(3n + 1) .about-card-icon { color: var(--ama-gold); }
+.about-card:nth-child(3n + 2) .about-card-icon { color: var(--ama-cyan); }
+.about-card:nth-child(3n) .about-card-icon { color: var(--ama-pink); }
+
+.workflow-number { color: var(--ama-light-violet); }
+.rainbow-number { color: var(--ama-gold); }
+
+.home-layout h2 {
+  background: linear-gradient(100deg, var(--ama-white) 20%, var(--ama-light-violet) 55%, var(--ama-cyan) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.home-layout .everyday-eyebrow,
+.home-layout .rainbow-eyebrow,
+.workflow-intro > span {
+  color: var(--ama-gold);
+}
+
+.chat-sidebar .sidebar-section-label { color: var(--ama-gray); }
+.dashboard-eyebrow { color: var(--ama-cyan); }
+.settings-page h1,
+.chat-settings h1 { color: var(--ama-white); }
+
+.studio-card:nth-child(odd),
+.platform-card:nth-child(odd) {
+  border-color: color-mix(in srgb, var(--ama-pink) 35%, transparent);
+}
+.studio-card:nth-child(even),
+.platform-card:nth-child(even) {
+  border-color: color-mix(in srgb, var(--ama-blue) 35%, transparent);
+}
+
+.accent-green { color: var(--ama-green); }
+.accent-gold { color: var(--ama-gold); }
+.accent-cyan { color: var(--ama-cyan); }
+.accent-coral { color: var(--ama-coral); }
+.accent-pink { color: var(--ama-pink); }
+
+/* Homepage — localhost:5174 */
+.home-layout,
+#home.header {
+  background: var(--ama-black);
+  color: var(--ama-white);
+}
+
+.home-layout {
+  background:
+    radial-gradient(ellipse 70% 40% at 10% 0%, color-mix(in srgb, var(--ama-violet) 28%, transparent), transparent 60%),
+    radial-gradient(ellipse 50% 35% at 90% 8%, color-mix(in srgb, var(--ama-dark-blue) 80%, transparent), transparent 55%),
+    var(--ama-black);
+}
+
+/* In-header nav pills only — not the full-width `.navbar` (see Navbar.css). */
+.header .nav:not(.navbar) {
+  background: color-mix(in srgb, var(--ama-dark-blue) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ama-light-violet) 30%, transparent);
+  border-radius: 18px;
+  backdrop-filter: blur(16px);
+}
+
+.hero-prompt,
+.hero-prompt-box,
+.hero-visual-region {
+  background: color-mix(in srgb, var(--ama-dark-blue) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ama-light-violet) 32%, transparent);
+  border-radius: 18px;
+  box-shadow: var(--glow-violet);
+}
+
+.hero-kicker {
+  color: var(--ama-light-violet);
+}
+
+.hero-prompt-send,
+.header .nav a.nav-cta,
+.header button.primary {
+  background: linear-gradient(135deg, var(--ama-light-violet), var(--ama-violet));
+  color: var(--ama-white);
+  border-radius: 16px;
+  box-shadow: var(--glow-violet);
+}
+
+.home-layout section,
+.models-section,
+.pricing,
+.about {
+  color: var(--ama-white);
+}
+
+.home-layout h3 {
+  color: var(--ama-white);
+}
+
+.home-layout .card,
+.home-layout article,
+.pricing-card {
+  background: color-mix(in srgb, var(--ama-dark-blue) 82%, var(--ama-black));
+  border-color: color-mix(in srgb, var(--ama-violet) 35%, transparent);
+}
+
+@media (max-width: 768px) {
+  .glass-panel,
+  .dashboard-card,
+  .pricing-card {
+    border-radius: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-panel,
+  .dashboard-card,
+  .pricing-card,
+  button,
+  .pro-subscribe-btn {
+    transition: none;
+  }
+
+  .pricing-card:hover,
+  .dashboard-card:hover,
+  .pro-subscribe-btn--violet:hover:not(:disabled) {
+    transform: none;
+  }
+}

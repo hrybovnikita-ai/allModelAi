@@ -39,6 +39,33 @@ const subscriptionPlans = {
         limit: 6000,
         models: ['all'],
     },
+    upgrade_plus: {
+        name: 'Plus Monthly',
+        amount: 2000,
+        interval: 'month',
+        limit: 2000,
+        models: [
+            'smart', 'gemini', 'gpt', 'claude', 'llama', 'deepseek', 'mistral', 'groq', 'gpt-oss-groq',
+            'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'ollama',
+        ],
+    },
+    upgrade_pro_plus: {
+        name: 'Pro+ Monthly',
+        amount: 4000,
+        interval: 'month',
+        limit: 5000,
+        models: [
+            'smart', 'gemini', 'gpt', 'claude', 'llama', 'grok', 'groq', 'gpt-oss-groq', 'copilot', 'perplexity', 'kimi',
+            'deepseek', 'mistral', 'qwen', 'cohere', 'cloudflare', 'gpt-oss', 'nemotron', 'deepseek-r1', 'ollama',
+        ],
+    },
+    upgrade_ultra: {
+        name: 'Ultra Monthly',
+        amount: 8000,
+        interval: 'month',
+        limit: 12000,
+        models: ['all'],
+    },
 };
 
 const normalizePlanKey = (value) => (
@@ -50,8 +77,22 @@ const normalizePlanKey = (value) => (
         power: 'plus',
         enterprise: 'plus',
         developer: 'free',
-    }[String(value || '').toLowerCase()]
-    || String(value || '').toLowerCase()
+        'upgrade-plus': 'upgrade_plus',
+        'upgrade-pro': 'upgrade_pro_plus',
+        'pro-plus': 'upgrade_pro_plus',
+        pro_plus: 'upgrade_pro_plus',
+        proplus: 'upgrade_pro_plus',
+        upgrade_pro: 'upgrade_pro_plus',
+        upgrade_pro_plus: 'upgrade_pro_plus',
+        ultra: 'upgrade_ultra',
+        'upgrade-ultra': 'upgrade_ultra',
+        upgrade_ultra: 'upgrade_ultra',
+    }[String(value || '').toLowerCase().replace(/_/g, '-')]
+    || (() => {
+        const underscored = String(value || '').toLowerCase().replace(/-/g, '_');
+        if (underscored === 'pro_plus') return 'upgrade_pro_plus';
+        return underscored;
+    })()
 );
 
 /** Public checkout slug stored in subscription_details.plan */
@@ -62,6 +103,9 @@ const planSlugForKey = (planKey) => {
     if (key === 'plus') return 'unlimited';
     if (key === 'week') return 'week';
     if (key === 'free') return 'free';
+    if (key === 'upgrade_plus') return 'upgrade-plus';
+    if (key === 'upgrade_pro_plus') return 'pro-plus';
+    if (key === 'upgrade_ultra') return 'ultra';
     return key;
 };
 
@@ -76,6 +120,11 @@ const PLAN_UI_LABELS = {
     week: 'Weekly',
     weekly: 'Weekly',
     developer: 'Developer',
+    upgrade_plus: 'Plus',
+    upgrade_pro_plus: 'Pro+',
+    upgrade_ultra: 'Ultra',
+    'upgrade-plus': 'Plus',
+    'pro-plus': 'Pro+',
 };
 
 const planDisplayName = (planKey, { isDeveloper = false, hasPaidSubscription = false, storedPlanKey = null } = {}) => {

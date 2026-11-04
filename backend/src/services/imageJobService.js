@@ -129,7 +129,20 @@ function updateImageJob(jobId, patch) {
     Object.assign(job, patch, { updatedAt: Date.now() });
     jobs.set(key, job);
     persistJob(job);
+    try {
+        const jobEventHub = require('./jobEventHub');
+        const { buildPublicImageJobSnapshot } = require('./jobPublicSnapshot');
+        jobEventHub.publish(`image:${key}`, buildPublicImageJobSnapshot(job));
+    } catch {
+        /* ignore hub errors */
+    }
     return job;
+}
+
+function cancelImageJob(jobId, userId) {
+    const job = getImageJob(jobId, userId);
+    if (!job || !['queued', 'processing'].includes(job.status)) return null;
+    return updateImageJob(jobId, { status: 'cancelled', stage: 'Cancelled' });
 }
 
 function publicJobPayload(job) {
@@ -167,6 +180,7 @@ function publicJobPayload(job) {
 module.exports = {
     createImageJob,
     getImageJob,
+    cancelImageJob,
     updateImageJob,
     publicJobPayload,
 };

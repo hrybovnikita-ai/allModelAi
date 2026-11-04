@@ -90,7 +90,8 @@ async function deleteDocument(connection, email, documentId) {
     return { deleted: true };
 }
 
-async function indexDocument(connection, email, input) {
+async function indexDocument(connection, email, input, hooks = {}) {
+    const onProgress = typeof hooks.onProgress === 'function' ? hooks.onProgress : null;
     const normalized = String(email).trim().toLowerCase();
     const name = sanitizeFilename(input.name);
     const mimeType = String(input.mimeType || 'text/plain').slice(0, 120);
@@ -107,6 +108,13 @@ async function indexDocument(connection, email, input) {
     const chunks = pages?.length
         ? splitPagesIntoChunks(pages)
         : splitTextIntoChunks(content).map((c) => ({ ...c, pageNumber: 1 }));
+
+    onProgress?.({
+        stage: 'Chunking content',
+        progress: 12,
+        chunkIndex: 0,
+        chunkTotal: chunks.length,
+    });
 
     const dir = path.join(storageRoot(), normalized.replace(/[^a-z0-9@._-]/gi, '_'));
     fs.mkdirSync(dir, { recursive: true });
@@ -148,8 +156,17 @@ async function indexDocument(connection, email, input) {
     }
 
     let inserted = 0;
+    const chunkTotal = chunks.length;
     for (const chunk of chunks) {
         const chunkId = `${id}:${chunk.chunkIndex}`;
+        onProgress?.({
+            stage: chunkTotal > 1 ? `Embedding chunk ${inserted + 1} of ${chunkTotal}` : 'Analyzing content',
+            progress: chunkTotal
+                ? 15 + Math.round(((inserted + 0.5) / chunkTotal) * 80)
+                : 50,
+            chunkIndex: inserted + 1,
+            chunkTotal,
+        });
         const embedding = await embedText(chunk.text);
         embeddingModel = embedding.model || embeddingModel;
         embeddingVersion = embedding.provider || embeddingVersion;

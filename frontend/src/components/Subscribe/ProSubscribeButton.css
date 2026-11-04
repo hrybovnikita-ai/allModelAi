@@ -1,3 +1,7 @@
+a.pro-subscribe-btn {
+  text-decoration: none;
+}
+
 .pro-subscribe-btn {
   display: inline-flex;
   align-items: center;

@@ -17,7 +17,14 @@ import CheckoutSummaryCard from './CheckoutSummaryCard';
 import PaymentFormCard from './PaymentFormCard';
 import PaymentButton from './PaymentButton';
 import CheckoutAiCreditPackages from './CheckoutAiCreditPackages';
+import CheckoutPaymentMethods from './CheckoutPaymentMethods';
 import PaddleCheckoutButton from './PaddleCheckoutButton';
+import { isUpgradeCheckoutSlug } from '../../lib/upgradePlansCatalog';
+import {
+  checkoutApiPlanSlug,
+  resolveCheckoutPlanSlug,
+  staticFallbackPlanQuote,
+} from '../../lib/checkoutPlanSlug';
 import {
   openStripeBillingPortal,
   openStripeBillingPortalFromApiError,
@@ -37,35 +44,17 @@ const DEVELOPER_FALLBACK = {
   ],
 };
 
-function planSlugFromPath(pathname) {
-  if (pathname.endsWith('/enterprise') || pathname.endsWith('/unlimited')) return 'unlimited';
-  if (pathname.endsWith('/starter')) return 'starter';
-  if (pathname.endsWith('/pro')) return 'pro';
-  if (pathname.endsWith('/developer')) return 'developer';
-  return 'pro';
-}
-
-function normalizeCheckoutPlanSlug(raw) {
-  const slug = String(raw || '').toLowerCase();
-  if (slug === 'starter') return 'starter';
-  if (slug === 'pro' || slug === 'common') return 'pro';
-  if (slug === 'unlimited' || slug === 'enterprise' || slug === 'plus' || slug === 'power') return 'unlimited';
-  if (slug === 'developer') return 'developer';
-  return null;
-}
-
 export default function Checkout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { status: sessionStatus, user: sessionUser, refresh: refreshSession } = useSession();
-  const planSlug = useMemo(() => {
-    const fromQuery = normalizeCheckoutPlanSlug(searchParams.get('plan'));
-    if (fromQuery) return fromQuery;
-    return planSlugFromPath(location.pathname);
-  }, [location.pathname, searchParams]);
+  const planSlug = useMemo(
+    () => resolveCheckoutPlanSlug(searchParams, location.pathname),
+    [location.pathname, searchParams],
+  );
   const isDeveloper = planSlug === 'developer';
-  const stripeCheckoutPlan = planSlug === 'unlimited' ? 'unlimited' : planSlug;
+  const stripeCheckoutPlan = checkoutApiPlanSlug(planSlug);
 
   const [checkoutInfo, setCheckoutInfo] = useState(null);
   const [planQuote, setPlanQuote] = useState(null);
@@ -80,6 +69,7 @@ export default function Checkout() {
   const [wayforpayModalOpen, setWayforpayModalOpen] = useState(false);
   const wayforpaySuccessNavRef = useRef(null);
   const [activePlanConflict, setActivePlanConflict] = useState(null);
+  const [planQuoteLoading, setPlanQuoteLoading] = useState(true);
   const stripeAutoLoadRef = useRef(false);
   const paymentProvider = checkoutInfo?.primaryProvider || null;
   const paymentsAvailable = Boolean(checkoutInfo?.checkoutAvailable);
@@ -99,13 +89,21 @@ export default function Checkout() {
     ? 'Stripe'
     : (checkoutInfo?.providerDisplayName || 'Payment provider');
 
-  const summary = isDeveloper ? DEVELOPER_FALLBACK : planQuote;
+  const summary = useMemo(() => {
+    if (isDeveloper) return DEVELOPER_FALLBACK;
+    if (planQuote) return planQuote;
+    return staticFallbackPlanQuote(planSlug);
+  }, [isDeveloper, planQuote, planSlug]);
+
   const priceLabel = summary
     ? (Number(summary.amountDisplay) === 0 ? '$0' : `$${summary.amountDisplay}`)
     : '—';
   const payAmountLabel = summary?.amountDisplay
     ? `$${summary.amountDisplay}`
     : priceLabel;
+  const stripePayLabel = summary?.amountDisplay
+    ? `Pay and subscribe — $${summary.amountDisplay}/month`
+    : 'Pay and subscribe';
 
   useEffect(() => {
     fetchCheckoutInfo().then((info) => {
@@ -138,12 +136,32 @@ export default function Checkout() {
   useEffect(() => {
     if (isDeveloper) {
       setPlanQuote(null);
+      setPlanQuoteLoading(false);
       return undefined;
     }
     let cancelled = false;
+    setPlanQuoteLoading(true);
+    setPlanQuote(null);
     fetchCheckoutPlan(planSlug)
-      .then((data) => { if (!cancelled) setPlanQuote(data); })
-      .catch((failure) => { if (!cancelled) setError(failure.message); });
+      .then((data) => {
+        if (!cancelled) {
+          setPlanQuote(data);
+          setError('');
+        }
+      })
+      .catch((failure) => {
+        if (!cancelled) {
+          const fallback = staticFallbackPlanQuote(planSlug);
+          if (fallback) {
+            setError('');
+          } else {
+            setError(failure.message || 'Could not load plan details.');
+          }
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPlanQuoteLoading(false);
+      });
     return () => { cancelled = true; };
   }, [planSlug, isDeveloper]);
 
@@ -225,7 +243,9 @@ export default function Checkout() {
         payload,
         payload?.userMessage || payload?.message || requestError.message || 'Could not start secure checkout.',
       );
-      setError(message);
+      setError(payload?.code === 'INVALID_CHECKOUT_PLAN'
+        ? `${message} (plan: ${stripeCheckoutPlan})`
+        : message);
       if (requestError.response?.status === 409 && payload?.useBillingPortal) {
         setActivePlanConflict({
           canManageStripeBilling: Boolean(payload.canManageStripeBilling),
@@ -244,6 +264,7 @@ export default function Checkout() {
   useEffect(() => {
     if (!useStripeProduction || isDeveloper || usePaddlePrimary) return undefined;
     if (isAuthInitializing(sessionStatus) || sessionStatus !== 'authenticated') return undefined;
+    if (planQuoteLoading || !summary?.amountDisplay) return undefined;
     if (stripeReady || checkoutBusy || stripeAutoLoadRef.current) return undefined;
 
     let cancelled = false;
@@ -281,6 +302,8 @@ export default function Checkout() {
     checkoutBusy,
     startStripeCheckout,
     planSlug,
+    planQuoteLoading,
+    summary?.amountDisplay,
   ]);
 
   const wayforpayTestFlow = Boolean(
@@ -311,6 +334,7 @@ export default function Checkout() {
 
   const canceled = location.pathname.endsWith('/cancel') || new URLSearchParams(location.search).get('canceled') === '1';
   const sessionReady = sessionStatus === 'authenticated';
+  const summaryBackHref = isUpgradeCheckoutSlug(planSlug) ? '/upgrade' : '/pricing';
 
   return (
     <main className={`checkout-page checkout-page--premium${useStripeProduction ? ' checkout-page--stripe-layout' : ' checkout-page--mock'}`}>
@@ -331,7 +355,12 @@ export default function Checkout() {
       )}
 
       {showTestBanner && (
-        <p className="checkout-test-mode-banner checkout-test-mode-banner--prominent" role="status">{testBannerText}</p>
+        <p
+          className={`checkout-test-mode-banner checkout-test-mode-banner--prominent${useStripeProduction ? ' checkout-test-mode-banner--stripe-full' : ''}`}
+          role="status"
+        >
+          {testBannerText}
+        </p>
       )}
 
       <section className={`checkout-layout ${useStripeProduction ? 'checkout-layout--cursor' : 'checkout-layout--split'}`}>
@@ -340,10 +369,11 @@ export default function Checkout() {
           summary={summary}
           priceLabel={priceLabel}
           providerLabel={providerLabel}
-          backHref="/pricing"
+          backHref={summaryBackHref}
+          layout={useStripeProduction ? 'cursor' : 'default'}
         />
 
-        <PaymentFormCard light={useStripeProduction}>
+        <PaymentFormCard light={useStripeProduction} className={useStripeProduction ? 'payment-form-card--cursor-shell' : ''}>
           {canceled && (
             <div className="checkout-state checkout-state--cancel" role="status">
               <p>Payment wasn&apos;t completed.</p>
@@ -402,6 +432,10 @@ export default function Checkout() {
 
           {!isDeveloper && (
             <>
+              {!useStripeProduction ? (
+                <CheckoutPaymentMethods checkoutInfo={checkoutInfo} className="checkout-payment-methods--panel" />
+              ) : null}
+
               {usePaddlePrimary && !activePlanConflict && (
                 <>
                   {checkoutInfo?.showPaddleSandboxHint && (
@@ -433,12 +467,13 @@ export default function Checkout() {
                     stripeAutoLoadRef.current = false;
                     void startStripeCheckout();
                   }}
-                  payLabel={`Subscribe — ${payAmountLabel}/month`}
+                  payLabel={stripePayLabel}
                   processingLabel="Processing payment…"
                   showStripeTestCardHint={Boolean(checkoutInfo?.showStripeTestCardHint)}
                   showTestModeBanner={Boolean(checkoutInfo?.showTestModeBanner)}
-                  secureCheckoutLabel={checkoutInfo?.secureCheckoutLabel || 'Secure payment'}
+                  secureCheckoutLabel={checkoutInfo?.secureCheckoutLabel || 'Secure checkout'}
                   appearance="light"
+                  variant="cursor"
                 />
               ) : !usePaddlePrimary && paymentsAvailable && paymentProvider === 'wayforpay' ? (
                 <div className="checkout-wayforpay-alt checkout-wayforpay-alt--primary">
@@ -515,11 +550,13 @@ export default function Checkout() {
         </PaymentFormCard>
       </section>
 
-      <CheckoutAiCreditPackages
-        sessionReady={sessionReady}
-        showTestBanner={showTestBanner}
-        testBannerText={testBannerText}
-      />
+      {!isUpgradeCheckoutSlug(planSlug) ? (
+        <CheckoutAiCreditPackages
+          sessionReady={sessionReady}
+          showTestBanner={showTestBanner}
+          testBannerText={testBannerText}
+        />
+      ) : null}
 
       <WayforpayPaymentModal
         open={wayforpayModalOpen}

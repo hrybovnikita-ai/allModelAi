@@ -2,13 +2,34 @@
  * AllModelAI design tokens — preserves existing brand colors; normalizes spacing, radius, motion.
  */
 :root {
-  /* Surfaces (aligned with Dark Violet / App.css) */
-  --background: #05070a;
-  --surface: #101016;
-  --surface-elevated: #15151d;
-  --surface-hover: #1b1b26;
-  --surface-glass: rgba(16, 16, 22, 0.72);
-  --surface-glass-strong: rgba(12, 14, 24, 0.88);
+  /* 19-color design system */
+  --ama-black: #050505;
+  --ama-dark-blue: #07152d;
+  --ama-violet: #7535f5;
+  --ama-light-violet: #a45cff;
+  --ama-green: #16b86a;
+  --ama-lime: #b6ff27;
+  --ama-yellow-green: #83d824;
+  --ama-yellow: #ffe034;
+  --ama-gold: #e6b84a;
+  --ama-blue: #287bff;
+  --ama-cyan: #49c8ff;
+  --ama-white: #ffffff;
+  --ama-pink: #ff58b5;
+  --ama-red: #f04450;
+  --ama-orange: #ff932f;
+  --ama-red-orange: #ff542b;
+  --ama-gray: #858585;
+  --ama-dark-gray: #292929;
+  --ama-coral: #ff7f50;
+
+  /* Surfaces — iOS-style dark glass (AllModelAI platform) */
+  --background: var(--ama-black);
+  --surface: #0c0c10;
+  --surface-elevated: #12121a;
+  --surface-hover: #1a1a24;
+  --surface-glass: rgba(12, 12, 18, 0.62);
+  --surface-glass-strong: rgba(8, 8, 14, 0.82);
   --border: rgba(148, 163, 184, 0.12);
   --border-strong: rgba(124, 92, 255, 0.22);
   --border-active: rgba(157, 123, 255, 0.55);
@@ -22,15 +43,15 @@
   --text-muted: #8b8b9a;
 
   /* Homepage palette (from existing Header / hero) */
-  --bg-primary: #080910;
-  --bg-secondary: #0e1224;
+  --bg-primary: #050505;
+  --bg-secondary: #0a0e1a;
   --bg-hero-grid: rgba(255, 255, 255, 0.035);
   --cyan-accent: #60e0d0;
   --cyan-soft: rgba(0, 155, 165, 0.15);
-  --lavender: #b49aff;
-  --violet: #9c76f5;
-  --hero-gradient: linear-gradient(115deg, #c4b5fd 0%, #b49aff 18%, #9c76f5 42%, #7c6cf0 68%, #6366f1 88%, #60e0d0 100%);
-  --gradient-violet-purple: linear-gradient(135deg, #6548c9 0%, #9c76f5 52%, #b49aff 100%);
+  --lavender: #a45cff;
+  --violet: #7535f5;
+  --hero-gradient: linear-gradient(115deg, #a45cff 0%, #7535f5 35%, #6366f1 70%, #22d3ee 100%);
+  --gradient-violet-purple: linear-gradient(135deg, #7535f5 0%, #a45cff 55%, #c4b5fd 100%);
   --gradient-purple-indigo: linear-gradient(125deg, #7c5cff 0%, #6366f1 55%, #4f46e5 100%);
   --gradient-ambient: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(124, 92, 255, 0.2), transparent 55%);
 
@@ -44,8 +65,8 @@
   --ama-white: #f6f5ff;
 
   /* Brand purple (unchanged core token) */
-  --purple: #7c5cff;
-  --purple-soft: #9d7bff;
+  --purple: #7535f5;
+  --purple-soft: #a45cff;
   --purple-glow: rgba(124, 92, 255, 0.24);
   --purple-glow-soft: rgba(124, 92, 255, 0.12);
   --gradient-primary: linear-gradient(135deg, #6548c9 0%, #7c5cff 48%, #9c76f5 100%);
@@ -60,8 +81,8 @@
   --radius-xs: 8px;
   --radius-sm: 10px;
   --radius-md: 14px;
-  --radius-lg: 18px;
-  --radius-xl: 22px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
   --radius-2xl: 26px;
   --radius-pill: 9999px;
   --radius-card: 22px;
@@ -98,8 +119,8 @@
   --ease-smooth: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --ease-spring: cubic-bezier(0.34, 1.2, 0.64, 1);
   --duration-fast: 120ms;
-  --duration-normal: 200ms;
-  --duration-slow: 280ms;
+  --duration-normal: 250ms;
+  --duration-slow: 320ms;
   --duration-reveal: 550ms;
 
   /* Typography */
@@ -113,7 +134,7 @@
   --text-h1: clamp(1.65rem, 3vw, 2.15rem);
 
   /* Chat bridge */
-  --chat-bg: #07070b;
+  --chat-bg: #000000;
   --chat-panel: var(--surface);
   --chat-line: #252530;
   --chat-muted: var(--text-muted);

@@ -1,23 +1,14 @@
 import { Link } from 'react-router-dom';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
-import { IconCheck, IconLock, IconShield } from './CheckoutIcons';
+import { IconLock, IconShield } from './CheckoutIcons';
 
-function planBlurb(summary) {
-  if (!summary) return 'Premium AI access with monthly request allowance.';
-  const limit = summary.requestLimit?.toLocaleString?.() || summary.requestLimit;
-  if (summary.slug === 'starter' || summary.name === 'Starter') {
-    return `Core AI models, ${limit} requests per month, and email support.`;
+function formatUsdAmount(summary, priceLabel) {
+  if (summary?.amountDisplay != null) {
+    const n = Number(summary.amountDisplay);
+    if (!Number.isNaN(n)) return `$${n.toFixed(2)}`;
+    return `$${summary.amountDisplay}`;
   }
-  if (summary.slug === 'unlimited' || summary.name === 'Unlimited') {
-    return `All connected providers, ${limit} requests per month, image generation, and dedicated support.`;
-  }
-  return `Premium AI models, ${limit} requests per month, image generation, and priority routing.`;
-}
-
-function formatUsd(summary, priceLabel) {
-  if (summary?.amountDisplay != null) return `$${summary.amountDisplay}`;
   if (!priceLabel || priceLabel === '—') return '—';
-  if (String(priceLabel).includes('.')) return priceLabel.startsWith('$') ? priceLabel : `$${priceLabel}`;
   const numeric = String(priceLabel).replace(/[^0-9.]/g, '');
   if (!numeric) return priceLabel;
   return `$${Number(numeric).toFixed(2)}`;
@@ -29,91 +20,99 @@ export default function CheckoutSummaryCard({
   priceLabel,
   providerLabel = 'Stripe',
   backHref = '/',
+  layout = 'default',
 }) {
   const planName = isDeveloper ? 'Developer' : (summary?.name || 'Pro');
   const headline = isDeveloper
     ? 'Activate AllModelAI Developer'
     : `Subscribe to AllModelAI ${planName}`;
   const intervalLabel = summary?.interval === 'year' ? 'year' : 'month';
-  const displayAmount = isDeveloper ? '$0.00' : formatUsd(summary, priceLabel);
+  const displayAmount = isDeveloper ? '$0.00' : formatUsdAmount(summary, priceLabel);
+  const cursorLayout = layout === 'cursor' && !isDeveloper;
 
   return (
-    <aside className="checkout-summary-panel checkout-summary-panel--cursor" aria-label="Subscription summary">
+    <aside
+      className={`checkout-summary-panel checkout-summary-panel--cursor${cursorLayout ? ' checkout-summary-panel--cursor-minimal' : ''}`}
+      aria-label="Subscription summary"
+    >
       <div className="checkout-summary-brand-row">
-        <Link className="checkout-summary-brand" to="/">
-          <AllModelAILogoMark size={40} />
+        <Link className="checkout-summary-brand checkout-summary-brand--dragon" to="/">
+          <AllModelAILogoMark size={48} className="checkout-summary-dragon" />
           <span>AllModelAI</span>
         </Link>
         <Link className="checkout-summary-back" to={backHref}>← Back</Link>
       </div>
 
-      <p className="checkout-summary-kicker">Subscription</p>
-      <h1 className="checkout-summary-headline">{headline}</h1>
-
-      {!isDeveloper && (
-        <p className="checkout-summary-hero-price">
-          <strong>{displayAmount}</strong>
-          <span> / {intervalLabel}</span>
-        </p>
-      )}
-
-      <article className="checkout-order-card">
-        <header className="checkout-order-card__head">
-          <div>
-            <small>Selected plan</small>
-            <strong>AllModelAI {planName}</strong>
-          </div>
-          <div className="checkout-order-card__price">
+      {cursorLayout ? (
+        <>
+          <h1 className="checkout-summary-headline checkout-summary-headline--sub">{headline}</h1>
+          <p className="checkout-summary-hero-price checkout-summary-hero-price--cursor">
             <strong>{displayAmount}</strong>
-            <span>/{intervalLabel}</span>
+            <span> / {intervalLabel}</span>
+          </p>
+          <div className="checkout-line-items">
+            <div className="checkout-line-items__row">
+              <span>AllModelAI {planName}</span>
+              <strong>{displayAmount}</strong>
+            </div>
+            <p className="checkout-billing-frequency">
+              Billed {intervalLabel === 'year' ? 'yearly' : 'monthly'} · USD · renews until canceled
+            </p>
+            {summary?.requestLimit ? (
+              <p className="checkout-billing-frequency checkout-billing-frequency--muted">
+                {Number(summary.requestLimit).toLocaleString()} AI requests per {intervalLabel}
+              </p>
+            ) : null}
           </div>
-        </header>
-
-        <p className="checkout-order-card__blurb">{planBlurb(summary)}</p>
-
-        <ul className="checkout-summary-list checkout-summary-list--premium">
-          {(summary?.features || []).map((perk) => (
-            <li key={perk}>
-              <IconCheck className="checkout-feature-icon" />
-              <span>{perk}</span>
-            </li>
-          ))}
-        </ul>
-
-        {!isDeveloper && summary && (
-          <dl className="checkout-totals">
-            <div>
-              <dt>Subtotal</dt>
-              <dd>{displayAmount}</dd>
-            </div>
-            <div>
-              <dt>Tax</dt>
-              <dd>Calculated by Stripe if applicable</dd>
-            </div>
-            <div className="checkout-totals__due">
-              <dt>Total due today</dt>
-              <dd>{displayAmount}</dd>
-            </div>
-            <div>
-              <dt>Currency</dt>
-              <dd>USD</dd>
-            </div>
-            <div>
-              <dt>Billing</dt>
-              <dd>{intervalLabel === 'year' ? 'Yearly' : 'Monthly'} · renews until canceled</dd>
-            </div>
-            <div>
-              <dt>Processor</dt>
-              <dd>{providerLabel}</dd>
-            </div>
-          </dl>
-        )}
-      </article>
-
-      <ul className="checkout-trust-list checkout-trust-list--summary">
-        <li><IconLock className="checkout-trust-icon" /> Encrypted checkout</li>
-        <li><IconShield className="checkout-trust-icon" /> Cancel anytime in billing portal</li>
-      </ul>
+          <div className="checkout-total-due">
+            <span>Total due today</span>
+            <strong>{displayAmount}</strong>
+          </div>
+          <ul className="checkout-trust-list checkout-trust-list--summary">
+            <li><IconLock className="checkout-trust-icon" /> Secure encrypted checkout</li>
+            <li><IconShield className="checkout-trust-icon" /> Billed via {providerLabel}</li>
+          </ul>
+        </>
+      ) : (
+        <>
+          <p className="checkout-summary-kicker">Subscription</p>
+          <h1 className="checkout-summary-headline">{headline}</h1>
+          {!isDeveloper && (
+            <p className="checkout-summary-hero-price">
+              <strong>{displayAmount}</strong>
+              <span> / {intervalLabel}</span>
+            </p>
+          )}
+          <article className="checkout-order-card">
+            <header className="checkout-order-card__head">
+              <div>
+                <small>Selected plan</small>
+                <strong>AllModelAI {planName}</strong>
+              </div>
+              <div className="checkout-order-card__price">
+                <strong>{displayAmount}</strong>
+                <span>/{intervalLabel}</span>
+              </div>
+            </header>
+            {!isDeveloper && summary && (
+              <dl className="checkout-totals">
+                <div className="checkout-totals__due">
+                  <dt>Total due today</dt>
+                  <dd>{displayAmount}</dd>
+                </div>
+                <div>
+                  <dt>Processor</dt>
+                  <dd>{providerLabel}</dd>
+                </div>
+              </dl>
+            )}
+          </article>
+          <ul className="checkout-trust-list checkout-trust-list--summary">
+            <li><IconLock className="checkout-trust-icon" /> Encrypted checkout</li>
+            <li><IconShield className="checkout-trust-icon" /> Cancel anytime in billing portal</li>
+          </ul>
+        </>
+      )}
     </aside>
   );
 }

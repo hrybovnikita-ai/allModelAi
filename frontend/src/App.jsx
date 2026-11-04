@@ -16,6 +16,7 @@ import llamaLogo from "./assets/llama.png";
 // Import Components
 import Header from "./components/Header/Header";
 import HomeReveal from "./components/HomeReveal/HomeReveal";
+import DiscoverAllModelAI from "./components/DiscoverAllModelAI/DiscoverAllModelAI";
 import ModelsSection from "./components/ModelsSection/ModelsSection";
 import About from "./components/About/About";
 import Stickers from "./components/Stickers/Stickers";
@@ -31,6 +32,7 @@ import Chat from "./components/Chat/Chat";
 import Checkout from "./components/Checkout/Checkout";
 import CheckoutSuccess from "./components/Checkout/CheckoutSuccess";
 import CheckoutCancel from "./components/Checkout/CheckoutCancel";
+import UpgradePage from "./pages/UpgradePage";
 import SocialAuthCallback from "./components/SocialAuth/SocialAuthCallback";
 import GoogleRedirectRecoveryGate from "./components/SocialAuth/GoogleRedirectRecoveryGate";
 import Workflow from "./components/Workflow/Workflow";
@@ -93,6 +95,7 @@ import StorageHub from "./components/StorageHub/StorageHub";
 import VoiceStudio from "./components/VoiceStudio/VoiceStudio";
 
 function HomePage() {
+  // Landing uses existing sections only.
   const [selectedModel, setSelectedModel] = useState("claude");
 
   const models = {
@@ -151,6 +154,9 @@ function HomePage() {
       <Header />
       <main className="container home-layout">
         <HomeReveal>
+          <DiscoverAllModelAI />
+        </HomeReveal>
+        <HomeReveal delay={40}>
           <ModelsSection
             models={models}
             selectedModel={selectedModel}
@@ -239,10 +245,16 @@ export default function App() {
       <Route path="/checkout/pro" element={<Checkout />} />
       <Route path="/checkout/unlimited" element={<Checkout />} />
       <Route path="/checkout/enterprise" element={<Checkout />} />
+      <Route path="/checkout/upgrade-plus" element={<Checkout />} />
+      <Route path="/checkout/upgrade-pro" element={<Checkout />} />
+      <Route path="/checkout/pro-plus" element={<Checkout />} />
+      <Route path="/checkout/upgrade-ultra" element={<Checkout />} />
+      <Route path="/checkout/ultra" element={<Checkout />} />
       <Route element={<RequireAuth />}>
       <Route path="/models/:slug" element={<ModelDetails />} />
       <Route path="/prompts" element={<PromptGallery />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/upgrade" element={<UpgradePage />} />
       <Route path="/dashboard/orders" element={<PaymentOrderHistory />} />
       <Route path="/credits" element={<CreditsWallet />} />
       <Route path="/ai-memory" element={<AiMemoryPage />} />

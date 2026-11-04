@@ -3181,20 +3181,12 @@ async function createChatResponseImpl(req, res) {
         const directMistralUrl = 'https://api.mistral.ai/v1/chat/completions';
         const providerTimeoutMs = Math.min(Math.max(Number(process.env.AI_REQUEST_TIMEOUT_MS) || 45000, 5000), 120000);
         const requestSignal = () => AbortSignal.timeout(providerTimeoutMs);
-        // Network errors must enter the same fallback chain as HTTP failures.
-        const fetchProvider = async (url, options) => {
-            try {
-                return await fetch(url, options);
-            } catch (error) {
-                const timedOut = options.signal?.aborted || error.name === 'TimeoutError' || /timed?\s*out/i.test(error.message);
-                return new Response(JSON.stringify({ error: { message: timedOut
-                    ? 'The AI provider took too long to respond. Try again or choose another configured model.'
-                    : 'Could not connect to the AI service. Try again or choose another configured model.' } }), {
-                    status: timedOut ? 504 : 502,
-                    headers: { 'Content-Type': 'application/json' },
-                });
-            }
-        };
+        const { createChatProviderFetch } = require('../services/aiProviderGateway');
+        const fetchProvider = createChatProviderFetch({
+            correlationId: chatCorrelationId,
+            timeoutMs: providerTimeoutMs,
+            routedModel,
+        });
         let openRouterAttempted = false;
         const initialUsesOpenRouter = !isOpenRouterFree && !isGptOssCf && !isOpenAI && !isXAI && !isClaude && !isGemini && !isDeepSeek
             && !(isKimi && directKimiKey) && !isMistral && !isPerplexity && !isGroq && !isCloudflare && !isOllamaCloud;

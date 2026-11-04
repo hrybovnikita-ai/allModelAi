@@ -125,9 +125,11 @@ async function probeOpenAI() {
     const key = openAiKey();
     if (!key) return { status: 'missing_configuration' };
     try {
-        const response = await fetch('https://api.openai.com/v1/models', {
-            headers: { Authorization: `Bearer ${key}` },
-            signal: AbortSignal.timeout(8000),
+        const { probeProviderEndpoint } = require('./services/aiProviderGateway');
+        const response = await probeProviderEndpoint({
+            url: 'https://api.openai.com/v1/models',
+            provider: 'openai',
+            init: { headers: { Authorization: `Bearer ${key}` } },
         });
         if (response.status === 401) return { status: 'authentication_failed' };
         if (!response.ok) return { status: 'configuration_error', httpStatus: response.status };
@@ -143,8 +145,9 @@ async function probeGemini() {
     const { DEFAULT_GEMINI_TEXT_MODEL } = require('./services/geminiModelRouting');
     const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_TEXT_MODEL;
     try {
+        const { probeProviderEndpoint } = require('./services/aiProviderGateway');
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}?key=${encodeURIComponent(key)}`;
-        const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        const response = await probeProviderEndpoint({ url, provider: 'gemini' });
         if (response.status === 400 || response.status === 403) return { status: 'authentication_failed' };
         if (response.status === 404) return { status: 'wrong_model' };
         if (!response.ok) return { status: 'configuration_error', httpStatus: response.status };
@@ -159,9 +162,11 @@ async function probeGroq() {
     const key = getGroqApiKey();
     if (!key) return { status: 'missing_configuration' };
     try {
-        const response = await fetch('https://api.groq.com/openai/v1/models', {
-            headers: { Authorization: `Bearer ${key}` },
-            signal: AbortSignal.timeout(8000),
+        const { probeProviderEndpoint } = require('./services/aiProviderGateway');
+        const response = await probeProviderEndpoint({
+            url: 'https://api.groq.com/openai/v1/models',
+            provider: 'groq',
+            init: { headers: { Authorization: `Bearer ${key}` } },
         });
         if (response.status === 401 || response.status === 403) return { status: 'authentication_failed' };
         if (response.status === 429) return { status: 'rate_limited' };
@@ -176,9 +181,11 @@ async function probeOpenRouter() {
     const key = getOpenRouterApiKey();
     if (!key) return { status: 'missing_configuration' };
     try {
-        const response = await fetch('https://openrouter.ai/api/v1/models', {
-            headers: { Authorization: `Bearer ${key}` },
-            signal: AbortSignal.timeout(8000),
+        const { probeProviderEndpoint } = require('./services/aiProviderGateway');
+        const response = await probeProviderEndpoint({
+            url: 'https://openrouter.ai/api/v1/models',
+            provider: 'openrouter',
+            init: { headers: { Authorization: `Bearer ${key}` } },
         });
         if (response.status === 401) return { status: 'authentication_failed' };
         if (!response.ok) return { status: 'configuration_error', httpStatus: response.status };

@@ -1,0 +1,159 @@
+.ai-task-progress {
+  --atp-radius: 18px;
+  border-radius: var(--atp-radius);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(
+    145deg,
+    rgba(18, 18, 24, 0.92) 0%,
+    rgba(8, 8, 12, 0.88) 100%
+  );
+  box-shadow:
+    0 0 0 1px rgba(124, 92, 255, 0.06),
+    0 24px 48px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(18px);
+  padding: 1.25rem 1.35rem 1.35rem;
+  color: var(--text-primary, #f4f4f5);
+}
+
+.ai-task-progress__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.ai-task-progress__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.ai-task-progress__icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--purple-soft, #a45cff);
+}
+
+.ai-task-progress__badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ai-task-progress__headline {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.ai-task-progress__meta-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.ai-task-progress__percent {
+  font-size: 1.35rem;
+  font-weight: 700;
+  background: linear-gradient(90deg, var(--purple-soft, #a45cff), var(--cyan-accent, #5eead4));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  flex-shrink: 0;
+}
+
+.ai-task-progress__bar {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  margin-bottom: 0.85rem;
+}
+
+.ai-task-progress__bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--purple, #7535f5), var(--cyan-accent, #5eead4));
+  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 0 18px rgba(124, 92, 255, 0.35);
+}
+
+.ai-task-progress__bar--indeterminate .ai-task-progress__bar-fill {
+  width: 38% !important;
+  animation: ai-task-progress-slide 1.35s ease-in-out infinite;
+}
+
+@keyframes ai-task-progress-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.ai-task-progress__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.ai-task-progress__status {
+  text-transform: capitalize;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.ai-task-progress__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.ai-task-progress__btn {
+  flex: 1;
+  border-radius: 999px;
+  padding: 0.55rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ai-task-progress__btn--primary {
+  background: rgba(255, 255, 255, 0.92);
+  color: #0a0a0a;
+  border-color: transparent;
+}
+
+.ai-task-progress__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ai-task-progress__hint {
+  margin-top: 0.65rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.38);
+}

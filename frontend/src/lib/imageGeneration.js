@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import { rememberActiveJob } from './backgroundJobs';
 
 export const IMAGE_STYLES = [
   { id: 'auto', label: 'Auto' },
@@ -267,6 +268,7 @@ export async function requestImageGeneration(body, signal, options = {}) {
   }
 
   if (response.status === 202 && data.jobId) {
+    rememberActiveJob(data.jobId, 'image');
     const polled = await pollImageGenerationJob(data.jobId, signal, { onPoll: options.onPoll });
     return polled.data;
   }

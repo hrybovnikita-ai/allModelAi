@@ -31,6 +31,7 @@ import {
   IconToolKnowledgeBase,
 } from './ChatSidebarIcons';
 import './ChatSidebar.css';
+import './ChatSidebarPremium.css';
 
 function readBool(key, fallback = true) {
   try {

@@ -3,6 +3,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { apiFetch, parseJsonResponse } from '../../lib/api';
 import { ensureSocialAuthReady, isFirebaseSocialConfigured } from '../../lib/firebase';
+import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
+import '../Login/login-premium.css';
+import './ForgotPassword.css';
 
 export default function ForgotPassword() {
   const [searchParams] = useSearchParams();
@@ -13,9 +16,7 @@ export default function ForgotPassword() {
   const [token, setToken] = useState(() => tokenFromUrl);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [step, setStep] = useState(() =>
-    tokenFromUrl ? 'reset' : 'email'
-  );
+  const [step, setStep] = useState(() => (tokenFromUrl ? 'reset' : 'email'));
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -36,25 +37,20 @@ export default function ForgotPassword() {
     try {
       setLoading(true);
 
-      const response = await apiFetch(
-        '/api/auth/password-reset/request',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: cleanEmail,
-          }),
-        }
-      );
+      const response = await apiFetch('/api/auth/password-reset/request', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: cleanEmail,
+        }),
+      });
 
       const data = await parseJsonResponse(response);
 
       if (!response.ok) {
-        throw new Error(
-          data.message || 'Could not create password reset request.'
-        );
+        throw new Error(data.message || 'Could not create password reset request.');
       }
 
       if (isFirebaseSocialConfigured()) {
@@ -62,13 +58,12 @@ export default function ForgotPassword() {
           const auth = await ensureSocialAuthReady();
           await sendPasswordResetEmail(auth, cleanEmail);
         } catch {
-          /* Backend reset is the AllModelAI source of truth. Do not reveal whether Firebase has this email. */
+          /* Backend reset is the AllModelAI source of truth. */
         }
       }
 
       const baseMessage =
-        data.message ||
-        'If the account exists, a password reset request was created.';
+        data.message || 'If the account exists, a password reset request was created.';
       const needsLocalSetupHint =
         data.emailDeliveryConfigured === false && !data.token;
       setMessage(
@@ -77,15 +72,6 @@ export default function ForgotPassword() {
           : baseMessage,
       );
 
-      /*
-       * LOCAL DEVELOPMENT ONLY
-       *
-       * backend/.env:
-       * EXPOSE_ACCOUNT_TOKENS=true
-       *
-       * Backend can return the reset token so Forgot Password can be
-       * tested locally before real email delivery is configured.
-       */
       if (data.token) {
         setToken(data.token);
         setStep('reset');
@@ -94,7 +80,7 @@ export default function ForgotPassword() {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : 'Something went wrong. Please try again.'
+          : 'Something went wrong. Please try again.',
       );
     } finally {
       setLoading(false);
@@ -127,20 +113,17 @@ export default function ForgotPassword() {
     try {
       setLoading(true);
 
-      const response = await apiFetch(
-        '/api/auth/password-reset/confirm',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            token: cleanToken,
-            password,
-            confirmPassword,
-          }),
-        }
-      );
+      const response = await apiFetch('/api/auth/password-reset/confirm', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          token: cleanToken,
+          password,
+          confirmPassword,
+        }),
+      });
 
       const data = await parseJsonResponse(response);
 
@@ -148,10 +131,7 @@ export default function ForgotPassword() {
         throw new Error(data.message || 'Could not change password.');
       }
 
-      setMessage(
-        data.message ||
-          'Password changed successfully. You can sign in again.'
-      );
+      setMessage(data.message || 'Password changed successfully. You can sign in again.');
 
       setPassword('');
       setConfirmPassword('');
@@ -160,7 +140,7 @@ export default function ForgotPassword() {
       setError(
         resetError instanceof Error
           ? resetError.message
-          : 'Could not reset password. The link may have expired.'
+          : 'Could not reset password. The link may have expired.',
       );
     } finally {
       setLoading(false);
@@ -168,116 +148,37 @@ export default function ForgotPassword() {
   };
 
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        display: 'grid',
-        placeItems: 'center',
-        background:
-          'linear-gradient(135deg, #071020 0%, #111a3c 100%)',
-        padding: '24px',
-        color: '#fff',
-      }}
-    >
-      <section
-        style={{
-          width: '100%',
-          maxWidth: '430px',
-          padding: '32px',
-          borderRadius: '20px',
-          background: '#151f38',
-          border: '1px solid #2d3a5c',
-          boxShadow: '0 24px 80px rgba(0, 0, 0, 0.35)',
-        }}
-      >
-        <div
-          style={{
-            width: '42px',
-            height: '42px',
-            display: 'grid',
-            placeItems: 'center',
-            borderRadius: '12px',
-            background: '#7557f6',
-            fontWeight: '800',
-            marginBottom: '20px',
-          }}
-        >
-          AI
-        </div>
+    <main className="forgot-page">
+      <section className="forgot-shell" aria-labelledby="forgot-title">
+        <AllModelAILogoMark className="login-logo" size={48} />
 
         {step === 'email' && (
           <>
-            <p
-              style={{
-                color: '#8ea6d9',
-                fontSize: '12px',
-                fontWeight: '700',
-                letterSpacing: '1px',
-              }}
-            >
-              ALLMODELAI ACCOUNT
-            </p>
-
-            <h1>Forgot password?</h1>
-
-            <p style={{ color: '#a7b4ce' }}>
-              Enter the email associated with your AllModelAI account.
-            </p>
-            <p style={{ color: '#8ea6d9', fontSize: '14px', marginTop: '12px' }}>
-              Signed up with Google only? You can still create an AllModelAI password here.
-              We send a secure link to your email — we never ask for your Google password.
+            <p className="auth-eyebrow">AllModelAI account</p>
+            <h1 id="forgot-title">Forgot password?</h1>
+            <p>Enter the email associated with your AllModelAI account.</p>
+            <p className="forgot-note">
+              Signed up with Google only? You can still create an AllModelAI password here. We send a secure link to
+              your email — we never ask for your Google password.
             </p>
 
             <form onSubmit={requestReset}>
-              <label
-                htmlFor="forgot-password-email"
-                style={{
-                  display: 'block',
-                  marginTop: '24px',
-                  marginBottom: '8px',
-                }}
-              >
-                Email
+              <label htmlFor="forgot-password-email">
+                <span>Email</span>
+                <input
+                  id="forgot-password-email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  required
+                  disabled={loading}
+                />
               </label>
 
-              <input
-                id="forgot-password-email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-                autoComplete="email"
-                required
-                disabled={loading}
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '13px',
-                  borderRadius: '9px',
-                  border: '1px solid #3b4967',
-                  background: '#202d49',
-                  color: '#fff',
-                  outline: 'none',
-                }}
-              />
-
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  width: '100%',
-                  padding: '13px',
-                  border: 0,
-                  borderRadius: '9px',
-                  marginTop: '18px',
-                  background: '#7160f5',
-                  color: '#fff',
-                  fontWeight: '700',
-                  cursor: loading ? 'wait' : 'pointer',
-                  opacity: loading ? 0.7 : 1,
-                }}
-              >
-                {loading ? 'Creating request...' : 'Reset password'}
+              <button type="submit" disabled={loading} aria-busy={loading}>
+                {loading ? 'Creating request…' : 'Reset password'}
               </button>
             </form>
           </>
@@ -285,109 +186,43 @@ export default function ForgotPassword() {
 
         {step === 'reset' && (
           <>
-            <p
-              style={{
-                color: '#8ea6d9',
-                fontSize: '12px',
-                fontWeight: '700',
-                letterSpacing: '1px',
-              }}
-            >
-              PASSWORD RECOVERY
-            </p>
-
-            <h1>Create new password</h1>
-
-            <p style={{ color: '#a7b4ce' }}>
-              Choose a new password for your AllModelAI account.
-            </p>
+            <p className="auth-eyebrow">Password recovery</p>
+            <h1 id="forgot-title">Create new password</h1>
+            <p>Choose a new password for your AllModelAI account.</p>
 
             <form onSubmit={resetPassword}>
-              <label
-                htmlFor="new-password"
-                style={{
-                  display: 'block',
-                  marginTop: '22px',
-                  marginBottom: '8px',
-                }}
-              >
-                New password
+              <label htmlFor="new-password">
+                <span>New password</span>
+                <input
+                  id="new-password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="At least 8 characters"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                  disabled={loading}
+                />
               </label>
 
-              <input
-                id="new-password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="At least 8 characters"
-                autoComplete="new-password"
-                minLength={8}
-                required
-                disabled={loading}
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '13px',
-                  borderRadius: '9px',
-                  border: '1px solid #3b4967',
-                  background: '#202d49',
-                  color: '#fff',
-                  outline: 'none',
-                }}
-              />
-
-              <label
-                htmlFor="confirm-password"
-                style={{
-                  display: 'block',
-                  marginTop: '16px',
-                  marginBottom: '8px',
-                }}
-              >
-                Confirm password
+              <label htmlFor="confirm-password">
+                <span>Confirm password</span>
+                <input
+                  id="confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="Repeat your new password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                  disabled={loading}
+                />
               </label>
 
-              <input
-                id="confirm-password"
-                type="password"
-                value={confirmPassword}
-                onChange={(event) =>
-                  setConfirmPassword(event.target.value)
-                }
-                placeholder="Repeat your new password"
-                autoComplete="new-password"
-                minLength={8}
-                required
-                disabled={loading}
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '13px',
-                  borderRadius: '9px',
-                  border: '1px solid #3b4967',
-                  background: '#202d49',
-                  color: '#fff',
-                  outline: 'none',
-                }}
-              />
-
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  width: '100%',
-                  padding: '13px',
-                  border: 0,
-                  borderRadius: '9px',
-                  marginTop: '20px',
-                  background: '#7160f5',
-                  color: '#fff',
-                  fontWeight: '700',
-                  cursor: loading ? 'wait' : 'pointer',
-                  opacity: loading ? 0.7 : 1,
-                }}
-              >
-                {loading ? 'Changing password...' : 'Change password'}
+              <button type="submit" disabled={loading} aria-busy={loading}>
+                {loading ? 'Changing password…' : 'Change password'}
               </button>
             </form>
           </>
@@ -395,94 +230,34 @@ export default function ForgotPassword() {
 
         {step === 'success' && (
           <>
-            <p
-              style={{
-                color: '#8ea6d9',
-                fontSize: '12px',
-                fontWeight: '700',
-                letterSpacing: '1px',
-              }}
-            >
-              PASSWORD UPDATED
-            </p>
-
-            <h1>Password changed ✅</h1>
-
-            <p style={{ color: '#a7b4ce' }}>
-              Your new password is ready. Sign in again using the new
-              password.
-            </p>
-
-            <Link
-              to="/"
-              style={{
-                display: 'block',
-                textAlign: 'center',
-                padding: '13px',
-                marginTop: '22px',
-                borderRadius: '9px',
-                background: '#7160f5',
-                color: '#fff',
-                fontWeight: '700',
-                textDecoration: 'none',
-              }}
-            >
+            <p className="auth-eyebrow">Password updated</p>
+            <h1 id="forgot-title">Password changed</h1>
+            <p>Your new password is ready. Sign in again using the new password.</p>
+            <Link className="forgot-cta-link" to="/">
               Back to Sign in
             </Link>
           </>
         )}
 
-        {error && (
-          <div
-            role="alert"
-            style={{
-              marginTop: '18px',
-              padding: '12px',
-              borderRadius: '8px',
-              background: '#421d2b',
-              border: '1px solid #84364e',
-              color: '#ff9eb2',
-            }}
-          >
+        {error ? (
+          <div className="forgot-alert forgot-alert--error" role="alert">
             {error}
           </div>
-        )}
+        ) : null}
 
-        {message && step !== 'success' && (
-          <div
-            role="status"
-            aria-live="polite"
-            style={{
-              marginTop: '18px',
-              padding: '12px',
-              borderRadius: '8px',
-              background: '#17352e',
-              border: '1px solid #286454',
-              color: '#9de4cb',
-            }}
-          >
+        {message && step !== 'success' ? (
+          <div className="forgot-alert forgot-alert--success" role="status" aria-live="polite">
             {message}
           </div>
-        )}
+        ) : null}
 
-        {step !== 'success' && (
-          <div
-            style={{
-              textAlign: 'center',
-              marginTop: '22px',
-            }}
-          >
-            <Link
-              to="/"
-              style={{
-                color: '#a99cff',
-                textDecoration: 'none',
-              }}
-            >
+        {step !== 'success' ? (
+          <p className="forgot-back">
+            <Link className="forgot-link" to="/">
               ← Back to Sign in
             </Link>
-          </div>
-        )}
+          </p>
+        ) : null}
       </section>
     </main>
   );

@@ -39,10 +39,7 @@
     0 0 12px rgba(157, 123, 255, 0.45) !important;
 }
 
-/* Sidebar hierarchy */
-.chat-page .chat-sidebar {
-  padding: var(--space-5) var(--space-4) !important;
-}
+/* Sidebar hierarchy — padding in ChatSidebarPremium.css */
 
 .chat-page .sidebar-tool-row,
 .chat-page .sidebar-chat-open,

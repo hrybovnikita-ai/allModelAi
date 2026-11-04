@@ -26,3 +26,9 @@ venv/
 .runtime/
 HOME-ACCESS.txt
 frontend/tmp-prod.js
+
+# Local browser binaries and generated test artifacts
+.playwright-browsers/
+**/test-results/
+qa-reports/
+**/_disk_probe.txt

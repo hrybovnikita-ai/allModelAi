@@ -25,7 +25,10 @@ const {
     getImageJob,
     publicJobPayload,
     updateImageJob,
+    cancelImageJob,
 } = require('./services/imageJobService');
+const jobEventHub = require('./services/jobEventHub');
+const { buildPublicImageJobSnapshot } = require('./services/jobPublicSnapshot');
 const { screenPromptWithCreem } = require('./payments/creemModeration');
 
 const configuredModel = (provider) => {
@@ -73,6 +76,11 @@ const validateImageInput = (body = {}) => {
     };
 };
 
+const isImageJobCancelled = (jobId) => {
+    const job = getImageJob(jobId);
+    return job?.status === 'cancelled' || job?.status === 'canceled';
+};
+
 const runImageGenerationJob = async (jobId, params) => {
     const jobStartedAt = Date.now();
     updateImageJob(jobId, { status: 'processing' });
@@ -81,8 +89,12 @@ const runImageGenerationJob = async (jobId, params) => {
         const result = await generateImageWithFallback({
             ...params,
             jobId,
-            onProgress: (progress) => updateImageJob(jobId, { progress }),
+            onProgress: (progress) => {
+                if (isImageJobCancelled(jobId)) return;
+                updateImageJob(jobId, { progress });
+            },
         });
+        if (isImageJobCancelled(jobId)) return;
         if (result.ok) {
             updateImageJob(jobId, {
                 status: 'completed',
@@ -251,6 +263,55 @@ const getImageGenerationJob = (req, res) => {
     return res.status(200).json(payload);
 };
 
+const streamImageGenerationJob = (req, res) => {
+    const job = getImageJob(req.params.jobId, req.user?.id);
+    if (!job) {
+        return res.status(404).json({ success: false, message: 'Image job not found or expired.' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    const writeEvent = (payload) => {
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    };
+    const snapshot = buildPublicImageJobSnapshot(job);
+    writeEvent(snapshot);
+
+    const terminal = new Set(['completed', 'failed', 'cancelled', 'canceled']);
+    if (terminal.has(String(snapshot.status).toLowerCase())) {
+        res.write('data: [DONE]\n\n');
+        return res.end();
+    }
+
+    const heartbeat = setInterval(() => {
+        res.write(': ping\n\n');
+    }, 15000);
+
+    const unsubscribe = jobEventHub.subscribe(`image:${job.id}`, (payload) => {
+        writeEvent(payload);
+        if (terminal.has(String(payload.status).toLowerCase())) {
+            res.write('data: [DONE]\n\n');
+            res.end();
+        }
+    });
+
+    req.on('close', () => {
+        clearInterval(heartbeat);
+        unsubscribe();
+    });
+};
+
+const cancelImageGenerationJob = (req, res) => {
+    const job = cancelImageJob(req.params.jobId, req.user?.id);
+    if (!job) {
+        return res.status(404).json({ success: false, message: 'Cancelable image job not found.' });
+    }
+    return res.json({ success: true, message: 'Image job cancelled', jobId: job.id });
+};
+
 const upscaleGeneratedImage = async (req, res) => {
     const imageUrl = req.body?.imageUrl;
     if (!safeImageUrl(imageUrl)) {
@@ -331,5 +392,7 @@ module.exports = {
     generateImage,
     getImageGenerationStatus,
     getImageGenerationJob,
+    streamImageGenerationJob,
+    cancelImageGenerationJob,
     upscaleGeneratedImage,
 };

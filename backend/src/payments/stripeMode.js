@@ -141,6 +141,15 @@ function stripePriceIdForPlan(planKey) {
             || envTrim('STRIPE_PRICE_PLUS');
     }
     if (key === 'week') return envTrim('STRIPE_WEEKLY_PRICE_ID') || envTrim('STRIPE_PRICE_WEEK');
+    if (key === 'upgrade_plus') {
+        return envTrim('STRIPE_PRICE_UPGRADE_PLUS') || envTrim('STRIPE_PRICE_PLUS_TIER');
+    }
+    if (key === 'upgrade_pro_plus') {
+        return envTrim('STRIPE_PRICE_UPGRADE_PRO_PLUS') || envTrim('STRIPE_PRICE_PRO_PLUS');
+    }
+    if (key === 'upgrade_ultra') {
+        return envTrim('STRIPE_PRICE_UPGRADE_ULTRA') || envTrim('STRIPE_PRICE_ULTRA');
+    }
     return '';
 }
 

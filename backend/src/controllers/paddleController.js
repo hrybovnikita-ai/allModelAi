@@ -24,8 +24,10 @@ const createPaddleCheckout = async (req, res) => {
             setupInstructions: guard.report?.setupInstructions,
         });
     }
-    const planKey = normalizePlanKey(req.body.plan);
-    const plan = subscriptionPlans[planKey];
+    const { resolveSubscriptionPlanInput } = require('../payments/paymentIntentPlans');
+    const resolved = resolveSubscriptionPlanInput(req.body.plan);
+    const planKey = resolved?.planKey;
+    const plan = resolved?.plan;
     if (!plan || !plan.amount) {
         return res.status(400).json({
             message: 'Choose a valid paid subscription plan.',

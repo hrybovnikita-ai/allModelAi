@@ -84,6 +84,7 @@ async function updateBackgroundJobAsync(connection, id, patch) {
         status: 'status',
         progress: 'progress',
         stage: 'stage',
+        payload: 'payload',
         result: 'result',
         error: 'error',
         updatedAt: 'updated_at',

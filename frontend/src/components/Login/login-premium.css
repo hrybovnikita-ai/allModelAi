@@ -1,0 +1,523 @@
+/* Premium auth glass — Login modal, shared tokens, Clerk embed, Forgot Password */
+
+.login-overlay {
+  animation: login-overlay-in 280ms ease forwards;
+}
+
+.login-overlay--closing {
+  animation: login-overlay-out 240ms ease forwards;
+}
+
+.login-backdrop-layer {
+  background: rgba(5, 5, 5, 0.78);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+
+.login-modal {
+  border-radius: clamp(18px, 3vw, 22px);
+  border: 1px solid color-mix(in srgb, var(--ama-light-violet, #a45cff) 28%, transparent);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.06) 0%, transparent 42%),
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--ama-dark-blue, #07152d) 88%, transparent) 0%,
+      rgba(5, 5, 5, 0.94) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 28px 80px rgba(0, 0, 0, 0.55),
+    0 0 60px color-mix(in srgb, var(--ama-violet, #7535f5) 14%, transparent);
+  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  animation: login-modal-in 320ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  overflow: hidden;
+}
+
+.login-modal--closing {
+  animation: login-modal-out 240ms ease forwards;
+}
+
+.login-modal::before {
+  content: '';
+  position: absolute;
+  inset: -40% -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(117, 53, 245, 0.18), transparent 42%),
+    radial-gradient(circle at 85% 15%, rgba(40, 123, 255, 0.12), transparent 40%),
+    radial-gradient(circle at 70% 85%, rgba(73, 200, 255, 0.08), transparent 38%),
+    radial-gradient(circle at 20% 80%, rgba(230, 184, 74, 0.07), transparent 35%),
+    radial-gradient(circle at 92% 60%, rgba(255, 127, 80, 0.06), transparent 32%),
+    radial-gradient(circle at 8% 55%, rgba(182, 255, 39, 0.05), transparent 30%),
+    radial-gradient(circle at 50% 50%, rgba(255, 88, 181, 0.05), transparent 36%);
+  animation: login-ambient-drift 22s ease-in-out infinite alternate;
+  opacity: 0.85;
+}
+
+.login-modal > * {
+  position: relative;
+  z-index: 1;
+}
+
+.login-modal-header {
+  position: relative;
+  z-index: 2;
+}
+
+.login-modal .login-modal-header .login-close {
+  border-color: color-mix(in srgb, var(--ama-light-violet, #a45cff) 35%, transparent);
+  background: color-mix(in srgb, var(--ama-dark-blue, #07152d) 65%, transparent);
+  transition:
+    transform 220ms ease,
+    border-color 220ms ease,
+    background 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.login-modal .login-modal-header .login-close:hover {
+  transform: scale(1.04);
+  border-color: color-mix(in srgb, var(--ama-cyan, #49c8ff) 45%, transparent);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--ama-violet, #7535f5) 25%, transparent);
+}
+
+.login-modal .login-modal-header .login-logo,
+.forgot-page .login-logo {
+  width: 42px;
+  height: 42px;
+  filter:
+    drop-shadow(0 0 12px rgba(40, 123, 255, 0.45))
+    drop-shadow(0 0 22px rgba(117, 53, 245, 0.35));
+}
+
+.login-modal .login-eyebrow,
+.forgot-page .auth-eyebrow {
+  margin-top: 10px;
+  color: var(--ama-light-violet, #a45cff);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.login-modal h2,
+.forgot-page h1 {
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.login-auth-methods {
+  position: relative;
+  gap: 4px;
+  padding: 4px;
+  border-color: color-mix(in srgb, var(--ama-light-violet, #a45cff) 22%, transparent);
+  background: color-mix(in srgb, var(--ama-dark-blue, #07152d) 72%, transparent);
+  overflow: hidden;
+}
+
+.login-auth-methods::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 6px);
+  border-radius: var(--radius-pill, 9999px);
+  background: linear-gradient(135deg, var(--ama-light-violet, #a45cff), var(--ama-violet, #7535f5));
+  box-shadow:
+    0 8px 24px rgba(117, 53, 245, 0.35),
+    0 0 28px color-mix(in srgb, var(--ama-blue, #287bff) 18%, transparent);
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 0;
+}
+
+.login-auth-methods:has(#login-method-clerk.is-active)::before {
+  transform: translateX(calc(100% + 4px));
+}
+
+.login-auth-methods button {
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+  box-shadow: none !important;
+  transition: color 260ms ease;
+}
+
+.login-auth-methods button.is-active {
+  color: var(--ama-white, #ffffff);
+}
+
+.login-auth-methods button:hover:not(:disabled):not(.is-active) {
+  color: #e2e8f0;
+  background: rgba(148, 163, 184, 0.08) !important;
+}
+
+.login-form {
+  gap: 18px;
+}
+
+.login-form label > span:first-child {
+  color: rgba(226, 232, 240, 0.92);
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+}
+
+.login-form input:not([type='checkbox']) {
+  min-height: 48px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--ama-light-violet, #a45cff) 22%, transparent);
+  background: color-mix(in srgb, var(--ama-dark-blue, #07152d) 75%, transparent);
+  transition:
+    border-color 260ms ease,
+    box-shadow 280ms ease,
+    background 260ms ease;
+}
+
+.login-form input:not([type='checkbox']):hover:not(:focus) {
+  border-color: color-mix(in srgb, var(--ama-blue, #287bff) 35%, transparent);
+}
+
+.login-form input:not([type='checkbox']):focus {
+  border-color: color-mix(in srgb, var(--ama-light-violet, #a45cff) 65%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--ama-violet, #7535f5) 22%, transparent),
+    0 0 24px color-mix(in srgb, var(--ama-cyan, #49c8ff) 12%, transparent);
+}
+
+.password-toggle {
+  border-radius: 12px;
+  color: var(--ama-light-violet, #a45cff);
+}
+
+.password-toggle:hover {
+  background: color-mix(in srgb, var(--ama-violet, #7535f5) 18%, transparent);
+  color: var(--ama-white, #ffffff);
+}
+
+.login-remember {
+  gap: 10px;
+  cursor: pointer;
+}
+
+.login-form input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--ama-violet, #7535f5);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.login-submit {
+  min-height: 48px;
+  background: linear-gradient(
+    135deg,
+    var(--ama-violet, #7535f5) 0%,
+    var(--ama-light-violet, #a45cff) 55%,
+    color-mix(in srgb, var(--ama-blue, #287bff) 80%, var(--ama-violet, #7535f5)) 100%
+  );
+  background-size: 200% 100%;
+  box-shadow:
+    0 12px 28px rgba(117, 53, 245, 0.38),
+    0 0 32px color-mix(in srgb, var(--ama-violet, #7535f5) 18%, transparent);
+  transition:
+    transform 280ms cubic-bezier(0.22, 0.8, 0.22, 1),
+    box-shadow 320ms ease,
+    filter 280ms ease,
+    background-position 600ms ease;
+}
+
+.login-submit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background-position: 100% 0;
+  box-shadow:
+    0 16px 36px rgba(117, 53, 245, 0.45),
+    0 0 40px color-mix(in srgb, var(--ama-cyan, #49c8ff) 15%, transparent);
+}
+
+.login-submit:disabled {
+  filter: grayscale(0.15);
+}
+
+.login-social-btn {
+  min-height: 48px;
+  border-radius: var(--radius-pill, 9999px);
+  border-color: color-mix(in srgb, var(--ama-light-violet, #a45cff) 25%, transparent);
+  background: color-mix(in srgb, var(--ama-dark-blue, #07152d) 70%, transparent);
+  transition:
+    transform 280ms ease,
+    border-color 260ms ease,
+    box-shadow 320ms ease,
+    background 260ms ease;
+}
+
+.login-social-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--ama-cyan, #49c8ff) 40%, transparent);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.35),
+    0 0 24px color-mix(in srgb, var(--ama-blue, #287bff) 15%, transparent);
+}
+
+.login-error-block {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--ama-red, #f04450) 45%, transparent);
+  background: color-mix(in srgb, var(--ama-red, #f04450) 12%, transparent);
+}
+
+.login-error {
+  color: #fecaca;
+  font-size: 0.82rem;
+}
+
+.login-success {
+  border-radius: 14px;
+  border-color: color-mix(in srgb, var(--ama-green, #16b86a) 45%, transparent);
+  background: color-mix(in srgb, var(--ama-green, #16b86a) 12%, transparent);
+  color: #bbf7d0;
+}
+
+.login-retry-btn {
+  border-radius: var(--radius-pill, 9999px);
+  border-color: color-mix(in srgb, var(--ama-light-violet, #a45cff) 45%, transparent);
+  background: color-mix(in srgb, var(--ama-violet, #7535f5) 22%, transparent);
+}
+
+.login-divider span {
+  color: var(--text-muted, #8b8b9a);
+}
+
+.login-switch button {
+  color: var(--ama-light-violet, #a45cff);
+  transition: color 220ms ease;
+}
+
+.login-switch button:hover {
+  color: var(--ama-cyan, #49c8ff);
+}
+
+.login-clerk .cl-formFieldInput,
+.login-clerk .cl-input {
+  border-radius: 16px !important;
+  border-color: color-mix(in srgb, var(--ama-light-violet, #a45cff) 25%, transparent) !important;
+  background: color-mix(in srgb, var(--ama-dark-blue, #07152d) 75%, transparent) !important;
+}
+
+.login-clerk .cl-formButtonPrimary {
+  border-radius: var(--radius-pill, 9999px) !important;
+  background: linear-gradient(135deg, var(--ama-violet, #7535f5), var(--ama-light-violet, #a45cff)) !important;
+  box-shadow: 0 10px 28px rgba(117, 53, 245, 0.35) !important;
+}
+
+.login-clerk .cl-socialButtonsBlockButton {
+  border-radius: var(--radius-pill, 9999px) !important;
+}
+
+/* Forgot password page — same auth shell */
+.forgot-page {
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  padding:
+    max(24px, var(--safe-top, env(safe-area-inset-top)))
+    max(20px, var(--safe-right, env(safe-area-inset-right)))
+    max(24px, calc(var(--safe-bottom, env(safe-area-inset-bottom)) + var(--keyboard-inset, 0px)))
+    max(20px, var(--safe-left, env(safe-area-inset-left)));
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 0%, rgba(117, 53, 245, 0.12), transparent 55%),
+    var(--ama-black, #050505);
+  color: var(--ama-white, #ffffff);
+  animation: login-overlay-in 280ms ease forwards;
+}
+
+.forgot-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(40, 123, 255, 0.1), transparent 42%),
+    radial-gradient(circle at 80% 70%, rgba(255, 88, 181, 0.06), transparent 38%);
+  opacity: 0.9;
+}
+
+.forgot-page .forgot-shell {
+  position: relative;
+  z-index: 1;
+  width: min(440px, 100%);
+  padding: clamp(28px, 6vw, 36px);
+  border-radius: clamp(18px, 3vw, 22px);
+  border: 1px solid color-mix(in srgb, var(--ama-light-violet, #a45cff) 28%, transparent);
+  background:
+    linear-gradient(165deg, color-mix(in srgb, var(--ama-dark-blue, #07152d) 88%, transparent), rgba(5, 5, 5, 0.94));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 28px 80px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  animation: login-modal-in 320ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.forgot-page .forgot-shell input {
+  min-height: 48px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--ama-light-violet, #a45cff) 22%, transparent);
+  background: color-mix(in srgb, var(--ama-dark-blue, #07152d) 75%, transparent);
+  color: var(--ama-white, #ffffff);
+  font: inherit;
+  transition: border-color 260ms ease, box-shadow 280ms ease;
+}
+
+.forgot-page .forgot-shell input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--ama-light-violet, #a45cff) 65%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--ama-violet, #7535f5) 22%, transparent),
+    0 0 24px color-mix(in srgb, var(--ama-cyan, #49c8ff) 12%, transparent);
+}
+
+.forgot-page .forgot-shell button,
+.forgot-page .forgot-shell .forgot-cta-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 13px 18px;
+  border: 0;
+  border-radius: var(--radius-pill, 9999px);
+  background: linear-gradient(135deg, var(--ama-violet, #7535f5), var(--ama-light-violet, #a45cff));
+  color: var(--ama-white, #ffffff);
+  font: inherit;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 12px 28px rgba(117, 53, 245, 0.38);
+  transition: transform 280ms ease, filter 280ms ease, box-shadow 320ms ease;
+}
+
+.forgot-page .forgot-shell button:hover:not(:disabled),
+.forgot-page .forgot-shell .forgot-cta-link:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.05);
+}
+
+.forgot-page .forgot-shell button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.forgot-page .forgot-shell label {
+  gap: 8px;
+  margin-top: 4px;
+  color: rgba(226, 232, 240, 0.92);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.forgot-page .forgot-shell form {
+  gap: 16px;
+  margin: 22px 0 8px;
+}
+
+.forgot-page .forgot-shell p {
+  color: var(--text-secondary, #a8b4c7);
+  line-height: 1.65;
+  font-size: 0.92rem;
+}
+
+.forgot-page .forgot-link {
+  color: var(--ama-light-violet, #a45cff);
+}
+
+.forgot-page .forgot-alert {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.forgot-page .forgot-alert--error {
+  border: 1px solid color-mix(in srgb, var(--ama-red, #f04450) 45%, transparent);
+  background: color-mix(in srgb, var(--ama-red, #f04450) 12%, transparent);
+  color: #fecaca;
+}
+
+.forgot-page .forgot-alert--success {
+  border: 1px solid color-mix(in srgb, var(--ama-green, #16b86a) 45%, transparent);
+  background: color-mix(in srgb, var(--ama-green, #16b86a) 12%, transparent);
+  color: #bbf7d0;
+}
+
+@keyframes login-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes login-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes login-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes login-modal-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+}
+
+@keyframes login-ambient-drift {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    transform: translate(2%, -1.5%) scale(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-overlay,
+  .login-modal,
+  .login-modal::before,
+  .login-overlay--closing,
+  .login-modal--closing,
+  .forgot-page,
+  .forgot-page .forgot-shell {
+    animation: none;
+  }
+
+  .login-submit:hover:not(:disabled),
+  .login-social-btn:hover:not(:disabled),
+  .forgot-page .forgot-shell button:hover:not(:disabled) {
+    transform: none;
+  }
+}

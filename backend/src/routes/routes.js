@@ -119,7 +119,7 @@ const { createUserRateLimitMiddleware } = require('../security/apiRateLimit');
 const expensiveUserRateLimit = createUserRateLimitMiddleware({ scope: 'expensive' });
 const { authAttemptRateLimit } = require('../authRateLimit');
 const { prepareAppGeneration, prepareWebsiteRedesign } = require('../appGeneration');
-const { health, healthDetailed, globalSearch, listJobs, createJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
+const { health, healthDetailed, globalSearch, listJobs, createJob, getJob, streamJob, cancelJob, listNotifications, readNotification, usageReport, auditLog, listWebhooks, createWebhook, deleteWebhook, privacyExport, requestEmailVerification, confirmEmailVerification, requestPasswordReset, confirmPasswordReset } = require('../controllers/production');
 const { getReady, getOpsDashboard, getOpsDbTraffic, getOpsApiPerformance, getOpsProviders } = require('../controllers/opsCenter');
 const { getAccountSecurity, setAccountPassword, updateAccountProfile } = require('../accountPassword');
 const { getStorageOverview, listStorageIdea, createStorageIdea, deleteStorageIdea } = require('../controllers/storageIdeasController');
@@ -321,9 +321,11 @@ router.post('/code/assist', requireAuth, expensiveUserRateLimit, postCodeAssist)
 router.post('/chat/improve-prompt', requireAuth, improvePrompt);
 router.post('/vision/analyze', requireAuth, expensiveUserRateLimit, analyzeVision);
 router.post('/router/preview', requireAuth, previewRouter);
-const { getImageGenerationStatus, getImageGenerationJob, upscaleGeneratedImage } = require('../images');
+const { getImageGenerationStatus, getImageGenerationJob, streamImageGenerationJob, cancelImageGenerationJob, upscaleGeneratedImage } = require('../images');
 router.get('/images/status', requireAuth, getImageGenerationStatus);
 router.get('/images/jobs/:jobId', requireAuth, getImageGenerationJob);
+router.get('/images/jobs/:jobId/stream', requireAuth, streamImageGenerationJob);
+router.delete('/images/jobs/:jobId', requireAuth, cancelImageGenerationJob);
 router.get('/images/status/:jobId', requireAuth, getImageGenerationJob);
 router.post('/images/upscale', requireAuth, expensiveUserRateLimit, upscaleGeneratedImage);
 router.post('/images', requireAuth, expensiveUserRateLimit, generateImage);
@@ -471,6 +473,8 @@ router.get('/developer/model-diagnostics', requireAuth, getModelDiagnosticsCatal
 router.post('/developer/model-diagnostics/test', requireAuth, postModelDiagnosticTest);
 const { getDeveloperProviderHealth } = require('../controllers/providerHealthController');
 router.get('/developer/provider-health', requireAuth, getDeveloperProviderHealth);
+const { getAiGatewayStatus } = require('../controllers/aiGatewayController');
+router.get('/developer/ai-gateway', requireAuth, getAiGatewayStatus);
 const {
     getIntelligenceAudit,
     getLearningDashboard,
@@ -500,6 +504,8 @@ router.post('/intelligence/evaluation/reviews', requireAuth, postHumanReview);
 router.get('/search', requireAuth, globalSearch);
 router.get('/jobs', requireAuth, listJobs);
 router.post('/jobs', requireAuth, createJob);
+router.get('/jobs/:id', requireAuth, getJob);
+router.get('/jobs/:id/stream', requireAuth, streamJob);
 router.delete('/jobs/:id', requireAuth, cancelJob);
 router.get('/notifications', requireAuth, listNotifications);
 router.patch('/notifications/:id/read', requireAuth, readNotification);

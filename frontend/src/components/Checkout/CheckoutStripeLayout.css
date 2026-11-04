@@ -1,26 +1,189 @@
 /* Cursor-inspired two-column Stripe checkout — AllModelAI branding */
 
 .checkout-page--stripe-layout {
+  min-height: 100dvh;
+  background: #06080f;
+  overflow-x: hidden;
+}
+
+.checkout-page--stripe-layout .checkout-layout--cursor {
+  min-height: 100dvh;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+}
+
+.checkout-page--stripe-layout .checkout-summary-panel--cursor-minimal {
+  min-height: 100dvh;
+  padding: clamp(28px, 4vw, 48px) clamp(24px, 5vw, 56px);
   background:
-    radial-gradient(ellipse 70% 45% at 12% -8%, rgba(124, 92, 255, 0.2), transparent 55%),
-    radial-gradient(ellipse 50% 35% at 88% 8%, rgba(245, 158, 11, 0.08), transparent 50%),
-    linear-gradient(165deg, #05070f 0%, #0b1220 42%, #12101f 100%);
+    radial-gradient(ellipse 80% 50% at 0% 0%, rgba(117, 53, 245, 0.12), transparent 55%),
+    linear-gradient(180deg, #05070f 0%, #070b14 48%, #050508 100%);
+  border-right: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.checkout-page--stripe-layout .payment-form-card--cursor-shell {
+  min-height: 100dvh;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: clamp(28px, 4vw, 48px) clamp(24px, 5vw, 56px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.checkout-summary-headline--sub {
+  margin-top: 32px;
+  max-width: none;
+  font-size: clamp(1.05rem, 2vw, 1.2rem);
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: -0.01em;
+}
+
+.checkout-summary-hero-price--cursor {
+  margin-top: 12px;
+}
+
+.checkout-summary-hero-price--cursor strong {
+  font-size: clamp(2.4rem, 5vw, 3.25rem);
+}
+
+.checkout-line-items {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.checkout-line-items__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+.checkout-line-items__row strong {
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.checkout-total-due {
+  margin-top: auto;
+  padding-top: 24px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #94a3b8;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.checkout-total-due strong {
+  color: #f8fafc;
+  font-size: clamp(1.35rem, 3vw, 1.65rem);
+  font-weight: 800;
+}
+
+.checkout-summary-panel--cursor-minimal {
+  display: flex;
+  flex-direction: column;
+}
+
+.checkout-summary-panel--cursor-minimal .checkout-trust-list {
+  margin-top: 24px;
+}
+
+.mock-checkout-legend--section {
+  float: none;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 14px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.checkout-page--stripe-layout .mock-checkout-fieldset--cursor,
+.checkout-page--stripe-layout .mock-checkout-fieldset--payment {
+  border: none;
+  padding: 0;
+  margin: 0 0 22px;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+.checkout-page--stripe-layout .production-stripe-checkout--cursor {
+  display: grid;
+  gap: 0;
+  max-width: 100%;
+}
+
+.checkout-page--stripe-layout .checkout-stripe-loading {
+  margin: 12px 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px dashed #c4b5fd;
+  background: #f5f3ff;
+  color: #5b21b6;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.checkout-page--stripe-layout .mock-checkout-field--cursor input,
+.checkout-page--stripe-layout .mock-checkout-fieldset--cursor input {
+  min-height: 46px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 0.95rem;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.checkout-cursor-test-label {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.checkout-cursor-secure-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 18px;
+  color: #64748b;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.production-stripe-checkout--cursor .stripe-embedded-divider span {
+  font-weight: 700;
+  color: #6d5ef5;
+}
+
+.mock-checkout-submit--cursor {
+  margin-top: 8px;
 }
 
 .checkout-page--stripe-layout .checkout-header {
   display: none;
 }
 
-.checkout-layout--cursor {
-  display: grid;
-  grid-template-columns: minmax(300px, 1.05fr) minmax(340px, 520px);
-  gap: clamp(20px, 3.5vw, 40px);
-  align-items: start;
-  width: min(100%, 1120px);
-  margin: 0 auto;
-  padding: clamp(20px, 3vw, 36px) clamp(16px, 3vw, 28px) clamp(48px, 8vh, 96px);
-  min-height: 100dvh;
-}
+/* Full-bleed split is defined above under .checkout-page--stripe-layout .checkout-layout--cursor */
 
 .checkout-summary-panel--cursor {
   position: sticky;
@@ -49,6 +212,37 @@
   font-size: 1.12rem;
   font-weight: 800;
   letter-spacing: -0.02em;
+}
+
+.checkout-summary-brand--dragon .checkout-summary-dragon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  filter:
+    drop-shadow(0 0 12px rgba(99, 102, 241, 0.75))
+    drop-shadow(0 0 20px rgba(56, 189, 255, 0.45))
+    drop-shadow(0 0 8px rgba(245, 158, 11, 0.35));
+  transition: filter 280ms ease, transform 280ms ease;
+}
+
+.checkout-summary-brand--dragon:hover .checkout-summary-dragon {
+  filter:
+    drop-shadow(0 0 16px rgba(129, 140, 248, 0.85))
+    drop-shadow(0 0 24px rgba(56, 189, 255, 0.55))
+    drop-shadow(0 0 10px rgba(245, 158, 11, 0.4));
+}
+
+.checkout-billing-frequency {
+  margin: 12px 0 0;
+  font-size: 0.82rem;
+  color: #94a3b8;
+  line-height: 1.45;
+}
+
+.checkout-billing-frequency--muted {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 0.78rem;
 }
 
 .checkout-summary-brand .allmodelai-logo-mark {
@@ -315,12 +509,35 @@
   width: 100%;
   min-height: 52px;
   border: 0;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #8b7cf8, #6d5ef5);
+  border-radius: 16px;
+  background: linear-gradient(135deg, #9b7cff 0%, #7535f5 48%, #6d28d9 100%);
   color: #fff;
   font-size: 1rem;
   font-weight: 800;
-  box-shadow: 0 12px 28px rgba(109, 94, 245, 0.35);
+  letter-spacing: 0.01em;
+  box-shadow:
+    0 12px 32px rgba(117, 53, 245, 0.38),
+    0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease,
+    filter 220ms ease;
+}
+
+.checkout-page--stripe-layout .payment-form-card--light .mock-checkout-submit:hover:not(:disabled),
+.checkout-page--stripe-layout .payment-form-card--light .pay-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow:
+    0 16px 40px rgba(117, 53, 245, 0.48),
+    0 0 28px rgba(124, 92, 255, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.16) inset;
+}
+
+.checkout-page--stripe-layout .payment-form-card--light .mock-checkout-field input:focus,
+.checkout-page--stripe-layout .payment-form-card--light .mock-checkout-fieldset--cursor input:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18);
 }
 
 .checkout-page--stripe-layout .payment-form-card--light .pay-button:disabled,
@@ -336,6 +553,13 @@
   border: 1px solid #fecaca;
   border-radius: 10px;
   padding: 10px 12px;
+}
+
+.checkout-test-mode-banner--stripe-full {
+  width: calc(100% - 32px);
+  max-width: none;
+  margin: 12px 16px 0;
+  border-radius: 14px;
 }
 
 .checkout-page--stripe-layout .checkout-test-mode-banner {
@@ -370,10 +594,15 @@
 }
 
 @media (max-width: 900px) {
-  .checkout-layout--cursor {
+  .checkout-page--stripe-layout .checkout-layout--cursor {
     grid-template-columns: 1fr;
     min-height: auto;
-    padding-top: 16px;
+  }
+
+  .checkout-page--stripe-layout .checkout-summary-panel--cursor-minimal,
+  .checkout-page--stripe-layout .payment-form-card--cursor-shell {
+    min-height: auto;
+    padding: 24px 20px 32px;
   }
 
   .checkout-summary-panel--cursor {
@@ -382,6 +611,10 @@
 
   .checkout-summary-headline {
     max-width: none;
+  }
+
+  .mock-checkout-row--2 {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -142,28 +142,7 @@
   letter-spacing: 0.01em;
 }
 
-.home-surface .hero-prompt {
-  border-radius: var(--radius-xl, 22px);
-  backdrop-filter: blur(var(--glass-blur, 20px)) saturate(140%);
-  -webkit-backdrop-filter: blur(var(--glass-blur, 20px)) saturate(140%);
-  box-shadow:
-    var(--shadow-md),
-    var(--shadow-inner-glow),
-    0 0 48px rgba(101, 72, 201, 0.14);
-}
-
-.home-surface .hero-prompt-send:not(:disabled) {
-  background: var(--gradient-violet-purple);
-}
-
-.home-surface .hero-actions button {
-  border-radius: var(--radius-pill);
-  backdrop-filter: blur(10px);
-}
-
-.home-surface .hero-actions button:first-of-type {
-  box-shadow: 0 10px 28px rgba(101, 72, 201, 0.25);
-}
+/* Hero controls styled in Header.css */
 
 /* —— Section headings (unified hierarchy) —— */
 .home-surface .grid-header h2,
@@ -347,12 +326,12 @@
 }
 
 /* —— Footer —— */
-.home-surface .footer {
+.home-surface .footer:not(.footer--premium) {
   position: relative;
   margin-top: clamp(56px, 8vw, 96px);
 }
 
-.home-surface .footer::before {
+.home-surface .footer:not(.footer--premium)::before {
   content: '';
   position: absolute;
   top: 0;
@@ -369,11 +348,11 @@
   pointer-events: none;
 }
 
-.home-surface .footer-bottom {
+.home-surface .footer:not(.footer--premium) .footer-bottom {
   border-top-color: rgba(180, 154, 255, 0.12);
 }
 
-.home-surface .link-group h4 {
+.home-surface .footer:not(.footer--premium) .link-group h4 {
   color: var(--ama-lavender, #b49aff);
   font-size: 0.78rem;
   letter-spacing: 0.12em;

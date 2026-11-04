@@ -5,6 +5,7 @@ import HeroAuraVisual from './HeroAuraVisual';
 import WindowsDownloadButton from '../Download/WindowsDownloadButton';
 import { IconSendUp } from '../Chat/ComposerIcons';
 import './Header.css';
+import './hero-premium-enhancements.css';
 
 export default function Header() {
   const navigate = useNavigate();

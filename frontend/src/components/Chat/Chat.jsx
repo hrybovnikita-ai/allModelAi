@@ -213,7 +213,7 @@ function safeStorageSet(storageName, key, value) {
 
 const SIDEBAR_WIDTH_MIN = 200;
 const SIDEBAR_WIDTH_MAX = 520;
-const SIDEBAR_WIDTH_DEFAULT = 272;
+const SIDEBAR_WIDTH_DEFAULT = 288;
 const SIDEBAR_WIDTH_STORAGE_KEY = 'allmodelai_sidebar_width';
 
 function readSidebarWidth() {

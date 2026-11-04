@@ -6,13 +6,32 @@ html[data-platform='ios'] .chat-page {
   max-height: 100dvh;
 }
 
-/* Phones */
+/* Phones — history drawer must stay reachable */
 @media (max-width: 767px) {
   .chat-page {
     height: 100dvh;
     max-height: 100dvh;
     overflow-x: clip;
     max-width: 100vw;
+  }
+
+  .chat-page .sidebar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    z-index: 40;
+  }
+
+  .chat-page .chat-sidebar.open {
+    z-index: 35;
+    box-shadow: 24px 0 64px rgba(0, 0, 0, 0.65);
+  }
+
+  .chat-page .sidebar-backdrop.visible {
+    z-index: 30;
+    backdrop-filter: blur(6px);
   }
 
   .chat-header {

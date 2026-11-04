@@ -74,7 +74,7 @@ function isPremiumUserEmail(connection, email) {
         `).get(normalized);
         if (!row?.plan) return false;
         const plan = String(row.plan).toLowerCase();
-        return ['pro', 'starter', 'plus', 'unlimited', 'week', 'common'].includes(plan);
+        return ['pro', 'starter', 'plus', 'unlimited', 'week', 'common', 'upgrade-plus', 'pro-plus', 'ultra'].includes(plan);
     } catch {
         return false;
     }
@@ -101,7 +101,7 @@ async function isPremiumUserEmailAsync(connection, email) {
             const row = result.rows[0];
             if (!row?.plan) return false;
             const plan = String(row.plan).toLowerCase();
-            return ['pro', 'starter', 'plus', 'unlimited', 'week', 'common'].includes(plan);
+            return ['pro', 'starter', 'plus', 'unlimited', 'week', 'common', 'upgrade-plus', 'pro-plus', 'ultra'].includes(plan);
         }
         return isPremiumUserEmail(connection, email);
     } catch {

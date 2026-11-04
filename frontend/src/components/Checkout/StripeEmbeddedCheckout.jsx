@@ -41,7 +41,7 @@ export const stripeCheckoutAppearanceLight = {
     colorText: '#0f172a',
     colorTextSecondary: '#64748b',
     colorDanger: '#dc2626',
-    borderRadius: '10px',
+    borderRadius: '14px',
     fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
     spacingUnit: '4px',
   },

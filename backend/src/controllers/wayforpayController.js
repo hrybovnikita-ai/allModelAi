@@ -323,8 +323,10 @@ const resolveCheckoutProduct = (req) => {
             planName: `${pack.name} Credits`,
         };
     }
-    const planKey = normalizePlanKey(req.body.plan);
-    const plan = subscriptionPlans[planKey];
+    const { resolveSubscriptionPlanInput } = require('../payments/paymentIntentPlans');
+    const resolved = resolveSubscriptionPlanInput(req.body.plan);
+    const planKey = resolved?.planKey;
+    const plan = resolved?.plan;
     if (!plan || plan.amount <= 0) {
         return { error: { status: 400, message: 'Choose a valid paid subscription plan' } };
     }

@@ -28,6 +28,7 @@ import {
   isPaidPlanAccess,
 } from '../../lib/modelEntitlements';
 import ProSubscribeButton from '../Subscribe/ProSubscribeButton';
+import '../Subscribe/ProSubscribeButton.css';
 import DashboardUsageChart from './DashboardUsageChart';
 import './DashboardModelLibrary.css';
 import './DashboardSaas.css';
@@ -366,9 +367,9 @@ export default function Dashboard() {
                 <button type="button" className="dashboard-sub-manage" onClick={() => setManageSubOpen(true)}>Manage subscription</button>
                 <Link to="/dashboard/orders">Billing history</Link>
                 {!isFreePlan ? (
-                  <ProSubscribeButton className="pro-subscribe-btn--compact" variant="violet">
+                  <Link to="/upgrade" className="pro-subscribe-btn pro-subscribe-btn--compact pro-subscribe-btn--violet">
                     Upgrade plan
-                  </ProSubscribeButton>
+                  </Link>
                 ) : null}
                 {creditStatus.aiCredits?.enabled ? <Link to="/credits">Buy AI credits</Link> : null}
               </div>

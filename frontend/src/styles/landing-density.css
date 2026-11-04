@@ -1,0 +1,67 @@
+/* Continuous landing background — no per-section black slabs */
+
+.home-surface,
+.home-layout {
+  background: transparent;
+}
+
+.container:has(.home-layout) {
+  position: relative;
+  isolation: isolate;
+  width: min(100%, 1560px);
+  background: transparent;
+}
+
+.container:has(.home-layout)::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -8vh -8vw;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 55% 28% at 18% 12%, color-mix(in srgb, #7535f5 28%, transparent), transparent 70%),
+    radial-gradient(ellipse 40% 24% at 88% 22%, color-mix(in srgb, #a45cff 18%, transparent), transparent 68%),
+    radial-gradient(ellipse 50% 30% at 50% 48%, color-mix(in srgb, #07152d 85%, transparent), transparent 72%),
+    radial-gradient(ellipse 45% 26% at 12% 78%, color-mix(in srgb, #7535f5 16%, transparent), transparent 70%),
+    #050505;
+}
+
+.home-layout {
+  gap: clamp(32px, 4vw, 56px) !important;
+  background: transparent !important;
+}
+
+.home-layout > section,
+.home-layout > .home-model-section,
+.home-layout .rainbow-experience,
+.home-layout .everyday-cards,
+.home-layout .about-section,
+.home-layout .workflow-section,
+.home-layout .models-section {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding-inline: 0;
+}
+
+.home-layout .rainbow-card,
+.home-layout .everyday-card-grid > a,
+.home-layout .about-card,
+.home-layout .workflow-step,
+.home-layout .model-card {
+  border-radius: 16px;
+  background: color-mix(in srgb, #07152d 72%, transparent);
+  border: 1px solid color-mix(in srgb, #a45cff 26%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+@media (max-width: 800px) {
+  .home-layout {
+    gap: 28px !important;
+  }
+
+  .container:has(.home-layout)::before {
+    inset: -4vh -12vw;
+  }
+}

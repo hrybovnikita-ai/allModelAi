@@ -1,6 +1,6 @@
 /* Collapsible desktop sidebar rail (ChatGPT-style) */
 .chat-page {
-  --chat-sidebar-width: 272px;
+  --chat-sidebar-width: 288px;
   position: relative;
   grid-template-columns: var(--chat-sidebar-width) minmax(0, 1fr) !important;
   transition: grid-template-columns 0.2s ease;

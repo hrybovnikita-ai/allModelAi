@@ -4,7 +4,7 @@ import {
   confirmSession,
   rememberSession,
 } from '../../lib/session';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
@@ -34,6 +34,7 @@ import {
   isClerkMainAuthClientReady,
 } from '../../lib/clerkAuthConfig';
 import './Login.css';
+import './login-premium.css';
 
 const LoginClerkSection = lazy(() => import('./LoginClerkSection.jsx'));
 
@@ -72,6 +73,15 @@ function LoginForm({
   const [clerkBusy, setClerkBusy] = useState(false);
   /** 'account' = Firebase email/Google; 'clerk' = Clerk-only panel (avoids stacked duplicate Google UI). */
   const [authMethod, setAuthMethod] = useState('account');
+  const [closing, setClosing] = useState(false);
+
+  const requestClose = useCallback(() => {
+    if (closing) return;
+    setClosing(true);
+    window.setTimeout(() => {
+      onClose?.();
+    }, 240);
+  }, [closing, onClose]);
 
   useEffect(() => {
     if (isGoogleRedirectRecoveryPending()) {
@@ -364,12 +374,12 @@ function LoginForm({
   useEffect(() => {
     const closeWithEscape = (event) => {
       if (event.key === 'Escape') {
-        onClose();
+        requestClose();
       }
     };
     document.addEventListener('keydown', closeWithEscape);
     return () => document.removeEventListener('keydown', closeWithEscape);
-  }, [onClose]);
+  }, [requestClose]);
 
   const finishAuthNavigation = async (sessionUser, data = {}) => {
     markFreshLogin();
@@ -405,29 +415,33 @@ function LoginForm({
   };
 
   const modalTree = (
-    <div className="login-overlay" role="presentation">
+    <div
+      className={`login-overlay${closing ? ' login-overlay--closing' : ''}`}
+      role="presentation"
+    >
       <div
         className="login-backdrop-layer"
         aria-hidden="true"
-        onMouseDown={onClose}
+        onMouseDown={requestClose}
       />
       <section
-        className={`login-modal${clerkUiEnabled ? ' login-modal--with-clerk' : ''}`}
+        className={`login-modal${clerkUiEnabled ? ' login-modal--with-clerk' : ''}${closing ? ' login-modal--closing' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="login-title"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <button
-          className="login-close"
-          type="button"
-          onClick={onClose}
-          aria-label="Close form"
-        >
-          ×
-        </button>
-
-        <AllModelAILogoMark className="login-logo" size={42} />
+        <div className="login-modal-header">
+          <AllModelAILogoMark className="login-logo" size={42} />
+          <button
+            className="login-close"
+            type="button"
+            onClick={requestClose}
+            aria-label="Close form"
+          >
+            ×
+          </button>
+        </div>
 
         <p className="login-eyebrow">AllModelAI account</p>
 
@@ -583,7 +597,7 @@ function LoginForm({
               Remember me
             </label>
             {!signingUp && (
-              <Link className="login-forgot" to="/forgot-password" onClick={onClose}>
+              <Link className="login-forgot" to="/forgot-password" onClick={requestClose}>
                 Forgot password?
               </Link>
             )}

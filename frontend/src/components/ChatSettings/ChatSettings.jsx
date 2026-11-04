@@ -5,6 +5,7 @@ import { useLanguage } from '../../lib/useLanguage';
 import LanguageDialog from '../LanguageDialog/LanguageDialog';
 import { DEFAULT_RESPONSE_PREFS, RESPONSE_LANGUAGE_OPTIONS, readResponsePrefs, writeResponsePrefs } from '../../lib/responseLanguagePrefs.js';
 import UserMemorySettings from '../Settings/UserMemorySettings';
+import { AMA_ACCENT_SWATCHES } from '../../lib/amaPalette';
 import './ChatSettings.css';
 
 const SECTIONS = [
@@ -21,8 +22,8 @@ const SECTIONS = [
   ['data', 'Data & Storage'],
 ];
 
-const ACCENTS = [['Violet', '#8b5cf6'], ['Purple', '#7c3aed'], ['Blue', '#3b82f6'], ['Indigo', '#4f46e5'], ['Green', '#22c55e'], ['Red', '#ef4444'], ['Orange', '#f97316']];
-const BUBBLES = [['Violet', '#8b5cf6'], ['Blue', '#3b82f6'], ['Indigo', '#4f46e5'], ['Green', '#16a34a'], ['Red', '#dc2626'], ['Orange', '#ea580c']];
+const ACCENTS = AMA_ACCENT_SWATCHES;
+const BUBBLES = AMA_ACCENT_SWATCHES;
 
 const contrast = (hex) => {
   const value = String(hex || '').replace('#', '');

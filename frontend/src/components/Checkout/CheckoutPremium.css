@@ -44,6 +44,38 @@
   color: #94a3b8;
 }
 
+.checkout-payment-methods {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(164, 92, 255, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.checkout-payment-methods__label {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a78bfa;
+}
+
+.checkout-payment-methods__row {
+  margin-bottom: 8px;
+}
+
+.checkout-payment-methods__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #94a3b8;
+}
+
+.checkout-page--premium.checkout-page--mock .checkout-payment-methods {
+  border-color: rgba(164, 92, 255, 0.22);
+  background: rgba(8, 6, 14, 0.55);
+}
+
 /* Card brand stickers */
 .card-brand-badges {
   display: inline-flex;

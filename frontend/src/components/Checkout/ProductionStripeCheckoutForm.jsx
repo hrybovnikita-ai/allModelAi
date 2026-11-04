@@ -28,7 +28,9 @@ export default function ProductionStripeCheckoutForm({
   secureCheckoutLabel = 'Secure payment',
   emailLocked = false,
   appearance = 'light',
+  variant = 'default',
 }) {
+  const cursorVariant = variant === 'cursor';
   const confirmRef = useRef(null);
   const [fields, setFields] = useState(() => ({ ...BILLING_FIELD_INITIAL, email: defaultEmail }));
   const [fieldError, setFieldError] = useState('');
@@ -36,7 +38,7 @@ export default function ProductionStripeCheckoutForm({
 
   useEffect(() => {
     if (!defaultEmail) return;
-    setFields((current) => (current.email ? current : { ...current, email: defaultEmail }));
+    setFields((current) => ({ ...current, email: defaultEmail }));
   }, [defaultEmail]);
 
   const onFieldChange = useCallback((key, value) => {
@@ -90,7 +92,7 @@ export default function ProductionStripeCheckoutForm({
   const stripeReady = Boolean(clientSecret && publishableKey);
 
   return (
-    <div className="mock-checkout-form production-stripe-checkout">
+    <div className={`mock-checkout-form production-stripe-checkout${cursorVariant ? ' production-stripe-checkout--cursor' : ''}`}>
       <SubscriptionBillingFields
         fields={fields}
         onChange={onFieldChange}
@@ -98,18 +100,23 @@ export default function ProductionStripeCheckoutForm({
         testModeLabel={testModeLabel}
         secureLabel={secureCheckoutLabel}
         emailLocked={emailLocked || Boolean(defaultEmail)}
+        variant={variant}
       />
 
-      <fieldset className="mock-checkout-fieldset mock-checkout-fieldset--payment" disabled={disabled || payBusy}>
-        <legend className="mock-checkout-legend">Payment method</legend>
-        <div className="production-stripe-checkout__brands">
-          <p className="production-stripe-checkout__brands-label">Supported cards</p>
-          <CardBrandBadges className="production-stripe-checkout__badges" />
-        </div>
-        <p className="production-stripe-checkout__pe-hint">
-          Card number, expiration date, and security code are collected in Stripe&apos;s secure fields.
-          Your card brand is detected automatically as you type.
-        </p>
+      <fieldset className="mock-checkout-fieldset mock-checkout-fieldset--payment mock-checkout-fieldset--cursor" disabled={disabled || payBusy}>
+        <legend className="mock-checkout-legend mock-checkout-legend--section">Payment method</legend>
+        {!cursorVariant ? (
+          <>
+            <div className="production-stripe-checkout__brands">
+              <p className="production-stripe-checkout__brands-label">Supported cards</p>
+              <CardBrandBadges className="production-stripe-checkout__badges" />
+            </div>
+            <p className="production-stripe-checkout__pe-hint">
+              Card number, expiration date, and security code are collected in Stripe&apos;s secure fields.
+              Your card brand is detected automatically as you type.
+            </p>
+          </>
+        ) : null}
 
         {stripeLoading && (
           <p className="checkout-stripe-loading" role="status">Preparing secure payment form…</p>
@@ -160,7 +167,7 @@ export default function ProductionStripeCheckoutForm({
 
       <PaymentButton
         type="button"
-        className="mock-checkout-submit"
+        className={`mock-checkout-submit${cursorVariant ? ' mock-checkout-submit--cursor' : ''}`}
         loading={payBusy || stripeLoading}
         loadingLabel={processingLabel}
         disabled={disabled || !stripeReady}

@@ -1,0 +1,51 @@
+.ama-spectrum {
+  display: grid;
+  gap: 12px;
+  padding: 8px 0 4px;
+}
+
+.ama-spectrum__label {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #a45cff;
+}
+
+.ama-spectrum__row {
+  display: grid;
+  grid-template-columns: repeat(19, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ama-spectrum__row li {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  min-width: 0;
+}
+
+.ama-spectrum__chip {
+  width: 100%;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--swatch);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--swatch) 45%, transparent);
+}
+
+.ama-spectrum__name {
+  font-size: 0.62rem;
+  color: #858585;
+  text-align: center;
+  line-height: 1.2;
+}
+
+@media (max-width: 900px) {
+  .ama-spectrum__row {
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  }
+}

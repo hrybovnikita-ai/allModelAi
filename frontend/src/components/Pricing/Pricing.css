@@ -413,6 +413,10 @@
   margin-top: auto;
 }
 
+.pricing-card.featured button.pricing-pro-subscribe.pro-subscribe-btn {
+  border-radius: 9999px;
+}
+
 @media (max-width: 768px) {
   .pricing-grid {
     grid-template-columns: 1fr;

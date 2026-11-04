@@ -1,0 +1,213 @@
+/**
+ * AllModelAI — iOS-inspired dark glassmorphism layer.
+ * Loaded by frontend/src/main.jsx for Vite (5174) and production bundles (5050 / Render).
+ *
+ * Local ports:
+ * - :5174 — Vite dev (live source + HMR)
+ * - :5050 — Express backend serving frontend/dist (run `npm run build -w frontend` to refresh)
+ */
+
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.04);
+  --glass-border: rgba(164, 92, 255, 0.22);
+  --glass-border-soft: rgba(255, 255, 255, 0.08);
+  --glass-blur-ios: 24px;
+  --neon-violet: 0 0 24px rgba(117, 53, 245, 0.35), 0 0 48px rgba(117, 53, 245, 0.12);
+  --accent-green: #22c55e;
+  --accent-lime: #a3e635;
+  --accent-yellow-green: #84cc16;
+  --accent-yellow: #facc15;
+  --accent-gold: #eab308;
+  --accent-blue: #3b82f6;
+  --accent-cyan: #22d3ee;
+  --accent-pink: #ec4899;
+  --accent-red: #ef4444;
+  --accent-orange: #fb923c;
+  --accent-red-orange: #f4511e;
+  --spectrum-border: linear-gradient(
+    135deg,
+    var(--accent-lime),
+    var(--accent-cyan),
+    var(--violet),
+    var(--accent-pink),
+    var(--accent-gold)
+  );
+}
+
+html {
+  background: var(--background);
+}
+
+body {
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -15%, rgba(117, 53, 245, 0.14), transparent 55%),
+    radial-gradient(ellipse 45% 35% at 100% 20%, rgba(34, 211, 238, 0.06), transparent 50%),
+    radial-gradient(ellipse 40% 30% at 0% 80%, rgba(164, 92, 255, 0.07), transparent 45%),
+    var(--background);
+  background-attachment: fixed;
+}
+
+.glass-panel,
+.home-surface .model-card,
+.home-surface .version-card,
+.home-surface .rainbow-card,
+.home-surface .pricing-card,
+.home-surface .toolkit-card,
+.home-surface .about-card,
+.home-surface .community-card,
+.dashboard-shell .dash-card,
+.settings-panel,
+.ai-tool-card {
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--glass-blur-ios)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-ios)) saturate(160%);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    var(--shadow-inner-glow),
+    0 12px 40px rgba(0, 0, 0, 0.35);
+  transition:
+    transform var(--duration-normal) var(--ease-smooth),
+    border-color var(--duration-normal) var(--ease-smooth),
+    box-shadow var(--duration-slow) var(--ease-smooth);
+}
+
+.home-surface .model-card:hover,
+.home-surface .version-card:hover,
+.home-surface .rainbow-card:hover,
+.home-surface .pricing-card:hover,
+.home-surface .toolkit-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--glass-border);
+  box-shadow:
+    var(--shadow-inner-glow),
+    var(--neon-violet),
+    0 16px 48px rgba(0, 0, 0, 0.42);
+}
+
+.navbar {
+  background: rgba(5, 5, 5, 0.65);
+  backdrop-filter: blur(var(--glass-blur-ios)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-ios)) saturate(180%);
+  border-bottom-color: rgba(117, 53, 245, 0.2);
+}
+
+.navbar.scrolled,
+.navbar.is-solid {
+  background: rgba(5, 5, 5, 0.88);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.header {
+  background:
+    radial-gradient(ellipse 75% 50% at 50% -5%, rgba(117, 53, 245, 0.22), transparent 58%),
+    radial-gradient(circle at 88% 35%, rgba(34, 211, 238, 0.08), transparent 40%),
+    var(--bg-primary);
+}
+
+.home-surface .use-btn,
+.home-surface .pricing-btn,
+.home-surface .pricing-btn-pill,
+.btn-primary,
+.glass-button {
+  background: var(--gradient-violet-purple);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(117, 53, 245, 0.35);
+  transition:
+    transform var(--duration-normal) var(--ease-smooth),
+    box-shadow var(--duration-normal) var(--ease-smooth),
+    filter var(--duration-fast) ease;
+}
+
+.home-surface .use-btn:hover,
+.home-surface .pricing-btn:hover:not(:disabled),
+.btn-primary:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+  box-shadow: var(--neon-violet), 0 12px 28px rgba(117, 53, 245, 0.4);
+}
+
+.footer:not(.footer--premium) {
+  background:
+    linear-gradient(180deg, transparent, rgba(5, 5, 5, 0.92)),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(117, 53, 245, 0.1), transparent 60%);
+  border-top: 1px solid rgba(164, 92, 255, 0.15);
+}
+
+/* Chat — keep canvas black; glass only on chrome (sidebar / composer shell) */
+.chat-page:not([data-theme='light']) {
+  --chat-bg: #000;
+  background: #000;
+}
+
+/* Chat sidebar glass: ChatSidebarPremium.css */
+
+.chat-page:not([data-theme='light']) .chat-header {
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chat-page:not([data-theme='light']) .chat-message.assistant .chat-bubble,
+.chat-page:not([data-theme='light']) .chat-message.assistant {
+  /* Default assistant gray — user Settings colors still win via inline/CSS vars */
+  color: #d1d5db;
+}
+
+.chat-page .sidebar-toggle {
+  border: 1px solid rgba(164, 92, 255, 0.35);
+  background: rgba(117, 53, 245, 0.15);
+  border-radius: 12px;
+  box-shadow: var(--neon-violet);
+}
+
+/* Dashboard / settings shells */
+.dashboard-page,
+.settings-page,
+.platform-studio {
+  background: transparent;
+}
+
+.dashboard-shell,
+.settings-layout {
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--glass-blur-ios));
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius-xl);
+}
+
+#root > * {
+  animation: glass-route-in var(--duration-slow) var(--ease-smooth) both;
+}
+
+@keyframes glass-route-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-surface .model-card:hover,
+  .home-surface .version-card:hover,
+  .home-surface .rainbow-card:hover,
+  .home-surface .pricing-card:hover {
+    transform: none;
+  }
+
+  #root > * {
+    animation: none;
+  }
+
+  .glass-panel,
+  .navbar,
+  .home-surface .hero-prompt-send,
+  .home-surface .use-btn {
+    transition: none;
+  }
+}
