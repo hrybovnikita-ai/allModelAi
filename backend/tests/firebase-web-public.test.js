@@ -48,7 +48,7 @@ test('getPublicFirebaseWebConfig serves custom auth domain when configured', () 
     try {
         const payload = getPublicFirebaseWebConfig();
         assert.equal(payload.configured, true);
-        assert.equal(payload.config.authDomain, 'auth.all-model-ai.com');
+        assert.equal(payload.config.authDomain, 'all-model-ai.com');
         assert.equal(payload.config.projectId, 'allmodelai');
     } finally {
         for (const [key, value] of Object.entries(previous)) {

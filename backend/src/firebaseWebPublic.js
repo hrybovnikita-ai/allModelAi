@@ -4,6 +4,18 @@
  * VITE_FIREBASE_AUTH_DOMAIN (Google consent shows Continue to all-model-ai.com).
  * Local branded login can use the same domain; fallback is allmodelai.firebaseapp.com.
  */
+/** Align with frontend firebaseAuthDomain.js — apex host + Vercel /__/auth proxy. */
+const FIREBASE_AUTH_SUBDOMAIN_HOST = 'auth.all-model-ai.com';
+const FIREBASE_CUSTOM_AUTH_HOST = 'all-model-ai.com';
+
+function normalizePublicAuthDomain(domain) {
+    const trimmed = String(domain || '').trim();
+    if (trimmed === FIREBASE_AUTH_SUBDOMAIN_HOST) {
+        return FIREBASE_CUSTOM_AUTH_HOST;
+    }
+    return trimmed;
+}
+
 const WEB_ENV = {
     apiKey: ['FIREBASE_WEB_API_KEY', 'VITE_FIREBASE_API_KEY'],
     authDomain: ['FIREBASE_WEB_AUTH_DOMAIN', 'VITE_FIREBASE_AUTH_DOMAIN', 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'],
@@ -52,7 +64,7 @@ function getPublicFirebaseWebConfig() {
         configured: true,
         config: {
             apiKey: config.apiKey,
-            authDomain: config.authDomain,
+            authDomain: normalizePublicAuthDomain(config.authDomain),
             projectId: config.projectId,
             appId: config.appId,
         },

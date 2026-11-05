@@ -208,8 +208,9 @@ export function isRedirectIntentReconcileBlocked() {
 /** True when we should call getRedirectResult / finish OAuth (not for stale abandoned redirects). */
 export function shouldAttemptGoogleRedirectRecovery() {
   if (isGooglePopupSignInActive()) return false;
-  if (!isGoogleRedirectRecoveryPending()) return false;
+  // OAuth return URL params — finish sign-in even when sessionStorage intent was lost (Safari / storage partition).
   if (hasFirebaseRedirectReturnHints()) return true;
+  if (!isGoogleRedirectRecoveryPending()) return false;
   const intent = peekRedirectIntent();
   if (!intent) return false;
   if (intent.expires < Date.now()) return false;

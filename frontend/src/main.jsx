@@ -21,14 +21,26 @@ import './styles/landing-density.css';
 import { installNativeFetchInterceptor } from './lib/nativeFetch.js';
 import { startRedirectPrerequisitesPreload } from './lib/authRedirectPreload.js';
 import { ensureSocialAuthReady } from './lib/firebase.js';
-import { reconcileStaleRedirectIntent } from './lib/socialRedirectState.js';
+import {
+  hasFirebaseRedirectReturnHints,
+  isGoogleRedirectRecoveryPending,
+  reconcileStaleRedirectIntent,
+} from './lib/socialRedirectState.js';
 import { startAllModelAIApp } from './startApp.jsx';
 
 installNativeFetchInterceptor();
+
+const likelyOAuthReturn =
+  typeof window !== 'undefined'
+  && (hasFirebaseRedirectReturnHints() || isGoogleRedirectRecoveryPending());
+
 void startRedirectPrerequisitesPreload().catch(() => {
   /* Redirect gate surfaces recovery errors. */
 });
-void ensureSocialAuthReady().catch(() => {});
+// Parallel ensureSocialAuthReady + setPersistence before getRedirectResult breaks Google redirect on WebKit.
+if (!likelyOAuthReturn) {
+  void ensureSocialAuthReady().catch(() => {});
+}
 void Promise.resolve().then(() => {
   reconcileStaleRedirectIntent();
 });

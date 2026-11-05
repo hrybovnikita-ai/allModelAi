@@ -46,6 +46,18 @@ export function isExplicitCustomAuthDomain(domain) {
 }
 
 /**
+ * Map legacy Firebase Hosting auth subdomain env to the apex host served via Vercel /__/auth proxy.
+ */
+export function normalizeConfiguredAuthDomain(domain) {
+  const trimmed = String(domain || '').trim();
+  if (!trimmed) return trimmed;
+  if (trimmed === FIREBASE_AUTH_SUBDOMAIN_HOST) {
+    return FIREBASE_CUSTOM_AUTH_HOST;
+  }
+  return trimmed;
+}
+
+/**
  * Last-line guard: on the live AllModelAI site, never initialize Firebase Auth with
  * *.firebaseapp.com. Use the apex so Google shows "Continue to all-model-ai.com".
  */

@@ -33,7 +33,7 @@ export function bootstrapGoogleRedirectRecovery(runPipeline) {
     bootstrapSettled = null;
     return Promise.resolve(null);
   }
-  if (!isGoogleRedirectRecoveryPending() || !shouldAttemptGoogleRedirectRecovery()) {
+  if (!shouldAttemptGoogleRedirectRecovery()) {
     return Promise.resolve(null);
   }
 

@@ -81,6 +81,19 @@ test('stale redirect intent outside recovery window is cleared on reconcile', ()
   delete globalThis.window;
 });
 
+test('shouldAttemptGoogleRedirectRecovery runs on OAuth return URL without stored intent', () => {
+  globalThis.window = {
+    location: {
+      pathname: '/login',
+      search: '?apiKey=test&authType=signInViaRedirect',
+      hash: '',
+    },
+  };
+  assert.equal(isGoogleRedirectRecoveryPending(), false);
+  assert.equal(shouldAttemptGoogleRedirectRecovery(), true);
+  delete globalThis.window;
+});
+
 test('shouldShowGoogleRedirectRecoveryUI requires pending flag or OAuth URL hints', () => {
   persistRedirectIntent('Google', {}, 'awaiting-google-return');
   markRedirectFlowCommitted();

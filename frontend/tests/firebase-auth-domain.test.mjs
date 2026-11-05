@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import {
   coerceProductionAuthDomain,
   FIREBASE_CUSTOM_AUTH_HOST,
+  normalizeConfiguredAuthDomain,
   resolveAuthDomainForRuntime,
 } from '../src/lib/firebaseAuthDomain.js';
 
@@ -111,6 +112,12 @@ test('coerceProductionAuthDomain maps apex and firebaseapp hosts on live site', 
     coerceProductionAuthDomain('allmodelai.firebaseapp.com', 'localhost'),
     'allmodelai.firebaseapp.com',
   );
+});
+
+test('normalizeConfiguredAuthDomain maps auth subdomain env to apex', () => {
+  assert.equal(normalizeConfiguredAuthDomain('auth.all-model-ai.com'), FIREBASE_CUSTOM_AUTH_HOST);
+  assert.equal(normalizeConfiguredAuthDomain('all-model-ai.com'), FIREBASE_CUSTOM_AUTH_HOST);
+  assert.equal(normalizeConfiguredAuthDomain('allmodelai.firebaseapp.com'), 'allmodelai.firebaseapp.com');
 });
 
 test('auth subdomain env is branded to apex on the production site', () => {

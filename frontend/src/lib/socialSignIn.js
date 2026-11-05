@@ -44,6 +44,7 @@ import {
 } from './googlePopupSignIn.js';
 import {
   clearSocialRedirectIntent,
+  hasFirebaseRedirectReturnHints,
   isGoogleRedirectRecoveryPending,
   isRedirectFlowCommitted,
   markGooglePopupSignInEnded,
@@ -415,19 +416,29 @@ async function runGoogleRedirectRecoveryPipeline(consumer) {
     if (isGooglePopupSignInActive()) {
       return null;
     }
-    const pending = peekRedirectIntent();
-    if (!pending || pending.phase !== 'awaiting-google-return' || !isRedirectFlowCommitted()) {
-      return null;
-    }
     if (!shouldAttemptGoogleRedirectRecovery()) {
       clearSocialRedirectIntent();
+      return null;
+    }
+
+    let pending = peekRedirectIntent();
+    const oauthReturnWithoutIntent = hasFirebaseRedirectReturnHints()
+      && (!pending || pending.phase !== 'awaiting-google-return' || !isRedirectFlowCommitted());
+    if (oauthReturnWithoutIntent) {
+      pending = {
+        name: GOOGLE_PROVIDER,
+        rememberMe: true,
+        link: false,
+        phase: 'awaiting-google-return',
+      };
+    } else if (!pending || pending.phase !== 'awaiting-google-return' || !isRedirectFlowCommitted()) {
       return null;
     }
 
     const auth = await ensureSocialAuthReady();
     socialAuthDebug('FIREBASE_REDIRECT_RETURN', {
       consumer,
-      hasIntent: true,
+      hasIntent: !oauthReturnWithoutIntent,
       path: typeof window !== 'undefined' ? window.location.pathname : '',
       authDomain: getEffectiveFirebaseConfig().authDomain,
     });

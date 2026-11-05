@@ -14,9 +14,9 @@ let redirectResultConsumed = false;
 let redirectResultAttemptCount = 0;
 
 /** Max wait for getRedirectResult on a normal page load (ms). */
-export const REDIRECT_RESULT_TIMEOUT_MS = 800;
+export const REDIRECT_RESULT_TIMEOUT_MS = 5000;
 /** Max wait for onAuthStateChanged fallback after redirect (ms). */
-export const AUTH_STATE_FALLBACK_TIMEOUT_MS = 1000;
+export const AUTH_STATE_FALLBACK_TIMEOUT_MS = 3000;
 /** WebKit often resolves getRedirectResult slowly on iPad/iPhone Safari — wait for the full promise. */
 export const IOS_REDIRECT_RESULT_TIMEOUT_MS = 28000;
 export const IOS_AUTH_STATE_FALLBACK_TIMEOUT_MS = 10000;

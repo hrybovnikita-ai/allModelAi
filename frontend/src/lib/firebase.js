@@ -20,6 +20,7 @@ import {
   isFirebaseAuthProxyHostname,
   isLocalFirebaseDevHost,
   isUsableFirebaseConfigValue as isUsableFirebaseConfigValueCore,
+  normalizeConfiguredAuthDomain,
   resolveAuthDomainForRuntime as resolveAuthDomainCore,
 } from './firebaseAuthDomain.js';
 
@@ -126,7 +127,7 @@ export function buildFirebaseClientConfig() {
   const runtime = runtimeFirebaseConfig || {};
   const merged = {
     apiKey: pickField(fromEnv.apiKey, runtime.apiKey),
-    authDomain: pickField(fromEnv.authDomain, runtime.authDomain),
+    authDomain: normalizeConfiguredAuthDomain(pickField(fromEnv.authDomain, runtime.authDomain)),
     projectId: pickField(fromEnv.projectId, runtime.projectId),
     appId: pickField(fromEnv.appId, runtime.appId),
   };
