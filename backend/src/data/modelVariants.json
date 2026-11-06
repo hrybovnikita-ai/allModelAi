@@ -4,7 +4,7 @@
       "id": "balanced",
       "name": "Balanced",
       "label": "Balanced",
-      "speed": "Balanced",
+      "speed": "Medium",
       "description": "Smart Router default — task-aware routing (UI hint only; server picks the backend slug).",
       "gateway": "openai/gpt-4.1-mini",
       "direct": "gpt-4.1-mini"

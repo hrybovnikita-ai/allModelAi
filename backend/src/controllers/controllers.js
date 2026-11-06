@@ -3189,6 +3189,8 @@ async function createChatResponseImpl(req, res) {
         const fetchProvider = createChatProviderFetch({
             correlationId: chatCorrelationId,
             timeoutMs: providerTimeoutMs,
+            // One attempt per provider. Cross-provider fallback owns the next try.
+            maxRetries: 0,
             routedModel,
         });
         let openRouterAttempted = false;

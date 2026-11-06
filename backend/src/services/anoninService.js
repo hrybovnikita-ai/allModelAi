@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const { MODEL_CAPABILITIES, getCapabilities, displayModelName } = require('./smartRouter2/capabilities');
 const {
     findRoutedModelWithApiKey,
+    routedModelHasApiKey,
     slugDependsOnOpenRouterPaidCredits,
 } = require('../chatProviderRuntime');
 const { passiveStatusForProvider } = require('./providerRequestTelemetry');
@@ -131,7 +132,9 @@ function listEligibleAnoninSlugs(modelAllowed, { hasVision = false, skipHealth =
         const cap = getCapabilities(slug);
         if (hasVision && !cap?.vision) return false;
         if (!modelAllowed(slug)) return false;
-        if (!findRoutedModelWithApiKey(slug, modelAllowed)) return false;
+        // findRoutedModelWithApiKey substitutes another configured slug, which
+        // would mark unconfigured models (for example DeepSeek R1 free) eligible.
+        if (!routedModelHasApiKey(slug)) return false;
         if (!skipHealth && isHealthExcluded(slug)) return false;
         return true;
     });

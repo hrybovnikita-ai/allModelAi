@@ -30,6 +30,7 @@ const PROVIDER_ALLOWLIST = Object.freeze({
     cloudflare: ['api.cloudflare.com'],
     ollama: ['ollama.com', 'localhost', '127.0.0.1'],
     claude: ['api.anthropic.com'],
+    huggingface: ['huggingface.co'],
     deepseek: ['api.deepseek.com'],
     mistral: ['api.mistral.ai'],
     grok: ['api.x.ai'],
@@ -334,11 +335,25 @@ function createChatProviderFetch({
         correlationId,
         timeoutMs,
         maxRetries,
-        resolveProvider: (url, _options, meta = {}) => (
-            meta.provider
-            || slugToProviderId(routedModel)
-            || inferProviderFromUrl(url)
-        ),
+        resolveProvider: (url, _options, meta = {}) => {
+            if (meta.provider) return meta.provider;
+            // The chat slug is the product model (gemini, gpt, claude). The HTTP
+            // host is the provider: OpenRouter and Hugging Face host many slugs.
+            const fromUrl = inferProviderFromUrl(url);
+            if (fromUrl && fromUrl !== 'unknown') return fromUrl;
+            const fromSlug = slugToProviderId(routedModel);
+            const allowed = PROVIDER_ALLOWLIST[fromSlug];
+            if (allowed?.length && url) {
+                try {
+                    const host = new URL(url).hostname.toLowerCase();
+                    const hostOk = allowed.some((entry) => host === entry || host.endsWith(`.${entry}`));
+                    if (!hostOk) return 'unknown';
+                } catch {
+                    /* keep slug */
+                }
+            }
+            return fromSlug;
+        },
     });
 }
 
