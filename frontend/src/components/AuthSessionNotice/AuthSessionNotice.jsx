@@ -1,29 +1,17 @@
 import { useEffect, useState } from 'react';
 import { SESSION_UPDATED_EVENT } from '../../lib/session.js';
+import { AUTH_SESSION_NOTICE_STORAGE_KEY, clearAuthSessionNotice } from './authSessionNoticeHelpers.js';
 import './AuthSessionNotice.css';
-
-const STORAGE_KEY = 'allmodelai_auth_notice';
-
-export function clearAuthSessionNotice() {
-  try {
-    sessionStorage.removeItem(STORAGE_KEY);
-  } catch {
-    /* private mode */
-  }
-  if (typeof globalThis.dispatchEvent === 'function') {
-    globalThis.dispatchEvent(new CustomEvent('allmodelai:auth-notice-cleared'));
-  }
-}
 
 export default function AuthSessionNotice() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     try {
-      const stored = sessionStorage.getItem(STORAGE_KEY);
+      const stored = sessionStorage.getItem(AUTH_SESSION_NOTICE_STORAGE_KEY);
       if (stored) {
         setMessage(stored);
-        sessionStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(AUTH_SESSION_NOTICE_STORAGE_KEY);
       }
     } catch {
       /* private mode */

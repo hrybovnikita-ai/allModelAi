@@ -153,40 +153,7 @@ const paths = {
   ),
 };
 
-export const SIDEBAR_ICON_BY_LABEL = {
-  Dashboard: 'layout',
-  Profile: 'user',
-  Settings: 'settings',
-  Chat: 'message',
-  'Storage Hub': 'database',
-  'AI Training Course': 'book',
-  'AI Learning Lab': 'sparkles',
-  'PyTorch Lab': 'zap',
-  'Developer Toolkit': 'wrench',
-  'Workspace Tools': 'grid',
-  Models: 'compass',
-  Studio: 'sparkles',
-  'AI Workflows': 'workflow',
-  'Research & Learning': 'flask',
-  'Model Toolkit': 'box',
-  'AI Platform': 'cpu',
-  'Website Builder': 'globe',
-  Arena: 'swords',
-  'Power Lab': 'zap',
-  'Creator Lab': 'palette',
-  Features: 'layers',
-  Control: 'sliders',
-};
-
-export const QUICK_ACTION_ICON = {
-  chat: 'message',
-  smart: 'router',
-  arena: 'swords',
-  studio: 'sparkles',
-  models: 'compass',
-  knowledge: 'book',
-  settings: 'settings',
-};
+export { QUICK_ACTION_ICON, SIDEBAR_ICON_BY_LABEL } from './dashboardIconMaps.jsx';
 
 export default function DashboardIcon({ name = 'spark', size = 20, className = '' }) {
   const content = paths[name] || paths.spark;

@@ -1,7 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import WorkspaceNavDrawer from './WorkspaceNavDrawer';
-
-const WorkspaceNavDrawerContext = createContext(null);
+import { WorkspaceNavDrawerContext } from './workspaceNavDrawerContext.js';
 
 export function WorkspaceNavDrawerProvider({ children }) {
   const [open, setOpen] = useState(false);
@@ -19,12 +18,4 @@ export function WorkspaceNavDrawerProvider({ children }) {
       <WorkspaceNavDrawer />
     </WorkspaceNavDrawerContext.Provider>
   );
-}
-
-export function useWorkspaceNavDrawer() {
-  const ctx = useContext(WorkspaceNavDrawerContext);
-  if (!ctx) {
-    throw new Error('useWorkspaceNavDrawer must be used within WorkspaceNavDrawerProvider');
-  }
-  return ctx;
 }

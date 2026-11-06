@@ -9,7 +9,7 @@ import {
   PRO_SUBSCRIPTION_TITLE,
 } from '../../lib/proSubscription';
 import { DEFAULT_WAYFORPAY_CURRENCIES } from '../../lib/wayforpay';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import { isAuthInitializing } from '../../lib/authSessionStatus';
 import WayforpayPaymentModal from '../Checkout/WayforpayPaymentModal';
 import LemonSqueezySubscribeButton from './LemonSqueezySubscribeButton.jsx';

@@ -160,23 +160,3 @@ export function IconSpinner() {
     </svg>
   );
 }
-
-/** AllModelAI message toolbar icons (inline SVG, same pattern as ChatSidebarIcons). */
-export const MESSAGE_ACTION_ICON_EXPORTS = [
-  'IconCopy',
-  'IconCheck',
-  'IconThumbsUp',
-  'IconThumbsDown',
-  'IconShare',
-  'IconVolume',
-  'IconVolumeOff',
-  'IconPause',
-  'IconRegenerate',
-  'IconMore',
-  'IconBookmark',
-  'IconDownload',
-  'IconContinue',
-  'IconModelInfo',
-  'IconFlag',
-  'IconSpinner',
-];

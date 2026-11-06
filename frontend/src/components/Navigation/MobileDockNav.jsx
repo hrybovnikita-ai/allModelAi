@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 import { normalizeCreditStatus } from '../../lib/creditStatus';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import { isMoreMenuActive, NAV_MOBILE_DOCK } from './navConfig';
 import NavMoreMenu from './NavMoreMenu';
 import NavProfileMenu from './NavProfileMenu';

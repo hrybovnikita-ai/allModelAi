@@ -5,7 +5,7 @@ import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { fetchCheckoutInfo, fetchCheckoutPlan, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
 import { apiFetch } from '../../lib/api';
 import { pollWayforpayPaymentStatus } from '../../lib/wayforpay';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import { isAuthInitializing } from '../../lib/authSessionStatus';
 import { IconCheck } from './CheckoutIcons';
 import './Checkout.css';

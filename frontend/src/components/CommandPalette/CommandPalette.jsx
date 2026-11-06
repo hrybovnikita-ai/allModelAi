@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logger } from '../../lib/logger';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import { isGoogleRedirectRecoveryPending } from '../../lib/socialSignIn';
 import './CommandPalette.css';
 

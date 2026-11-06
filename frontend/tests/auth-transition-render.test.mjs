@@ -4,7 +4,7 @@ import { Window } from 'happy-dom';
 import { createElement, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
-import { SessionContext } from '../src/components/Session/SessionProvider.jsx';
+import { SessionContext } from '../src/components/Session/sessionContext.js';
 import CommandPalette from '../src/components/CommandPalette/CommandPalette.jsx';
 
 const happyWindow = new Window();

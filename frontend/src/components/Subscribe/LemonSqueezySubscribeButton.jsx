@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { startLemonSqueezyCheckout } from '../../lib/lemonSqueezyCheckout.js';
-import { useSession } from '../Session/SessionProvider.jsx';
+import { useSession } from '../Session/useSession.js';
 import { isAuthInitializing } from '../../lib/authSessionStatus.js';
 import './ProSubscribeButton.css';
 

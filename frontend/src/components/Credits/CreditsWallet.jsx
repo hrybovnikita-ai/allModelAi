@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import { AUTH_STATUS } from '../../lib/authSessionStatus';
 import '../Dashboard/DashboardDarkViolet.css';
 import '../Dashboard/DashboardLayout.css';

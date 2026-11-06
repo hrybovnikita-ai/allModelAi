@@ -10,7 +10,7 @@ import {
 } from '../../lib/authSessionStatus';
 import { isGoogleRedirectRecoveryInFlight } from '../../lib/googleRedirectRecovery';
 import { shouldShowGoogleRedirectRecoveryUI } from '../../lib/socialRedirectState';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import InstallPwaButton from '../InstallPwaButton/InstallPwaButton';
 
 function NavAuthSkeleton({ label }) {

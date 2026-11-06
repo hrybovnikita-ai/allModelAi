@@ -24,7 +24,7 @@ import {
 } from '../../lib/socialSignIn';
 import { canUseGoogleRedirectSignIn } from '../../lib/storageAvailability';
 import { markFreshLogin } from '../../lib/session';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import { isBenignGoogleSignInCancellation, isRetryableSocialSignInError, socialError } from '../../lib/socialSession';
 import AuthDebugPanel from '../SocialAuth/AuthDebugPanel';
 import GoogleSignInIcon from './GoogleSignInIcon';

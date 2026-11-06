@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AUTH_STATUS } from '../../lib/authSessionStatus';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import AuthLayout from './AuthLayout';
 import Login from './Login';
 

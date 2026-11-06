@@ -10,7 +10,7 @@ import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { fetchCheckoutInfo, fetchCheckoutPlan, TEST_MODE_BANNER } from '../../lib/paymentCheckoutInfo';
 import { DEFAULT_WAYFORPAY_CURRENCIES } from '../../lib/wayforpay';
 import WayforpayPaymentModal from './WayforpayPaymentModal';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import { isAuthInitializing } from '../../lib/authSessionStatus';
 import ProductionStripeCheckoutForm from './ProductionStripeCheckoutForm';
 import CheckoutSummaryCard from './CheckoutSummaryCard';
@@ -169,7 +169,7 @@ export default function Checkout() {
     const returnPath = `${location.pathname || '/checkout/pro'}${location.search || ''}`;
     navigate('/login', { replace: true, state: { from: returnPath } });
     return undefined;
-  }, [sessionStatus, isDeveloper, navigate, location.pathname]);
+  }, [sessionStatus, isDeveloper, navigate, location.pathname, location.search]);
 
   const returnModel = searchParams.get('returnModel');
   const checkoutReturnUrl = useMemo(() => {

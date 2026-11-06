@@ -13,7 +13,7 @@ import { ensureRedirectPrerequisitesReady } from '../../lib/authRedirectPreload'
 import { authRecoveryLog, consumeStoredSocialAuthError, consumeStoredSocialAuthErrorCode } from '../../lib/socialAuthDiagnostics';
 import { socialError } from '../../lib/socialSession';
 import { AUTH_REDIRECT_RECOVERY_TIMEOUT_MS } from '../../lib/authSessionStatus';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import './SocialAuth.css';
 
 const SOCIAL_ERROR_KEY = 'allmodelai_social_error';

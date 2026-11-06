@@ -5,7 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const appSource = fs.readFileSync(path.join(frontendRoot, 'src/App.jsx'), 'utf8');
-const infoSource = fs.readFileSync(path.join(frontendRoot, 'src/components/InfoPage/InfoPage.jsx'), 'utf8');
+const infoPageSource = fs.readFileSync(path.join(frontendRoot, 'src/components/InfoPage/InfoPage.jsx'), 'utf8');
+const infoContentSource = fs.readFileSync(
+  path.join(frontendRoot, 'src/components/InfoPage/infoPageContent.js'),
+  'utf8',
+);
 
 test('legal and support routes are registered', () => {
   const expected = [
@@ -22,10 +26,11 @@ test('legal and support routes are registered', () => {
 });
 
 test('InfoPage exposes legal copy keys and support email', () => {
+  assert.match(infoPageSource, /from '\.\/infoPageContent\.js'/);
   for (const type of ['privacy', 'terms', 'refund', 'aup', 'contact', 'cookies']) {
-    assert.match(infoSource, new RegExp(`${type}:`));
+    assert.match(infoContentSource, new RegExp(`${type}:`));
   }
-  assert.match(infoSource, /support@allmodelai\.com/);
-  assert.match(infoSource, /NSFW/i);
-  assert.match(infoSource, /Acceptable Use Policy/);
+  assert.match(infoContentSource, /support@allmodelai\.com/);
+  assert.match(infoContentSource, /NSFW/i);
+  assert.match(infoContentSource, /Acceptable Use Policy/);
 });

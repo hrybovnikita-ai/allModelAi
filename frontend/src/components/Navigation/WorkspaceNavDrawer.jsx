@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { DASHBOARD_NAV_GROUPS, NAV_GROUP_ICONS } from '../Dashboard/dashboardNavGroups';
-import DashboardIcon, { SIDEBAR_ICON_BY_LABEL } from '../Dashboard/DashboardIcons';
-import { useWorkspaceNavDrawer } from './WorkspaceNavDrawerContext';
+import DashboardIcon from '../Dashboard/DashboardIcons';
+import { SIDEBAR_ICON_BY_LABEL } from '../Dashboard/dashboardIconMaps.jsx';
+import { useWorkspaceNavDrawer } from './useWorkspaceNavDrawer.js';
 import './WorkspaceNavDrawer.css';
 
 function isActivePath(pathname, to) {

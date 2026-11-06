@@ -29,11 +29,17 @@ test('MessageActionIcons exports every icon used by MessageActions', () => {
     .split(',')
     .map((part) => part.trim())
     .filter(Boolean);
+  const exportList = readFileSync(`${root}src/components/Chat/messageActionIconExports.js`, 'utf8');
   for (const name of names) {
     assert.match(
       iconsSource,
       new RegExp(`export function ${name}\\(`),
       `${name} must be exported from MessageActionIcons.jsx`,
+    );
+    assert.match(
+      exportList,
+      new RegExp(`'${name}'`),
+      `${name} must be listed in messageActionIconExports.js`,
     );
   }
   assert.ok(names.includes('IconBookmark'), 'IconBookmark is required for Save in More menu');

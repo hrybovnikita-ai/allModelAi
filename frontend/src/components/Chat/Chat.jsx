@@ -726,7 +726,7 @@ export default function Chat() {
       setIsSending(false);
       videoSubmitLockRef.current = false;
     }
-  }, [isSending, messages.length, refreshHistory, temporaryChat]);
+  }, [isSending, messages.length, refreshHistory]);
 
   useEffect(() => {
     if (isSending || !activeConversationId || !messages.length) return undefined;

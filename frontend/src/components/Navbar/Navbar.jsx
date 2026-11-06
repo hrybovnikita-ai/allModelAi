@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '../../lib/useLanguage';
 import { useEffect, useId, useState } from 'react';
 import NavAuthSection from './NavAuthSection';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import { AUTH_STATUS } from '../../lib/authSessionStatus';
 import { DASHBOARD_NAV_ACCOUNT_LINKS } from '../Dashboard/dashboardNavLinks';
 import AllModelAILogo from '../AllModelAILogo/AllModelAILogo';

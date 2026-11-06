@@ -6,7 +6,7 @@ import SettingsPrivacyPanel from './SettingsPrivacyPanel.jsx';
 import { useEffect, useState } from 'react';
 import { performLogout } from '../../lib/session';
 import { useOutletContext, Link, Navigate, useNavigate } from 'react-router-dom';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import { LANGUAGES } from '../../lib/languages';
 import { useLanguage } from '../../lib/useLanguage';
 import {

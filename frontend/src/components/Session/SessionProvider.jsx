@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { bootstrapAuthenticatedUser } from '../../lib/authBootstrap.js';
 import {
   authBootstrapTimeoutMs,
@@ -29,8 +29,7 @@ import {
 import { socialAuthDebug } from '../../lib/socialAuthDiagnostics.js';
 import { COOKIE_CONSENT_UPDATED_EVENT } from '../../lib/cookieConsent.js';
 import { startFirebaseAuthSessionSync } from '../../lib/firebaseAuthSync.js';
-
-export const SessionContext = createContext(null);
+import { SessionContext } from './sessionContext.js';
 
 function initialSessionState() {
   reconcileStaleRedirectIntent();
@@ -358,12 +357,4 @@ export function SessionProvider({ children }) {
   }), [state.status, state.user, state.sessionVerified, state.connectionIssue, authLoading, refresh]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
-}
-
-export function useSession() {
-  const context = useContext(SessionContext);
-  if (!context) {
-    throw new Error('useSession must be used within SessionProvider');
-  }
-  return context;
 }

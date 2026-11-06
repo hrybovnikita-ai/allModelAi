@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { apiFetch } from '../../lib/api';
 import { normalizeCreditStatus } from '../../lib/creditStatus';
 import { formatSubscriptionPlanLabel } from '../../lib/planLabels';
-import { useSession } from '../Session/SessionProvider';
+import { useSession } from '../Session/useSession.js';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { isMoreMenuActive, NAV_PRIMARY_LINKS, NAV_SETTINGS_LINK } from './navConfig';
 import NavMoreMenu from './NavMoreMenu';
@@ -11,7 +11,7 @@ import NavProfileMenu from './NavProfileMenu';
 import NavSettingsIcon from './NavSettingsIcon';
 import NavThemeToggle from './NavThemeToggle';
 import { useNavCompact } from './useNavCompact';
-import { useWorkspaceNavDrawer } from './WorkspaceNavDrawerContext';
+import { useWorkspaceNavDrawer } from './useWorkspaceNavDrawer.js';
 import './FloatingGlassNav.css';
 
 export default function FloatingGlassNav() {

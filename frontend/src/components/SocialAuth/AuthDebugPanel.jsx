@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useSession } from '../Session/SessionProvider.jsx';
+import { useSession } from '../Session/useSession.js';
 import {
   collectAuthDiagnostics,
   formatAuthDiagnosticsReport,
