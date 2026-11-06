@@ -98,9 +98,6 @@ export default function Checkout() {
   const priceLabel = summary
     ? (Number(summary.amountDisplay) === 0 ? '$0' : `$${summary.amountDisplay}`)
     : '—';
-  const payAmountLabel = summary?.amountDisplay
-    ? `$${summary.amountDisplay}`
-    : priceLabel;
   const stripePayLabel = summary?.amountDisplay
     ? `Pay and subscribe — $${summary.amountDisplay}/month`
     : 'Pay and subscribe';

@@ -6,14 +6,14 @@ import { dismissCookieBanner, prepareAuthenticatedChatPage } from '../helpers/ch
  * Specific routes in prepareAuthenticatedChatPage override the empty API fallback.
  */
 export const test = base.extend({
-  authedPage: async ({ page }, use) => {
+  authedPage: async ({ page }, provide) => {
     await page.route('**/api/**', (route) => route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: '{}',
     }));
     await prepareAuthenticatedChatPage(page);
-    await use(page);
+    await provide(page);
   },
 });
 

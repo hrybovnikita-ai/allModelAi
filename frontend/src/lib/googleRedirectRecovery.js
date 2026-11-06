@@ -2,7 +2,6 @@ import { persistSocialAuthError, socialAuthDebug } from './socialAuthDiagnostics
 import { socialError } from './socialSession.js';
 import {
   isGooglePopupSignInActive,
-  isGoogleRedirectRecoveryPending,
   setRedirectIntentReconcileBlocked,
   shouldAttemptGoogleRedirectRecovery,
 } from './socialRedirectState.js';

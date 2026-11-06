@@ -356,12 +356,6 @@ function LoginForm({
     }
   };
 
-  const changeMode = (nextMode) => {
-    setError('');
-    setPasswordSetupHint(false);
-    onModeChange(nextMode);
-  };
-
   useEffect(() => {
     const closeWithEscape = (event) => {
       if (event.key === 'Escape') {

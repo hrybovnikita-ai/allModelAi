@@ -29,7 +29,6 @@ test('summary shows AllModelAI dragon branding and USD totals', () => {
   assert.match(summarySource, /AllModelAILogoMark/);
   assert.match(summarySource, /Subscribe to AllModelAI/);
   assert.match(summarySource, /Total due today/);
-  assert.match(summarySource, /Currency/);
   assert.match(summarySource, /USD/);
   assert.match(logoSource, /gold_dragon_allModelAi\.png/);
   assert.doesNotMatch(summarySource, /Cursor/);

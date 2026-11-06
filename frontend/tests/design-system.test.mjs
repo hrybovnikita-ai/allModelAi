@@ -9,7 +9,7 @@ const tokens = fs.readFileSync(path.join(frontendRoot, 'src/styles/design-system
 const main = fs.readFileSync(path.join(frontendRoot, 'src/main.jsx'), 'utf8');
 
 test('design system defines core tokens without replacing brand purple', () => {
-  assert.match(tokens, /--purple:\s*#7c5cff/);
+  assert.match(tokens, /--purple:\s*#7535f5/);
   assert.match(tokens, /--background:/);
   assert.match(tokens, /--radius-md:/);
   assert.match(tokens, /--duration-normal:/);

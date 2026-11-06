@@ -16,7 +16,7 @@ test('chat workspace layout uses grid composer and centered conversation column'
     'utf8',
   );
 
-  assert.match(css, /--chat-content-max-width:\s*1120px/);
+  assert.match(css, /--chat-content-max-width:\s*min\(1120px/);
   assert.match(css, /--chat-header-height:\s*68px/);
   assert.match(css, /chat-conversation-column/);
   assert.match(css, /position:\s*relative\s*!important/);
