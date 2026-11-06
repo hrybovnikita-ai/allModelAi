@@ -235,6 +235,7 @@ export default function App() {
       <Route path="/model-lab" element={<ModelLab />} />
       <Route path="/shared/:token" element={<SharedConversation />} />
       <Route path="/login" element={<AuthPage mode="signin" />} />
+      <Route path="/signup" element={<AuthPage mode="signup" />} />
       <Route path="/register" element={<AuthPage mode="signup" />} />
       <Route path="/checkout/success" element={<CheckoutSuccess />} />
       <Route path="/checkout/cancel" element={<CheckoutCancel />} />

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AUTH_STATUS } from '../../lib/authSessionStatus';
 import { useSession } from '../Session/SessionProvider';
+import AuthLayout from './AuthLayout';
 import Login from './Login';
 
 export default function AuthPage({ mode }) {
@@ -23,18 +24,20 @@ export default function AuthPage({ mode }) {
   }, [authLoading, navigate, returnTo, status, user]);
 
   return (
-    <Login
-      key={mode}
-      mode={mode}
-      returnTo={returnTo}
-      returnState={location.state?.returnState}
-      onClose={() => navigate('/')}
-      onModeChange={(next) =>
-        navigate(next === 'signup' ? '/register' : '/login', {
-          replace: true,
-          state: location.state,
-        })
-      }
-    />
+    <AuthLayout>
+      <Login
+        key={mode}
+        mode={mode}
+        returnTo={returnTo}
+        returnState={location.state?.returnState}
+        onClose={() => navigate('/')}
+        onModeChange={(next) =>
+          navigate(next === 'signup' ? '/signup' : '/login', {
+            replace: true,
+            state: location.state,
+          })
+        }
+      />
+    </AuthLayout>
   );
 }

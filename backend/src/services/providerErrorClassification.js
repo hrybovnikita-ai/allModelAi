@@ -13,6 +13,7 @@ function slugToProviderId(slug) {
         'gpt-oss-groq': 'groq',
         mistral: 'mistral',
         kimi: 'kimi',
+        huggingface: 'huggingface',
         perplexity: 'perplexity',
         deepseek: 'deepseek',
         qwen: 'openrouter',

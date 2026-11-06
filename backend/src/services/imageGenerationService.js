@@ -23,6 +23,7 @@ const {
     generateCloudflareWorkersAiImage,
     isCloudflareImageConfigured,
 } = require('./cloudflareImageService');
+const { generateGeminiFlashLiteImage, verifyGeminiImageAccess } = require('./geminiImageBridge');
 
 const LOG_PREFIX = '[AllModelAI][IMAGE]';
 const USER_UNAVAILABLE_MESSAGE = 'Image generation is temporarily unavailable. Please try again in a moment.';
@@ -60,12 +61,36 @@ const resolveExplicitImageProvider = () =>
 const normalizeImageProviderId = (provider) => {
     const key = strip(provider).toLowerCase();
     if (key === 'comfy' || key === 'comfy_cloud' || key === 'comfy-cloud') return 'comfy-cloud';
+    if (key === 'gemini-flash-lite-image' || key === 'gemini_image' || key === 'gemini-image') return 'gemini';
     return key;
 };
 
-const IMAGE_PROVIDER_IDS = ['comfy-cloud', 'pollinations', 'openai', 'cloudflare'];
+let geminiVerifyCache = { at: 0, ttlMs: 60000, result: null };
 
-const isProviderConfigured = (provider) => {
+const isGeminiImageConfigured = () => Boolean(strip(process.env.GEMINI_API_KEY));
+
+const refreshGeminiVerifyCache = async () => {
+    const now = Date.now();
+    if (
+        geminiVerifyCache.result
+        && now - geminiVerifyCache.at < geminiVerifyCache.ttlMs
+    ) {
+        return geminiVerifyCache.result;
+    }
+    const verify = await verifyGeminiImageAccess();
+    geminiVerifyCache = { at: now, ttlMs: 60000, result: verify };
+    return verify;
+};
+
+const isGeminiImageReady = async () => {
+    if (!isGeminiImageConfigured()) return false;
+    const verify = await refreshGeminiVerifyCache();
+    return verify.ok === true;
+};
+
+const IMAGE_PROVIDER_IDS = ['gemini', 'comfy-cloud', 'pollinations', 'openai', 'cloudflare'];
+
+const isProviderConfiguredSync = (provider) => {
     const id = normalizeImageProviderId(provider);
     if (id === 'comfy-cloud') return isComfyCloudConfigured();
     if (id === 'pollinations') {
@@ -74,7 +99,14 @@ const isProviderConfigured = (provider) => {
     }
     if (id === 'openai') return Boolean(getOpenAiImageKey());
     if (id === 'cloudflare') return isCloudflareImageConfigured();
+    if (id === 'gemini') return isGeminiImageConfigured();
     return false;
+};
+
+const isProviderConfigured = (provider) => {
+    const id = normalizeImageProviderId(provider);
+    if (id === 'gemini') return isGeminiImageConfigured();
+    return isProviderConfiguredSync(provider);
 };
 
 const listConfiguredImageProviders = () => {
@@ -83,7 +115,7 @@ const listConfiguredImageProviders = () => {
     const pushUnique = (name) => {
         const id = normalizeImageProviderId(name);
         if (!id || ordered.includes(id)) return;
-        if (isProviderConfigured(id)) ordered.push(id);
+        if (isProviderConfiguredSync(id)) ordered.push(id);
     };
 
     if (explicit && IMAGE_PROVIDER_IDS.includes(explicit)) {
@@ -98,6 +130,15 @@ const listConfiguredImageProviders = () => {
 
     IMAGE_PROVIDER_IDS.forEach((name) => pushUnique(name));
     return ordered;
+};
+
+const filterGeminiIfNotVerified = async (providers) => {
+    const list = Array.isArray(providers) ? [...providers] : [];
+    if (!list.includes('gemini')) return list;
+    if (!(await isGeminiImageReady())) {
+        return list.filter((p) => p !== 'gemini');
+    }
+    return list;
 };
 
 const classifyProviderFailure = (status, message) => {
@@ -234,6 +275,42 @@ async function generateWithProvider(provider, {
     }
 
     const openAiKey = getOpenAiImageKey();
+
+    if (provider === 'gemini') {
+        const verify = await refreshGeminiVerifyCache();
+        if (!verify.ok) {
+            const code = verify.code || 'GEMINI_UNAVAILABLE';
+            const retryable = code === 'GEMINI_RATE_LIMIT' || code === 'PYTHON_SERVICE_DOWN' || verify.retryable === true;
+            return {
+                ok: false,
+                retryable,
+                status: code === 'GEMINI_RATE_LIMIT' ? 429 : 503,
+                internalMessage: verify.message || 'Gemini image verification failed.',
+                code,
+                provider: 'gemini',
+            };
+        }
+        const gen = await generateGeminiFlashLiteImage(generationPrompt.slice(0, plan.maxPromptLength));
+        if (!gen.ok || !safeImageUrl(gen.imageUrl)) {
+            return {
+                ok: false,
+                retryable: gen.retryable !== false,
+                status: gen.status || 502,
+                internalMessage: gen.internalMessage || 'Gemini image generation failed.',
+                code: gen.code,
+                provider: 'gemini',
+            };
+        }
+        const images = [{ imageUrl: gen.imageUrl, mimeType: gen.mimeType }];
+        return {
+            ok: true,
+            imageUrl: gen.imageUrl,
+            images,
+            mimeType: gen.mimeType,
+            plan: { ...plan, model: gen.model || plan.model },
+            provider: 'gemini',
+        };
+    }
 
     if (provider === 'cloudflare') {
         const cf = await generateCloudflareWorkersAiImage({
@@ -446,9 +523,13 @@ async function generateImageWithFallback({
     const imageCount = parseImageCount(rawImageCount);
     const startedAt = Date.now();
     const preferred = preferredProvider ? normalizeImageProviderId(preferredProvider) : '';
-    const providers = preferred && isProviderConfigured(preferred)
+    const baseList = preferred && isProviderConfigured(preferred)
         ? [preferred]
         : listConfiguredImageProviders();
+    let providers = await filterGeminiIfNotVerified(baseList);
+    if (!providers.length && preferred && isProviderConfigured(preferred)) {
+        providers = await filterGeminiIfNotVerified(listConfiguredImageProviders());
+    }
     if (!providers.length) {
         logImage('No image providers configured');
         const { imageConfigurationReport } = require('../imageConfig');

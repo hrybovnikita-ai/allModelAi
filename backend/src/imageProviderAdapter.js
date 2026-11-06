@@ -49,6 +49,8 @@ const OPENAI_MODELS = ['gpt-image-1', 'gpt-image-1.5', 'gpt-image-2', 'dall-e-3'
 
 const CLOUDFLARE_MODELS = ['@cf/black-forest-labs/flux-1-schnell'];
 
+const GEMINI_IMAGE_MODEL_DEFAULT = 'gemini-3.1-flash-lite-image';
+
 const strip = (value) => String(value || '').trim().replace(/^["']|["']$/g, '');
 
 const redactSecrets = (value) => String(value || '')
@@ -121,6 +123,9 @@ const imageBatchCapabilities = (provider, model) => {
     if (provider === 'comfy-cloud') {
         return { ...base, billingNote: 'Comfy Cloud generates one image per job. Choosing 2–4 images runs separate requests.' };
     }
+    if (provider === 'gemini') {
+        return { ...base, billingNote: 'Gemini Flash Lite image generates one image per request. Choosing 2–4 images runs separate requests.' };
+    }
     return base;
 };
 
@@ -183,6 +188,9 @@ const openAiKind = (model) => {
 };
 
 const sizeFor = (provider, model, aspect, quality) => {
+    if (provider === 'gemini') {
+        return FLUX_SIZES[aspect];
+    }
     if (provider === 'pollinations') {
         return usesGptImageSizes(model) ? GPT_IMAGE_SIZES[aspect] : FLUX_SIZES[aspect];
     }
@@ -264,17 +272,23 @@ const buildProviderRequest = ({ provider, model, quality, aspectRatio, size, cou
         return { size, quality, aspectRatio };
     }
 
+    if (provider === 'gemini') {
+        return { model, promptMax: 4000 };
+    }
+
     return { model, size, n: batchCount };
 };
 
 const sizesForQuality = (provider, quality) => {
-    const model = provider === 'pollinations'
-        ? configuredPollinationsModel(quality)
-        : provider === 'openai'
-            ? strip(process.env.IMAGE_MODEL || 'gpt-image-1')
-            : provider === 'comfy-cloud'
-                ? strip(process.env.COMFY_CLOUD_CHECKPOINT) || 'flux1-schnell-fp8.safetensors'
-                : strip(process.env.CLOUDFLARE_IMAGE_MODEL || CLOUDFLARE_MODELS[0]);
+    const model = provider === 'gemini'
+        ? strip(process.env.GEMINI_IMAGE_MODEL || GEMINI_IMAGE_MODEL_DEFAULT)
+        : provider === 'pollinations'
+            ? configuredPollinationsModel(quality)
+            : provider === 'openai'
+                ? strip(process.env.IMAGE_MODEL || 'gpt-image-1')
+                : provider === 'comfy-cloud'
+                    ? strip(process.env.COMFY_CLOUD_CHECKPOINT) || 'flux1-schnell-fp8.safetensors'
+                    : strip(process.env.CLOUDFLARE_IMAGE_MODEL || CLOUDFLARE_MODELS[0]);
     return Object.fromEntries(ASPECT_IDS.map((aspect) => [aspect, sizeFor(provider, model, aspect, quality)]));
 };
 
@@ -302,6 +316,8 @@ const buildImageGenerationPlan = ({ provider, quality, aspectRatio, requestedMod
         model = model || fallback;
     } else if (provider === 'comfy-cloud') {
         model = model || strip(process.env.COMFY_CLOUD_CHECKPOINT) || 'flux1-schnell-fp8.safetensors';
+    } else if (provider === 'gemini') {
+        model = model || strip(process.env.GEMINI_IMAGE_MODEL || GEMINI_IMAGE_MODEL_DEFAULT);
     } else {
         return { error: 'Image generation is not configured.' };
     }
@@ -407,15 +423,17 @@ const capabilitySummary = (provider) => {
         const pixels = (value) => value.split('x').reduce((product, part) => product * Number(part), 1);
         return pixels(b) - pixels(a);
     })[0] || null;
-    const modelForCaps = provider === 'pollinations'
-        ? configuredPollinationsModel('hd')
-        : provider === 'openai'
-            ? strip(process.env.IMAGE_MODEL || 'gpt-image-1')
-            : provider === 'cloudflare'
-                ? strip(process.env.CLOUDFLARE_IMAGE_MODEL || CLOUDFLARE_MODELS[0])
-                : provider === 'comfy-cloud'
-                    ? strip(process.env.COMFY_CLOUD_CHECKPOINT) || 'flux1-schnell-fp8.safetensors'
-                    : '';
+    const modelForCaps = provider === 'gemini'
+        ? strip(process.env.GEMINI_IMAGE_MODEL || GEMINI_IMAGE_MODEL_DEFAULT)
+        : provider === 'pollinations'
+            ? configuredPollinationsModel('hd')
+            : provider === 'openai'
+                ? strip(process.env.IMAGE_MODEL || 'gpt-image-1')
+                : provider === 'cloudflare'
+                    ? strip(process.env.CLOUDFLARE_IMAGE_MODEL || CLOUDFLARE_MODELS[0])
+                    : provider === 'comfy-cloud'
+                        ? strip(process.env.COMFY_CLOUD_CHECKPOINT) || 'flux1-schnell-fp8.safetensors'
+                        : '';
     const providerBatch = imageBatchCapabilities(provider, modelForCaps);
     return {
         qualities,
@@ -434,7 +452,13 @@ const capabilitySummary = (provider) => {
                 hd: configuredPollinationsModel('hd'),
                 ultra: configuredPollinationsModel('ultra'),
             }
-            : null,
+            : provider === 'gemini'
+                ? {
+                    standard: strip(process.env.GEMINI_IMAGE_MODEL || GEMINI_IMAGE_MODEL_DEFAULT),
+                    hd: strip(process.env.GEMINI_IMAGE_MODEL || GEMINI_IMAGE_MODEL_DEFAULT),
+                    ultra: strip(process.env.GEMINI_IMAGE_MODEL || GEMINI_IMAGE_MODEL_DEFAULT),
+                }
+                : null,
     };
 };
 

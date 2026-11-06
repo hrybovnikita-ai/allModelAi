@@ -1,9 +1,9 @@
-/* Monochrome welcome suggestion cards — isolated from legacy .prompt-suggestions rules */
+/* Premium welcome suggestion cards — iOS-style dark glass, isolated from legacy .prompt-suggestions */
 
 .chat-page .welcome-suggestion-cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: clamp(10px, 2vw, 16px);
   width: 100%;
   margin: 32px auto 0;
   padding: 0;
@@ -12,62 +12,111 @@
 }
 
 .chat-page .welcome-suggestion-card {
+  --welcome-glass-border: rgba(139, 92, 246, 0.22);
+  --welcome-glass-glow: rgba(124, 92, 255, 0.14);
+  --welcome-icon-sheen-a: rgba(196, 181, 253, 0.35);
+  --welcome-icon-sheen-b: rgba(124, 92, 255, 0.45);
+
   display: flex !important;
-  flex-direction: row;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   gap: 14px;
   width: 100%;
   height: 100%;
-  min-height: 118px;
-  padding: 18px 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: linear-gradient(165deg, #18181d 0%, #101014 55%, #0c0c10 100%) !important;
-  color: #fff;
+  min-height: 152px;
+  padding: 18px 16px 16px;
+  border-radius: 16px !important;
+  border: 1px solid var(--welcome-glass-border);
+  background: linear-gradient(
+      165deg,
+      rgba(22, 22, 28, 0.72) 0%,
+      rgba(14, 14, 18, 0.55) 45%,
+      rgba(10, 10, 14, 0.48) 100%
+    ) !important;
+  color: #f4f4f5;
   cursor: pointer;
   font: inherit;
   text-align: left;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
-    0 10px 28px rgba(0, 0, 0, 0.38);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 12px 40px rgba(0, 0, 0, 0.45),
+    0 0 28px var(--welcome-glass-glow);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
   transition:
-    border-color 0.22s ease,
-    background 0.22s ease,
-    box-shadow 0.22s ease,
-    transform 0.22s ease;
-  animation: welcome-card-enter 320ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)) both;
-  animation-delay: calc(var(--welcome-card-index, 0) * 80ms + 140ms);
+    border-color 0.28s cubic-bezier(0.22, 0.8, 0.22, 1),
+    background 0.28s cubic-bezier(0.22, 0.8, 0.22, 1),
+    box-shadow 0.28s cubic-bezier(0.22, 0.8, 0.22, 1),
+    transform 0.28s cubic-bezier(0.22, 0.8, 0.22, 1);
+  animation: welcome-card-enter 380ms var(--ease-out, cubic-bezier(0.22, 0.8, 0.22, 1)) both;
+  animation-delay: calc(var(--welcome-card-index, 0) * 75ms + 120ms);
 }
 
 .chat-workspace:has(.chat-empty) .welcome-suggestion-cards .welcome-suggestion-card {
-  background: linear-gradient(165deg, #18181d 0%, #101014 55%, #0c0c10 100%) !important;
-  border-color: rgba(255, 255, 255, 0.14) !important;
+  background: linear-gradient(
+      165deg,
+      rgba(20, 20, 26, 0.68) 0%,
+      rgba(12, 12, 17, 0.52) 50%,
+      rgba(8, 8, 12, 0.46) 100%
+    ) !important;
+  border-color: var(--welcome-glass-border) !important;
+}
+
+.chat-page .welcome-suggestion-card:nth-child(1) {
+  --welcome-icon-sheen-a: rgba(251, 191, 36, 0.25);
+  --welcome-icon-sheen-b: rgba(167, 139, 250, 0.5);
+}
+
+.chat-page .welcome-suggestion-card:nth-child(2) {
+  --welcome-icon-sheen-a: rgba(56, 189, 248, 0.22);
+  --welcome-icon-sheen-b: rgba(124, 92, 255, 0.48);
+}
+
+.chat-page .welcome-suggestion-card:nth-child(3) {
+  --welcome-icon-sheen-a: rgba(192, 132, 252, 0.32);
+  --welcome-icon-sheen-b: rgba(99, 102, 241, 0.42);
 }
 
 .chat-page .welcome-suggestion-card:hover {
-  border-color: rgba(255, 255, 255, 0.28);
-  background: linear-gradient(165deg, #1e1e24 0%, #121218 55%, #0f0f14 100%) !important;
+  border-color: rgba(167, 139, 250, 0.45);
+  background: linear-gradient(
+      165deg,
+      rgba(28, 26, 38, 0.78) 0%,
+      rgba(18, 16, 28, 0.62) 48%,
+      rgba(12, 11, 20, 0.55) 100%
+    ) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
-    0 14px 34px rgba(0, 0, 0, 0.48);
-  transform: translateY(-4px);
+    0 0 0 1px rgba(167, 139, 250, 0.12) inset,
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 18px 48px rgba(0, 0, 0, 0.5),
+    0 0 36px rgba(124, 92, 255, 0.22);
+  transform: translateY(-3px);
 }
 
 .chat-page .welcome-suggestion-card:hover .welcome-suggestion-card__icon {
-  transform: scale(1.06);
+  transform: scale(1.05);
+  box-shadow:
+    0 0 0 1px rgba(196, 181, 253, 0.35),
+    0 8px 24px rgba(124, 92, 255, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.chat-page .welcome-suggestion-card:hover .welcome-suggestion-card__chevron {
+  color: #ddd6fe;
+  transform: translate(2px, -2px);
+  opacity: 1;
 }
 
 .chat-page .welcome-suggestion-card:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline: 2px solid rgba(167, 139, 250, 0.75);
   outline-offset: 2px;
 }
 
 .chat-page .welcome-suggestion-card:active {
   transform: translateY(-1px);
+  transition-duration: 0.12s;
 }
 
 /* Override legacy Chat.css `.prompt-suggestions button > span` purple tiles */
@@ -76,6 +125,16 @@
   background: transparent !important;
   color: inherit !important;
   font-size: inherit !important;
+}
+
+.chat-page .welcome-suggestion-card__top {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
 }
 
 .chat-page .welcome-suggestion-card__icon-wrap {
@@ -91,21 +150,51 @@
   place-items: center;
   width: 44px;
   height: 44px;
-  border-radius: 50%;
-  color: #f4f4f5;
-  background: radial-gradient(circle at 30% 28%, #222228 0%, #0a0a0d 72%) !important;
+  border-radius: 12px;
+  color: #f5f3ff;
+  background: linear-gradient(
+      145deg,
+      var(--welcome-icon-sheen-a) 0%,
+      rgba(18, 16, 32, 0.92) 38%,
+      var(--welcome-icon-sheen-b) 100%
+    ) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    inset 0 -2px 6px rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(255, 255, 255, 0.12);
-  transition: transform 200ms var(--ease-out, ease);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(139, 92, 246, 0.2),
+    0 6px 18px rgba(0, 0, 0, 0.35);
+  transition:
+    transform 0.28s cubic-bezier(0.22, 0.8, 0.22, 1),
+    box-shadow 0.28s cubic-bezier(0.22, 0.8, 0.22, 1);
+}
+
+.chat-page .welcome-suggestion-card__icon svg {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+
+.chat-page .welcome-suggestion-card__chevron {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin: 8px 0 0;
+  border-radius: 8px;
+  color: rgba(196, 181, 253, 0.85);
+  background: rgba(124, 92, 255, 0.08);
+  opacity: 0.88;
+  transition:
+    color 0.28s ease,
+    transform 0.28s cubic-bezier(0.22, 0.8, 0.22, 1),
+    opacity 0.28s ease;
 }
 
 .chat-page .welcome-suggestion-card__ai-label {
   font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   color: #fff;
+  text-shadow: 0 0 12px rgba(167, 139, 250, 0.45);
 }
 
 .chat-page .welcome-suggestion-card__body {
@@ -113,9 +202,10 @@
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
-  flex: 1;
+  flex: 1 1 auto;
+  margin-top: auto;
   overflow: visible !important;
 }
 
@@ -124,12 +214,12 @@
   width: 100%;
   margin: 0;
   padding: 0;
-  font-size: 0.94rem;
-  font-weight: 800;
-  line-height: 1.25;
-  color: #ffffff !important;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.28;
+  color: #fafafa !important;
   background: transparent !important;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
 }
 
 .chat-page .welcome-suggestion-card__desc {
@@ -137,54 +227,117 @@
   width: 100%;
   margin: 0;
   padding: 0;
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   font-weight: 400;
   line-height: 1.45;
-  color: #a5a5ad !important;
+  color: rgba(212, 212, 216, 0.88) !important;
   background: transparent !important;
   overflow: visible !important;
   white-space: normal !important;
   text-overflow: unset !important;
 }
 
-@media (max-width: 960px) {
+/* Tablet: 2 columns; third card centered on its own row */
+@media (max-width: 1024px) and (min-width: 721px) {
   .chat-page .welcome-suggestion-cards {
-    gap: 10px;
-    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .chat-page .welcome-suggestion-card {
-    padding: 16px 14px;
-    min-height: 100px;
-  }
-
-  .chat-page .welcome-suggestion-card__title {
-    font-size: 0.86rem;
+  .chat-page .welcome-suggestion-card:nth-child(3) {
+    grid-column: 1 / -1;
+    max-width: min(100%, 440px);
+    margin-inline: auto;
   }
 }
 
 @media (max-width: 720px) {
   .chat-page .welcome-suggestion-cards {
     grid-template-columns: 1fr;
-    gap: 10px;
+    gap: 12px;
   }
 
   .chat-page .welcome-suggestion-card {
     min-height: 0;
+  }
+
+  .chat-page .welcome-suggestion-card:nth-child(3) {
+    grid-column: auto;
+    max-width: none;
+    margin-inline: 0;
+  }
+}
+
+@media (max-width: 960px) {
+  .chat-page .welcome-suggestion-cards {
+    gap: 12px;
+    width: 100%;
+  }
+
+  .chat-page .welcome-suggestion-card {
+    padding: 16px 14px 14px;
+    min-height: 140px;
+  }
+
+  .chat-page .welcome-suggestion-card__title {
+    font-size: 0.9rem;
   }
 }
 
 @media (max-width: 620px) {
   .chat-page .welcome-suggestion-cards {
     margin-top: 24px;
-    gap: 8px;
+    gap: 10px;
   }
+}
+
+/* Light theme */
+html[data-theme="light"] .chat-page .welcome-suggestion-card {
+  --welcome-glass-border: rgba(124, 92, 255, 0.2);
+  --welcome-glass-glow: rgba(124, 92, 255, 0.08);
+  border-color: rgba(124, 92, 255, 0.22);
+  background: linear-gradient(
+      165deg,
+      rgba(255, 255, 255, 0.82) 0%,
+      rgba(245, 243, 255, 0.72) 50%,
+      rgba(238, 236, 252, 0.68) 100%
+    ) !important;
+  color: #18181b;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.85) inset,
+    0 10px 36px rgba(15, 23, 42, 0.08),
+    0 0 24px rgba(124, 92, 255, 0.1);
+}
+
+html[data-theme="light"] .chat-page .welcome-suggestion-card:hover {
+  border-color: rgba(124, 92, 255, 0.38);
+  background: linear-gradient(
+      165deg,
+      rgba(255, 255, 255, 0.92) 0%,
+      rgba(246, 244, 255, 0.88) 100%
+    ) !important;
+  box-shadow:
+    0 0 0 1px rgba(124, 92, 255, 0.12) inset,
+    0 16px 44px rgba(15, 23, 42, 0.1),
+    0 0 32px rgba(124, 92, 255, 0.14);
+}
+
+html[data-theme="light"] .chat-page .welcome-suggestion-card__title {
+  color: #0f172a !important;
+}
+
+html[data-theme="light"] .chat-page .welcome-suggestion-card__desc {
+  color: rgba(71, 85, 105, 0.95) !important;
+}
+
+html[data-theme="light"] .chat-page .welcome-suggestion-card__chevron {
+  color: rgba(109, 40, 217, 0.75);
+  background: rgba(124, 92, 255, 0.12);
 }
 
 @keyframes welcome-card-enter {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(14px);
   }
   to {
     opacity: 1;
@@ -199,7 +352,8 @@
   }
 
   .chat-page .welcome-suggestion-card:hover,
-  .chat-page .welcome-suggestion-card:hover .welcome-suggestion-card__icon {
+  .chat-page .welcome-suggestion-card:hover .welcome-suggestion-card__icon,
+  .chat-page .welcome-suggestion-card:hover .welcome-suggestion-card__chevron {
     transform: none;
   }
 }

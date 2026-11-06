@@ -210,3 +210,112 @@
     padding-inline: clamp(40px, 3vw, 72px);
   }
 }
+
+/* Production spacing pass — glass surfaces stay in the theme files. */
+.dashboard-page--premium {
+  overflow-x: clip;
+}
+
+.dashboard-page--premium .dashboard-hero--compact h1 {
+  margin: 6px 0 8px;
+  font-size: clamp(1.55rem, 1.2rem + 1.4vw, 2.35rem);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.dashboard-page--premium .dashboard-hero-lede {
+  max-width: 42rem;
+  margin: 0 0 16px;
+}
+
+.dashboard-page--premium .dashboard-hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dashboard-page--premium .dashboard-hero-cta a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.dashboard-page--premium .dashboard-usage-chart,
+.dashboard-page--premium .overview-model-usage,
+.dashboard-page--premium .dashboard-usage-chart-list {
+  width: 100%;
+  min-width: 0;
+}
+
+.dashboard-page--premium .everyday-card-grid,
+.dashboard-page--premium .dashboard-models .dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: clamp(12px, 1.6vw, 18px);
+  align-items: stretch;
+}
+
+.dashboard-page--premium .everyday-card-grid > a,
+.dashboard-page--premium .dashboard-models .dashboard-grid article {
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-page--premium .everyday-card-grid h3,
+.dashboard-page--premium .dashboard-models .dashboard-grid h3,
+.dashboard-page--premium .dashboard-quick-action strong {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 440px) {
+  .dashboard-page--premium .dashboard-shell {
+    gap: 16px;
+  }
+
+  .dashboard-page--premium .dashboard-hero--compact {
+    padding: 16px;
+  }
+
+  .dashboard-page--premium .dashboard-hero-cta a {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .dashboard-page--premium .overview-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 441px) and (max-width: 767px) {
+  .dashboard-page--premium .dashboard-quick-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1180px) {
+  .dashboard-insights-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-page--premium .dashboard-quick-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dashboard-page--premium .overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .dashboard-insights-grid {
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .dashboard-page--premium .personal-overview,
+  .dashboard-page--premium .dashboard-subscription-card {
+    height: 100%;
+  }
+}

@@ -4,9 +4,8 @@ import {
   confirmSession,
   rememberSession,
 } from '../../lib/session';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Link, useNavigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AllModelAILogoMark } from '../AllModelAILogo/AllModelAILogo';
 import { authPost } from '../../lib/authApi';
 import { signInWithEmailPasswordAllModelAI } from '../../lib/emailPasswordSignIn';
@@ -34,7 +33,7 @@ import {
   isClerkMainAuthClientReady,
 } from '../../lib/clerkAuthConfig';
 import './Login.css';
-import './login-premium.css';
+import './AuthScreen.css';
 
 const LoginClerkSection = lazy(() => import('./LoginClerkSection.jsx'));
 
@@ -53,6 +52,7 @@ function LoginForm({
 }) {
   const signingUp = mode === 'signup';
   const navigate = useNavigate();
+  const location = useLocation();
   const { refresh } = useSession();
 
   const [rememberMe, setRememberMe] = useState(true);
@@ -73,15 +73,6 @@ function LoginForm({
   const [clerkBusy, setClerkBusy] = useState(false);
   /** 'account' = Firebase email/Google; 'clerk' = Clerk-only panel (avoids stacked duplicate Google UI). */
   const [authMethod, setAuthMethod] = useState('account');
-  const [closing, setClosing] = useState(false);
-
-  const requestClose = useCallback(() => {
-    if (closing) return;
-    setClosing(true);
-    window.setTimeout(() => {
-      onClose?.();
-    }, 240);
-  }, [closing, onClose]);
 
   useEffect(() => {
     if (isGoogleRedirectRecoveryPending()) {
@@ -374,12 +365,12 @@ function LoginForm({
   useEffect(() => {
     const closeWithEscape = (event) => {
       if (event.key === 'Escape') {
-        requestClose();
+        onClose();
       }
     };
     document.addEventListener('keydown', closeWithEscape);
     return () => document.removeEventListener('keydown', closeWithEscape);
-  }, [requestClose]);
+  }, [onClose]);
 
   const finishAuthNavigation = async (sessionUser, data = {}) => {
     markFreshLogin();
@@ -414,40 +405,24 @@ function LoginForm({
     setAuthMethod(method);
   };
 
-  const modalTree = (
-    <div
-      className={`login-overlay${closing ? ' login-overlay--closing' : ''}`}
-      role="presentation"
-    >
-      <div
-        className="login-backdrop-layer"
-        aria-hidden="true"
-        onMouseDown={requestClose}
-      />
+  const otherModeHref = signingUp ? '/login' : '/signup';
+
+  const pageTree = (
+    <main className="login-overlay auth-screen">
+      <Link className="auth-screen-brand" to="/" onClick={onClose}>
+        <AllModelAILogoMark className="login-logo" size={28} />
+        <span>AllModelAI</span>
+      </Link>
       <section
-        className={`login-modal${clerkUiEnabled ? ' login-modal--with-clerk' : ''}${closing ? ' login-modal--closing' : ''}`}
-        role="dialog"
-        aria-modal="true"
+        className={`login-modal auth-screen-card${clerkUiEnabled ? ' login-modal--with-clerk' : ''}`}
         aria-labelledby="login-title"
-        onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="login-modal-header">
-          <AllModelAILogoMark className="login-logo" size={42} />
-          <button
-            className="login-close"
-            type="button"
-            onClick={requestClose}
-            aria-label="Close form"
-          >
-            ×
-          </button>
-        </div>
-
-        <p className="login-eyebrow">AllModelAI account</p>
-
         <h2 id="login-title">
-          {signingUp ? 'Create your account' : 'Welcome to AllModelAI'}
+          {signingUp ? 'Create your account' : 'Welcome back'}
         </h2>
+        <p className="auth-screen-subtitle">
+          {signingUp ? 'Start using AllModelAI' : 'Sign in to your AllModelAI account'}
+        </p>
 
         {clerkUiEnabled ? (
           <div className="login-auth-methods" role="tablist" aria-label="Authentication method">
@@ -486,6 +461,25 @@ function LoginForm({
         >
         {showAccountPanel ? (
           <>
+        <div className="login-socials login-socials--single" role="group" aria-label="Social sign-in">
+          <button
+            type="button"
+            className="login-social-btn login-social-btn--google"
+            disabled={socialDisabled || !firebaseSocialReady}
+            aria-busy={socialBusy === 'Google'}
+            title={!firebaseSocialReady ? 'Firebase web configuration is missing' : undefined}
+            onClick={() => handleSocialSignIn('Google')}
+          >
+            <GoogleSignInIcon className="login-social-google-icon" />
+            <span>
+              {socialBusy === 'Google' ? 'Connecting to Google…' : 'Continue with Google'}
+            </span>
+            {socialBusy === 'Google' && <span className="login-social-spinner" aria-hidden="true" />}
+          </button>
+        </div>
+        <div className="login-divider" role="separator">
+          <span>or</span>
+        </div>
         <form className="login-form" onSubmit={handleSubmit} noValidate>
           {signingUp && (
             <label>
@@ -597,7 +591,7 @@ function LoginForm({
               Remember me
             </label>
             {!signingUp && (
-              <Link className="login-forgot" to="/forgot-password" onClick={requestClose}>
+              <Link className="login-forgot" to="/forgot-password" onClick={onClose}>
                 Forgot password?
               </Link>
             )}
@@ -661,35 +655,11 @@ function LoginForm({
             <span>
               {signingUp ? 'Already have an account?' : 'New to AllModelAI?'}
             </span>
-            <button
-              type="button"
-              onClick={() => changeMode(signingUp ? 'signin' : 'signup')}
-            >
+            <Link to={otherModeHref} state={location.state}>
               {signingUp ? 'Sign in' : 'Sign up'}
-            </button>
+            </Link>
           </div>
         </form>
-
-        <div className="login-divider" role="separator">
-          <span>or</span>
-        </div>
-
-        <div className="login-socials login-socials--single" role="group" aria-label="Social sign-in">
-          <button
-            type="button"
-            className="login-social-btn login-social-btn--google"
-            disabled={socialDisabled || !firebaseSocialReady}
-            aria-busy={socialBusy === 'Google'}
-            title={!firebaseSocialReady ? 'Firebase web configuration is missing' : undefined}
-            onClick={() => handleSocialSignIn('Google')}
-          >
-            <GoogleSignInIcon className="login-social-google-icon" />
-            <span>
-              {socialBusy === 'Google' ? 'Connecting to Google…' : 'Continue with Google'}
-            </span>
-            {socialBusy === 'Google' && <span className="login-social-spinner" aria-hidden="true" />}
-          </button>
-        </div>
           </>
         ) : null}
 
@@ -728,13 +698,9 @@ function LoginForm({
               <span>
                 {signingUp ? 'Already have an account?' : 'New to AllModelAI?'}
               </span>
-              <button
-                type="button"
-                disabled={clerkBusy}
-                onClick={() => changeMode(signingUp ? 'signin' : 'signup')}
-              >
+              <Link to={otherModeHref} state={location.state} aria-disabled={clerkBusy || undefined}>
                 {signingUp ? 'Sign in' : 'Sign up'}
-              </button>
+              </Link>
             </div>
           </div>
         ) : null}
@@ -742,8 +708,8 @@ function LoginForm({
 
         <AuthDebugPanel />
       </section>
-    </div>
+    </main>
   );
 
-  return createPortal(modalTree, document.body);
+  return pageTree;
 }

@@ -1,7 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '../../lib/useLanguage';
 import { useEffect, useId, useState } from 'react';
-import Login from '../Login/Login';
 import NavAuthSection from './NavAuthSection';
 import { useSession } from '../Session/SessionProvider';
 import { AUTH_STATUS } from '../../lib/authSessionStatus';
@@ -15,19 +14,7 @@ export default function Navbar() {
   const navMenuId = useId();
   const { status, user, sessionVerified } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [authMode, setAuthMode] = useState(null);
   const isAuthenticated = status === AUTH_STATUS.AUTHENTICATED && sessionVerified && Boolean(user?.email);
-
-  useEffect(() => {
-    if (!authMode) return;
-    const closeWithEscape = (event) => event.key === 'Escape' && setAuthMode(null);
-    document.addEventListener('keydown', closeWithEscape);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', closeWithEscape);
-      document.body.style.overflow = '';
-    };
-  }, [authMode]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -103,7 +90,7 @@ export default function Navbar() {
           <Link to="/python-ai" className="nav-link-feature" onClick={closeMenu}>⚡ AI Studio</Link>
         </div>
         <div className="nav-auth">
-          <NavAuthSection onOpenAuth={setAuthMode} />
+          <NavAuthSection />
           <button
             type="button"
             className="menu-toggle"
@@ -116,7 +103,6 @@ export default function Navbar() {
           </button>
         </div>
       </nav>
-      {authMode && <Login mode={authMode} onClose={() => setAuthMode(null)} onModeChange={setAuthMode} />}
     </>
   );
 }

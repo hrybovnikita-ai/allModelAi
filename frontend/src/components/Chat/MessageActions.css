@@ -4,9 +4,14 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 2px;
-  margin-top: clamp(8px, 1.2vw, 14px);
+  margin-top: clamp(6px, 1vw, 10px);
   max-width: 100%;
   min-width: 0;
+}
+
+.chat-page .chat-message.assistant .message-actions {
+  margin-top: 8px;
+  gap: 0;
 }
 
 .message-actions-assistant {
@@ -26,8 +31,8 @@
   position: relative;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 0;
   border-radius: 9px;
@@ -75,8 +80,8 @@
 }
 
 .message-action-icon {
-  width: 17px;
-  height: 17px;
+  width: 15px;
+  height: 15px;
   display: block;
   flex-shrink: 0;
 }
@@ -371,10 +376,10 @@
 .chat-page .message-actions .message-action-btn {
   display: grid !important;
   place-items: center !important;
-  width: 36px !important;
-  height: 36px !important;
-  min-width: 36px !important;
-  min-height: 36px !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
   flex: 0 0 auto !important;
 }
 
@@ -437,8 +442,15 @@
   }
 
   .message-action-btn {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .chat-page .message-actions .message-action-btn {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    min-height: 40px !important;
   }
 }
 

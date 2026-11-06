@@ -211,7 +211,7 @@ function safeStorageSet(storageName, key, value) {
   }
 }
 
-const SIDEBAR_WIDTH_MIN = 200;
+const SIDEBAR_WIDTH_MIN = 220;
 const SIDEBAR_WIDTH_MAX = 520;
 const SIDEBAR_WIDTH_DEFAULT = 288;
 const SIDEBAR_WIDTH_STORAGE_KEY = 'allmodelai_sidebar_width';
@@ -2354,7 +2354,7 @@ export default function Chat() {
           routerMode: location.state?.routerMode || safeStorageGet('localStorage', 'allmodelai_router_mode') || 'balanced',
           responsePrefs: readResponsePrefs(typeof localStorage !== 'undefined' ? localStorage : null),
           systemInstructions: safeStorageGet('localStorage', 'allmodelai_system_instructions') || '',
-          fallbackEnabled: !selectedVersion,
+          fallbackEnabled: !selectedVersion || selectedSlug === 'smart',
           assistantMessageId: isAnoninModelSlug(selectedSlug) ? assistantMessageId : undefined,
           anoninStrategy: isAnoninModelSlug(selectedSlug) ? anoninStrategy : undefined,
         }),

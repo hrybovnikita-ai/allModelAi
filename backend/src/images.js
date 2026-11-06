@@ -36,6 +36,7 @@ const configuredModel = (provider) => {
     if (provider === 'pollinations') return String(process.env.POLLINATIONS_IMAGE_MODEL || 'flux').trim();
     if (provider === 'openai') return String(process.env.IMAGE_MODEL || 'gpt-image-1').trim();
     if (provider === 'cloudflare') return String(process.env.CLOUDFLARE_IMAGE_MODEL || '@cf/black-forest-labs/flux-1-schnell').trim();
+    if (provider === 'gemini') return String(process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-lite-image').trim();
     return null;
 };
 
@@ -366,6 +367,7 @@ const getImageGenerationStatus = (_req, res) => {
         pollinations: isProviderConfigured('pollinations'),
         openai: isProviderConfigured('openai'),
         cloudflare: isProviderConfigured('cloudflare'),
+        gemini: isProviderConfigured('gemini'),
         model: configuredModel(primary),
         upscaleSupported: Boolean(capabilities?.upscaleSupported),
         qualities: capabilities?.qualities || ['standard', 'hd', 'ultra'],

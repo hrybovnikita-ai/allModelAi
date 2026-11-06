@@ -55,6 +55,158 @@ describe('secure chat and knowledge API',()=>{
    }
  });
 
+ test('OpenAI 429 → OpenRouter 429 → Hugging Face streaming (same /api/chat pipeline as Smart Router)', async () => {
+   const previousOpenAi = process.env.OPENAI_API_KEY;
+   const previousApiKey = process.env.API_KEY;
+   const previousOpenRouter = process.env.OPENROUTER_API_KEY;
+   const previousHf = process.env.HUGGINGFACE_API_KEY;
+   const previousHfModels = process.env.HF_FALLBACK_MODELS;
+   const previousGemini = process.env.GEMINI_API_KEY;
+   process.env.OPENAI_API_KEY = 'openai-test-key';
+   delete process.env.API_KEY;
+   process.env.OPENROUTER_API_KEY = 'test-openrouter-gateway-key';
+   process.env.HUGGINGFACE_API_KEY = 'hf_test_secret_key_must_not_leak';
+   process.env.HF_FALLBACK_MODELS = 'integration/hf-mock-model:cheapest';
+   delete process.env.GEMINI_API_KEY;
+   const encoder = new TextEncoder();
+   const hfStream = () => new Response(new ReadableStream({
+     start(controller) {
+       controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+         choices: [{ delta: { content: 'HF stream answer' } }],
+       })}\n\n`));
+       controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+       controller.close();
+     },
+   }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+   const urls = [];
+   global.fetch = async (url) => {
+     urls.push(String(url));
+     if (urls.length === 1) {
+       return new Response(JSON.stringify({ error: { message: 'Rate limit exceeded' } }), {
+         status: 429,
+         headers: { 'Content-Type': 'application/json' },
+       });
+     }
+     if (urls.length === 2) {
+       return new Response(JSON.stringify({ error: { message: 'simulated openrouter rate limit' } }), {
+         status: 429,
+         headers: { 'Content-Type': 'application/json' },
+       });
+     }
+     return hfStream();
+   };
+   try {
+     const response = await api.post('/api/chat').send({
+       model: 'gpt',
+       temporary: true,
+       fallbackEnabled: true,
+       messages: [{ role: 'user', text: 'Hello' }],
+     });
+     assert.equal(response.status, 200);
+     assert.match(response.headers['content-type'], /text\/event-stream/i);
+     assert.match(response.text, /HF stream answer/);
+     assert.match(response.text, /"actualModelId":"integration\/hf-mock-model:cheapest"/);
+     assert.match(response.text, /"actualProviderModel":"huggingface"/);
+     assert.match(response.text, /"fallback":true/);
+     assert.match(urls[0], /api\.openai\.com/);
+     assert.match(urls[1], /openrouter\.ai/);
+     assert.match(urls[2], /router\.huggingface\.co\/v1\/chat\/completions/);
+     assert.doesNotMatch(response.text, /hf_test_secret/);
+   } finally {
+     global.fetch = async () => upstream();
+     if (previousOpenAi === undefined) delete process.env.OPENAI_API_KEY;
+     else process.env.OPENAI_API_KEY = previousOpenAi;
+     if (previousApiKey === undefined) delete process.env.API_KEY;
+     else process.env.API_KEY = previousApiKey;
+     if (previousOpenRouter === undefined) delete process.env.OPENROUTER_API_KEY;
+     else process.env.OPENROUTER_API_KEY = previousOpenRouter;
+     if (previousHf === undefined) delete process.env.HUGGINGFACE_API_KEY;
+     else process.env.HUGGINGFACE_API_KEY = previousHf;
+     if (previousHfModels === undefined) delete process.env.HF_FALLBACK_MODELS;
+     else process.env.HF_FALLBACK_MODELS = previousHfModels;
+     if (previousGemini === undefined) delete process.env.GEMINI_API_KEY;
+     else process.env.GEMINI_API_KEY = previousGemini;
+   }
+ });
+
+ test('Smart Router with routerMode and variant: recoverable failures fall back to Hugging Face', async () => {
+   const previousOpenAi = process.env.OPENAI_API_KEY;
+   const previousApiKey = process.env.API_KEY;
+   const previousOpenRouter = process.env.OPENROUTER_API_KEY;
+   const previousHf = process.env.HUGGINGFACE_API_KEY;
+   const previousHfModels = process.env.HF_FALLBACK_MODELS;
+   const previousGemini = process.env.GEMINI_API_KEY;
+   process.env.OPENAI_API_KEY = 'openai-test-key';
+   delete process.env.API_KEY;
+   process.env.OPENROUTER_API_KEY = 'test-openrouter-gateway-key';
+   process.env.HUGGINGFACE_API_KEY = 'hf_test_secret_key_must_not_leak';
+   process.env.HF_FALLBACK_MODELS = 'integration/hf-mock-model:cheapest';
+   delete process.env.GEMINI_API_KEY;
+   const encoder = new TextEncoder();
+   const hfStream = () => new Response(new ReadableStream({
+     start(controller) {
+       controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+         choices: [{ delta: { content: 'HF stream answer' } }],
+       })}\n\n`));
+       controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+       controller.close();
+     },
+   }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+   const urls = [];
+   global.fetch = async (url) => {
+     urls.push(String(url));
+     if (urls.length === 1) {
+       return new Response(JSON.stringify({ error: { message: 'Rate limit exceeded' } }), {
+         status: 429,
+         headers: { 'Content-Type': 'application/json' },
+       });
+     }
+     if (urls.length === 2) {
+       return new Response(JSON.stringify({ error: { message: 'simulated openrouter rate limit' } }), {
+         status: 429,
+         headers: { 'Content-Type': 'application/json' },
+       });
+     }
+     return hfStream();
+   };
+   try {
+     const response = await api.post('/api/chat').send({
+       model: 'smart',
+       variant: 'balanced',
+       routerMode: 'balanced',
+       temporary: true,
+       messages: [{
+         role: 'user',
+         text: 'Summarize in one sentence: AllModelAI can route requests across multiple AI providers.',
+       }],
+     });
+     assert.equal(response.status, 200);
+     assert.match(response.headers['content-type'], /text\/event-stream/i);
+     assert.match(response.text, /HF stream answer/);
+     assert.match(response.text, /"actualModelId":"integration\/hf-mock-model:cheapest"/);
+     assert.match(response.text, /"actualProviderModel":"huggingface"/);
+     assert.match(response.text, /"fallback":true/);
+     assert.match(urls[0], /api\.openai\.com/);
+     assert.match(urls[1], /openrouter\.ai/);
+     assert.match(urls[2], /router\.huggingface\.co\/v1\/chat\/completions/);
+     assert.doesNotMatch(response.text, /hf_test_secret/);
+   } finally {
+     global.fetch = async () => upstream();
+     if (previousOpenAi === undefined) delete process.env.OPENAI_API_KEY;
+     else process.env.OPENAI_API_KEY = previousOpenAi;
+     if (previousApiKey === undefined) delete process.env.API_KEY;
+     else process.env.API_KEY = previousApiKey;
+     if (previousOpenRouter === undefined) delete process.env.OPENROUTER_API_KEY;
+     else process.env.OPENROUTER_API_KEY = previousOpenRouter;
+     if (previousHf === undefined) delete process.env.HUGGINGFACE_API_KEY;
+     else process.env.HUGGINGFACE_API_KEY = previousHf;
+     if (previousHfModels === undefined) delete process.env.HF_FALLBACK_MODELS;
+     else process.env.HF_FALLBACK_MODELS = previousHfModels;
+     if (previousGemini === undefined) delete process.env.GEMINI_API_KEY;
+     else process.env.GEMINI_API_KEY = previousGemini;
+   }
+ });
+
  test('passes the selected Gemini version to the direct API', async () => {
    const previous = process.env.GEMINI_API_KEY;
    process.env.GEMINI_API_KEY = 'test-gemini';

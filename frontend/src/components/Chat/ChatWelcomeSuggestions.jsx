@@ -27,6 +27,20 @@ function IconAi() {
   return <span className="welcome-suggestion-card__ai-label">AI</span>;
 }
 
+function IconChevronUpRight() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="welcome-suggestion-card__chevron-svg">
+      <path
+        d="M7 17L17 7M17 7H9M17 7V15"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const ICONS = {
   idea: IconLightbulb,
   code: IconCode,
@@ -53,9 +67,14 @@ export default function ChatWelcomeSuggestions({ items, onSelect, t }) {
             onClick={() => onSelect(item.prompt || '', item)}
             aria-label={title}
           >
-            <span className="welcome-suggestion-card__icon-wrap">
-              <span className="welcome-suggestion-card__icon">
-                <Icon />
+            <span className="welcome-suggestion-card__top">
+              <span className="welcome-suggestion-card__icon-wrap">
+                <span className="welcome-suggestion-card__icon">
+                  <Icon />
+                </span>
+              </span>
+              <span className="welcome-suggestion-card__chevron" aria-hidden="true">
+                <IconChevronUpRight />
               </span>
             </span>
             <span className="welcome-suggestion-card__body">

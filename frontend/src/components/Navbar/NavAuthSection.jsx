@@ -28,7 +28,7 @@ const NAV_USER_MENU_LINKS = DASHBOARD_NAV_ACCOUNT_LINKS.filter(
   (item) => item.label !== 'Dashboard',
 );
 
-export default function NavAuthSection({ onOpenAuth }) {
+export default function NavAuthSection() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const { status, user, authLoading, refresh, sessionVerified, connectionIssue } = useSession();
@@ -141,8 +141,8 @@ export default function NavAuthSection({ onOpenAuth }) {
               </button>
             </p>
           ) : null}
-          <button type="button" className="nav-signin" onClick={() => onOpenAuth('signin')}>{t('Sign in')}</button>
-          <button type="button" className="nav-signup" onClick={() => onOpenAuth('signup')}>{t('Sign up')}</button>
+          <Link className="nav-signin" to="/login">{t('Sign in')}</Link>
+          <Link className="nav-signup" to="/signup">{t('Sign up')}</Link>
         </div>
       )}
     </div>

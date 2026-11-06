@@ -264,8 +264,8 @@ body.chat-sidebar-resizing {
   display: none;
 }
 
-/* Tablet / mobile: drawer only — no collapsed rail */
-@media (max-width: 900px) {
+/* Phones: overlay drawer. Tablets (768px+) keep the in-flow adaptive sidebar. */
+@media (max-width: 767px) {
   .chat-page,
   .chat-page.sidebar-collapsed {
     --chat-sidebar-width: minmax(0, 1fr);

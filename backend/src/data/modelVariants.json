@@ -1,4 +1,24 @@
 {
+  "smart": [
+    {
+      "id": "balanced",
+      "name": "Balanced",
+      "label": "Balanced",
+      "speed": "Balanced",
+      "description": "Smart Router default — task-aware routing (UI hint only; server picks the backend slug).",
+      "gateway": "openai/gpt-4.1-mini",
+      "direct": "gpt-4.1-mini"
+    },
+    {
+      "id": "economy",
+      "name": "Economy",
+      "label": "Economy",
+      "speed": "Fast",
+      "description": "Prefer lower-cost routing when the Smart Router allows it.",
+      "gateway": "openai/gpt-4.1-nano",
+      "direct": "gpt-4.1-nano"
+    }
+  ],
   "gemini": [
     {"id":"3.5-flash-lite","name":"Gemini 3.5 Flash Lite","label":"Flash-Lite","speed":"Fast","description":"Default fast text model (API-verified generateContent)","gateway":"google/gemini-2.5-flash","direct":"gemini-3.5-flash-lite"},
     {"id":"3.1-flash-lite","name":"Gemini 3.1 Flash Lite","label":"Flash-Lite","speed":"Fast","description":"Direct Google model id gemini-3.1-flash-lite. Google may return 503 when demand is high.","gateway":"google/gemini-2.5-flash","direct":"gemini-3.1-flash-lite"},

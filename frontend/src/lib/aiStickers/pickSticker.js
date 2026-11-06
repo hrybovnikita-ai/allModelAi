@@ -1,4 +1,4 @@
-import { AI_STICKER_CATALOG, AI_STICKER_LIST } from './catalog.js';
+import { AI_STICKER_LIST } from './catalog.js';
 
 const CODE_HEAVY = /```[\s\S]*```|<\/?[a-z][\s\S]*>/i;
 const SKIP_ASSISTANT = /^(error|failed|could not|unable to|i cannot|sorry,? i)/i;
@@ -35,12 +35,7 @@ export function pickAiSticker(userText = '', assistantText = '', { random = Math
   }
 
   if (!best || bestScore < 1.5) {
-    if (/\b(hi|hello|hey|привет|вітаю)\b/i.test(user) && assistant.length < 280) {
-      best = AI_STICKER_CATALOG.greeting;
-      bestScore = 2;
-    } else {
-      return null;
-    }
+    return null;
   }
 
   const confidence = Math.min(1, bestScore / 5);

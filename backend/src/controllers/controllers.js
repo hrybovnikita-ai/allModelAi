@@ -1287,6 +1287,7 @@ const {
     logOpenRouterHttpError,
     normalizeOpenRouterGatewayModel,
 } = require('../services/openRouterModelMapping');
+const { tryHuggingFaceInferenceChain } = require('../services/huggingfaceInference');
 const {
     DEFAULT_GROK_OPENROUTER_GATEWAY,
     XAI_CHAT_COMPLETIONS_URL,
@@ -2412,8 +2413,11 @@ async function createChatResponseImpl(req, res) {
         fallbackCodeForCategory,
         FALLBACK_CODES,
     } = require('../services/automaticFallback');
+    // Explicit catalog variant locks cross-provider fallback for direct model picks (qwen + coder, etc.).
+    // Smart Router may still send a variant (router UI hint); recovery on 429/402/5xx/timeouts must stay enabled.
+    const explicitVariantLocksFallback = Boolean(selectedVariant) && requestedModel !== 'smart';
     const allowFallback = isFallbackFeatureEnabled()
-        && !selectedVariant
+        && !explicitVariantLocksFallback
         && fallbackEnabled !== false;
     const userEmail = req.user.email;
     if (conversationId) {
@@ -2468,7 +2472,7 @@ async function createChatResponseImpl(req, res) {
     for (const slug of Object.keys(providerModels)) {
         providerModels[slug] = normalizeOpenRouterGatewayModel(providerModels[slug], slug);
     }
-    if (selectedVariant) {
+    if (selectedVariant && requestedModel !== 'smart') {
         providerModels[requestedModel] = normalizeOpenRouterGatewayModel(selectedVariant.gateway, requestedModel);
     }
     const configuredGrokModel = process.env.GROK_MODEL?.trim();
@@ -3314,6 +3318,7 @@ async function createChatResponseImpl(req, res) {
         });
         let fallbackUsed = usePreferredGemini;
         let fallbackModel = usePreferredGemini ? 'gemini' : null;
+        let huggingfaceUpstreamModel = null;
         let upstreamError = null;
         let geminiDirectFailure = null;
         let equivalenceViaOpenRouter = false;
@@ -3357,6 +3362,9 @@ async function createChatResponseImpl(req, res) {
             }
             return apiResponseOr;
         };
+
+        const fallbackTracker = createFallbackTracker({ requestedSlug: routedModel });
+        let fallbackFailureCategory = null;
 
         if (!apiResponse.ok && gatewayKey?.trim() && !noCrossProviderFallback) {
             upstreamError = await apiResponse.json().catch(() => ({}));
@@ -3470,8 +3478,62 @@ async function createChatResponseImpl(req, res) {
             }
         }
 
-        const fallbackTracker = createFallbackTracker({ requestedSlug: routedModel });
-        let fallbackFailureCategory = null;
+        if (
+            !apiResponse.ok
+            && !geminiDirectOnly
+            && !hasAttachedImage
+            && !noCrossProviderFallback
+            && allowFallback
+        ) {
+            upstreamError = upstreamError || await apiResponse.json().catch(() => ({}));
+            const hfPeekDetail = upstreamErrorMessage(upstreamError);
+            fallbackFailureCategory = classifyFailure({
+                status: apiResponse.status,
+                detail: hfPeekDetail,
+            });
+            if (mayAttemptFallback(fallbackFailureCategory)) {
+                const hfKey = String(process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN || '').trim();
+                if (hfKey) {
+                    const hfAttempt = await tryHuggingFaceInferenceChain({
+                        fetchProvider,
+                        requestSignal,
+                        hfApiKey: hfKey,
+                        systemPrompt,
+                        standardInput,
+                        outputTokenLimit,
+                        routedModel,
+                        fallbackTracker,
+                        fallbackFailureCategory,
+                        sleepFallback,
+                        computeBackoffMs,
+                        logSmartRouter,
+                    });
+                    if (hfAttempt.ok && hfAttempt.response) {
+                        apiResponse = hfAttempt.response;
+                        huggingfaceUpstreamModel = hfAttempt.hfModel || null;
+                        fallbackUsed = true;
+                        fallbackModel = 'huggingface';
+                        isOpenAI = false;
+                        isXAI = false;
+                        isClaude = false;
+                        isGemini = false;
+                        isKimi = false;
+                        isMistral = false;
+                        isPerplexity = false;
+                        isGroq = false;
+                        isCloudflare = false;
+                        isGptOssCf = false;
+                        isOpenRouterFree = false;
+                        isOllamaCloud = false;
+                        isDeepSeek = false;
+                        equivalenceViaOpenRouter = false;
+                        openRouterAttempted = false;
+                        upstreamError = null;
+                    }
+                }
+            }
+        }
+
         if (!apiResponse.ok) {
             const failPeek = upstreamError || {};
             fallbackFailureCategory = classifyFailure({
@@ -3957,7 +4019,9 @@ async function createChatResponseImpl(req, res) {
             chatSseStarted = true;
         }
         const freeTierModels = new Set(['gemini', 'cloudflare', 'gpt-oss', 'gpt-oss-groq', 'nemotron', 'deepseek-r1']);
-        const resolvedActualModelId = isOllamaCloud
+        const resolvedActualModelId = fallbackUsed && fallbackModel === 'huggingface' && huggingfaceUpstreamModel
+            ? huggingfaceUpstreamModel
+            : isOllamaCloud
             ? (ollamaCloudModelId || providerModels.ollama || resolveOllamaCloudModel(selectedVariant))
             : isGptOssGroqSlug(routedModel) && isGroq
                 ? resolveGroqDirectModel(selectedVariant, routedModel)

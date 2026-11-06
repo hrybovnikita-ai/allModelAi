@@ -4,7 +4,7 @@
  */
 
 /* Mobile drawer — width, stacking, hamburger stays clickable above panel */
-@media (max-width: 900px) {
+@media (max-width: 767px) {
   .chat-page {
     --chat-mobile-header-height: auto;
   }
@@ -394,10 +394,12 @@
   }
 
   .chat-page .access-mode-control {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: auto;
+    position: static;
+    left: auto;
+    top: auto;
+    transform: none;
+    width: 100%;
+    max-width: min(380px, 100%);
+    justify-items: center;
   }
 }

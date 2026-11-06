@@ -63,6 +63,11 @@ function imageConfigurationReport() {
         };
     }
 
+    const geminiKey = strip(process.env.GEMINI_API_KEY);
+    if (!geminiKey) {
+        missing.push('GEMINI_API_KEY (optional — Gemini Flash Lite image via ai_python; uses free tier when the model is available)');
+    }
+
     if (!isComfyCloudConfigured()) {
         missing.push('COMFY_CLOUD_API_KEY or COMFYUI_API_KEY (Comfy Cloud — https://platform.comfy.org/profile/api-keys)');
     }
@@ -99,8 +104,8 @@ function imageConfigurationReport() {
 
     const explicit = strip(process.env.IMAGE_GENERATION_PROVIDER || process.env.IMAGE_PROVIDER).toLowerCase();
     const normalizedExplicit = explicit === 'comfy' ? 'comfy-cloud' : explicit;
-    if (explicit && !['comfy-cloud', 'pollinations', 'openai', 'cloudflare', 'comfy'].includes(explicit)) {
-        warnings.push(`IMAGE_PROVIDER=${explicit} is not recognized. Use comfy-cloud, pollinations, openai, or cloudflare.`);
+    if (explicit && !['comfy-cloud', 'pollinations', 'openai', 'cloudflare', 'gemini', 'gemini-image', 'gemini_image', 'gemini-flash-lite-image', 'comfy'].includes(explicit)) {
+        warnings.push(`IMAGE_PROVIDER=${explicit} is not recognized. Use comfy-cloud, pollinations, openai, cloudflare, or gemini.`);
     }
     if (normalizedExplicit === 'comfy-cloud' && !isComfyCloudConfigured()) {
         warnings.push('IMAGE_PROVIDER=comfy-cloud but COMFY_CLOUD_API_KEY is missing.');

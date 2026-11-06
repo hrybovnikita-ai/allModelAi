@@ -260,6 +260,20 @@ const MODEL_CAPABILITIES = {
         summarization: true,
         translation: true,
     },
+    huggingface: {
+        provider: 'huggingface',
+        model: 'inference-providers',
+        coding: true,
+        reasoning: true,
+        vision: false,
+        longContext: true,
+        fast: true,
+        research: false,
+        streaming: true,
+        writing: true,
+        summarization: true,
+        translation: true,
+    },
 };
 
 const TASK_TO_CAPABILITY = {
@@ -299,6 +313,7 @@ function displayModelName(slug) {
         cloudflare: 'Cloudflare Llama',
         'gpt-oss': 'GPT-OSS (Cloudflare)',
         ollama: 'Ollama Cloud',
+        huggingface: 'Hugging Face Inference',
         nemotron: 'NVIDIA Nemotron 3 Ultra (Free)',
         'deepseek-r1': 'DeepSeek R1 (Free)',
         cohere: 'Cohere Command',

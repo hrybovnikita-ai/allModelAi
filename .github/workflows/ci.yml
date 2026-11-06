@@ -88,6 +88,17 @@ jobs:
         run: npm run build
         working-directory: frontend
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: Chat responsive layout tests
+        run: npx playwright test e2e/chat-responsive.spec.js
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_SKIP_WEBSERVER: ''
+          CI: 'true'
+
       - name: Release readiness summary
         if: always()
         run: |

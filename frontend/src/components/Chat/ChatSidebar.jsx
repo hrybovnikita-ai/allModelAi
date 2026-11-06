@@ -323,7 +323,7 @@ export default function ChatSidebar({
         </div>
 
         <nav className="sidebar-rail" aria-label={t('Quick navigation')}>
-          <SidebarIconButton className="sidebar-rail-btn" label={t('New conversation')} onClick={newChat}>
+          <SidebarIconButton className="sidebar-rail-btn" label={t('New Chat')} onClick={newChat}>
             <IconSidebarPlus />
           </SidebarIconButton>
           <SidebarIconButton
@@ -352,7 +352,7 @@ export default function ChatSidebar({
             <div className="sidebar-new-chat-row">
               <button type="button" className="new-chat new-chat-compact" onClick={newChat}>
                 <IconSidebarPlus />
-                <span>{t('New conversation')}</span>
+                <span>{t('New Chat')}</span>
               </button>
               <button
                 type="button"

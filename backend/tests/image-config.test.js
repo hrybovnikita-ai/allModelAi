@@ -5,7 +5,7 @@ const { imageConfigurationReport } = require('../src/imageConfig');
 const names = [
     'COMFY_CLOUD_API_KEY', 'POLLINATIONS_API_KEY', 'POLINATIONS_API_KEY', 'IMAGE_API_KEY', 'OPENAI_API_KEY',
     'OPEN_AI_API_KEY', 'API_IMAGE_KEY', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_KEY',
-    'IMAGE_PROVIDER',
+    'IMAGE_PROVIDER', 'GEMINI_API_KEY', 'GOOGLE_API_KEY',
 ];
 const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
 

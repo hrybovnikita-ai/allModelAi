@@ -13,6 +13,7 @@ const names = [
     'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_KEY', 'CLOUDFLARE_API_TOKEN',
     'POLLINATIONS_API_KEY', 'POLLINATIONS_IMAGE_MODEL',
     'COMFY_CLOUD_API_KEY', 'COMFYUI_API_KEY', 'COMFY_CLOUD_BASE_URL',
+    'GEMINI_API_KEY', 'GOOGLE_API_KEY',
 ];
 const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
 const originalFetch = global.fetch;

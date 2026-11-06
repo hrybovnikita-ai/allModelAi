@@ -246,4 +246,11 @@ def create_app(trainer: "TrainingManager") -> Optional[Any]:
         except Exception as exc:  # noqa: BLE001
             print(f"[ai_python] Optional routes skipped ({import_path}): {exc}")
 
+    try:
+        from api.gemini_image_routes import register_gemini_image_routes
+
+        register_gemini_image_routes(app)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[ai_python] Gemini image routes not loaded: {exc}")
+
     return app

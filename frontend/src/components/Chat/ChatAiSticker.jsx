@@ -5,7 +5,7 @@ export default function ChatAiSticker({ sticker }) {
   const animated = sticker.animated !== false;
   return (
     <div
-      className={`chat-ai-sticker ${animated ? 'chat-ai-sticker--animated' : ''}`}
+      className={`chat-ai-sticker chat-ai-sticker--compact ${animated ? 'chat-ai-sticker--animated' : ''}`}
       role="img"
       aria-label={sticker.label ? `${sticker.label} sticker` : 'Reaction sticker'}
     >

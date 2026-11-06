@@ -183,7 +183,7 @@
 }
 
 .chat-page .welcome-suggestion-card {
-  border-radius: var(--radius-card) !important;
+  border-radius: 16px !important;
 }
 
 /* —— Composer —— */

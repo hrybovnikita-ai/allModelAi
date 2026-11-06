@@ -195,6 +195,11 @@ async function ensureServerRunning() {
                 ],
                 {
                     cwd: PYTHON_DIR,
+                    env: {
+                        ...process.env,
+                        GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+                        GOOGLE_API_KEY: process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '',
+                    },
                     stdio: [
                         'ignore',
                         'pipe',
@@ -317,6 +322,11 @@ function runSingleShotCmd(action, payload = {}) {
             ],
             {
                 cwd: PYTHON_DIR,
+                env: {
+                    ...process.env,
+                    GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+                    GOOGLE_API_KEY: process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '',
+                },
                 stdio: [
                     'ignore',
                     'pipe',

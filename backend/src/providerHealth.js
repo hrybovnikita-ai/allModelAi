@@ -78,6 +78,11 @@ function providerCatalog() {
             defaultModel: 'gemma4:31b',
             also: ['OLLAMA_BASE_URL'],
         },
+        huggingface: {
+            keys: ['HUGGINGFACE_API_KEY', 'HF_TOKEN'],
+            modelEnv: 'HF_FALLBACK_MODELS',
+            defaultModel: 'meta-llama/Meta-Llama-3.1-8B-Instruct:cheapest',
+        },
         tavily: {
             keys: ['TAVILY_API_KEY'],
         },
